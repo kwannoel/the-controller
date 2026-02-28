@@ -109,6 +109,89 @@ impl PtyManager {
         Ok(())
     }
 
+    pub fn spawn_command(
+        &mut self,
+        session_id: Uuid,
+        program: &str,
+        args: &[&str],
+        app_handle: AppHandle,
+    ) -> Result<(), String> {
+        let pty_system = native_pty_system();
+
+        let pair = pty_system
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("failed to open pty: {}", e))?;
+
+        let mut cmd = CommandBuilder::new(program);
+        for arg in args {
+            cmd.arg(*arg);
+        }
+
+        let _child = pair
+            .slave
+            .spawn_command(cmd)
+            .map_err(|e| format!("failed to spawn {}: {}", program, e))?;
+
+        drop(pair.slave);
+
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| format!("failed to get pty writer: {}", e))?;
+
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| format!("failed to get pty reader: {}", e))?;
+
+        let alive = Arc::new(Mutex::new(true));
+        let alive_clone = Arc::clone(&alive);
+
+        let output_event = format!("pty-output:{}", session_id);
+        let status_event = format!("session-status-changed:{}", session_id);
+
+        thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => {
+                        if let Ok(mut a) = alive_clone.lock() {
+                            *a = false;
+                        }
+                        let _ = app_handle.emit(&status_event, "idle");
+                        break;
+                    }
+                    Ok(n) => {
+                        let encoded =
+                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let _ = app_handle.emit(&output_event, encoded);
+                    }
+                    Err(_) => {
+                        if let Ok(mut a) = alive_clone.lock() {
+                            *a = false;
+                        }
+                        let _ = app_handle.emit(&status_event, "idle");
+                        break;
+                    }
+                }
+            }
+        });
+
+        let session = PtySession {
+            master: pair.master,
+            writer,
+            alive,
+        };
+
+        self.sessions.insert(session_id, session);
+        Ok(())
+    }
+
     pub fn write_to_session(&mut self, session_id: Uuid, data: &[u8]) -> Result<(), String> {
         let session = self
             .sessions

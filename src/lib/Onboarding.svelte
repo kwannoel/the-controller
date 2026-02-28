@@ -1,15 +1,16 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { appConfig, onboardingComplete } from "./stores";
   import { showToast } from "./toast";
+  import Terminal from "./Terminal.svelte";
 
   interface DirEntry {
     name: string;
     path: string;
   }
 
-  let step = $state<1 | 2>(1);
+  let step = $state<"pick-dir" | "cli-check">("pick-dir");
   let projectsRoot = $state("");
   let claudeStatus = $state<
     "checking" | "authenticated" | "not_authenticated" | "not_installed"
@@ -28,6 +29,9 @@
   let selectedIndex = $state(0);
   let inputEl: HTMLInputElement | undefined = $state();
 
+  // Login terminal state
+  let loginSessionId = $state<string | null>(null);
+
   onMount(async () => {
     try {
       const homeDir =
@@ -39,6 +43,14 @@
       showToast(String(e), "error");
     }
     inputEl?.focus();
+  });
+
+  onDestroy(async () => {
+    if (loginSessionId) {
+      try {
+        await invoke("stop_claude_login", { sessionId: loginSessionId });
+      } catch (_) {}
+    }
   });
 
   function handleKeydown(e: KeyboardEvent) {
@@ -65,7 +77,7 @@
       await invoke("save_onboarding_config", {
         projectsRoot: entry.path,
       });
-      step = 2;
+      step = "cli-check";
       await checkClaude();
     } catch (e) {
       showToast(String(e), "error");
@@ -77,9 +89,33 @@
     try {
       const status = await invoke<string>("check_claude_cli");
       claudeStatus = status as typeof claudeStatus;
+
+      if (status === "not_authenticated") {
+        await startLogin();
+      }
     } catch (e) {
       claudeStatus = "not_installed";
     }
+  }
+
+  async function startLogin() {
+    try {
+      loginSessionId = await invoke<string>("start_claude_login");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function handleLoginDone() {
+    // Clean up login PTY
+    if (loginSessionId) {
+      try {
+        await invoke("stop_claude_login", { sessionId: loginSessionId });
+      } catch (_) {}
+      loginSessionId = null;
+    }
+    // Re-check auth
+    await checkClaude();
   }
 
   function finishOnboarding() {
@@ -89,7 +125,7 @@
 </script>
 
 <div class="onboarding">
-  {#if step === 1}
+  {#if step === "pick-dir"}
     <div class="finder">
       <h1>Where do your projects live?</h1>
       <input
@@ -117,27 +153,37 @@
           <div class="empty">No matching directories</div>
         {/if}
       </div>
-      <p class="hint-text">Select the folder that contains your project directories</p>
+      <p class="hint-text">
+        Select the folder that contains your project directories
+      </p>
     </div>
   {:else}
     <div class="card">
       <h1>Claude CLI</h1>
-      <p class="selected-path">Projects root: <code>{projectsRoot}</code></p>
+      <p class="selected-path">
+        Projects root: <code>{projectsRoot}</code>
+      </p>
 
       {#if claudeStatus === "checking"}
         <p>Checking Claude CLI...</p>
       {:else if claudeStatus === "authenticated"}
         <p class="success">Claude CLI is ready</p>
         <button onclick={finishOnboarding}>Get Started</button>
+      {:else if claudeStatus === "not_authenticated" && loginSessionId}
+        <p class="hint">Complete the login below, then click Done:</p>
+        <div class="login-terminal">
+          <Terminal sessionId={loginSessionId} />
+        </div>
+        <button onclick={handleLoginDone}>Done</button>
       {:else if claudeStatus === "not_authenticated"}
         <p class="warning">Claude CLI found but not authenticated.</p>
-        <p class="hint">
-          Run <code>claude login</code> in your terminal, then:
-        </p>
-        <button onclick={checkClaude}>Check Again</button>
+        <button onclick={startLogin}>Log In</button>
       {:else}
         <p class="warning">Claude CLI not found.</p>
-        <p class="hint">Install it, then:</p>
+        <p class="hint">
+          Install from
+          <code>https://docs.anthropic.com/en/docs/claude-code</code>, then:
+        </p>
         <button onclick={checkClaude}>Check Again</button>
       {/if}
     </div>
@@ -220,7 +266,7 @@
     padding: 40px;
     border-radius: 12px;
     border: 1px solid #313244;
-    max-width: 480px;
+    max-width: 560px;
     width: 100%;
     display: flex;
     flex-direction: column;
@@ -238,6 +284,12 @@
   }
   .selected-path {
     font-size: 13px;
+  }
+  .login-terminal {
+    height: 300px;
+    border: 1px solid #313244;
+    border-radius: 6px;
+    overflow: hidden;
   }
   button {
     background: #89b4fa;

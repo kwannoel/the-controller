@@ -23,6 +23,8 @@ pub fn run() {
             commands::resize_pty,
             commands::close_session,
             commands::create_refinement,
+            commands::start_claude_login,
+            commands::stop_claude_login,
             commands::home_dir,
             commands::check_onboarding,
             commands::save_onboarding_config,

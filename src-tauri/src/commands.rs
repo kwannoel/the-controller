@@ -277,6 +277,24 @@ pub fn create_refinement(
 }
 
 #[tauri::command]
+pub fn start_claude_login(
+    state: State<AppState>,
+    app_handle: AppHandle,
+) -> Result<String, String> {
+    let session_id = Uuid::new_v4();
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.spawn_command(session_id, "claude", &["login"], app_handle)?;
+    Ok(session_id.to_string())
+}
+
+#[tauri::command]
+pub fn stop_claude_login(state: State<AppState>, session_id: String) -> Result<(), String> {
+    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.close_session(id)
+}
+
+#[tauri::command]
 pub fn home_dir() -> Result<String, String> {
     dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())
