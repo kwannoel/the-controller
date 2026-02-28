@@ -18,7 +18,7 @@
   let selectedIndex = $state(0);
 
   async function generateNames() {
-    if (!description.trim()) return;
+    if (!description.trim() || loading) return;
     loading = true;
     try {
       suggestions = await invoke<string[]>("generate_project_names", {
@@ -34,7 +34,7 @@
   }
 
   async function createWithName(name: string) {
-    if (!name.trim()) return;
+    if (!name.trim() || loading) return;
     loading = true;
     try {
       const project = await invoke<Project>("scaffold_project", {
@@ -85,7 +85,6 @@
         placeholder="e.g. real-time chat app"
         class="input"
         disabled={loading}
-        onkeydown={handleKeydown}
       />
       <button
         class="btn-primary"
@@ -101,7 +100,7 @@
           <div
             class="suggestion"
             class:selected={i === selectedIndex}
-            onclick={() => createWithName(name)}
+            onclick={() => !loading && createWithName(name)}
             role="option"
             aria-selected={i === selectedIndex}
           >
@@ -116,7 +115,6 @@
           class="input"
           class:selected={selectedIndex === suggestions.length}
           onfocus={() => (selectedIndex = suggestions.length)}
-          onkeydown={handleKeydown}
         />
       </div>
       <div class="actions">

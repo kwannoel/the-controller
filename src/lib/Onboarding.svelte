@@ -58,7 +58,7 @@
       {#if claudeStatus === "checking"}
         <p>Checking Claude CLI...</p>
       {:else if claudeStatus === "authenticated"}
-        <p class="success">Claude CLI is ready.</p>
+        <p class="success">Claude CLI is ready</p>
         <button onclick={finishOnboarding}>Get Started</button>
       {:else if claudeStatus === "not_authenticated"}
         <p class="warning">Claude CLI found but not authenticated.</p>
