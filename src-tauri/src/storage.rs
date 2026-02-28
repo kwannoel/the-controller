@@ -15,7 +15,7 @@ impl Storage {
     }
 
     /// Create a Storage using the default `~/.the-controller/` directory.
-    pub fn default() -> Self {
+    pub fn with_default_path() -> Self {
         let home = dirs::home_dir().expect("could not determine home directory");
         Self {
             base_dir: home.join(".the-controller"),
@@ -84,25 +84,22 @@ impl Storage {
     ///
     /// Checks the repo root first (`project.repo_path/agents.md`), then falls
     /// back to the project config dir (`<base_dir>/projects/<id>/agents.md`).
-    /// Returns an empty string if neither exists.
-    pub fn get_agents_md(&self, project: &Project) -> String {
+    /// Returns an empty string if neither exists, or an error if a file exists
+    /// but cannot be read.
+    pub fn get_agents_md(&self, project: &Project) -> std::io::Result<String> {
         // Check repo root first
         let repo_agents = PathBuf::from(&project.repo_path).join("agents.md");
         if repo_agents.exists() {
-            if let Ok(content) = fs::read_to_string(&repo_agents) {
-                return content;
-            }
+            return fs::read_to_string(&repo_agents);
         }
 
         // Fall back to project config dir
         let config_agents = self.project_dir(project.id).join("agents.md");
         if config_agents.exists() {
-            if let Ok(content) = fs::read_to_string(&config_agents) {
-                return content;
-            }
+            return fs::read_to_string(&config_agents);
         }
 
-        String::new()
+        Ok(String::new())
     }
 
     /// Save agents.md content to the project's config directory.
@@ -186,13 +183,13 @@ mod tests {
         let project = make_project("test-project", "/tmp/nonexistent-repo");
 
         // No agents.md anywhere -> empty string
-        assert_eq!(storage.get_agents_md(&project), "");
+        assert_eq!(storage.get_agents_md(&project).unwrap(), "");
 
         // Save local agents.md -> returns it
         storage
             .save_agents_md(project.id, "local agents content")
             .expect("save agents.md");
-        assert_eq!(storage.get_agents_md(&project), "local agents content");
+        assert_eq!(storage.get_agents_md(&project).unwrap(), "local agents content");
     }
 
     #[test]
@@ -212,7 +209,7 @@ mod tests {
         fs::write(repo_dir.path().join("agents.md"), "repo content").expect("write repo agents.md");
 
         // Repo version should win
-        assert_eq!(storage.get_agents_md(&project), "repo content");
+        assert_eq!(storage.get_agents_md(&project).unwrap(), "repo content");
     }
 
     #[test]
