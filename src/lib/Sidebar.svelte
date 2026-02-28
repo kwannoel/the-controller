@@ -3,11 +3,12 @@
   import { listen } from "@tauri-apps/api/event";
   import { projects, activeSessionId, sessionStatuses, type Project } from "./stores";
   import { showToast } from "./toast";
+  import FuzzyFinder from "./FuzzyFinder.svelte";
+  import NewProjectModal from "./NewProjectModal.svelte";
 
-  let showNewProjectForm = $state(false);
-  let newProjectName = $state("");
-  let newProjectRepoPath = $state("");
-  let newMode = $state<"create" | "load">("create");
+  let showNewMenu = $state(false);
+  let showFuzzyFinder = $state(false);
+  let showNewProjectModal = $state(false);
   let expandedProjects = $state(new Set<string>());
   let showSessionMenu = $state<string | null>(null);
 
@@ -57,50 +58,6 @@
       projects.set(result);
     } catch (err) {
       showToast(String(err), "error");
-    }
-  }
-
-  function toggleNewProjectForm() {
-    showNewProjectForm = !showNewProjectForm;
-    if (!showNewProjectForm) {
-      newProjectName = "";
-      newProjectRepoPath = "";
-    }
-  }
-
-  async function createProject(event: Event) {
-    event.preventDefault();
-    if (!newProjectName.trim() || !newProjectRepoPath.trim()) return;
-
-    try {
-      await invoke("create_project", {
-        name: newProjectName.trim(),
-        repoPath: newProjectRepoPath.trim(),
-      });
-      newProjectName = "";
-      newProjectRepoPath = "";
-      showNewProjectForm = false;
-      await loadProjects();
-    } catch (err) {
-      showToast(String(err), "error");
-    }
-  }
-
-  async function loadExistingProject(event: Event) {
-    event.preventDefault();
-    if (!newProjectName.trim() || !newProjectRepoPath.trim()) return;
-
-    try {
-      await invoke("load_project", {
-        name: newProjectName.trim(),
-        repoPath: newProjectRepoPath.trim(),
-      });
-      showNewProjectForm = false;
-      newProjectName = "";
-      newProjectRepoPath = "";
-      await loadProjects();
-    } catch (e) {
-      showToast(String(e), "error");
     }
   }
 
@@ -204,33 +161,16 @@
 <aside class="sidebar">
   <div class="sidebar-header">
     <h2>Projects</h2>
-    <button class="btn-new" onclick={toggleNewProjectForm}>+ New</button>
+    <div class="new-btn-wrapper">
+      <button class="btn-new" onclick={() => showNewMenu = !showNewMenu}>+ New</button>
+      {#if showNewMenu}
+        <div class="new-menu">
+          <button class="new-menu-item" onclick={() => { showNewMenu = false; showNewProjectModal = true; }}>Create New</button>
+          <button class="new-menu-item" onclick={() => { showNewMenu = false; showFuzzyFinder = true; }}>Load Existing</button>
+        </div>
+      {/if}
+    </div>
   </div>
-
-  {#if showNewProjectForm}
-    <form class="new-project-form" onsubmit={newMode === "create" ? createProject : loadExistingProject}>
-      <div class="form-tabs">
-        <button type="button" class:active={newMode === "create"} onclick={() => newMode = "create"}>Create</button>
-        <button type="button" class:active={newMode === "load"} onclick={() => newMode = "load"}>Load Existing</button>
-      </div>
-      <input
-        type="text"
-        placeholder="Project name"
-        bind:value={newProjectName}
-        class="form-input"
-      />
-      <input
-        type="text"
-        placeholder="Repository path"
-        bind:value={newProjectRepoPath}
-        class="form-input"
-      />
-      <div class="form-actions">
-        <button type="submit" class="btn-create">{newMode === "create" ? "Create" : "Load"}</button>
-        <button type="button" class="btn-cancel" onclick={toggleNewProjectForm}>Cancel</button>
-      </div>
-    </form>
-  {/if}
 
   <div class="project-list">
     {#each projectList as project (project.id)}
@@ -297,6 +237,31 @@
       </div>
     {/each}
   </div>
+
+  {#if showFuzzyFinder}
+    <FuzzyFinder
+      onSelect={async (entry) => {
+        showFuzzyFinder = false;
+        try {
+          await invoke("load_project", { name: entry.name, repoPath: entry.path });
+          await loadProjects();
+        } catch (e) {
+          showToast(String(e), "error");
+        }
+      }}
+      onClose={() => (showFuzzyFinder = false)}
+    />
+  {/if}
+
+  {#if showNewProjectModal}
+    <NewProjectModal
+      onCreated={async () => {
+        showNewProjectModal = false;
+        await loadProjects();
+      }}
+      onClose={() => (showNewProjectModal = false)}
+    />
+  {/if}
 </aside>
 
 <style>
@@ -326,6 +291,10 @@
     margin: 0;
   }
 
+  .new-btn-wrapper {
+    position: relative;
+  }
+
   .btn-new {
     background: none;
     border: 1px solid #313244;
@@ -341,86 +310,33 @@
     background: #313244;
   }
 
-  .new-project-form {
-    padding: 12px 16px;
-    border-bottom: 1px solid #313244;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .form-tabs {
-    display: flex;
-    gap: 4px;
-  }
-
-  .form-tabs button {
-    flex: 1;
-    background: #313244;
-    color: #6c7086;
-    border: none;
-    padding: 6px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-
-  .form-tabs button.active {
-    background: #45475a;
-    color: #cdd6f4;
-  }
-
-  .form-input {
-    background: #11111b;
+  .new-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #1e1e2e;
     border: 1px solid #313244;
-    color: #cdd6f4;
-    padding: 6px 10px;
     border-radius: 4px;
-    font-size: 12px;
-    outline: none;
-    box-shadow: none;
+    z-index: 10;
+    min-width: 140px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   }
 
-  .form-input:focus {
-    border-color: #45475a;
-  }
-
-  .form-actions {
-    display: flex;
-    gap: 8px;
-  }
-
-  .btn-create {
-    flex: 1;
-    background: #313244;
-    border: none;
-    color: #cdd6f4;
-    padding: 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    box-shadow: none;
-  }
-
-  .btn-create:hover {
-    background: #45475a;
-  }
-
-  .btn-cancel {
-    flex: 1;
+  .new-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
     background: none;
-    border: 1px solid #313244;
-    color: #6c7086;
-    padding: 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
+    border: none;
+    color: #cdd6f4;
     font-size: 12px;
+    text-align: left;
+    cursor: pointer;
     box-shadow: none;
   }
 
-  .btn-cancel:hover {
+  .new-menu-item:hover {
     background: #313244;
-    color: #cdd6f4;
   }
 
   .project-list {
