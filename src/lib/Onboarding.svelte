@@ -78,7 +78,7 @@
         projectsRoot: entry.path,
       });
       step = "cli-check";
-      await checkClaude();
+      checkClaude();
     } catch (e) {
       showToast(String(e), "error");
     }
