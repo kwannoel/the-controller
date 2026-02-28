@@ -16,6 +16,12 @@ export interface Project {
   sessions: SessionConfig[];
 }
 
+export interface Config {
+  projects_root: string;
+}
+
 export const projects = writable<Project[]>([]);
 export const activeSessionId = writable<string | null>(null);
 export const sessionStatuses = writable<Map<string, "running" | "idle">>(new Map());
+export const appConfig = writable<Config | null>(null);
+export const onboardingComplete = writable<boolean>(false);
