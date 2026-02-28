@@ -1,9 +1,9 @@
 use std::path::Path;
 
-use tauri::State;
+use tauri::{AppHandle, State};
 use uuid::Uuid;
 
-use crate::models::Project;
+use crate::models::{Project, SessionConfig};
 use crate::state::AppState;
 
 const DEFAULT_AGENTS_MD: &str = r#"# Agents
@@ -125,4 +125,85 @@ pub fn update_agents_md(
     storage
         .save_agents_md(id, &content)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_session(
+    state: State<AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+    label: String,
+) -> Result<String, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_id = Uuid::new_v4();
+
+    // Load the project, add the session config, and save it back
+    let repo_path = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
+        let session_config = SessionConfig {
+            id: session_id,
+            label,
+            worktree_path: None,
+            worktree_branch: None,
+        };
+        project.sessions.push(session_config);
+        storage.save_project(&project).map_err(|e| e.to_string())?;
+
+        project.repo_path.clone()
+    };
+
+    // Spawn the PTY session in the project's repo directory
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.spawn_session(session_id, &repo_path, app_handle)?;
+
+    Ok(session_id.to_string())
+}
+
+#[tauri::command]
+pub fn write_to_pty(
+    state: State<AppState>,
+    session_id: String,
+    data: String,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.write_to_session(id, data.as_bytes())
+}
+
+#[tauri::command]
+pub fn resize_pty(
+    state: State<AppState>,
+    session_id: String,
+    rows: u16,
+    cols: u16,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+    let pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.resize_session(id, rows, cols)
+}
+
+#[tauri::command]
+pub fn close_session(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    // Close the PTY session
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.close_session(session_uuid)?;
+
+    // Remove the session from the project and save
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
+    project.sessions.retain(|s| s.id != session_uuid);
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+
+    Ok(())
 }

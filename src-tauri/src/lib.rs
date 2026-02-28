@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod models;
+pub mod pty_manager;
 pub mod state;
 pub mod storage;
 
@@ -15,6 +16,10 @@ pub fn run() {
             commands::archive_project,
             commands::get_agents_md,
             commands::update_agents_md,
+            commands::create_session,
+            commands::write_to_pty,
+            commands::resize_pty,
+            commands::close_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
