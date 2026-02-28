@@ -7,6 +7,7 @@
   let showNewProjectForm = $state(false);
   let newProjectName = $state("");
   let newProjectRepoPath = $state("");
+  let newMode = $state<"create" | "load">("create");
   let expandedProjects = $state(new Set<string>());
   let showSessionMenu = $state<string | null>(null);
 
@@ -82,6 +83,24 @@
       await loadProjects();
     } catch (err) {
       showToast(String(err), "error");
+    }
+  }
+
+  async function loadExistingProject(event: Event) {
+    event.preventDefault();
+    if (!newProjectName.trim() || !newProjectRepoPath.trim()) return;
+
+    try {
+      await invoke("load_project", {
+        name: newProjectName.trim(),
+        repoPath: newProjectRepoPath.trim(),
+      });
+      showNewProjectForm = false;
+      newProjectName = "";
+      newProjectRepoPath = "";
+      await loadProjects();
+    } catch (e) {
+      showToast(String(e), "error");
     }
   }
 
@@ -191,7 +210,11 @@
   </div>
 
   {#if showNewProjectForm}
-    <form class="new-project-form" onsubmit={createProject}>
+    <form class="new-project-form" onsubmit={newMode === "create" ? createProject : loadExistingProject}>
+      <div class="form-tabs">
+        <button type="button" class:active={newMode === "create"} onclick={() => newMode = "create"}>Create</button>
+        <button type="button" class:active={newMode === "load"} onclick={() => newMode = "load"}>Load Existing</button>
+      </div>
       <input
         type="text"
         placeholder="Project name"
@@ -205,7 +228,7 @@
         class="form-input"
       />
       <div class="form-actions">
-        <button type="submit" class="btn-create">Create</button>
+        <button type="submit" class="btn-create">{newMode === "create" ? "Create" : "Load"}</button>
         <button type="button" class="btn-cancel" onclick={toggleNewProjectForm}>Cancel</button>
       </div>
     </form>
@@ -326,6 +349,27 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  .form-tabs {
+    display: flex;
+    gap: 4px;
+  }
+
+  .form-tabs button {
+    flex: 1;
+    background: #313244;
+    color: #6c7086;
+    border: none;
+    padding: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+
+  .form-tabs button.active {
+    background: #45475a;
+    color: #cdd6f4;
   }
 
   .form-input {
