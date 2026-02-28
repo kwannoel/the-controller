@@ -1,6 +1,7 @@
 <script lang="ts">
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
+  import Toast from "./lib/Toast.svelte";
 </script>
 
 <div class="app-layout">
@@ -9,6 +10,7 @@
     <TerminalManager />
   </main>
 </div>
+<Toast />
 
 <style>
   .app-layout {

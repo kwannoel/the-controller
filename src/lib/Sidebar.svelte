@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { projects, activeSessionId, sessionStatuses, type Project } from "./stores";
+  import { showToast } from "./toast";
 
   let showNewProjectForm = $state(false);
   let newProjectName = $state("");
@@ -54,7 +55,7 @@
       const result: Project[] = await invoke("list_projects");
       projects.set(result);
     } catch (err) {
-      console.error("Failed to load projects:", err);
+      showToast(String(err), "error");
     }
   }
 
@@ -80,7 +81,7 @@
       showNewProjectForm = false;
       await loadProjects();
     } catch (err) {
-      console.error("Failed to create project:", err);
+      showToast(String(err), "error");
     }
   }
 
@@ -113,7 +114,7 @@
       next.add(projectId);
       expandedProjects = next;
     } catch (err) {
-      console.error("Failed to create session:", err);
+      showToast(String(err), "error");
     }
   }
 
@@ -142,7 +143,7 @@
       next.add(projectId);
       expandedProjects = next;
     } catch (err) {
-      console.error("Failed to create refinement:", err);
+      showToast(String(err), "error");
     }
   }
 
@@ -164,7 +165,7 @@
       // Reload projects
       await loadProjects();
     } catch (e) {
-      console.error("Failed to close session:", e);
+      showToast(String(e), "error");
     }
   }
 
@@ -174,7 +175,7 @@
       await invoke("archive_project", { projectId });
       await loadProjects();
     } catch (e) {
-      console.error("Failed to archive project:", e);
+      showToast(String(e), "error");
     }
   }
 
