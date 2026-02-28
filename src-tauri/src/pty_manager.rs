@@ -43,6 +43,8 @@ impl PtyManager {
 
         let mut cmd = CommandBuilder::new("claude");
         cmd.cwd(working_dir);
+        // Prevent Claude from detecting a nested session
+        cmd.env_remove("CLAUDECODE");
 
         // Spawn command on the slave end
         let _child = pair
@@ -131,6 +133,8 @@ impl PtyManager {
         for arg in args {
             cmd.arg(*arg);
         }
+        // Prevent Claude from detecting a nested session
+        cmd.env_remove("CLAUDECODE");
 
         let _child = pair
             .slave
