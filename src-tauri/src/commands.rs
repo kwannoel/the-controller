@@ -277,6 +277,13 @@ pub fn create_refinement(
 }
 
 #[tauri::command]
+pub fn home_dir() -> Result<String, String> {
+    dirs::home_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .ok_or_else(|| "Could not determine home directory".to_string())
+}
+
+#[tauri::command]
 pub fn check_onboarding(state: State<AppState>) -> Result<Option<config::Config>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let base_dir = storage.base_dir();
@@ -305,6 +312,15 @@ pub fn save_onboarding_config(
 #[tauri::command]
 pub fn check_claude_cli() -> Result<String, String> {
     Ok(config::check_claude_cli_status())
+}
+
+#[tauri::command]
+pub fn list_directories_at(path: String) -> Result<Vec<config::DirEntry>, String> {
+    let p = Path::new(&path);
+    if !p.is_dir() {
+        return Err(format!("Not a directory: {}", path));
+    }
+    config::list_directories(p).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

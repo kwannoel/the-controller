@@ -1,7 +1,13 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
   import { appConfig, onboardingComplete } from "./stores";
   import { showToast } from "./toast";
+
+  interface DirEntry {
+    name: string;
+    path: string;
+  }
 
   let step = $state<1 | 2>(1);
   let projectsRoot = $state("");
@@ -9,11 +15,55 @@
     "checking" | "authenticated" | "not_authenticated" | "not_installed"
   >("checking");
 
-  async function handleNextStep1() {
-    if (!projectsRoot.trim()) return;
+  // Fuzzy finder state
+  let query = $state("");
+  let entries = $state<DirEntry[]>([]);
+  let filtered = $derived(
+    query.trim() === ""
+      ? entries
+      : entries.filter((e) =>
+          e.name.toLowerCase().includes(query.toLowerCase()),
+        ),
+  );
+  let selectedIndex = $state(0);
+  let inputEl: HTMLInputElement | undefined = $state();
+
+  onMount(async () => {
+    try {
+      const homeDir =
+        (await invoke<string | null>("home_dir")) ?? "/Users";
+      entries = await invoke<DirEntry[]>("list_directories_at", {
+        path: homeDir,
+      });
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+    inputEl?.focus();
+  });
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      selectedIndex = Math.min(selectedIndex + 1, filtered.length - 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      selectedIndex = Math.max(selectedIndex - 1, 0);
+    } else if (e.key === "Enter" && filtered.length > 0) {
+      e.preventDefault();
+      selectDirectory(filtered[selectedIndex]);
+    }
+  }
+
+  $effect(() => {
+    query;
+    selectedIndex = 0;
+  });
+
+  async function selectDirectory(entry: DirEntry) {
+    projectsRoot = entry.path;
     try {
       await invoke("save_onboarding_config", {
-        projectsRoot: projectsRoot.trim(),
+        projectsRoot: entry.path,
       });
       step = 2;
       await checkClaude();
@@ -33,27 +83,46 @@
   }
 
   function finishOnboarding() {
-    appConfig.set({ projects_root: projectsRoot.trim() });
+    appConfig.set({ projects_root: projectsRoot });
     onboardingComplete.set(true);
   }
 </script>
 
 <div class="onboarding">
-  <div class="card">
-    {#if step === 1}
-      <h1>Welcome to The Controller</h1>
-      <p>Where do your projects live?</p>
+  {#if step === 1}
+    <div class="finder">
+      <h1>Where do your projects live?</h1>
       <input
-        type="text"
-        bind:value={projectsRoot}
-        placeholder="~/projects"
-        onkeydown={(e) => e.key === "Enter" && handleNextStep1()}
+        bind:this={inputEl}
+        bind:value={query}
+        placeholder="Search directories..."
+        class="search-input"
+        onkeydown={handleKeydown}
       />
-      <button onclick={handleNextStep1} disabled={!projectsRoot.trim()}>
-        Next
-      </button>
-    {:else}
+      <div class="results">
+        {#each filtered as entry, i (entry.path)}
+          <div
+            class="result-item"
+            class:selected={i === selectedIndex}
+            onclick={() => selectDirectory(entry)}
+            role="option"
+            tabindex="0"
+            aria-selected={i === selectedIndex}
+          >
+            <span class="entry-name">{entry.name}</span>
+            <span class="entry-path">{entry.path}</span>
+          </div>
+        {/each}
+        {#if filtered.length === 0}
+          <div class="empty">No matching directories</div>
+        {/if}
+      </div>
+      <p class="hint-text">Select the folder that contains your project directories</p>
+    </div>
+  {:else}
+    <div class="card">
       <h1>Claude CLI</h1>
+      <p class="selected-path">Projects root: <code>{projectsRoot}</code></p>
 
       {#if claudeStatus === "checking"}
         <p>Checking Claude CLI...</p>
@@ -71,8 +140,8 @@
         <p class="hint">Install it, then:</p>
         <button onclick={checkClaude}>Check Again</button>
       {/if}
-    {/if}
-  </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -85,6 +154,67 @@
     background: #11111b;
     color: #cdd6f4;
   }
+  .finder {
+    background: #1e1e2e;
+    border: 1px solid #313244;
+    border-radius: 8px;
+    width: 500px;
+    max-height: 500px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .finder h1 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+    padding: 16px 16px 0;
+  }
+  .search-input {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border: none;
+    border-bottom: 1px solid #313244;
+    padding: 14px 16px;
+    font-size: 15px;
+    outline: none;
+  }
+  .results {
+    overflow-y: auto;
+    max-height: 340px;
+  }
+  .result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    cursor: pointer;
+  }
+  .result-item:hover,
+  .result-item.selected {
+    background: #313244;
+  }
+  .entry-name {
+    color: #cdd6f4;
+    font-size: 14px;
+  }
+  .entry-path {
+    color: #6c7086;
+    font-size: 12px;
+  }
+  .empty {
+    padding: 20px 16px;
+    color: #6c7086;
+    font-size: 13px;
+    text-align: center;
+  }
+  .hint-text {
+    padding: 10px 16px;
+    margin: 0;
+    color: #6c7086;
+    font-size: 12px;
+    border-top: 1px solid #313244;
+  }
   .card {
     background: #1e1e2e;
     padding: 40px;
@@ -96,7 +226,7 @@
     flex-direction: column;
     gap: 16px;
   }
-  h1 {
+  .card h1 {
     font-size: 20px;
     font-weight: 600;
     margin: 0;
@@ -106,17 +236,8 @@
     color: #a6adc8;
     font-size: 14px;
   }
-  input {
-    background: #313244;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
-    padding: 10px 12px;
-    border-radius: 6px;
-    font-size: 14px;
-    outline: none;
-  }
-  input:focus {
-    border-color: #89b4fa;
+  .selected-path {
+    font-size: 13px;
   }
   button {
     background: #89b4fa;
