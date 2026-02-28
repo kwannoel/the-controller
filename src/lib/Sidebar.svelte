@@ -150,6 +150,34 @@
     activeSessionId.set(sessionId);
   }
 
+  async function closeSession(projectId: string, sessionId: string) {
+    try {
+      await invoke("close_session", { projectId, sessionId });
+      // Remove from status tracking
+      sessionStatuses.update(m => {
+        const next = new Map(m);
+        next.delete(sessionId);
+        return next;
+      });
+      // Clear active session if it was the closed one
+      activeSessionId.update(current => current === sessionId ? null : current);
+      // Reload projects
+      await loadProjects();
+    } catch (e) {
+      console.error("Failed to close session:", e);
+    }
+  }
+
+  async function archiveProject(projectId: string) {
+    if (!confirm("Archive this project? All sessions will be closed.")) return;
+    try {
+      await invoke("archive_project", { projectId });
+      await loadProjects();
+    } catch (e) {
+      console.error("Failed to archive project:", e);
+    }
+  }
+
   function getSessionStatus(sessionId: string): "running" | "idle" {
     return statuses.get(sessionId) ?? "idle";
   }
@@ -191,6 +219,11 @@
           </button>
           <span class="project-name">{project.name}</span>
           <span class="session-count">{project.sessions.length}</span>
+          <button
+            class="btn-archive"
+            onclick={(e: MouseEvent) => { e.stopPropagation(); archiveProject(project.id); }}
+            title="Archive project"
+          >Archive</button>
           <div class="add-session-wrapper">
             <button
               class="btn-add-session"
@@ -215,10 +248,13 @@
         {#if expandedProjects.has(project.id)}
           <div class="session-list">
             {#each project.sessions as session (session.id)}
-              <button
+              <div
                 class="session-item"
                 class:active={activeSession === session.id}
+                role="button"
+                tabindex="0"
                 onclick={() => selectSession(session.id)}
+                onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') selectSession(session.id); }}
               >
                 <span
                   class="status-dot"
@@ -227,7 +263,12 @@
                   {getSessionStatus(session.id) === "running" ? "\u25CF" : "\u25CB"}
                 </span>
                 <span class="session-label">{session.label}</span>
-              </button>
+                <button
+                  class="btn-close-session"
+                  onclick={(e: MouseEvent) => { e.stopPropagation(); closeSession(project.id, session.id); }}
+                  title="Close session"
+                >&times;</button>
+              </div>
             {/each}
           </div>
         {/if}
@@ -476,5 +517,48 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 1;
+  }
+
+  .btn-close-session {
+    background: none;
+    border: none;
+    color: #6c7086;
+    cursor: pointer;
+    padding: 0 4px;
+    font-size: 14px;
+    line-height: 1;
+    box-shadow: none;
+    opacity: 0;
+    margin-left: auto;
+  }
+
+  .session-item:hover .btn-close-session {
+    opacity: 1;
+  }
+
+  .btn-close-session:hover {
+    color: #f38ba8;
+  }
+
+  .btn-archive {
+    background: none;
+    border: none;
+    color: #6c7086;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 11px;
+    box-shadow: none;
+    opacity: 0;
+    border-radius: 4px;
+  }
+
+  .project-header:hover .btn-archive {
+    opacity: 1;
+  }
+
+  .btn-archive:hover {
+    color: #cdd6f4;
+    background: #45475a;
   }
 </style>

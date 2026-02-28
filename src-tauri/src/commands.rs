@@ -200,13 +200,23 @@ pub fn close_session(
         pty_manager.close_session(session_uuid)?;
     }
 
-    // Remove the session from the project and save
+    // Remove session and clean up worktree
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage
         .load_project(project_uuid)
         .map_err(|e| e.to_string())?;
+
+    // Find session before removing to check for worktree
+    let session = project.sessions.iter().find(|s| s.id == session_uuid).cloned();
     project.sessions.retain(|s| s.id != session_uuid);
     storage.save_project(&project).map_err(|e| e.to_string())?;
+
+    // Clean up worktree if this was a refinement session
+    if let Some(session) = session {
+        if let Some(branch) = session.worktree_branch {
+            let _ = WorktreeManager::remove_worktree(&project.repo_path, &branch);
+        }
+    }
 
     Ok(())
 }
