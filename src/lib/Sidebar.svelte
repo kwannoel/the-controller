@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { projects, activeSessionId, sessionStatuses, type Project } from "./stores";
 
   let showNewProjectForm = $state(false);
@@ -26,6 +27,26 @@
 
   $effect(() => {
     loadProjects();
+  });
+
+  $effect(() => {
+    const unlisteners: (() => void)[] = [];
+
+    for (const project of projectList) {
+      for (const session of project.sessions) {
+        listen<string>(`session-status-changed:${session.id}`, () => {
+          sessionStatuses.update(m => {
+            const next = new Map(m);
+            next.set(session.id, "idle");
+            return next;
+          });
+        }).then(unlisten => unlisteners.push(unlisten));
+      }
+    }
+
+    return () => {
+      unlisteners.forEach(fn => fn());
+    };
   });
 
   async function loadProjects() {
@@ -80,6 +101,11 @@
         projectId,
         label,
       });
+      sessionStatuses.update(m => {
+        const next = new Map(m);
+        next.set(sessionId, "running");
+        return next;
+      });
       activeSessionId.set(sessionId);
       await loadProjects();
       // Auto-expand the project
@@ -104,6 +130,11 @@
       const sessionId: string = await invoke("create_refinement", {
         projectId,
         branchName: branchName.trim(),
+      });
+      sessionStatuses.update(m => {
+        const next = new Map(m);
+        next.set(sessionId, "running");
+        return next;
       });
       activeSessionId.set(sessionId);
       await loadProjects();
