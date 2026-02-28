@@ -88,6 +88,14 @@ pub fn list_directories(root: &Path) -> std::io::Result<Vec<DirEntry>> {
 /// Shells out to the `claude` CLI to generate short, hyphenated project
 /// directory name suggestions based on a description.
 pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> {
+    let description = description.trim();
+    if description.is_empty() {
+        return Err("Description must not be empty".to_string());
+    }
+    if description.len() > 500 {
+        return Err("Description is too long (max 500 characters)".to_string());
+    }
+
     let prompt = format!(
         "Suggest 3 short, lowercase, hyphenated project directory names for: {}. Return only the 3 names, one per line, nothing else.",
         description
@@ -99,19 +107,28 @@ pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> 
         .map_err(|e| format!("Failed to run claude CLI: {}", e))?;
 
     if !output.status.success() {
-        return Err("claude CLI returned an error".to_string());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "claude CLI error (exit {}): {}",
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let names: Vec<String> = stdout
         .lines()
         .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
+        .filter(|l| {
+            !l.is_empty()
+                && l.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        })
         .take(3)
         .collect();
 
     if names.is_empty() {
-        return Err("No names generated".to_string());
+        return Err("No valid names generated".to_string());
     }
 
     Ok(names)
