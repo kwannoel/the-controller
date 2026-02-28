@@ -26,6 +26,8 @@ pub fn run() {
             commands::check_onboarding,
             commands::save_onboarding_config,
             commands::check_claude_cli,
+            commands::list_root_directories,
+            commands::generate_project_names,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

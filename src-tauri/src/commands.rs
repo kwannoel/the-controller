@@ -298,3 +298,17 @@ pub fn save_onboarding_config(
 pub fn check_claude_cli() -> Result<String, String> {
     Ok(config::check_claude_cli_status())
 }
+
+#[tauri::command]
+pub fn list_root_directories(state: State<AppState>) -> Result<Vec<config::DirEntry>, String> {
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let base_dir = storage.base_dir();
+    let cfg = config::load_config(&base_dir)
+        .ok_or_else(|| "No config found. Complete onboarding first.".to_string())?;
+    config::list_directories(Path::new(&cfg.projects_root)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn generate_project_names(description: String) -> Result<Vec<String>, String> {
+    config::generate_names_via_cli(&description)
+}

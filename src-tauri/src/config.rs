@@ -85,6 +85,38 @@ pub fn list_directories(root: &Path) -> std::io::Result<Vec<DirEntry>> {
     Ok(entries)
 }
 
+/// Shells out to the `claude` CLI to generate short, hyphenated project
+/// directory name suggestions based on a description.
+pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> {
+    let prompt = format!(
+        "Suggest 3 short, lowercase, hyphenated project directory names for: {}. Return only the 3 names, one per line, nothing else.",
+        description
+    );
+
+    let output = Command::new("claude")
+        .args(["--print", &prompt])
+        .output()
+        .map_err(|e| format!("Failed to run claude CLI: {}", e))?;
+
+    if !output.status.success() {
+        return Err("claude CLI returned an error".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let names: Vec<String> = stdout
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .take(3)
+        .collect();
+
+    if names.is_empty() {
+        return Err("No names generated".to_string());
+    }
+
+    Ok(names)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
