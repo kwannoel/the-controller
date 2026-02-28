@@ -22,6 +22,11 @@ impl Storage {
         }
     }
 
+    /// Return the base directory path.
+    pub fn base_dir(&self) -> PathBuf {
+        self.base_dir.clone()
+    }
+
     /// Ensure that the required directory structure exists.
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
         fs::create_dir_all(self.base_dir.join("projects"))

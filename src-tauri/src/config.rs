@@ -1,0 +1,144 @@
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub projects_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirEntry {
+    pub name: String,
+    pub path: String,
+}
+
+/// Returns the path to config.json within the given base directory.
+pub fn config_path(base_dir: &Path) -> PathBuf {
+    base_dir.join("config.json")
+}
+
+/// Reads config.json from the base directory. Returns None if missing or invalid.
+pub fn load_config(base_dir: &Path) -> Option<Config> {
+    let path = config_path(base_dir);
+    let json = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+/// Writes config.json as pretty JSON into the base directory.
+pub fn save_config(base_dir: &Path, config: &Config) -> std::io::Result<()> {
+    fs::create_dir_all(base_dir)?;
+    let json = serde_json::to_string_pretty(config)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    fs::write(config_path(base_dir), json)
+}
+
+/// Checks if the claude CLI is installed and authenticated.
+///
+/// Returns one of:
+/// - "not_installed" if `which claude` fails
+/// - "authenticated" if `claude --print "say ok"` succeeds
+/// - "not_authenticated" otherwise
+pub fn check_claude_cli_status() -> String {
+    let which_result = Command::new("which").arg("claude").output();
+
+    match which_result {
+        Ok(output) if output.status.success() => {}
+        _ => return "not_installed".to_string(),
+    }
+
+    let auth_result = Command::new("claude")
+        .arg("--print")
+        .arg("say ok")
+        .output();
+
+    match auth_result {
+        Ok(output) if output.status.success() => "authenticated".to_string(),
+        _ => "not_authenticated".to_string(),
+    }
+}
+
+/// Lists immediate child directories of `root`, filtering out hidden directories
+/// (names starting with `.`) and non-directory entries. Results are sorted
+/// alphabetically by name.
+pub fn list_directories(root: &Path) -> std::io::Result<Vec<DirEntry>> {
+    let mut entries = Vec::new();
+
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if !metadata.is_dir() {
+            continue;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let path = entry.path().to_string_lossy().to_string();
+        entries.push(DirEntry { name, path });
+    }
+
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(entries)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_load_config_missing() {
+        let tmp = TempDir::new().unwrap();
+        let result = load_config(tmp.path());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_save_and_load_config() {
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            projects_root: "/home/user/projects".to_string(),
+        };
+
+        save_config(tmp.path(), &config).expect("save_config should succeed");
+        let loaded = load_config(tmp.path()).expect("load_config should return Some");
+
+        assert_eq!(loaded.projects_root, "/home/user/projects");
+    }
+
+    #[test]
+    fn test_check_claude_cli_returns_valid_status() {
+        let status = check_claude_cli_status();
+        let valid = ["not_installed", "authenticated", "not_authenticated"];
+        assert!(
+            valid.contains(&status.as_str()),
+            "unexpected status: {}",
+            status
+        );
+    }
+
+    #[test]
+    fn test_list_directories() {
+        let tmp = TempDir::new().unwrap();
+
+        // Create 2 visible directories
+        fs::create_dir(tmp.path().join("alpha")).unwrap();
+        fs::create_dir(tmp.path().join("beta")).unwrap();
+
+        // Create 1 hidden directory
+        fs::create_dir(tmp.path().join(".hidden")).unwrap();
+
+        // Create 1 regular file
+        fs::write(tmp.path().join("file.txt"), "hello").unwrap();
+
+        let dirs = list_directories(tmp.path()).expect("list_directories should succeed");
+
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs[0].name, "alpha");
+        assert_eq!(dirs[1].name, "beta");
+    }
+}

@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod config;
 pub mod models;
 pub mod pty_manager;
 pub mod state;
@@ -22,6 +23,9 @@ pub fn run() {
             commands::resize_pty,
             commands::close_session,
             commands::create_refinement,
+            commands::check_onboarding,
+            commands::save_onboarding_config,
+            commands::check_claude_cli,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

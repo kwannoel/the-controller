@@ -3,6 +3,7 @@ use std::path::Path;
 use tauri::{AppHandle, State};
 use uuid::Uuid;
 
+use crate::config;
 use crate::models::{Project, SessionConfig};
 use crate::state::AppState;
 use crate::worktree::WorktreeManager;
@@ -265,4 +266,35 @@ pub fn create_refinement(
     pty_manager.spawn_session(session_id, &worktree_path_str, app_handle)?;
 
     Ok(session_id.to_string())
+}
+
+#[tauri::command]
+pub fn check_onboarding(state: State<AppState>) -> Result<Option<config::Config>, String> {
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let base_dir = storage.base_dir();
+    Ok(config::load_config(&base_dir))
+}
+
+#[tauri::command]
+pub fn save_onboarding_config(
+    state: State<AppState>,
+    projects_root: String,
+) -> Result<(), String> {
+    let path = Path::new(&projects_root);
+    if !path.is_dir() {
+        return Err(format!(
+            "projects_root is not an existing directory: {}",
+            projects_root
+        ));
+    }
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let base_dir = storage.base_dir();
+    let cfg = config::Config { projects_root };
+    config::save_config(&base_dir, &cfg).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn check_claude_cli() -> Result<String, String> {
+    Ok(config::check_claude_cli_status())
 }
