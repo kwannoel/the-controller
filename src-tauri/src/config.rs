@@ -51,6 +51,7 @@ pub fn check_claude_cli_status() -> String {
     let auth_result = Command::new("claude")
         .arg("--print")
         .arg("say ok")
+        .env_remove("CLAUDECODE")
         .output();
 
     match auth_result {
@@ -103,6 +104,7 @@ pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> 
 
     let output = Command::new("claude")
         .args(["--print", &prompt])
+        .env_remove("CLAUDECODE")
         .output()
         .map_err(|e| format!("Failed to run claude CLI: {}", e))?;
 
