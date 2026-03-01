@@ -13,9 +13,9 @@
   type LeaderState = "idle" | "leader";
 
   let leaderState: LeaderState = $state("idle");
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let lastEscapeTime = 0;
 
-  const LEADER_TIMEOUT_MS = 300;
+  const DOUBLE_ESCAPE_MS = 300;
 
   // Reactive store subscriptions
   let projectList: Project[] = $state([]);
@@ -34,25 +34,13 @@
     projectList.flatMap((p) => p.sessions.map((s) => s.id)),
   );
 
-  function clearLeaderTimeout() {
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-  }
-
   function enterLeader() {
     leaderState = "leader";
     leaderActive.set(true);
-    timeoutId = setTimeout(() => {
-      // Timeout: forward Escape to terminal and return to idle
-      forwardEscape();
-      resetToIdle();
-    }, LEADER_TIMEOUT_MS);
+    // No timeout — leader stays active until a key is pressed
   }
 
   function resetToIdle() {
-    clearLeaderTimeout();
     leaderState = "idle";
     leaderActive.set(false);
   }
@@ -78,7 +66,6 @@
   function switchRelative(delta: number) {
     if (flatSessions.length === 0) return;
     if (!activeId) {
-      // No active session, pick the first one
       activeSessionId.set(flatSessions[0]);
       return;
     }
@@ -103,10 +90,10 @@
     }
 
     switch (key) {
-      case "n":
+      case "j":
         switchRelative(1);
         return true;
-      case "p":
+      case "k":
         switchRelative(-1);
         return true;
       case "c":
@@ -118,7 +105,7 @@
       case "f":
         dispatchAction({ type: "open-fuzzy-finder" });
         return true;
-      case "N":
+      case "n":
         dispatchAction({ type: "open-new-project" });
         return true;
       case "h":
@@ -127,21 +114,20 @@
       case "l":
         dispatchAction({ type: "focus-terminal" });
         return true;
-      case "j":
+      case "J":
         dispatchAction({ type: "next-project" });
         return true;
-      case "k":
+      case "K":
         dispatchAction({ type: "prev-project" });
         return true;
       case "?":
         dispatchAction({ type: "toggle-help" });
         return true;
       case "Escape":
-        // Escape again cancels leader, forward to terminal
+        // Double-escape: forward to terminal
         forwardEscape();
         return true;
       default:
-        // Unrecognized key: cancel leader mode, don't forward escape
         return false;
     }
   }
@@ -149,31 +135,29 @@
   function onKeydown(e: KeyboardEvent) {
     if (leaderState === "idle") {
       if (e.key === "Escape") {
-        e.stopPropagation();
-        e.preventDefault();
-        enterLeader();
+        const now = Date.now();
+        if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
+          // Double-tap Escape: forward to terminal immediately
+          forwardEscape();
+          lastEscapeTime = 0;
+        } else {
+          // First Escape: enter leader mode
+          e.stopPropagation();
+          e.preventDefault();
+          lastEscapeTime = now;
+          enterLeader();
+        }
       }
       return;
     }
 
     if (leaderState === "leader") {
-      // Ignore modifier-only keypresses but reset timeout (user may be building a chord)
-      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) {
-        // Reset timeout so shifted keys have the full window
-        clearLeaderTimeout();
-        timeoutId = setTimeout(() => {
-          forwardEscape();
-          resetToIdle();
-        }, LEADER_TIMEOUT_MS);
-        return;
-      }
+      // Ignore modifier-only keypresses
+      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
 
-      // Always stop propagation and prevent default in leader mode
-      // to prevent xterm or other handlers from receiving the key
       e.stopPropagation();
       e.preventDefault();
 
-      clearLeaderTimeout();
       handleLeaderKey(e);
       resetToIdle();
     }
@@ -183,7 +167,6 @@
     window.addEventListener("keydown", onKeydown, { capture: true });
     return () => {
       window.removeEventListener("keydown", onKeydown, { capture: true });
-      clearLeaderTimeout();
     };
   });
 </script>

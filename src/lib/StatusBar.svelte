@@ -10,11 +10,11 @@
   const hints = [
     { key: "ESC", label: "", separator: true },
     { key: "1-9", label: "session" },
-    { key: "n/p", label: "next/prev" },
-    { key: "c", label: "new" },
+    { key: "j/k", label: "next/prev" },
+    { key: "c", label: "new session" },
     { key: "x", label: "close" },
     { key: "f", label: "find" },
-    { key: "N", label: "new project" },
+    { key: "n", label: "new project" },
     { key: "?", label: "help" },
   ];
 </script>

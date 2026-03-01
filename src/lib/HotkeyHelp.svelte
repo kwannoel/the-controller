@@ -9,14 +9,14 @@
 
   const shortcuts: { key: string; description: string }[] = [
     { key: "1-9", description: "Switch to session" },
-    { key: "n / p", description: "Next / previous session" },
+    { key: "j / k", description: "Next / previous session" },
     { key: "c", description: "New session" },
     { key: "x", description: "Close session" },
     { key: "f", description: "Find project (fuzzy finder)" },
-    { key: "N", description: "New project" },
+    { key: "n", description: "New project" },
     { key: "h", description: "Focus sidebar" },
     { key: "l", description: "Focus terminal" },
-    { key: "j / k", description: "Next / previous project" },
+    { key: "J / K", description: "Next / previous project" },
     { key: "?", description: "Toggle this help" },
   ];
 
