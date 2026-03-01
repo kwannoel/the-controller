@@ -13,7 +13,7 @@
   type LeaderState = "idle" | "leader";
 
   let leaderState: LeaderState = $state("idle");
-  let timeoutId: ReturnType<typeof setTimeout> | null = $state(null);
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   const LEADER_TIMEOUT_MS = 300;
 
@@ -157,6 +157,9 @@
     }
 
     if (leaderState === "leader") {
+      // Ignore modifier-only keypresses (user may be building a chord)
+      if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+
       // Always stop propagation and prevent default in leader mode
       // to prevent xterm or other handlers from receiving the key
       e.stopPropagation();
