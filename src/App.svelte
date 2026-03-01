@@ -5,6 +5,8 @@
   import TerminalManager from "./lib/TerminalManager.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import Toast from "./lib/Toast.svelte";
+  import HotkeyManager from "./lib/HotkeyManager.svelte";
+  import StatusBar from "./lib/StatusBar.svelte";
   import { appConfig, onboardingComplete, type Config } from "./lib/stores";
 
   let ready = $state(false);
@@ -40,6 +42,8 @@
         <TerminalManager />
       </main>
     </div>
+    <HotkeyManager />
+    <StatusBar />
   {/if}
 {/if}
 <Toast />
