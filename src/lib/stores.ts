@@ -30,14 +30,46 @@ export const onboardingComplete = writable<boolean>(false);
 export type HotkeyAction =
   | { type: "open-fuzzy-finder" }
   | { type: "open-new-project" }
-  | { type: "create-session" }
+  | { type: "create-session"; projectId?: string }
   | { type: "close-session" }
-  | { type: "next-project" }
-  | { type: "prev-project" }
   | { type: "focus-sidebar" }
   | { type: "focus-terminal" }
   | { type: "toggle-help" }
+  | { type: "delete-project" }
+  | { type: "toggle-archive-view" }
   | null;
 
 export const leaderActive = writable<boolean>(false);
 export const hotkeyAction = writable<HotkeyAction>(null);
+export const showKeyHints = writable<boolean>(false);
+export const archiveView = writable<boolean>(false);
+export const sidebarVisible = writable<boolean>(true);
+
+// Focus tracking
+export type FocusedPanel = "sidebar" | "terminal" | null;
+export const focusedPanel = writable<FocusedPanel>(null);
+
+// Jump navigation
+export type JumpPhase =
+  | { phase: "project" }
+  | { phase: "session"; projectId: string }
+  | null;
+
+export const jumpMode = writable<JumpPhase>(null);
+
+export const JUMP_KEYS = ["z", "x", "c", "b", "n", "m"];
+
+export function generateJumpLabels(count: number): string[] {
+  if (count <= 0) return [];
+  if (count <= JUMP_KEYS.length) {
+    return JUMP_KEYS.slice(0, count);
+  }
+  const labels: string[] = [];
+  for (const a of JUMP_KEYS) {
+    for (const b of JUMP_KEYS) {
+      labels.push(a + b);
+      if (labels.length >= count) return labels;
+    }
+  }
+  return labels;
+}

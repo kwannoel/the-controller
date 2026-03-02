@@ -3,18 +3,22 @@
 
   let visible: boolean = $state(false);
 
-  leaderActive.subscribe((value) => {
-    visible = value;
+  $effect(() => {
+    const unsub = leaderActive.subscribe((value) => { visible = value; });
+    return unsub;
   });
 
   const hints = [
     { key: "ESC", label: "", separator: true },
     { key: "1-9", label: "session" },
-    { key: "j/k", label: "next/prev" },
+    { key: "j", label: "jump" },
     { key: "c", label: "new session" },
     { key: "x", label: "close" },
+    { key: "d", label: "delete" },
+    { key: "a", label: "archive" },
     { key: "f", label: "find" },
     { key: "n", label: "new project" },
+    { key: "s", label: "sidebar" },
     { key: "?", label: "help" },
   ];
 </script>

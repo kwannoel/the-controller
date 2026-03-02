@@ -8,12 +8,66 @@ use crate::models::{Project, SessionConfig};
 use crate::state::AppState;
 use crate::worktree::WorktreeManager;
 
+/// Validate a project name. Rejects empty names, names containing `/` or `\`,
+/// and names starting with `.`.
+pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.contains('/')
+        || name.contains('\\')
+        || name.starts_with('.')
+    {
+        return Err(format!("Invalid project name: {}", name));
+    }
+    Ok(())
+}
+
+/// Generate the next session label by counting all sessions and
+/// returning "session-N" where N = count + 1.
+pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
+    format!("session-{}", sessions.len() + 1)
+}
+
 const DEFAULT_AGENTS_MD: &str = r#"# Agents
 
 ## Default Agent
 
 You are a helpful coding assistant working on this project.
 "#;
+
+/// Clear all sessions from all projects.
+/// PTY processes don't survive restart, so persisted sessions are stale.
+/// Also cleans up orphaned worktrees.
+pub fn do_cleanup_stale_sessions(storage: &crate::storage::Storage) {
+    let projects = match storage.list_projects() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+
+    for mut project in projects {
+        if project.sessions.is_empty() {
+            continue;
+        }
+
+        // Clean up worktrees for each session
+        for session in &project.sessions {
+            if let (Some(wt_path), Some(branch)) =
+                (&session.worktree_path, &session.worktree_branch)
+            {
+                let _ = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+            }
+        }
+
+        project.sessions.clear();
+        let _ = storage.save_project(&project);
+    }
+}
+
+#[tauri::command]
+pub fn cleanup_stale_sessions(state: State<AppState>) -> Result<(), String> {
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    do_cleanup_stale_sessions(&storage);
+    Ok(())
+}
 
 #[tauri::command]
 pub fn create_project(
@@ -100,10 +154,84 @@ pub fn list_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
 #[tauri::command]
 pub fn archive_project(state: State<AppState>, project_id: String) -> Result<(), String> {
     let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+
+    // Load project and close all PTY sessions / worktrees
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage.load_project(id).map_err(|e| e.to_string())?;
+
+    {
+        let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+        for session in &project.sessions {
+            let _ = pty_manager.close_session(session.id);
+            if let (Some(wt_path), Some(branch)) =
+                (&session.worktree_path, &session.worktree_branch)
+            {
+                let _ =
+                    WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+            }
+        }
+    }
+
     project.archived = true;
     project.sessions.clear();
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_project(
+    state: State<AppState>,
+    project_id: String,
+    delete_repo: bool,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let project = storage.load_project(id).map_err(|e| e.to_string())?;
+
+    // Close all PTY sessions and clean up worktrees
+    {
+        let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+        for session in &project.sessions {
+            let _ = pty_manager.close_session(session.id);
+            if let (Some(wt_path), Some(branch)) =
+                (&session.worktree_path, &session.worktree_branch)
+            {
+                let _ =
+                    WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+            }
+        }
+    }
+
+    // Delete project metadata from ~/.the-controller/projects/{id}/
+    storage
+        .delete_project_dir(id)
+        .map_err(|e| e.to_string())?;
+
+    // Optionally delete the repo directory
+    if delete_repo {
+        if Path::new(&project.repo_path).exists() {
+            std::fs::remove_dir_all(&project.repo_path)
+                .map_err(|e| format!("failed to delete repo: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_archived_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let projects = storage.list_projects().map_err(|e| e.to_string())?;
+    Ok(projects.into_iter().filter(|p| p.archived).collect())
+}
+
+#[tauri::command]
+pub fn unarchive_project(state: State<AppState>, project_id: String) -> Result<(), String> {
+    let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(id).map_err(|e| e.to_string())?;
+    project.archived = false;
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -138,35 +266,55 @@ pub fn create_session(
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_id = Uuid::new_v4();
 
-    // Load the project, add the session config, and save it back
-    let repo_path = {
+    // Load the project and generate session label
+    let (repo_path, label, base_dir) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+        let label = next_session_label(&project.sessions);
+        (project.repo_path.clone(), label, storage.base_dir())
+    };
+
+    // Create worktree under ~/.the-controller/worktrees/{project_id}/{label}/
+    let worktree_dir = base_dir
+        .join("worktrees")
+        .join(project_uuid.to_string())
+        .join(&label);
+
+    // Try to create a worktree; fall back to repo path for repos without commits
+    let (session_dir, wt_path, wt_branch) =
+        match WorktreeManager::create_worktree(&repo_path, &label, &worktree_dir) {
+            Ok(worktree_path) => {
+                let wt_str = worktree_path
+                    .to_str()
+                    .ok_or_else(|| "worktree path is not valid UTF-8".to_string())?
+                    .to_string();
+                (wt_str.clone(), Some(wt_str), Some(label.clone()))
+            }
+            Err(e) if e == "unborn_branch" => {
+                // Repo has no commits — use repo path directly, no worktree
+                (repo_path.clone(), None, None)
+            }
+            Err(e) => return Err(e),
+        };
+
+    // Save session config
+    {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
 
-        // Auto-generate label: session-N where N is next available number
-        let next_num = project
-            .sessions
-            .iter()
-            .filter(|s| s.worktree_branch.is_none())
-            .count()
-            + 1;
-        let label = format!("session-{}", next_num);
-
         let session_config = SessionConfig {
             id: session_id,
-            label,
-            worktree_path: None,
-            worktree_branch: None,
+            label: label.clone(),
+            worktree_path: wt_path,
+            worktree_branch: wt_branch,
         };
         project.sessions.push(session_config);
         storage.save_project(&project).map_err(|e| e.to_string())?;
+    }
 
-        project.repo_path.clone()
-    };
-
-    // Spawn the PTY session in the project's repo directory
+    // Spawn the PTY session in the worktree (or repo) directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_id, &repo_path, app_handle)?;
+    pty_manager.spawn_session(session_id, &session_dir, app_handle)?;
 
     Ok(session_id.to_string())
 }
@@ -220,60 +368,14 @@ pub fn close_session(
     project.sessions.retain(|s| s.id != session_uuid);
     storage.save_project(&project).map_err(|e| e.to_string())?;
 
-    // Clean up worktree if this was a refinement session
+    // Clean up worktree
     if let Some(session) = session {
-        if let Some(branch) = session.worktree_branch {
-            let _ = WorktreeManager::remove_worktree(&project.repo_path, &branch);
+        if let (Some(wt_path), Some(branch)) = (session.worktree_path, session.worktree_branch) {
+            let _ = WorktreeManager::remove_worktree(&wt_path, &project.repo_path, &branch);
         }
     }
 
     Ok(())
-}
-
-#[tauri::command]
-pub fn create_refinement(
-    state: State<AppState>,
-    app_handle: AppHandle,
-    project_id: String,
-    branch_name: String,
-) -> Result<String, String> {
-    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
-    let session_id = Uuid::new_v4();
-
-    // Load project to get repo_path
-    let repo_path = {
-        let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
-        project.repo_path.clone()
-    };
-
-    // Create the worktree
-    let worktree_path = WorktreeManager::create_worktree(&repo_path, &branch_name)?;
-    let worktree_path_str = worktree_path
-        .to_str()
-        .ok_or_else(|| "worktree path is not valid UTF-8".to_string())?
-        .to_string();
-
-    // Create session config with worktree info, add to project, and save
-    {
-        let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
-
-        let session_config = SessionConfig {
-            id: session_id,
-            label: branch_name.clone(),
-            worktree_path: Some(worktree_path_str.clone()),
-            worktree_branch: Some(branch_name),
-        };
-        project.sessions.push(session_config);
-        storage.save_project(&project).map_err(|e| e.to_string())?;
-    }
-
-    // Spawn PTY session in the WORKTREE directory (not the main repo)
-    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_id, &worktree_path_str, app_handle)?;
-
-    Ok(session_id.to_string())
 }
 
 #[tauri::command]
@@ -361,13 +463,7 @@ pub fn generate_project_names(description: String) -> Result<Vec<String>, String
 
 #[tauri::command]
 pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project, String> {
-    if name.is_empty()
-        || name.contains('/')
-        || name.contains('\\')
-        || name.starts_with('.')
-    {
-        return Err(format!("Invalid project name: {}", name));
-    }
+    validate_project_name(&name)?;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let cfg = config::load_config(&storage.base_dir())
@@ -381,8 +477,20 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     // Create directory
     std::fs::create_dir_all(&repo_path).map_err(|e| e.to_string())?;
 
-    // Git init
-    git2::Repository::init(&repo_path).map_err(|e| e.to_string())?;
+    // Git init + initial commit so worktrees can be created
+    let repo = git2::Repository::init(&repo_path).map_err(|e| e.to_string())?;
+    let sig = repo
+        .signature()
+        .unwrap_or_else(|_| git2::Signature::now("The Controller", "noreply@controller").unwrap());
+    let tree_id = repo
+        .treebuilder(None)
+        .and_then(|tb| tb.write())
+        .map_err(|e| format!("failed to create initial tree: {}", e))?;
+    let tree = repo
+        .find_tree(tree_id)
+        .map_err(|e| format!("failed to find tree: {}", e))?;
+    repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+        .map_err(|e| format!("failed to create initial commit: {}", e))?;
 
     // Create project entry
     let project = Project {
@@ -401,4 +509,99 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         .map_err(|e| e.to_string())?;
 
     Ok(project)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::SessionConfig;
+    use uuid::Uuid;
+
+    // --- validate_project_name tests ---
+
+    #[test]
+    fn test_valid_project_name() {
+        assert!(validate_project_name("my-cool-project").is_ok());
+    }
+
+    #[test]
+    fn test_empty_project_name() {
+        let result = validate_project_name("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid project name"));
+    }
+
+    #[test]
+    fn test_project_name_with_forward_slash() {
+        let result = validate_project_name("foo/bar");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid project name"));
+    }
+
+    #[test]
+    fn test_project_name_with_backslash() {
+        let result = validate_project_name("foo\\bar");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid project name"));
+    }
+
+    #[test]
+    fn test_project_name_starting_with_dot() {
+        let result = validate_project_name(".hidden");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid project name"));
+    }
+
+    // --- next_session_label tests ---
+
+    #[test]
+    fn test_next_session_label_empty() {
+        let sessions: Vec<SessionConfig> = vec![];
+        assert_eq!(next_session_label(&sessions), "session-1");
+    }
+
+    #[test]
+    fn test_next_session_label_two_existing() {
+        let sessions = vec![
+            SessionConfig {
+                id: Uuid::new_v4(),
+                label: "session-1".to_string(),
+                worktree_path: None,
+                worktree_branch: None,
+            },
+            SessionConfig {
+                id: Uuid::new_v4(),
+                label: "session-2".to_string(),
+                worktree_path: None,
+                worktree_branch: None,
+            },
+        ];
+        assert_eq!(next_session_label(&sessions), "session-3");
+    }
+
+    #[test]
+    fn test_next_session_label_counts_all_sessions() {
+        let sessions = vec![
+            SessionConfig {
+                id: Uuid::new_v4(),
+                label: "session-1".to_string(),
+                worktree_path: Some("/tmp/wt1".to_string()),
+                worktree_branch: Some("session-1".to_string()),
+            },
+            SessionConfig {
+                id: Uuid::new_v4(),
+                label: "session-2".to_string(),
+                worktree_path: Some("/tmp/wt2".to_string()),
+                worktree_branch: Some("session-2".to_string()),
+            },
+            SessionConfig {
+                id: Uuid::new_v4(),
+                label: "session-3".to_string(),
+                worktree_path: Some("/tmp/wt3".to_string()),
+                worktree_branch: Some("session-3".to_string()),
+            },
+        ];
+        // All 3 sessions counted, next is session-4
+        assert_eq!(next_session_label(&sessions), "session-4");
+    }
 }

@@ -16,6 +16,7 @@
     { key: "n", description: "New project" },
     { key: "h", description: "Focus sidebar" },
     { key: "l", description: "Focus terminal" },
+    { key: "s", description: "Toggle sidebar" },
     { key: "J / K", description: "Next / previous project" },
     { key: "?", description: "Toggle this help" },
   ];

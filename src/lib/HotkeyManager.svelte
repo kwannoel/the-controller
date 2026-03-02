@@ -6,6 +6,10 @@
     activeSessionId,
     leaderActive,
     hotkeyAction,
+    jumpMode,
+    generateJumpLabels,
+    JUMP_KEYS,
+    sidebarVisible,
     type Project,
     type HotkeyAction,
   } from "./stores";
@@ -16,16 +20,25 @@
 
   const DOUBLE_ESCAPE_MS = 300;
 
+  // Jump navigation state
+  let jumpActive = $state(false);
+  let jumpPhase: "project" | "session" = $state("project");
+  let jumpProjectId: string | null = $state(null);
+  let jumpBuffer = $state("");
+  let jumpLabels: string[] = $state([]);
+
   // Reactive store subscriptions
   let projectList: Project[] = $state([]);
   let activeId: string | null = $state(null);
 
-  projects.subscribe((value) => {
-    projectList = value;
+  $effect(() => {
+    const unsub = projects.subscribe((value) => { projectList = value; });
+    return unsub;
   });
 
-  activeSessionId.subscribe((value) => {
-    activeId = value;
+  $effect(() => {
+    const unsub = activeSessionId.subscribe((value) => { activeId = value; });
+    return unsub;
   });
 
   // Build flattened session list from projects (sidebar visual order)
@@ -39,6 +52,15 @@
     if (!el) return false;
     // xterm renders a textarea for input capture
     return el.closest(".xterm") !== null;
+  }
+
+  // Detect if an input/textarea/contenteditable has focus
+  function isEditableElementFocused(): boolean {
+    const el = document.activeElement;
+    if (!el) return false;
+    if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") return true;
+    if ((el as HTMLElement).isContentEditable) return true;
+    return false;
   }
 
   function enterExplicitLeader() {
@@ -68,20 +90,74 @@
     }
   }
 
-  function switchRelative(delta: number) {
-    if (flatSessions.length === 0) return;
-    if (!activeId) {
-      activeSessionId.set(flatSessions[0]);
+  function enterJumpMode() {
+    if (projectList.length === 0) return;
+    jumpActive = true;
+    jumpPhase = "project";
+    jumpProjectId = null;
+    jumpBuffer = "";
+    jumpLabels = generateJumpLabels(projectList.length);
+    jumpMode.set({ phase: "project" });
+  }
+
+  function exitJumpMode() {
+    jumpActive = false;
+    jumpPhase = "project";
+    jumpProjectId = null;
+    jumpBuffer = "";
+    jumpLabels = [];
+    jumpMode.set(null);
+  }
+
+  function handleJumpKey(key: string) {
+    if (key === "Escape") {
+      exitJumpMode();
       return;
     }
-    const currentIndex = flatSessions.indexOf(activeId);
-    if (currentIndex === -1) {
-      activeSessionId.set(flatSessions[0]);
+
+    if (!JUMP_KEYS.includes(key)) {
+      exitJumpMode();
       return;
     }
-    const nextIndex =
-      (currentIndex + delta + flatSessions.length) % flatSessions.length;
-    activeSessionId.set(flatSessions[nextIndex]);
+
+    jumpBuffer += key;
+
+    // Check for exact match
+    const matchIndex = jumpLabels.indexOf(jumpBuffer);
+    if (matchIndex !== -1) {
+      if (jumpPhase === "project") {
+        const project = projectList[matchIndex];
+        if (!project) {
+          exitJumpMode();
+          return;
+        }
+        // Always enter session phase with N+1 labels (sessions + "create new")
+        jumpPhase = "session";
+        jumpProjectId = project.id;
+        jumpBuffer = "";
+        jumpLabels = generateJumpLabels(project.sessions.length + 1);
+        jumpMode.set({ phase: "session", projectId: project.id });
+      } else {
+        // Session phase
+        const project = projectList.find((p) => p.id === jumpProjectId);
+        if (project) {
+          if (matchIndex < project.sessions.length) {
+            activeSessionId.set(project.sessions[matchIndex].id);
+          } else {
+            // Last label = create new session
+            dispatchAction({ type: "create-session", projectId: project.id });
+          }
+        }
+        exitJumpMode();
+      }
+      return;
+    }
+
+    // Check if buffer is a valid prefix of any label
+    const isPrefix = jumpLabels.some((l) => l.startsWith(jumpBuffer));
+    if (!isPrefix) {
+      exitJumpMode();
+    }
   }
 
   function handleHotkey(e: KeyboardEvent): boolean {
@@ -95,10 +171,7 @@
 
     switch (key) {
       case "j":
-        switchRelative(1);
-        return true;
-      case "k":
-        switchRelative(-1);
+        enterJumpMode();
         return true;
       case "c":
         dispatchAction({ type: "create-session" });
@@ -118,11 +191,14 @@
       case "l":
         dispatchAction({ type: "focus-terminal" });
         return true;
-      case "J":
-        dispatchAction({ type: "next-project" });
+      case "d":
+        dispatchAction({ type: "delete-project" });
         return true;
-      case "K":
-        dispatchAction({ type: "prev-project" });
+      case "a":
+        dispatchAction({ type: "toggle-archive-view" });
+        return true;
+      case "s":
+        sidebarVisible.update(v => !v);
         return true;
       case "?":
         dispatchAction({ type: "toggle-help" });
@@ -135,6 +211,14 @@
   function onKeydown(e: KeyboardEvent) {
     // Ignore modifier-only keypresses
     if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+
+    // Jump mode intercepts all keys
+    if (jumpActive) {
+      e.stopPropagation();
+      e.preventDefault();
+      handleJumpKey(e.key);
+      return;
+    }
 
     const inTerminal = isTerminalFocused();
 
@@ -175,8 +259,13 @@
     }
 
     // --- Ambient leader mode (not in terminal) ---
-    // Escape closes modals / goes back (let it propagate to modal handlers)
-    if (e.key === "Escape") return;
+    // Don't intercept keys when typing in input fields
+    if (isEditableElementFocused()) return;
+
+    if (e.key === "Escape") {
+      leaderActive.update(v => !v);
+      return;
+    }
 
     // Try to handle as hotkey
     if (handleHotkey(e)) {

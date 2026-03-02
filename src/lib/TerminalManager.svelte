@@ -1,31 +1,47 @@
 <script lang="ts">
   import Terminal from "./Terminal.svelte";
-  import { projects, activeSessionId, hotkeyAction, type Project } from "./stores";
+  import { projects, activeSessionId, hotkeyAction, focusedPanel, type Project } from "./stores";
 
   let projectList: Project[] = $state([]);
   let activeSession: string | null = $state(null);
   let terminalComponents: Record<string, Terminal> = $state({});
+  let isFocused = $state(false);
 
-  projects.subscribe((value) => {
-    projectList = value;
+  $effect(() => {
+    const unsub = projects.subscribe((value) => { projectList = value; });
+    return unsub;
   });
 
-  activeSessionId.subscribe((value) => {
-    activeSession = value;
+  $effect(() => {
+    const unsub = activeSessionId.subscribe((value) => { activeSession = value; });
+    return unsub;
   });
 
-  hotkeyAction.subscribe((action) => {
-    if (action?.type === "focus-terminal" && activeSession) {
-      terminalComponents[activeSession]?.focus();
-    }
+  $effect(() => {
+    const unsub = hotkeyAction.subscribe((action) => {
+      if (action?.type === "focus-terminal" && activeSession) {
+        terminalComponents[activeSession]?.focus();
+      }
+    });
+    return unsub;
   });
+
+  $effect(() => {
+    const unsub = focusedPanel.subscribe((v) => { isFocused = v === "terminal"; });
+    return unsub;
+  });
+
+  function handleFocusIn() {
+    focusedPanel.set("terminal");
+  }
 
   let allSessionIds: string[] = $derived(
     projectList.flatMap((p) => p.sessions.map((s) => s.id)),
   );
 </script>
 
-<div class="terminal-manager">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="terminal-manager" class:focused={isFocused} onfocusin={handleFocusIn}>
   {#each allSessionIds as sessionId (sessionId)}
     <div class="terminal-wrapper" class:visible={activeSession === sessionId}>
       <Terminal {sessionId} bind:this={terminalComponents[sessionId]} />
@@ -33,7 +49,12 @@
   {/each}
 
   {#if !activeSession}
-    <div class="empty-state">Select or create a session to begin.</div>
+    <div class="empty-state">
+      <div class="empty-content">
+        <div class="empty-title">No active session</div>
+        <div class="empty-hint">Press <kbd>c</kbd> to create a session, or <kbd>n</kbd> to add a project</div>
+      </div>
+    </div>
   {/if}
 </div>
 
@@ -42,6 +63,12 @@
     width: 100%;
     height: 100%;
     position: relative;
+    border-left: 2px solid #313244;
+    transition: border-color 0.15s ease;
+  }
+
+  .terminal-manager.focused {
+    border-left-color: #89b4fa;
   }
 
   .terminal-wrapper {
@@ -59,7 +86,30 @@
     align-items: center;
     justify-content: center;
     height: 100%;
+  }
+
+  .empty-content {
+    text-align: center;
+  }
+
+  .empty-title {
+    color: #cdd6f4;
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+
+  .empty-hint {
     color: #6c7086;
-    font-size: 14px;
+    font-size: 13px;
+  }
+
+  .empty-hint kbd {
+    background: #313244;
+    color: #89b4fa;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 12px;
   }
 </style>

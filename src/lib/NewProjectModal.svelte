@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
   import { showToast } from "./toast";
   import type { Project } from "./stores";
 
@@ -16,6 +17,11 @@
   let customName = $state("");
   let loading = $state(false);
   let selectedIndex = $state(0);
+  let descriptionInput: HTMLInputElement | undefined = $state();
+
+  onMount(() => {
+    descriptionInput?.focus();
+  });
 
   async function generateNames() {
     if (!description.trim() || loading) return;
@@ -81,6 +87,7 @@
       <div class="modal-header">New Project</div>
       <p class="hint">Describe your project in a few words</p>
       <input
+        bind:this={descriptionInput}
         bind:value={description}
         placeholder="e.g. real-time chat app"
         class="input"

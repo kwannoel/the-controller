@@ -249,3 +249,42 @@ impl PtyManager {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_manager_is_empty_and_is_alive_returns_false() {
+        let manager = PtyManager::new();
+        let random_id = Uuid::new_v4();
+        assert!(!manager.is_alive(random_id));
+    }
+
+    #[test]
+    fn test_write_to_invalid_session_returns_error() {
+        let mut manager = PtyManager::new();
+        let invalid_id = Uuid::new_v4();
+        let result = manager.write_to_session(invalid_id, b"hello");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("session not found"));
+    }
+
+    #[test]
+    fn test_resize_invalid_session_returns_error() {
+        let manager = PtyManager::new();
+        let invalid_id = Uuid::new_v4();
+        let result = manager.resize_session(invalid_id, 24, 80);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("session not found"));
+    }
+
+    #[test]
+    fn test_close_invalid_session_returns_error() {
+        let mut manager = PtyManager::new();
+        let invalid_id = Uuid::new_v4();
+        let result = manager.close_session(invalid_id);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("session not found"));
+    }
+}

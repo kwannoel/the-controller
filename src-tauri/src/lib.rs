@@ -12,17 +12,20 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(state::AppState::new())
         .invoke_handler(tauri::generate_handler![
+            commands::cleanup_stale_sessions,
             commands::create_project,
             commands::load_project,
             commands::list_projects,
             commands::archive_project,
+            commands::delete_project,
+            commands::list_archived_projects,
+            commands::unarchive_project,
             commands::get_agents_md,
             commands::update_agents_md,
             commands::create_session,
             commands::write_to_pty,
             commands::resize_pty,
             commands::close_session,
-            commands::create_refinement,
             commands::start_claude_login,
             commands::stop_claude_login,
             commands::home_dir,
