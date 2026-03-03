@@ -17,6 +17,8 @@ pub struct SessionConfig {
     pub label: String,
     pub worktree_path: Option<String>,
     pub worktree_branch: Option<String>,
+    #[serde(default)]
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -52,6 +54,7 @@ mod tests {
                 label: "main".to_string(),
                 worktree_path: None,
                 worktree_branch: None,
+                archived: false,
             }],
         };
 
@@ -68,6 +71,7 @@ mod tests {
         assert_eq!(deserialized.sessions[0].label, project.sessions[0].label);
         assert!(deserialized.sessions[0].worktree_path.is_none());
         assert!(deserialized.sessions[0].worktree_branch.is_none());
+        assert!(!deserialized.sessions[0].archived);
     }
 
     #[test]
@@ -84,6 +88,7 @@ mod tests {
                 label: "feature-branch".to_string(),
                 worktree_path: Some("/tmp/worktree-repo/.worktrees/feature".to_string()),
                 worktree_branch: Some("feature/new-thing".to_string()),
+                archived: false,
             }],
         };
 

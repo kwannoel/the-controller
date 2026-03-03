@@ -6,15 +6,21 @@
   import Onboarding from "./lib/Onboarding.svelte";
   import Toast from "./lib/Toast.svelte";
   import HotkeyManager from "./lib/HotkeyManager.svelte";
-  import StatusBar from "./lib/StatusBar.svelte";
+  import HotkeyHelp from "./lib/HotkeyHelp.svelte";
   import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, type Config } from "./lib/stores";
 
   let ready = $state(false);
   let needsOnboarding = $state(true);
   let sidebarIsVisible = $state(true);
+  let hintsVisible = $state(false);
 
   $effect(() => {
     const unsub = sidebarVisible.subscribe((v) => { sidebarIsVisible = v; });
+    return unsub;
+  });
+
+  $effect(() => {
+    const unsub = showKeyHints.subscribe((v) => { hintsVisible = v; });
     return unsub;
   });
 
@@ -66,7 +72,9 @@
       </main>
     </div>
     <HotkeyManager />
-    <StatusBar />
+    {#if hintsVisible}
+      <HotkeyHelp onClose={() => showKeyHints.set(false)} />
+    {/if}
   {/if}
 {/if}
 <Toast />

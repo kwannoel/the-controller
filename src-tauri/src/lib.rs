@@ -26,6 +26,8 @@ pub fn run() {
             commands::write_to_pty,
             commands::resize_pty,
             commands::close_session,
+            commands::archive_session,
+            commands::unarchive_session,
             commands::start_claude_login,
             commands::stop_claude_login,
             commands::home_dir,

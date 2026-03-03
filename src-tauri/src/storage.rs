@@ -139,6 +139,7 @@ mod tests {
                 label: "main".to_string(),
                 worktree_path: None,
                 worktree_branch: None,
+                archived: false,
             }],
         }
     }

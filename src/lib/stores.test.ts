@@ -5,13 +5,12 @@ import {
   activeSessionId,
   sessionStatuses,
   hotkeyAction,
-  leaderActive,
   showKeyHints,
   appConfig,
   onboardingComplete,
   jumpMode,
   archiveView,
-  focusedPanel,
+  focusTarget,
   sidebarVisible,
   generateJumpLabels,
   JUMP_KEYS,
@@ -23,7 +22,6 @@ describe('stores', () => {
     activeSessionId.set(null);
     sessionStatuses.set(new Map());
     hotkeyAction.set(null);
-    leaderActive.set(false);
     showKeyHints.set(false);
     appConfig.set(null);
     onboardingComplete.set(false);
@@ -66,10 +64,6 @@ describe('stores', () => {
     expect(get(showKeyHints)).toBe(false);
   });
 
-  it('leaderActive defaults to false', () => {
-    expect(get(leaderActive)).toBe(false);
-  });
-
   it('appConfig defaults to null', () => {
     expect(get(appConfig)).toBeNull();
   });
@@ -86,8 +80,8 @@ describe('stores', () => {
     expect(get(archiveView)).toBe(false);
   });
 
-  it('focusedPanel defaults to null', () => {
-    expect(get(focusedPanel)).toBeNull();
+  it('focusTarget defaults to null', () => {
+    expect(get(focusTarget)).toBeNull();
   });
 
   it('sidebarVisible defaults to true', () => {

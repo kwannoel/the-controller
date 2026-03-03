@@ -2,6 +2,16 @@
 
 Tauri v2 + Svelte 5 desktop app for orchestrating multiple Claude Code terminal sessions.
 
+## Task Structure (CRITICAL — NEVER SKIP)
+
+**This is the most important rule. Every task, no matter how small, MUST follow this structure before writing any code. No exceptions.**
+
+1. **Definition**: What's the task? Why are we doing it? How will we approach it?
+2. **Constraints**: What are the design constraints — from the user prompt, codebase conventions, or what can be inferred?
+3. **Validation**: How do I know for sure it was implemented as expected? Can I enforce it with flexible and non-brittle tests? I must validate before I consider a task complete. For semantic changes (bug fixes, feature refinements): if I revert my implementation, the test must still fail. After the implementation, the test must pass.
+
+**If you catch yourself writing code without having stated all three above, STOP and state them first.**
+
 ## Key Docs
 
 - `docs/domain-knowledge.md` — Hard-won lessons (Tauri main thread blocking, CLAUDECODE env var). **Read this before modifying Tauri commands or spawning processes.**
@@ -17,3 +27,4 @@ Tauri v2 + Svelte 5 desktop app for orchestrating multiple Claude Code terminal 
 
 - `npm run tauri dev` — Run the app in development mode
 - `cd src-tauri && cargo test` — Run Rust tests
+- `npx vitest run` — Run frontend tests

@@ -33,10 +33,18 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
+    if (e.key === "Escape" || e.key === "n") {
       e.preventDefault();
       e.stopPropagation();
       onClose();
+    } else if (e.key === "u") {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteProject(false);
+    } else if (e.key === "d") {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteProject(true);
     }
   }
 </script>
@@ -59,17 +67,17 @@
         class="btn-untrack"
         onclick={() => deleteProject(false)}
         disabled={loading}
-      >Untrack</button>
+      >Untrack <kbd>u</kbd></button>
       <button
         class="btn-delete"
         onclick={() => deleteProject(true)}
         disabled={loading}
-      >Delete Everything</button>
+      >Delete Everything <kbd>d</kbd></button>
       <button
         class="btn-cancel"
         onclick={onClose}
         disabled={loading}
-      >Cancel</button>
+      >Cancel <kbd>n</kbd></button>
     </div>
     <p class="hint">Untrack removes from the controller only. Delete Everything also removes the repo directory.</p>
   </div>
@@ -166,5 +174,10 @@
   .btn-cancel:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  kbd {
+    font-family: monospace;
+    font-size: 11px;
+    opacity: 0.7;
   }
 </style>

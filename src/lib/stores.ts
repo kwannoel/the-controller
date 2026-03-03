@@ -5,6 +5,7 @@ export interface SessionConfig {
   label: string;
   worktree_path: string | null;
   worktree_branch: string | null;
+  archived: boolean;
 }
 
 export interface Project {
@@ -31,23 +32,30 @@ export type HotkeyAction =
   | { type: "open-fuzzy-finder" }
   | { type: "open-new-project" }
   | { type: "create-session"; projectId?: string }
-  | { type: "close-session" }
-  | { type: "focus-sidebar" }
+  | { type: "delete-session"; sessionId?: string; projectId?: string }
   | { type: "focus-terminal" }
   | { type: "toggle-help" }
-  | { type: "delete-project" }
+  | { type: "delete-project"; projectId?: string }
+  | { type: "archive-project"; projectId?: string }
+  | { type: "archive-session"; sessionId: string; projectId: string }
+  | { type: "unarchive-session"; sessionId: string; projectId: string }
+  | { type: "unarchive-project"; projectId: string }
   | { type: "toggle-archive-view" }
   | null;
 
-export const leaderActive = writable<boolean>(false);
 export const hotkeyAction = writable<HotkeyAction>(null);
 export const showKeyHints = writable<boolean>(false);
 export const archiveView = writable<boolean>(false);
+export const archivedProjects = writable<Project[]>([]);
 export const sidebarVisible = writable<boolean>(true);
 
-// Focus tracking
-export type FocusedPanel = "sidebar" | "terminal" | null;
-export const focusedPanel = writable<FocusedPanel>(null);
+// Focus tracking — granular: which element is focused
+export type FocusTarget =
+  | { type: "terminal" }
+  | { type: "session"; sessionId: string; projectId: string }
+  | { type: "project"; projectId: string }
+  | null;
+export const focusTarget = writable<FocusTarget>(null);
 
 // Jump navigation
 export type JumpPhase =

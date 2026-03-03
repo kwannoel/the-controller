@@ -21,8 +21,9 @@ pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Generate the next session label by counting all sessions and
-/// returning "session-N" where N = count + 1.
+/// Generate the next session label by counting all sessions (including archived)
+/// and returning "session-N" where N = count + 1. Archived sessions still occupy
+/// worktree branch names, so we must count them to avoid collisions.
 pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
     format!("session-{}", sessions.len() + 1)
 }
@@ -48,8 +49,11 @@ pub fn do_cleanup_stale_sessions(storage: &crate::storage::Storage) {
             continue;
         }
 
-        // Clean up worktrees for each session
+        // Clean up worktrees for active (non-archived) sessions
         for session in &project.sessions {
+            if session.archived {
+                continue;
+            }
             if let (Some(wt_path), Some(branch)) =
                 (&session.worktree_path, &session.worktree_branch)
             {
@@ -57,7 +61,8 @@ pub fn do_cleanup_stale_sessions(storage: &crate::storage::Storage) {
             }
         }
 
-        project.sessions.clear();
+        // Remove only active sessions; keep archived ones
+        project.sessions.retain(|s| s.archived);
         let _ = storage.save_project(&project);
     }
 }
@@ -120,6 +125,15 @@ pub fn load_project(
         return Err(format!("not a git repository: {}", repo_path));
     }
 
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+
+    // Return existing project if one with the same repo_path exists
+    if let Ok(existing) = storage.list_projects() {
+        if let Some(project) = existing.into_iter().find(|p| p.repo_path == repo_path) {
+            return Ok(project);
+        }
+    }
+
     let project = Project {
         id: Uuid::new_v4(),
         name,
@@ -129,7 +143,6 @@ pub fn load_project(
         sessions: vec![],
     };
 
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
     storage.save_project(&project).map_err(|e| e.to_string())?;
 
     // Only create default agents.md if repo doesn't have one
@@ -147,33 +160,31 @@ pub fn load_project(
 pub fn list_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    let active: Vec<Project> = projects.into_iter().filter(|p| !p.archived).collect();
-    Ok(active)
+    // Show projects that have active sessions or no sessions yet (new projects)
+    Ok(projects
+        .into_iter()
+        .filter(|p| p.sessions.is_empty() || p.sessions.iter().any(|s| !s.archived))
+        .collect())
 }
 
 #[tauri::command]
 pub fn archive_project(state: State<AppState>, project_id: String) -> Result<(), String> {
     let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
 
-    // Load project and close all PTY sessions / worktrees
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage.load_project(id).map_err(|e| e.to_string())?;
 
+    // Close PTYs for all active sessions, mark them archived (keep worktrees)
     {
         let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-        for session in &project.sessions {
-            let _ = pty_manager.close_session(session.id);
-            if let (Some(wt_path), Some(branch)) =
-                (&session.worktree_path, &session.worktree_branch)
-            {
-                let _ =
-                    WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+        for session in &mut project.sessions {
+            if !session.archived {
+                let _ = pty_manager.close_session(session.id);
+                session.archived = true;
             }
         }
     }
 
-    project.archived = true;
-    project.sessions.clear();
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -223,16 +234,50 @@ pub fn delete_project(
 pub fn list_archived_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects.into_iter().filter(|p| p.archived).collect())
+    Ok(projects
+        .into_iter()
+        .filter(|p| p.sessions.iter().any(|s| s.archived))
+        .collect())
 }
 
 #[tauri::command]
-pub fn unarchive_project(state: State<AppState>, project_id: String) -> Result<(), String> {
+pub fn unarchive_project(
+    state: State<AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+) -> Result<(), String> {
     let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage.load_project(id).map_err(|e| e.to_string())?;
-    project.archived = false;
+
+    // Collect sessions to restore before taking pty_manager lock
+    let to_restore: Vec<(Uuid, String)> = project
+        .sessions
+        .iter()
+        .filter(|s| s.archived)
+        .map(|s| {
+            let dir = s
+                .worktree_path
+                .clone()
+                .unwrap_or_else(|| project.repo_path.clone());
+            (s.id, dir)
+        })
+        .collect();
+
+    for session in &mut project.sessions {
+        if session.archived {
+            session.archived = false;
+        }
+    }
     storage.save_project(&project).map_err(|e| e.to_string())?;
+    drop(storage);
+
+    // Spawn PTYs for restored sessions
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    for (session_id, session_dir) in to_restore {
+        pty_manager.spawn_session(session_id, &session_dir, app_handle.clone())?;
+    }
+
     Ok(())
 }
 
@@ -307,6 +352,7 @@ pub fn create_session(
             label: label.clone(),
             worktree_path: wt_path,
             worktree_branch: wt_branch,
+            archived: false,
         };
         project.sessions.push(session_config);
         storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -340,6 +386,73 @@ pub fn resize_pty(
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.resize_session(id, rows, cols)
+}
+
+#[tauri::command]
+pub fn archive_session(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    // Close the PTY session (worktree stays on disk)
+    {
+        let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+        let _ = pty_manager.close_session(session_uuid);
+    }
+
+    // Mark session as archived — keep worktree path/branch intact
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
+    if let Some(session) = project.sessions.iter_mut().find(|s| s.id == session_uuid) {
+        session.archived = true;
+    } else {
+        return Err("Session not found".to_string());
+    }
+
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn unarchive_session(
+    state: State<AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
+    let session = project
+        .sessions
+        .iter_mut()
+        .find(|s| s.id == session_uuid && s.archived)
+        .ok_or_else(|| "Archived session not found".to_string())?;
+
+    // Use existing worktree path, or fall back to repo path
+    let session_dir = session
+        .worktree_path
+        .clone()
+        .unwrap_or_else(|| project.repo_path.clone());
+
+    session.archived = false;
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+
+    // Need to drop storage lock before acquiring pty_manager lock
+    drop(storage);
+
+    // Spawn the PTY session in the existing worktree directory
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.spawn_session(session_uuid, &session_dir, app_handle)?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -568,12 +681,14 @@ mod tests {
                 label: "session-1".to_string(),
                 worktree_path: None,
                 worktree_branch: None,
+                archived: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
                 label: "session-2".to_string(),
                 worktree_path: None,
                 worktree_branch: None,
+                archived: false,
             },
         ];
         assert_eq!(next_session_label(&sessions), "session-3");
@@ -581,27 +696,31 @@ mod tests {
 
     #[test]
     fn test_next_session_label_counts_all_sessions() {
+        // Archived sessions still occupy worktree branches, so they must be counted
         let sessions = vec![
             SessionConfig {
                 id: Uuid::new_v4(),
                 label: "session-1".to_string(),
                 worktree_path: Some("/tmp/wt1".to_string()),
                 worktree_branch: Some("session-1".to_string()),
+                archived: true,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
                 label: "session-2".to_string(),
                 worktree_path: Some("/tmp/wt2".to_string()),
                 worktree_branch: Some("session-2".to_string()),
+                archived: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
                 label: "session-3".to_string(),
                 worktree_path: Some("/tmp/wt3".to_string()),
                 worktree_branch: Some("session-3".to_string()),
+                archived: true,
             },
         ];
-        // All 3 sessions counted, next is session-4
+        // All 3 sessions (including archived) counted to avoid branch collisions
         assert_eq!(next_session_label(&sessions), "session-4");
     }
 }

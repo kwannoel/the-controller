@@ -1,11 +1,12 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, focusedPanel, type Project, type JumpPhase } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, type Project, type JumpPhase, type FocusTarget } from "./stores";
   import { showToast } from "./toast";
   import FuzzyFinder from "./FuzzyFinder.svelte";
   import NewProjectModal from "./NewProjectModal.svelte";
   import DeleteProjectModal from "./DeleteProjectModal.svelte";
+  import ConfirmModal from "./ConfirmModal.svelte";
 
   let sidebarEl: HTMLElement | undefined = $state();
   let hintsVisible = $state(false);
@@ -18,11 +19,17 @@
   let showNewProjectModal = $state(false);
   let expandedProjects = $state(new Set<string>());
   let deleteTarget: Project | null = $state(null);
+  let deleteSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let isArchiveView = $state(false);
-  let archivedProjects: Project[] = $state([]);
+  let archivedProjectList: Project[] = $state([]);
 
   $effect(() => {
     const unsub = archiveView.subscribe((v) => { isArchiveView = v; });
+    return unsub;
+  });
+
+  $effect(() => {
+    const unsub = archivedProjects.subscribe((v) => { archivedProjectList = v; });
     return unsub;
   });
 
@@ -70,26 +77,53 @@
     return unsub;
   });
 
-  let isFocused = $state(false);
+  let currentFocus: FocusTarget = $state(null);
   $effect(() => {
-    const unsub = focusedPanel.subscribe((v) => { isFocused = v === "sidebar"; });
+    const unsub = focusTarget.subscribe((v) => { currentFocus = v; });
     return unsub;
   });
 
-  function handleSidebarFocusIn() {
-    focusedPanel.set("sidebar");
-  }
+  // When focusTarget changes, expand and focus the relevant DOM element
+  $effect(() => {
+    if (currentFocus?.type === "session") {
+      if (!expandedProjects.has(currentFocus.projectId)) {
+        const next = new Set(expandedProjects);
+        next.add(currentFocus.projectId);
+        expandedProjects = next;
+      }
+      if (sidebarEl) {
+        requestAnimationFrame(() => {
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-session-id="${currentFocus.sessionId}"]`);
+          if (el) el.focus();
+        });
+      }
+    } else if (currentFocus?.type === "project") {
+      if (sidebarEl) {
+        requestAnimationFrame(() => {
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-project-id="${currentFocus.projectId}"]`);
+          if (el) el.focus();
+        });
+      }
+    }
+  });
 
   let projectJumpLabels = $derived.by(() => {
     if (!jumpState || jumpState.phase !== 'project') return [];
-    return generateJumpLabels(projectList.length);
+    const list = isArchiveView ? archivedProjectList : projectList;
+    return generateJumpLabels(list.length);
   });
 
   let sessionJumpLabels = $derived.by(() => {
     const js = jumpState;
     if (!js || js.phase !== 'session') return [];
-    const count = projectList.find(p => p.id === js.projectId)?.sessions.length ?? 0;
-    return generateJumpLabels(count + 1);
+    const list = isArchiveView ? archivedProjectList : projectList;
+    const project = list.find(p => p.id === js.projectId);
+    if (!project) return [];
+    const sessions = isArchiveView
+      ? project.sessions.filter(s => s.archived)
+      : project.sessions.filter(s => !s.archived);
+    // In archive view, no "create new" option
+    return generateJumpLabels(isArchiveView ? sessions.length : sessions.length + 1);
   });
 
   // Auto-expand project when entering session jump phase
@@ -121,32 +155,59 @@
           if (project) createSession(project.id);
           break;
         }
-        case "close-session": {
-          if (activeSession) {
-            const project = projectList.find((p) =>
-              p.sessions.some((s) => s.id === activeSession),
-            );
-            if (project) closeSession(project.id, activeSession);
+        case "delete-session": {
+          const targetSessionId = action.sessionId ?? activeSession;
+          if (targetSessionId) {
+            const targetProjectId = action.projectId
+              ?? projectList.find((p) => p.sessions.some((s) => s.id === targetSessionId))?.id;
+            if (targetProjectId) {
+              const project = projectList.find((p) => p.id === targetProjectId);
+              const session = project?.sessions.find((s) => s.id === targetSessionId);
+              deleteSessionTarget = {
+                sessionId: targetSessionId,
+                projectId: targetProjectId,
+                label: session?.label ?? "this session",
+              };
+            }
           }
           break;
         }
-        case "focus-sidebar": {
-          const firstSession = sidebarEl?.querySelector<HTMLElement>(".session-item");
-          firstSession?.focus();
-          break;
-        }
         case "delete-project": {
-          const project = projectList.find((p) =>
-            p.sessions.some((s) => s.id === activeSession),
-          ) ?? projectList[0];
+          const project = action.projectId
+            ? projectList.find((p) => p.id === action.projectId)
+            : (projectList.find((p) =>
+                p.sessions.some((s) => s.id === activeSession),
+              ) ?? projectList[0]);
           if (project) {
             deleteTarget = project;
           }
           break;
         }
-        case "toggle-archive-view":
-          archiveView.update((v) => !v);
+        case "archive-project": {
+          const project = action.projectId
+            ? projectList.find((p) => p.id === action.projectId)
+            : (projectList.find((p) =>
+                p.sessions.some((s) => s.id === activeSession),
+              ) ?? projectList[0]);
+          if (project) archiveProject(project.id);
           break;
+        }
+        case "archive-session": {
+          archiveSession(action.projectId, action.sessionId);
+          break;
+        }
+        case "unarchive-session": {
+          unarchiveSession(action.projectId, action.sessionId);
+          break;
+        }
+        case "unarchive-project": {
+          unarchiveProject(action.projectId);
+          break;
+        }
+        case "toggle-archive-view": {
+          archiveView.update(v => !v);
+          break;
+        }
       }
     });
     return unsub;
@@ -187,7 +248,8 @@
 
   async function loadArchivedProjects() {
     try {
-      archivedProjects = await invoke<Project[]>("list_archived_projects");
+      const result = await invoke<Project[]>("list_archived_projects");
+      archivedProjects.set(result);
     } catch (err) {
       showToast(String(err), "error");
     }
@@ -261,10 +323,57 @@
     }
   }
 
+  async function archiveSession(projectId: string, sessionId: string) {
+    try {
+      // Find the active session above the one being archived
+      const project = projectList.find(p => p.id === projectId);
+      const activeSessions = project?.sessions.filter(s => !s.archived) ?? [];
+      const idx = activeSessions.findIndex(s => s.id === sessionId);
+      const prevSession = idx > 0 ? activeSessions[idx - 1] : null;
+
+      await invoke("archive_session", { projectId, sessionId });
+      sessionStatuses.update(m => {
+        const next = new Map(m);
+        next.delete(sessionId);
+        return next;
+      });
+      activeSessionId.update(current => current === sessionId ? (prevSession?.id ?? null) : current);
+      if (prevSession) {
+        focusTarget.set({ type: "session", sessionId: prevSession.id, projectId });
+      } else {
+        focusTarget.set({ type: "project", projectId });
+      }
+      await loadProjects();
+      if (isArchiveView) await loadArchivedProjects();
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function unarchiveSession(projectId: string, sessionId: string) {
+    try {
+      await invoke("unarchive_session", { projectId, sessionId });
+      sessionStatuses.update(m => {
+        const next = new Map(m);
+        next.set(sessionId, "running");
+        return next;
+      });
+      activeSessionId.set(sessionId);
+      await loadProjects();
+      if (isArchiveView) await loadArchivedProjects();
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
   async function archiveProject(projectId: string) {
-    if (!confirm("Archive this project? All sessions will be closed.")) return;
     try {
       await invoke("archive_project", { projectId });
+      activeSessionId.update(current => {
+        const project = projectList.find(p => p.id === projectId);
+        if (project?.sessions.some(s => s.id === current)) return null;
+        return current;
+      });
       await loadProjects();
     } catch (e) {
       showToast(String(e), "error");
@@ -275,17 +384,9 @@
     return statuses.get(sessionId) ?? "idle";
   }
 
-  function getGlobalSessionIndex(projectId: string, localIdx: number): number {
-    let count = 0;
-    for (const p of projectList) {
-      if (p.id === projectId) return count + localIdx;
-      count += p.sessions.length;
-    }
-    return count + localIdx;
-  }
 </script>
 
-<aside class="sidebar" class:focused={isFocused} bind:this={sidebarEl} onfocusin={handleSidebarFocusIn}>
+<aside class="sidebar" bind:this={sidebarEl}>
   {#if isArchiveView}
     <div class="sidebar-header">
       <button class="btn-back" onclick={() => archiveView.set(false)}>&larr;</button>
@@ -293,27 +394,68 @@
     </div>
 
     <div class="project-list">
-      {#each archivedProjects as project (project.id)}
+      {#each archivedProjectList as project, i (project.id)}
+        {@const archivedSessions = project.sessions.filter(s => s.archived)}
         <div class="project-item">
-          <div class="project-header">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="project-header"
+            class:focus-target={currentFocus?.type === 'project' && currentFocus.projectId === project.id}
+            tabindex="0"
+            data-project-id={project.id}
+            onfocusin={(e: FocusEvent) => { if (e.target === e.currentTarget) focusTarget.set({ type: 'project', projectId: project.id }); }}
+          >
+            <button class="btn-expand" onclick={() => toggleProject(project.id)}>
+              {expandedProjects.has(project.id) ? "\u25BC" : "\u25B6"}
+            </button>
             <span class="project-name">{project.name}</span>
+            {#if jumpState?.phase === 'project' && projectJumpLabels[i]}
+              <kbd class="jump-label">{projectJumpLabels[i]}</kbd>
+            {/if}
+            <span class="session-count">{archivedSessions.length}</span>
             <button
               class="btn-unarchive"
-              onclick={() => unarchiveProject(project.id)}
-            >Unarchive</button>
+              onclick={(e: MouseEvent) => { e.stopPropagation(); unarchiveProject(project.id); }}
+              title="Restore all sessions"
+            >Restore All</button>
             <button
               class="btn-archive-delete"
-              onclick={() => { deleteTarget = project; }}
+              onclick={(e: MouseEvent) => { e.stopPropagation(); deleteTarget = project; }}
+              title="Delete project"
             >Delete</button>
           </div>
+
+          {#if expandedProjects.has(project.id)}
+            <div class="session-list">
+              {#each archivedSessions as session, sessionIdx (session.id)}
+                <div class="session-item archived">
+                  <span class="status-dot archived-dot">&cir;</span>
+                  <span class="session-label">{session.label}</span>
+                  {#if jumpState?.phase === 'session' && jumpState.projectId === project.id && sessionJumpLabels[sessionIdx]}
+                    <kbd class="jump-label">{sessionJumpLabels[sessionIdx]}</kbd>
+                  {/if}
+                  <button
+                    class="btn-unarchive-session"
+                    onclick={(e: MouseEvent) => { e.stopPropagation(); unarchiveSession(project.id, session.id); }}
+                    title="Restore session"
+                  >Restore</button>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       {:else}
-        <div class="empty-state">No archived projects</div>
+        <div class="empty-state">No archived sessions</div>
       {/each}
     </div>
   {:else}
     <div class="sidebar-header">
       <h2>Projects</h2>
+      <button
+        class="btn-archives"
+        onclick={() => archiveView.set(true)}
+        title="View archives (Shift+A)"
+      >Archives</button>
       <button
         class="btn-hint-toggle"
         class:active={hintsVisible}
@@ -334,7 +476,14 @@
     <div class="project-list">
       {#each projectList as project, i (project.id)}
         <div class="project-item">
-          <div class="project-header">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="project-header"
+            class:focus-target={currentFocus?.type === 'project' && currentFocus.projectId === project.id}
+            tabindex="0"
+            data-project-id={project.id}
+            onfocusin={(e: FocusEvent) => { if (e.target === e.currentTarget) focusTarget.set({ type: 'project', projectId: project.id }); }}
+          >
             <button class="btn-expand" onclick={() => toggleProject(project.id)}>
               {expandedProjects.has(project.id) ? "\u25BC" : "\u25B6"}
             </button>
@@ -344,7 +493,7 @@
             {:else if hintsVisible}
               <kbd class="hint">j</kbd>
             {/if}
-            <span class="session-count">{project.sessions.length}</span>
+            <span class="session-count">{project.sessions.filter(s => !s.archived).length}</span>
             <button
               class="btn-archive"
               onclick={(e: MouseEvent) => { e.stopPropagation(); archiveProject(project.id); }}
@@ -354,19 +503,22 @@
               class="btn-add-session"
               onclick={(e: MouseEvent) => { e.stopPropagation(); createSession(project.id); }}
               title="New session"
-            >+{#if hintsVisible}<kbd class="hint">c</kbd>{/if}</button>
+            >+</button>
           </div>
 
           {#if expandedProjects.has(project.id)}
+            {@const activeSessions = project.sessions.filter(s => !s.archived)}
             <div class="session-list">
-              {#each project.sessions as session, sessionIdx (session.id)}
-                {@const globalIdx = getGlobalSessionIndex(project.id, sessionIdx)}
+              {#each activeSessions as session, sessionIdx (session.id)}
                 <div
                   class="session-item"
                   class:active={activeSession === session.id}
+                  class:focus-target={currentFocus?.type === 'session' && currentFocus.sessionId === session.id}
+                  data-session-id={session.id}
                   role="button"
                   tabindex="0"
-                  onclick={() => selectSession(session.id)}
+                  onclick={() => { selectSession(session.id); focusTarget.set({ type: 'session', sessionId: session.id, projectId: project.id }); }}
+                  onfocusin={() => { focusTarget.set({ type: 'session', sessionId: session.id, projectId: project.id }); }}
                   onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') selectSession(session.id); }}
                 >
                   <span
@@ -378,18 +530,11 @@
                   <span class="session-label">{session.label}</span>
                   {#if jumpState?.phase === 'session' && jumpState.projectId === project.id && sessionJumpLabels[sessionIdx]}
                     <kbd class="jump-label">{sessionJumpLabels[sessionIdx]}</kbd>
-                  {:else}
-                    {#if hintsVisible && globalIdx < 9}
-                      <kbd class="hint">{globalIdx + 1}</kbd>
-                    {/if}
-                    {#if hintsVisible && activeSession === session.id}
-                      <kbd class="hint">x</kbd>
-                    {/if}
                   {/if}
                   <button
                     class="btn-close-session"
-                    onclick={(e: MouseEvent) => { e.stopPropagation(); closeSession(project.id, session.id); }}
-                    title="Close session"
+                    onclick={(e: MouseEvent) => { e.stopPropagation(); deleteSessionTarget = { sessionId: session.id, projectId: project.id, label: session.label }; }}
+                    title="Delete session"
                   >&times;</button>
                 </div>
               {/each}
@@ -397,7 +542,7 @@
                 <div class="session-item create-option">
                   <span class="status-dot">+</span>
                   <span class="session-label">New session</span>
-                  <kbd class="jump-label">{sessionJumpLabels[project.sessions.length]}</kbd>
+                  <kbd class="jump-label">{sessionJumpLabels[activeSessions.length]}</kbd>
                 </div>
               {/if}
             </div>
@@ -432,6 +577,21 @@
     {/if}
   {/if}
 
+  {#if deleteSessionTarget}
+    <ConfirmModal
+      title="Delete Session"
+      message={`Delete "${deleteSessionTarget.label}"? The terminal process will be terminated.`}
+      confirmLabel="Delete"
+      onConfirm={() => {
+        if (deleteSessionTarget) {
+          closeSession(deleteSessionTarget.projectId, deleteSessionTarget.sessionId);
+        }
+        deleteSessionTarget = null;
+      }}
+      onClose={() => (deleteSessionTarget = null)}
+    />
+  {/if}
+
   {#if deleteTarget}
     <DeleteProjectModal
       projectId={deleteTarget.id}
@@ -452,16 +612,11 @@
     min-width: 250px;
     height: 100vh;
     background: #1e1e2e;
-    border-right: 2px solid #313244;
+    border-right: 1px solid #313244;
     display: flex;
     flex-direction: column;
     overflow-y: auto;
     color: #cdd6f4;
-    transition: border-color 0.15s ease;
-  }
-
-  .sidebar.focused {
-    border-right-color: #89b4fa;
   }
 
   .sidebar-header {
@@ -547,6 +702,12 @@
     background: #313244;
   }
 
+  .project-header.focus-target {
+    outline: 2px solid #89b4fa;
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
+
   .btn-expand {
     background: none;
     border: none;
@@ -563,9 +724,7 @@
     flex: 1;
     font-size: 13px;
     font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    word-break: break-word;
   }
 
   .session-count {
@@ -618,9 +777,46 @@
     background: #45475a;
   }
 
+  .session-item.focus-target {
+    outline: 2px solid #89b4fa;
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
+
   .session-item.create-option {
     color: #a6e3a1;
     font-style: italic;
+  }
+
+  .session-item.archived {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .archived-dot {
+    color: #6c7086;
+  }
+
+  .btn-unarchive-session {
+    background: none;
+    border: none;
+    color: #6c7086;
+    cursor: pointer;
+    padding: 2px 6px;
+    font-size: 11px;
+    box-shadow: none;
+    opacity: 0;
+    margin-left: auto;
+    border-radius: 4px;
+  }
+
+  .session-item.archived:hover .btn-unarchive-session {
+    opacity: 1;
+  }
+
+  .btn-unarchive-session:hover {
+    color: #a6e3a1;
+    background: #45475a;
   }
 
   .status-dot {
@@ -679,6 +875,23 @@
   .btn-archive:hover {
     color: #cdd6f4;
     background: #45475a;
+  }
+
+  .btn-archives {
+    background: none;
+    border: 1px solid #313244;
+    color: #6c7086;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    box-shadow: none;
+    flex-shrink: 0;
+  }
+
+  .btn-archives:hover {
+    color: #cdd6f4;
+    background: #313244;
   }
 
   .btn-hint-toggle {

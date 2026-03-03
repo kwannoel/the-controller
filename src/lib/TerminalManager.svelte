@@ -1,6 +1,6 @@
 <script lang="ts">
   import Terminal from "./Terminal.svelte";
-  import { projects, activeSessionId, hotkeyAction, focusedPanel, type Project } from "./stores";
+  import { projects, activeSessionId, hotkeyAction, focusTarget, type Project } from "./stores";
 
   let projectList: Project[] = $state([]);
   let activeSession: string | null = $state(null);
@@ -27,12 +27,12 @@
   });
 
   $effect(() => {
-    const unsub = focusedPanel.subscribe((v) => { isFocused = v === "terminal"; });
+    const unsub = focusTarget.subscribe((v) => { isFocused = v?.type === "terminal"; });
     return unsub;
   });
 
   function handleFocusIn() {
-    focusedPanel.set("terminal");
+    focusTarget.set({ type: "terminal" });
   }
 
   let allSessionIds: string[] = $derived(
@@ -63,12 +63,11 @@
     width: 100%;
     height: 100%;
     position: relative;
-    border-left: 2px solid #313244;
-    transition: border-color 0.15s ease;
   }
 
   .terminal-manager.focused {
-    border-left-color: #89b4fa;
+    outline: 2px solid #89b4fa;
+    outline-offset: -2px;
   }
 
   .terminal-wrapper {

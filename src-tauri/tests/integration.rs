@@ -36,6 +36,7 @@ fn test_project_lifecycle() {
         label: "session-1".to_string(),
         worktree_path: None,
         worktree_branch: None,
+        archived: false,
     });
     storage.save_project(&project).expect("save with session");
 
@@ -121,18 +122,21 @@ fn test_stale_sessions_cleared_on_startup() {
                 label: "session-1".to_string(),
                 worktree_path: Some("/tmp/nonexistent/wt1".to_string()),
                 worktree_branch: Some("session-1".to_string()),
+                archived: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
                 label: "session-2".to_string(),
                 worktree_path: Some("/tmp/nonexistent/wt2".to_string()),
                 worktree_branch: Some("session-2".to_string()),
+                archived: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
                 label: "session-3".to_string(),
                 worktree_path: Some("/tmp/nonexistent/wt3".to_string()),
                 worktree_branch: Some("session-3".to_string()),
+                archived: false,
             },
         ],
     };
@@ -196,6 +200,7 @@ fn test_stale_sessions_cleanup_removes_worktrees() {
             label: "session-1".to_string(),
             worktree_path: Some(wt_path.to_str().unwrap().to_string()),
             worktree_branch: Some("session-1".to_string()),
+            archived: false,
         }],
     };
     storage.save_project(&project).expect("save project");
