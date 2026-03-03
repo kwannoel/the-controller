@@ -172,10 +172,9 @@ pub fn load_project(
 pub fn list_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    // Show projects that have active sessions or no sessions yet (new projects)
     Ok(projects
         .into_iter()
-        .filter(|p| p.sessions.is_empty() || p.sessions.iter().any(|s| !s.archived))
+        .filter(|p| !p.archived)
         .collect())
 }
 
@@ -185,6 +184,8 @@ pub fn archive_project(state: State<AppState>, project_id: String) -> Result<(),
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage.load_project(id).map_err(|e| e.to_string())?;
+
+    project.archived = true;
 
     // Close PTYs for all active sessions, mark them archived (keep worktrees)
     {
@@ -248,7 +249,7 @@ pub fn list_archived_projects(state: State<AppState>) -> Result<Vec<Project>, St
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
     Ok(projects
         .into_iter()
-        .filter(|p| p.sessions.iter().any(|s| s.archived))
+        .filter(|p| p.archived)
         .collect())
 }
 
@@ -275,6 +276,8 @@ pub fn unarchive_project(
             (s.id, dir)
         })
         .collect();
+
+    project.archived = false;
 
     for session in &mut project.sessions {
         if session.archived {
