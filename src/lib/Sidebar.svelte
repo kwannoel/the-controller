@@ -24,6 +24,8 @@
   });
   let deleteTarget: Project | null = $state(null);
   let deleteSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
+  let archiveSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
+  let archiveProjectTarget: Project | null = $state(null);
   let isArchiveView = $state(false);
   let archivedProjectList: Project[] = $state([]);
 
@@ -182,11 +184,19 @@
             : (projectList.find((p) =>
                 p.sessions.some((s) => s.id === activeSession),
               ) ?? projectList[0]);
-          if (project) archiveProject(project.id);
+          if (project) archiveProjectTarget = project;
           break;
         }
         case "archive-session": {
-          archiveSession(action.projectId, action.sessionId);
+          const proj = projectList.find((p) => p.id === action.projectId);
+          const sess = proj?.sessions.find((s) => s.id === action.sessionId);
+          if (sess) {
+            archiveSessionTarget = {
+              sessionId: action.sessionId,
+              projectId: action.projectId,
+              label: sess.label,
+            };
+          }
           break;
         }
         case "unarchive-session": {
@@ -554,6 +564,36 @@
         deleteSessionTarget = null;
       }}
       onClose={() => (deleteSessionTarget = null)}
+    />
+  {/if}
+
+  {#if archiveSessionTarget}
+    <ConfirmModal
+      title="Archive Session"
+      message={`Archive "${archiveSessionTarget.label}"? The terminal will be stopped.`}
+      confirmLabel="Archive"
+      onConfirm={() => {
+        if (archiveSessionTarget) {
+          archiveSession(archiveSessionTarget.projectId, archiveSessionTarget.sessionId);
+        }
+        archiveSessionTarget = null;
+      }}
+      onClose={() => (archiveSessionTarget = null)}
+    />
+  {/if}
+
+  {#if archiveProjectTarget}
+    <ConfirmModal
+      title="Archive Project"
+      message={`Archive "${archiveProjectTarget.name}" and all its sessions?`}
+      confirmLabel="Archive"
+      onConfirm={() => {
+        if (archiveProjectTarget) {
+          archiveProject(archiveProjectTarget.id);
+        }
+        archiveProjectTarget = null;
+      }}
+      onClose={() => (archiveProjectTarget = null)}
     />
   {/if}
 

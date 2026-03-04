@@ -21,11 +21,17 @@ pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Generate the next session label by counting all sessions (including archived)
-/// and returning "session-N" where N = count + 1. Archived sessions still occupy
-/// worktree branch names, so we must count them to avoid collisions.
+/// Generate the next session label by finding the highest existing session number
+/// and returning "session-N" where N = max + 1. This avoids collisions when
+/// sessions are deleted or archived out of order.
 pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
-    format!("session-{}", sessions.len() + 1)
+    let max_num = sessions
+        .iter()
+        .filter_map(|s| s.label.strip_prefix("session-"))
+        .filter_map(|n| n.parse::<u32>().ok())
+        .max()
+        .unwrap_or(0);
+    format!("session-{}", max_num + 1)
 }
 
 const DEFAULT_AGENTS_MD: &str = r#"# Agents
@@ -746,7 +752,20 @@ mod tests {
                 archived: true,
             },
         ];
-        // All 3 sessions (including archived) counted to avoid branch collisions
+        // Max is session-3, so next is session-4
+        assert_eq!(next_session_label(&sessions), "session-4");
+    }
+
+    #[test]
+    fn test_next_session_label_with_gap() {
+        // Only session-3 remains (1 and 2 deleted). Next should be session-4, not session-2.
+        let sessions = vec![SessionConfig {
+            id: Uuid::new_v4(),
+            label: "session-3".to_string(),
+            worktree_path: None,
+            worktree_branch: None,
+            archived: false,
+        }];
         assert_eq!(next_session_label(&sessions), "session-4");
     }
 }

@@ -7,10 +7,13 @@ use std::thread;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
+use crate::tmux::TmuxManager;
+
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     alive: Arc<Mutex<bool>>,
+    tmux_session: bool,
 }
 
 pub struct PtyManager {
@@ -24,14 +27,35 @@ impl PtyManager {
         }
     }
 
+    /// Spawn a session. Uses tmux if available (survives dev restarts),
+    /// otherwise falls back to a direct PTY (production path).
     pub fn spawn_session(
         &mut self,
         session_id: Uuid,
         working_dir: &str,
         app_handle: AppHandle,
     ) -> Result<(), String> {
-        let pty_system = native_pty_system();
+        if TmuxManager::is_available() {
+            // Create tmux session if it doesn't already exist
+            if !TmuxManager::has_session(session_id) {
+                TmuxManager::create_session(session_id, working_dir)?;
+            }
+            // Attach to the tmux session via a local PTY
+            self.attach_tmux_session(session_id, app_handle)
+        } else {
+            // No tmux — spawn claude directly in a PTY
+            self.spawn_direct_session(session_id, working_dir, app_handle)
+        }
+    }
 
+    /// Spawn `claude` directly in a local PTY without tmux.
+    fn spawn_direct_session(
+        &mut self,
+        session_id: Uuid,
+        working_dir: &str,
+        app_handle: AppHandle,
+    ) -> Result<(), String> {
+        let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
                 rows: 24,
@@ -43,16 +67,13 @@ impl PtyManager {
 
         let mut cmd = CommandBuilder::new("claude");
         cmd.cwd(working_dir);
-        // Prevent Claude from detecting a nested session
         cmd.env_remove("CLAUDECODE");
 
-        // Spawn command on the slave end
         let _child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("failed to spawn claude: {}", e))?;
 
-        // Drop the slave — the master side keeps the PTY alive
         drop(pair.slave);
 
         let writer = pair
@@ -68,7 +89,6 @@ impl PtyManager {
         let alive = Arc::new(Mutex::new(true));
         let alive_clone = Arc::clone(&alive);
 
-        // Spawn a reader thread that forwards PTY output to the frontend via Tauri events
         let output_event = format!("pty-output:{}", session_id);
         let status_event = format!("session-status-changed:{}", session_id);
 
@@ -77,7 +97,6 @@ impl PtyManager {
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => {
-                        // EOF — process exited
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
@@ -90,7 +109,6 @@ impl PtyManager {
                         let _ = app_handle.emit(&output_event, encoded);
                     }
                     Err(_) => {
-                        // Read error — treat as EOF
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
@@ -105,12 +123,98 @@ impl PtyManager {
             master: pair.master,
             writer,
             alive,
+            tmux_session: false,
         };
 
         self.sessions.insert(session_id, session);
         Ok(())
     }
 
+    /// Attach to an existing tmux session by spawning `tmux attach` in a local PTY.
+    fn attach_tmux_session(
+        &mut self,
+        session_id: Uuid,
+        app_handle: AppHandle,
+    ) -> Result<(), String> {
+        let tmux_name = TmuxManager::session_name(session_id);
+
+        let pty_system = native_pty_system();
+        let pair = pty_system
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| format!("failed to open pty: {}", e))?;
+
+        let mut cmd = CommandBuilder::new("/opt/homebrew/bin/tmux");
+        cmd.arg("attach-session");
+        cmd.arg("-t");
+        cmd.arg(&tmux_name);
+
+        let _child = pair
+            .slave
+            .spawn_command(cmd)
+            .map_err(|e| format!("failed to spawn tmux attach: {}", e))?;
+
+        drop(pair.slave);
+
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(|e| format!("failed to get pty writer: {}", e))?;
+
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|e| format!("failed to get pty reader: {}", e))?;
+
+        let alive = Arc::new(Mutex::new(true));
+        let alive_clone = Arc::clone(&alive);
+
+        let output_event = format!("pty-output:{}", session_id);
+        let status_event = format!("session-status-changed:{}", session_id);
+
+        thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => {
+                        if let Ok(mut a) = alive_clone.lock() {
+                            *a = false;
+                        }
+                        let _ = app_handle.emit(&status_event, "idle");
+                        break;
+                    }
+                    Ok(n) => {
+                        let encoded =
+                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let _ = app_handle.emit(&output_event, encoded);
+                    }
+                    Err(_) => {
+                        if let Ok(mut a) = alive_clone.lock() {
+                            *a = false;
+                        }
+                        let _ = app_handle.emit(&status_event, "idle");
+                        break;
+                    }
+                }
+            }
+        });
+
+        let session = PtySession {
+            master: pair.master,
+            writer,
+            alive,
+            tmux_session: true,
+        };
+
+        self.sessions.insert(session_id, session);
+        Ok(())
+    }
+
+    /// Spawn a direct (non-tmux) command. Used for short-lived commands like `claude login`.
     pub fn spawn_command(
         &mut self,
         session_id: Uuid,
@@ -133,7 +237,6 @@ impl PtyManager {
         for arg in args {
             cmd.arg(*arg);
         }
-        // Prevent Claude from detecting a nested session
         cmd.env_remove("CLAUDECODE");
 
         let _child = pair
@@ -190,6 +293,7 @@ impl PtyManager {
             master: pair.master,
             writer,
             alive,
+            tmux_session: false,
         };
 
         self.sessions.insert(session_id, session);
@@ -221,6 +325,12 @@ impl PtyManager {
             .get(&session_id)
             .ok_or_else(|| format!("session not found: {}", session_id))?;
 
+        // Resize via tmux so the claude process sees the new size
+        if session.tmux_session {
+            let _ = TmuxManager::resize_session(session_id, cols, rows);
+        }
+
+        // Also resize the local PTY
         session
             .master
             .resize(PtySize {
@@ -240,13 +350,25 @@ impl PtyManager {
             .unwrap_or(false)
     }
 
+    /// Close a session. For tmux-backed sessions, also kills the tmux session.
     pub fn close_session(&mut self, session_id: Uuid) -> Result<(), String> {
-        self.sessions
-            .remove(&session_id)
-            .ok_or_else(|| format!("session not found: {}", session_id))?;
+        let session = self.sessions.remove(&session_id);
 
-        // Dropping the PtySession (master + writer) kills the child process
+        if let Some(s) = &session {
+            if s.tmux_session {
+                let _ = TmuxManager::kill_session(session_id);
+            }
+        } else {
+            // No local PTY (e.g., app wasn't attached), still try to kill tmux
+            let _ = TmuxManager::kill_session(session_id);
+        }
+
         Ok(())
+    }
+
+    /// Get all tracked session IDs.
+    pub fn session_ids(&self) -> Vec<Uuid> {
+        self.sessions.keys().copied().collect()
     }
 }
 
@@ -280,11 +402,11 @@ mod tests {
     }
 
     #[test]
-    fn test_close_invalid_session_returns_error() {
+    fn test_close_nonexistent_session_is_ok() {
         let mut manager = PtyManager::new();
         let invalid_id = Uuid::new_v4();
+        // close_session is now idempotent (tries to kill tmux too)
         let result = manager.close_session(invalid_id);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("session not found"));
+        assert!(result.is_ok());
     }
 }
