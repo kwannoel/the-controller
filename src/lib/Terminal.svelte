@@ -4,6 +4,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { readText } from "@tauri-apps/plugin-clipboard-manager";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {
@@ -46,7 +47,7 @@
 
       // Cmd-V (macOS) / Ctrl-V (Linux/Windows): paste from clipboard
       if (event.key === "v" && (event.metaKey || event.ctrlKey)) {
-        navigator.clipboard.readText().then((text) => {
+        readText().then((text) => {
           if (text) {
             invoke("write_to_pty", { sessionId, data: text });
           }
