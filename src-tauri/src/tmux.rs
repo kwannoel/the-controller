@@ -50,9 +50,13 @@ impl TmuxManager {
             return Err(format!("tmux new-session failed: {}", stderr.trim()));
         }
 
-        // Enable extended keys so modifier combos (e.g. Shift+Enter) pass through
+        // Enable extended keys so modifier combos (e.g. Shift+Enter) pass through.
+        // Use csi-u format (kitty keyboard protocol) so Claude Code's crossterm can parse them.
         let _ = Command::new(TMUX_BIN)
             .args(["set-option", "-t", &name, "extended-keys", "always"])
+            .output();
+        let _ = Command::new(TMUX_BIN)
+            .args(["set-option", "-t", &name, "extended-keys-format", "csi-u"])
             .output();
 
         Ok(())
