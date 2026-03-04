@@ -28,6 +28,7 @@ pub fn run() {
             commands::update_agents_md,
             commands::create_session,
             commands::write_to_pty,
+            commands::send_raw_to_pty,
             commands::resize_pty,
             commands::close_session,
             commands::archive_session,

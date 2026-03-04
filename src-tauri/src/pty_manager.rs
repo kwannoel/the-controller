@@ -322,6 +322,30 @@ impl PtyManager {
         Ok(())
     }
 
+    /// Send raw bytes that must bypass tmux's outer terminal parser.
+    /// For tmux sessions, uses `tmux send-keys -H`; for direct sessions,
+    /// writes to the PTY like normal.
+    pub fn send_raw_to_session(&mut self, session_id: Uuid, data: &[u8]) -> Result<(), String> {
+        let session = self
+            .sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| format!("session not found: {}", session_id))?;
+
+        if session.tmux_session {
+            TmuxManager::send_keys_hex(session_id, data)
+        } else {
+            session
+                .writer
+                .write_all(data)
+                .map_err(|e| format!("failed to write to pty: {}", e))?;
+            session
+                .writer
+                .flush()
+                .map_err(|e| format!("failed to flush pty writer: {}", e))?;
+            Ok(())
+        }
+    }
+
     pub fn resize_session(&self, session_id: Uuid, rows: u16, cols: u16) -> Result<(), String> {
         let session = self
             .sessions

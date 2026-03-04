@@ -71,6 +71,33 @@ impl TmuxManager {
         Ok(())
     }
 
+    /// Send raw bytes to a tmux pane using `send-keys -H`, bypassing tmux's
+    /// outer terminal input parser. Used for escape sequences (e.g. CSI u for
+    /// Shift+Enter) that tmux wouldn't recognise from the outer PTY.
+    pub fn send_keys_hex(session_id: Uuid, data: &[u8]) -> Result<(), String> {
+        let name = Self::session_name(session_id);
+        let hex_bytes: Vec<String> = data.iter().map(|b| format!("{:02x}", b)).collect();
+        let mut args = vec![
+            "send-keys".to_string(),
+            "-H".to_string(),
+            "-t".to_string(),
+            name,
+        ];
+        args.extend(hex_bytes);
+
+        let output = Command::new(TMUX_BIN)
+            .args(&args)
+            .output()
+            .map_err(|e| format!("failed to run tmux send-keys: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tmux send-keys failed: {}", stderr.trim()));
+        }
+
+        Ok(())
+    }
+
     pub fn kill_session(session_id: Uuid) -> Result<(), String> {
         let name = Self::session_name(session_id);
         let output = Command::new(TMUX_BIN)

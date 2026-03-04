@@ -55,9 +55,11 @@
         return false;
       }
 
-      // Shift-Enter: send CSI u sequence so Claude Code can distinguish it from Enter
+      // Shift-Enter: send CSI u sequence so Claude Code can distinguish it from Enter.
+      // Uses send_raw_to_pty which bypasses tmux's outer terminal parser via
+      // `tmux send-keys -H`, since tmux doesn't recognise CSI u from the outer PTY.
       if (event.key === "Enter" && event.shiftKey) {
-        invoke("write_to_pty", { sessionId, data: "\x1b[13;2u" });
+        invoke("send_raw_to_pty", { sessionId, data: "\x1b[13;2u" });
         return false;
       }
 

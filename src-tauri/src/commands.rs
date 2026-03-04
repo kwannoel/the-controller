@@ -396,6 +396,17 @@ pub fn write_to_pty(
 }
 
 #[tauri::command]
+pub fn send_raw_to_pty(
+    state: State<AppState>,
+    session_id: String,
+    data: String,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.send_raw_to_session(id, data.as_bytes())
+}
+
+#[tauri::command]
 pub fn resize_pty(
     state: State<AppState>,
     session_id: String,
