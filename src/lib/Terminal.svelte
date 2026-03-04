@@ -4,7 +4,6 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { readText } from "@tauri-apps/plugin-clipboard-manager";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import "@xterm/xterm/css/xterm.css";
 
@@ -46,11 +45,6 @@
     term.attachCustomKeyEventHandler(
       makeCustomKeyHandler(
         (data) => invoke("send_raw_to_pty", { sessionId, data }),
-        () => {
-          readText().then((text) => {
-            if (text) invoke("write_to_pty", { sessionId, data: text });
-          });
-        },
       ),
     );
 

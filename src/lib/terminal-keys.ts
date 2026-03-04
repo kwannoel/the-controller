@@ -4,12 +4,14 @@
  * Returns `false` to block xterm from processing the event,
  * `true` to let xterm handle it normally.
  *
+ * Paste (Cmd-V / Ctrl-V) is intentionally NOT handled here — xterm.js
+ * natively processes browser paste events and emits them via `onData`,
+ * so a custom handler would cause double-paste.
+ *
  * `sendRawToPty` sends data bypassing tmux's outer terminal parser (for CSI u sequences).
- * `pasteFromClipboard` reads and writes clipboard text to the PTY.
  */
 export function makeCustomKeyHandler(
   sendRawToPty: (data: string) => void,
-  pasteFromClipboard: () => void,
 ) {
   return (event: KeyboardEvent): boolean => {
     // Shift+Enter must be blocked on ALL event types (keydown, keypress, keyup)
@@ -21,14 +23,6 @@ export function makeCustomKeyHandler(
       if (event.type === "keydown") {
         sendRawToPty("\x1b[13;2u");
       }
-      return false;
-    }
-
-    if (event.type !== "keydown") return true;
-
-    // Cmd-V (macOS) / Ctrl-V (Linux/Windows): paste from clipboard
-    if (event.key === "v" && (event.metaKey || event.ctrlKey)) {
-      pasteFromClipboard();
       return false;
     }
 

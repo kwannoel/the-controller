@@ -15,8 +15,7 @@ function makeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
 describe("makeCustomKeyHandler", () => {
   it("sends CSI u sequence on Shift+Enter keydown", () => {
     const write = vi.fn();
-    const paste = vi.fn();
-    const handler = makeCustomKeyHandler(write, paste);
+    const handler = makeCustomKeyHandler(write);
 
     const result = handler(makeEvent({ key: "Enter", shiftKey: true, type: "keydown" }));
 
@@ -26,8 +25,7 @@ describe("makeCustomKeyHandler", () => {
 
   it("blocks Shift+Enter on keypress without sending data", () => {
     const write = vi.fn();
-    const paste = vi.fn();
-    const handler = makeCustomKeyHandler(write, paste);
+    const handler = makeCustomKeyHandler(write);
 
     const result = handler(makeEvent({ key: "Enter", shiftKey: true, type: "keypress" }));
 
@@ -37,8 +35,7 @@ describe("makeCustomKeyHandler", () => {
 
   it("blocks Shift+Enter on keyup without sending data", () => {
     const write = vi.fn();
-    const paste = vi.fn();
-    const handler = makeCustomKeyHandler(write, paste);
+    const handler = makeCustomKeyHandler(write);
 
     const result = handler(makeEvent({ key: "Enter", shiftKey: true, type: "keyup" }));
 
@@ -48,8 +45,7 @@ describe("makeCustomKeyHandler", () => {
 
   it("allows regular Enter through", () => {
     const write = vi.fn();
-    const paste = vi.fn();
-    const handler = makeCustomKeyHandler(write, paste);
+    const handler = makeCustomKeyHandler(write);
 
     const result = handler(makeEvent({ key: "Enter", shiftKey: false, type: "keydown" }));
 
@@ -57,21 +53,19 @@ describe("makeCustomKeyHandler", () => {
     expect(write).not.toHaveBeenCalled();
   });
 
-  it("handles Cmd-V paste on keydown", () => {
+  it("does not intercept Cmd-V (paste handled natively by xterm)", () => {
     const write = vi.fn();
-    const paste = vi.fn();
-    const handler = makeCustomKeyHandler(write, paste);
+    const handler = makeCustomKeyHandler(write);
 
     const result = handler(makeEvent({ key: "v", metaKey: true, type: "keydown" }));
 
-    expect(result).toBe(false);
-    expect(paste).toHaveBeenCalled();
+    expect(result).toBe(true);
+    expect(write).not.toHaveBeenCalled();
   });
 
-  it("lets non-keydown events through for normal keys", () => {
+  it("allows non-Shift+Enter keys through", () => {
     const write = vi.fn();
-    const paste = vi.fn();
-    const handler = makeCustomKeyHandler(write, paste);
+    const handler = makeCustomKeyHandler(write);
 
     const result = handler(makeEvent({ key: "a", type: "keypress" }));
 
