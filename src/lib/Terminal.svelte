@@ -40,6 +40,29 @@
     term.open(containerEl);
     fitAddon.fit();
 
+    // Handle keys that xterm.js doesn't natively support
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+
+      // Cmd-V (macOS) / Ctrl-V (Linux/Windows): paste from clipboard
+      if (event.key === "v" && (event.metaKey || event.ctrlKey)) {
+        navigator.clipboard.readText().then((text) => {
+          if (text) {
+            invoke("write_to_pty", { sessionId, data: text });
+          }
+        });
+        return false;
+      }
+
+      // Shift-Enter: send CSI u sequence so Claude Code can distinguish it from Enter
+      if (event.key === "Enter" && event.shiftKey) {
+        invoke("write_to_pty", { sessionId, data: "\x1b[13;2u" });
+        return false;
+      }
+
+      return true;
+    });
+
     // Connect user input to PTY
     term.onData((data: string) => {
       invoke("write_to_pty", { sessionId, data }).catch((err) => {
