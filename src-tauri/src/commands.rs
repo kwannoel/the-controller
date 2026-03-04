@@ -65,7 +65,7 @@ pub fn restore_sessions(
                 .clone()
                 .unwrap_or_else(|| project.repo_path.clone());
 
-            if let Err(e) = pty_manager.spawn_session(session.id, &session_dir, app_handle.clone())
+            if let Err(e) = pty_manager.spawn_session(session.id, &session_dir, app_handle.clone(), true)
             {
                 eprintln!(
                     "Failed to restore session {} ({}): {}",
@@ -294,7 +294,7 @@ pub fn unarchive_project(
     // Spawn PTYs for restored sessions
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     for (session_id, session_dir) in to_restore {
-        pty_manager.spawn_session(session_id, &session_dir, app_handle.clone())?;
+        pty_manager.spawn_session(session_id, &session_dir, app_handle.clone(), false)?;
     }
 
     Ok(())
@@ -379,7 +379,7 @@ pub fn create_session(
 
     // Spawn the PTY session in the worktree (or repo) directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_id, &session_dir, app_handle)?;
+    pty_manager.spawn_session(session_id, &session_dir, app_handle, false)?;
 
     Ok(session_id.to_string())
 }
@@ -469,7 +469,7 @@ pub fn unarchive_session(
 
     // Spawn the PTY session in the existing worktree directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_uuid, &session_dir, app_handle)?;
+    pty_manager.spawn_session(session_uuid, &session_dir, app_handle, true)?;
 
     Ok(())
 }

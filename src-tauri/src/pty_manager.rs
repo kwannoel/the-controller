@@ -29,16 +29,19 @@ impl PtyManager {
 
     /// Spawn a session. Uses tmux if available (survives dev restarts),
     /// otherwise falls back to a direct PTY (production path).
+    /// When `continue_session` is true, passes `--continue` to claude to resume
+    /// the last conversation in the working directory.
     pub fn spawn_session(
         &mut self,
         session_id: Uuid,
         working_dir: &str,
         app_handle: AppHandle,
+        continue_session: bool,
     ) -> Result<(), String> {
         if TmuxManager::is_available() {
             // Create tmux session if it doesn't already exist
             if !TmuxManager::has_session(session_id) {
-                TmuxManager::create_session(session_id, working_dir)?;
+                TmuxManager::create_session(session_id, working_dir, continue_session)?;
             }
             // Attach to the tmux session via a local PTY
             self.attach_tmux_session(session_id, app_handle)
