@@ -422,6 +422,7 @@
         e.stopPropagation();
         e.preventDefault();
       } else if (currentFocus?.type === "session") {
+        clearDwellTimer();
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
         e.preventDefault();
