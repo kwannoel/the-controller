@@ -79,6 +79,7 @@ mod tests {
         assert!(deserialized.sessions[0].worktree_path.is_none());
         assert!(deserialized.sessions[0].worktree_branch.is_none());
         assert!(!deserialized.sessions[0].archived);
+        assert_eq!(deserialized.sessions[0].kind, "claude");
     }
 
     #[test]
