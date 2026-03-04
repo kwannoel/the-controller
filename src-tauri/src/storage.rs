@@ -140,6 +140,7 @@ mod tests {
                 worktree_path: None,
                 worktree_branch: None,
                 archived: false,
+                kind: "claude".to_string(),
             }],
         }
     }

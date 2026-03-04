@@ -19,6 +19,12 @@ pub struct SessionConfig {
     pub worktree_branch: Option<String>,
     #[serde(default)]
     pub archived: bool,
+    #[serde(default = "default_kind")]
+    pub kind: String,
+}
+
+fn default_kind() -> String {
+    "claude".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -55,6 +61,7 @@ mod tests {
                 worktree_path: None,
                 worktree_branch: None,
                 archived: false,
+                kind: "claude".to_string(),
             }],
         };
 
@@ -75,6 +82,20 @@ mod tests {
     }
 
     #[test]
+    fn test_session_config_kind_defaults_to_claude() {
+        let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","label":"session-1","worktree_path":null,"worktree_branch":null,"archived":false}"#;
+        let session: SessionConfig = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(session.kind, "claude");
+    }
+
+    #[test]
+    fn test_session_config_kind_codex() {
+        let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","label":"session-1","worktree_path":null,"worktree_branch":null,"archived":false,"kind":"codex"}"#;
+        let session: SessionConfig = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(session.kind, "codex");
+    }
+
+    #[test]
     fn test_project_with_worktree_session() {
         let session_id = Uuid::new_v4();
         let project = Project {
@@ -89,6 +110,7 @@ mod tests {
                 worktree_path: Some("/tmp/worktree-repo/.worktrees/feature".to_string()),
                 worktree_branch: Some("feature/new-thing".to_string()),
                 archived: false,
+                kind: "claude".to_string(),
             }],
         };
 

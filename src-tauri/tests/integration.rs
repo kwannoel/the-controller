@@ -37,6 +37,7 @@ fn test_project_lifecycle() {
         worktree_path: None,
         worktree_branch: None,
         archived: false,
+        kind: "claude".to_string(),
     });
     storage.save_project(&project).expect("save with session");
 
@@ -115,6 +116,7 @@ fn test_sessions_persist_across_restarts() {
                 worktree_path: Some("/tmp/nonexistent/wt1".to_string()),
                 worktree_branch: Some("session-1".to_string()),
                 archived: false,
+                kind: "claude".to_string(),
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -122,6 +124,7 @@ fn test_sessions_persist_across_restarts() {
                 worktree_path: Some("/tmp/nonexistent/wt2".to_string()),
                 worktree_branch: Some("session-2".to_string()),
                 archived: false,
+                kind: "claude".to_string(),
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -129,6 +132,7 @@ fn test_sessions_persist_across_restarts() {
                 worktree_path: None,
                 worktree_branch: None,
                 archived: true,
+                kind: "claude".to_string(),
             },
         ],
     };
@@ -231,6 +235,7 @@ fn test_worktrees_persist_across_restarts() {
             worktree_path: Some(wt_path.to_str().unwrap().to_string()),
             worktree_branch: Some("session-1".to_string()),
             archived: false,
+            kind: "claude".to_string(),
         }],
     };
     storage.save_project(&project).expect("save project");
