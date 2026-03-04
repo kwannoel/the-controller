@@ -246,6 +246,142 @@ fn test_worktrees_persist_across_restarts() {
     assert!(wt_path.exists(), "worktree should still exist on disk after restart");
 }
 
+/// Worktree directories should use project name, not UUID.
+/// Migration renames `worktrees/{uuid}/` to `worktrees/{name}/`
+/// and updates stored `worktree_path` values.
+#[test]
+fn test_migrate_worktree_paths_renames_uuid_dir() {
+    let tmp = TempDir::new().unwrap();
+    let storage = make_storage(&tmp);
+
+    let project_id = Uuid::new_v4();
+    let uuid_wt_dir = tmp.path().join("worktrees").join(project_id.to_string());
+    let session_wt = uuid_wt_dir.join("session-1");
+    fs::create_dir_all(&session_wt).expect("create uuid worktree dir");
+
+    let project = Project {
+        id: project_id,
+        name: "my-cool-project".to_string(),
+        repo_path: "/tmp/fake-repo".to_string(),
+        created_at: "2026-03-01T00:00:00Z".to_string(),
+        archived: false,
+        sessions: vec![SessionConfig {
+            id: Uuid::new_v4(),
+            label: "session-1".to_string(),
+            worktree_path: Some(session_wt.to_str().unwrap().to_string()),
+            worktree_branch: Some("session-1".to_string()),
+            archived: false,
+            kind: "claude".to_string(),
+        }],
+    };
+    storage.save_project(&project).expect("save project");
+
+    // Run migration
+    storage.migrate_worktree_paths(&project).expect("migrate");
+
+    // UUID dir should be gone, name dir should exist
+    assert!(!uuid_wt_dir.exists(), "UUID dir should be removed");
+    let name_wt_dir = tmp.path().join("worktrees").join("my-cool-project");
+    assert!(name_wt_dir.join("session-1").exists(), "name dir should exist");
+
+    // Stored paths should be updated
+    let loaded = storage.load_project(project_id).expect("load");
+    let session = &loaded.sessions[0];
+    let expected_path = name_wt_dir.join("session-1").to_str().unwrap().to_string();
+    assert_eq!(session.worktree_path.as_deref(), Some(expected_path.as_str()));
+}
+
+#[test]
+fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
+    let tmp = TempDir::new().unwrap();
+    let storage = make_storage(&tmp);
+
+    let project_id = Uuid::new_v4();
+    let name_wt_dir = tmp.path().join("worktrees").join("already-migrated");
+    let session_wt = name_wt_dir.join("session-1");
+    fs::create_dir_all(&session_wt).expect("create name worktree dir");
+
+    let project = Project {
+        id: project_id,
+        name: "already-migrated".to_string(),
+        repo_path: "/tmp/fake-repo".to_string(),
+        created_at: "2026-03-01T00:00:00Z".to_string(),
+        archived: false,
+        sessions: vec![SessionConfig {
+            id: Uuid::new_v4(),
+            label: "session-1".to_string(),
+            worktree_path: Some(session_wt.to_str().unwrap().to_string()),
+            worktree_branch: Some("session-1".to_string()),
+            archived: false,
+            kind: "claude".to_string(),
+        }],
+    };
+    storage.save_project(&project).expect("save project");
+
+    // Should not error or change anything
+    storage.migrate_worktree_paths(&project).expect("migrate noop");
+
+    assert!(session_wt.exists(), "name dir should still exist");
+    let loaded = storage.load_project(project_id).expect("load");
+    assert_eq!(
+        loaded.sessions[0].worktree_path.as_deref(),
+        Some(session_wt.to_str().unwrap())
+    );
+}
+
+/// When both `worktrees/{uuid}/` and `worktrees/{name}/` exist,
+/// migration should skip the rename to avoid clobbering the name dir.
+/// The stored `worktree_path` must remain unchanged (still UUID-based).
+#[test]
+fn test_migrate_worktree_paths_noop_on_name_collision() {
+    let tmp = TempDir::new().unwrap();
+    let storage = make_storage(&tmp);
+
+    let project_id = Uuid::new_v4();
+
+    // Create BOTH the UUID-based dir and the name-based dir
+    let uuid_wt_dir = tmp.path().join("worktrees").join(project_id.to_string());
+    let uuid_session = uuid_wt_dir.join("session-1");
+    fs::create_dir_all(&uuid_session).expect("create uuid worktree dir");
+
+    let name_wt_dir = tmp.path().join("worktrees").join("collision-project");
+    let name_session = name_wt_dir.join("session-1");
+    fs::create_dir_all(&name_session).expect("create name worktree dir");
+
+    let project = Project {
+        id: project_id,
+        name: "collision-project".to_string(),
+        repo_path: "/tmp/fake-repo".to_string(),
+        created_at: "2026-03-01T00:00:00Z".to_string(),
+        archived: false,
+        sessions: vec![SessionConfig {
+            id: Uuid::new_v4(),
+            label: "session-1".to_string(),
+            worktree_path: Some(uuid_session.to_str().unwrap().to_string()),
+            worktree_branch: Some("session-1".to_string()),
+            archived: false,
+            kind: "claude".to_string(),
+        }],
+    };
+    storage.save_project(&project).expect("save project");
+
+    // Run migration — should be a no-op because name dir already exists
+    storage
+        .migrate_worktree_paths(&project)
+        .expect("migrate should not error on collision");
+
+    // UUID dir should still exist (no rename happened)
+    assert!(uuid_wt_dir.exists(), "UUID dir should still exist");
+
+    // Stored path should be unchanged (still UUID-based)
+    let loaded = storage.load_project(project_id).expect("load");
+    assert_eq!(
+        loaded.sessions[0].worktree_path.as_deref(),
+        Some(uuid_session.to_str().unwrap()),
+        "worktree_path should remain UUID-based when name collision exists"
+    );
+}
+
 /// A project with no sessions should be archivable.
 /// Reproduces the bug where archiving a zero-session project was a no-op:
 /// `archive_project` only marked sessions as archived (nothing to iterate),

@@ -75,6 +75,47 @@ impl Storage {
         Ok(projects)
     }
 
+    /// Migrate worktree directories from UUID-based to name-based paths.
+    ///
+    /// Renames `worktrees/{project_uuid}/` to `worktrees/{project_name}/`
+    /// and updates all `worktree_path` entries in the project's sessions.
+    /// No-op if the UUID directory doesn't exist (already migrated or no worktrees).
+    pub fn migrate_worktree_paths(&self, project: &Project) -> std::io::Result<()> {
+        let uuid_dir = self.base_dir.join("worktrees").join(project.id.to_string());
+        if !uuid_dir.exists() {
+            return Ok(());
+        }
+
+        let name_dir = self.base_dir.join("worktrees").join(&project.name);
+        if name_dir.exists() {
+            eprintln!(
+                "Warning: cannot migrate worktrees for project '{}': target dir already exists",
+                project.name
+            );
+            return Ok(());
+        }
+
+        // Rename the directory
+        fs::rename(&uuid_dir, &name_dir)?;
+
+        // Update stored worktree paths
+        let uuid_prefix = uuid_dir.to_str().unwrap_or_default();
+        let name_prefix = name_dir.to_str().unwrap_or_default();
+
+        let mut updated = project.clone();
+        for session in &mut updated.sessions {
+            if let Some(ref wt_path) = session.worktree_path {
+                if wt_path.starts_with(uuid_prefix) {
+                    session.worktree_path =
+                        Some(wt_path.replacen(uuid_prefix, name_prefix, 1));
+                }
+            }
+        }
+        self.save_project(&updated)?;
+
+        Ok(())
+    }
+
     /// Delete a project's config directory.
     pub fn delete_project_dir(&self, project_id: Uuid) -> std::io::Result<()> {
         let dir = self.project_dir(project_id);
