@@ -78,7 +78,7 @@
         <TerminalManager />
       </main>
       {#if taskPanelIsVisible}
-        <TaskPanel />
+        <TaskPanel visible={taskPanelIsVisible} />
       {/if}
     </div>
     <HotkeyManager />

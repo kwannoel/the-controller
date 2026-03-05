@@ -2,6 +2,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import { focusTarget, projects, type Project, type FocusTarget } from "./stores";
 
+  interface Props {
+    visible: boolean;
+  }
+
+  let { visible }: Props = $props();
+
   interface GithubIssue {
     number: number;
     title: string;
@@ -43,6 +49,12 @@
     if (repoPath && repoPath !== currentRepoPath) {
       currentRepoPath = repoPath;
       fetchIssues(repoPath);
+    }
+  });
+
+  $effect(() => {
+    if (visible && currentRepoPath) {
+      fetchIssues(currentRepoPath);
     }
   });
 
