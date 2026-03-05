@@ -21,6 +21,10 @@
   let issues: GithubIssue[] = $state([]);
   let loading = $state(true);
   let error: string | null = $state(null);
+  let selectedIndex = $state(0);
+
+  // Total items: issues + "No issue" option at the end
+  let itemCount = $derived(issues.length + 1);
 
   onMount(async () => {
     try {
@@ -32,11 +36,40 @@
     }
   });
 
+  function confirm() {
+    if (selectedIndex < issues.length) {
+      onSelect(issues[selectedIndex]);
+    } else {
+      onSkip();
+    }
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
       onClose();
+      return;
+    }
+
+    if (loading || error) return;
+
+    switch (e.key) {
+      case "j":
+        e.preventDefault();
+        e.stopPropagation();
+        selectedIndex = (selectedIndex + 1) % itemCount;
+        break;
+      case "k":
+        e.preventDefault();
+        e.stopPropagation();
+        selectedIndex = (selectedIndex - 1 + itemCount) % itemCount;
+        break;
+      case "Enter":
+        e.preventDefault();
+        e.stopPropagation();
+        confirm();
+        break;
     }
   }
 </script>
@@ -49,23 +82,23 @@
       <div class="status">Loading issues...</div>
     {:else if error}
       <div class="status error">{error}</div>
-    {:else if issues.length === 0}
-      <div class="status">No open issues</div>
     {:else}
       <ul class="issue-list">
-        {#each issues as issue}
+        {#each issues as issue, i}
           <li>
-            <button class="issue-btn" onclick={() => onSelect(issue)}>
+            <button class="issue-btn" class:selected={selectedIndex === i} onclick={() => onSelect(issue)}>
               <span class="issue-number">#{issue.number}</span>
               <span class="issue-title">{issue.title}</span>
             </button>
           </li>
         {/each}
+        <li>
+          <button class="issue-btn no-issue" class:selected={selectedIndex === issues.length} onclick={onSkip}>
+            No issue
+          </button>
+        </li>
       </ul>
     {/if}
-    <button class="btn-skip" onclick={onSkip}>
-      Skip — create raw session
-    </button>
   </div>
 </div>
 
@@ -129,7 +162,8 @@
     text-align: left;
     box-shadow: none;
   }
-  .issue-btn:hover {
+  .issue-btn:hover,
+  .issue-btn.selected {
     background: #313244;
     border-radius: 4px;
   }
@@ -144,18 +178,11 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .btn-skip {
-    background: none;
-    border: 1px solid #45475a;
+  .no-issue {
     color: #6c7086;
-    padding: 10px;
-    border-radius: 6px;
-    font-size: 13px;
-    cursor: pointer;
-    box-shadow: none;
   }
-  .btn-skip:hover {
+  .no-issue.selected,
+  .no-issue:hover {
     color: #cdd6f4;
-    border-color: #6c7086;
   }
 </style>
