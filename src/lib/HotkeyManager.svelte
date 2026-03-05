@@ -9,6 +9,7 @@
     generateJumpLabels,
     JUMP_KEYS,
     sidebarVisible,
+    taskPanelVisible,
     archiveView,
     archivedProjects,
     focusTarget,
@@ -345,6 +346,9 @@
         return true;
       case "s":
         sidebarVisible.update(v => !v);
+        return true;
+      case "t":
+        taskPanelVisible.update(v => !v);
         return true;
       case "l":
       case "Enter":

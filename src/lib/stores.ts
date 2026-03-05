@@ -48,6 +48,7 @@ export const showKeyHints = writable<boolean>(false);
 export const archiveView = writable<boolean>(false);
 export const archivedProjects = writable<Project[]>([]);
 export const sidebarVisible = writable<boolean>(true);
+export const taskPanelVisible = writable<boolean>(false);
 export const expandedProjects = writable<Set<string>>(new Set());
 
 // Focus tracking — granular: which element is focused

@@ -19,6 +19,7 @@
     { key: "f", description: "Find project (fuzzy finder)" },
     { key: "n", description: "New project" },
     { key: "s", description: "Toggle sidebar" },
+    { key: "t", description: "Toggle GitHub issues panel" },
     { key: "Esc", description: "Move focus up (terminal → session → project)" },
     { key: "?", description: "Toggle this help" },
   ];
