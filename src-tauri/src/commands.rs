@@ -422,6 +422,7 @@ pub fn create_session(
             worktree_branch: wt_branch,
             archived: false,
             kind: kind.clone(),
+            github_issue: None,
         };
         project.sessions.push(session_config);
         storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -1023,6 +1024,7 @@ mod tests {
                 worktree_branch: None,
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1031,6 +1033,7 @@ mod tests {
                 worktree_branch: None,
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
         ];
         assert_eq!(next_session_label(&sessions), "session-3");
@@ -1047,6 +1050,7 @@ mod tests {
                 worktree_branch: Some("session-1".to_string()),
                 archived: true,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1055,6 +1059,7 @@ mod tests {
                 worktree_branch: Some("session-2".to_string()),
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1063,6 +1068,7 @@ mod tests {
                 worktree_branch: Some("session-3".to_string()),
                 archived: true,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
         ];
         // Max is session-3, so next is session-4
@@ -1079,6 +1085,7 @@ mod tests {
             worktree_branch: None,
             archived: false,
             kind: "claude".to_string(),
+            github_issue: None,
         }];
         assert_eq!(next_session_label(&sessions), "session-4");
     }
