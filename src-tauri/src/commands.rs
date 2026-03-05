@@ -760,6 +760,28 @@ pub async fn list_github_issues(repo_path: String) -> Result<Vec<crate::models::
 }
 
 #[tauri::command]
+pub async fn generate_issue_body(title: String) -> Result<String, String> {
+    let prompt = format!(
+        "Write a concise GitHub issue body for an issue titled: \"{}\". \
+         Include a Summary section and a Details section. \
+         Keep it under 200 words. Return only the markdown body, nothing else.",
+        title
+    );
+    let output = tokio::process::Command::new("claude")
+        .args(["--print", &prompt])
+        .env_remove("CLAUDECODE")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run claude: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Ok(String::new())
+    }
+}
+
+#[tauri::command]
 pub async fn create_github_issue(
     repo_path: String,
     title: String,

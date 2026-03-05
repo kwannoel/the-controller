@@ -49,6 +49,7 @@ pub fn run() {
             commands::generate_project_names,
             commands::scaffold_project,
             commands::list_github_issues,
+            commands::generate_issue_body,
             commands::create_github_issue,
             commands::merge_session_branch,
         ])
