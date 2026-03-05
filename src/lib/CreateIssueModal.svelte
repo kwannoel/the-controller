@@ -1,44 +1,23 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
-  import { showToast } from "./toast";
-
-  interface GithubIssue {
-    number: number;
-    title: string;
-    url: string;
-    labels: { name: string }[];
-  }
 
   interface Props {
-    repoPath: string;
-    onCreated: (issue: GithubIssue) => void;
+    onSubmit: (title: string) => void;
     onClose: () => void;
   }
 
-  let { repoPath, onCreated, onClose }: Props = $props();
+  let { onSubmit, onClose }: Props = $props();
 
   let title = $state("");
-  let loading = $state(false);
   let titleInput: HTMLInputElement | undefined = $state();
 
   onMount(() => {
     titleInput?.focus();
   });
 
-  async function create() {
-    if (!title.trim() || loading) return;
-    loading = true;
-    try {
-      const issue = await invoke<GithubIssue>("create_github_issue", {
-        repoPath,
-        title: title.trim(),
-      });
-      onCreated(issue);
-    } catch (e) {
-      showToast(String(e), "error");
-      loading = false;
-    }
+  function submit() {
+    if (!title.trim()) return;
+    onSubmit(title.trim());
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -48,7 +27,7 @@
       onClose();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      create();
+      submit();
     }
   }
 </script>
@@ -62,14 +41,13 @@
       bind:value={title}
       placeholder="Issue title"
       class="input"
-      disabled={loading}
     />
     <button
       class="btn-primary"
-      onclick={create}
-      disabled={!title.trim() || loading}
+      onclick={submit}
+      disabled={!title.trim()}
     >
-      {loading ? "Creating..." : "Create Issue"}
+      Create Issue
     </button>
   </div>
 </div>
