@@ -117,6 +117,7 @@
       p.sessions.some((s) => s.id === activeId),
     );
     if (project) {
+      sidebarVisible.set(true);
       focusTarget.set({ type: "session", sessionId: activeId, projectId: project.id });
     }
   }
