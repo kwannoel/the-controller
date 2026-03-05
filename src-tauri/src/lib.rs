@@ -16,6 +16,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(state::AppState::new())
+        .setup(|app| {
+            status_socket::start_listener(app.handle().clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::restore_sessions,
             commands::create_project,
@@ -52,6 +56,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                status_socket::cleanup();
                 // In release builds, kill tmux sessions on quit so they don't linger.
                 // In dev builds, let tmux sessions survive so they reattach after
                 // cargo-watch restarts the app (the whole point of the tmux layer).
