@@ -39,7 +39,7 @@ describe('TerminalManager', () => {
       created_at: '2026-01-01',
       archived: false,
       sessions: [
-        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null },
+        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
       ],
     }]);
     activeSessionId.set('sess-1');
