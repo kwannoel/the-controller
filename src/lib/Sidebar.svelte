@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, type Project, type JumpPhase, type FocusTarget } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, type Project, type JumpPhase, type FocusTarget, type SessionStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -27,6 +27,8 @@
   let deleteSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let archiveSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let archiveProjectTarget: Project | null = $state(null);
+  let mergeSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
+  let mergeInProgress = $state(false);
   let isArchiveView = $state(false);
   let archivedProjectList: Project[] = $state([]);
 
@@ -48,7 +50,9 @@
   });
   let projectList: Project[] = $state([]);
   let activeSession: string | null = $state(null);
-  let statuses: Map<string, "running" | "idle"> = $state(new Map());
+  let statuses: Map<string, SessionStatus> = $state(new Map());
+  const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const IDLE_TIMEOUT_MS = 3000;
 
   $effect(() => {
     const unsub = projects.subscribe((value) => { projectList = value; });
@@ -212,6 +216,18 @@
           archiveView.update(v => !v);
           break;
         }
+        case "merge-session": {
+          const proj = projectList.find((p) => p.id === action.projectId);
+          const sess = proj?.sessions.find((s) => s.id === action.sessionId);
+          if (sess) {
+            mergeSessionTarget = {
+              sessionId: action.sessionId,
+              projectId: action.projectId,
+              label: sess.label,
+            };
+          }
+          break;
+        }
       }
     });
     return unsub;
@@ -221,23 +237,57 @@
     loadProjects();
   });
 
+  function markSession(sessionId: string, status: SessionStatus) {
+    sessionStatuses.update(m => {
+      const next = new Map(m);
+      next.set(sessionId, status);
+      return next;
+    });
+  }
+
+  function resetIdleTimer(sessionId: string) {
+    const existing = idleTimers.get(sessionId);
+    if (existing) clearTimeout(existing);
+    idleTimers.set(sessionId, setTimeout(() => {
+      // Only transition to idle if still working (not exited)
+      sessionStatuses.update(m => {
+        if (m.get(sessionId) === "working") {
+          const next = new Map(m);
+          next.set(sessionId, "idle");
+          return next;
+        }
+        return m;
+      });
+    }, IDLE_TIMEOUT_MS));
+  }
+
   $effect(() => {
     const unlisteners: (() => void)[] = [];
+    let cancelled = false;
 
     for (const project of projectList) {
       for (const session of project.sessions) {
         listen<string>(`session-status-changed:${session.id}`, () => {
-          sessionStatuses.update(m => {
-            const next = new Map(m);
-            next.set(session.id, "idle");
-            return next;
-          });
-        }).then(unlisten => unlisteners.push(unlisten));
+          const timer = idleTimers.get(session.id);
+          if (timer) clearTimeout(timer);
+          idleTimers.delete(session.id);
+          markSession(session.id, "exited");
+        }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+
+        listen<string>(`pty-output:${session.id}`, () => {
+          markSession(session.id, "working");
+          resetIdleTimer(session.id);
+        }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
       }
     }
 
     return () => {
+      cancelled = true;
       unlisteners.forEach(fn => fn());
+      for (const timer of idleTimers.values()) {
+        clearTimeout(timer);
+      }
+      idleTimers.clear();
     };
   });
 
@@ -284,11 +334,7 @@
       const sessionId: string = await invoke("create_session", {
         projectId,
       });
-      sessionStatuses.update(m => {
-        const next = new Map(m);
-        next.set(sessionId, "running");
-        return next;
-      });
+      markSession(sessionId, "working");
       activeSessionId.set(sessionId);
       await loadProjects();
       // Auto-expand the project
@@ -315,6 +361,9 @@
       const nextFocus = focusAfterSessionDelete(list, projectId, sessionId, isArchiveView);
 
       await invoke("close_session", { projectId, sessionId, deleteWorktree });
+      const timer = idleTimers.get(sessionId);
+      if (timer) clearTimeout(timer);
+      idleTimers.delete(sessionId);
       sessionStatuses.update(m => {
         const next = new Map(m);
         next.delete(sessionId);
@@ -342,6 +391,9 @@
       const prevSession = idx > 0 ? activeSessions[idx - 1] : null;
 
       await invoke("archive_session", { projectId, sessionId });
+      const timer = idleTimers.get(sessionId);
+      if (timer) clearTimeout(timer);
+      idleTimers.delete(sessionId);
       sessionStatuses.update(m => {
         const next = new Map(m);
         next.delete(sessionId);
@@ -363,11 +415,7 @@
   async function unarchiveSession(projectId: string, sessionId: string) {
     try {
       await invoke("unarchive_session", { projectId, sessionId });
-      sessionStatuses.update(m => {
-        const next = new Map(m);
-        next.set(sessionId, "running");
-        return next;
-      });
+      markSession(sessionId, "working");
       activeSessionId.set(sessionId);
       await loadProjects();
       if (isArchiveView) await loadArchivedProjects();
@@ -390,7 +438,36 @@
     }
   }
 
-  function getSessionStatus(sessionId: string): "running" | "idle" {
+  async function mergeSession(projectId: string, sessionId: string) {
+    mergeInProgress = true;
+
+    // Focus the terminal so user can watch Claude resolve conflicts if any
+    activeSessionId.set(sessionId);
+    setTimeout(() => {
+      hotkeyAction.set({ type: "focus-terminal" });
+      setTimeout(() => hotkeyAction.set(null), 0);
+    }, 50);
+
+    // Listen for intermediate merge status events
+    let unlistenStatus: (() => void) | null = null;
+    listen<string>("merge-status", (event) => {
+      showToast(event.payload, "info");
+    }).then(fn => { unlistenStatus = fn; });
+
+    try {
+      const result: { type: string; url?: string } = await invoke("merge_session_branch", { projectId, sessionId });
+      if (result.type === "pr_created") {
+        showToast(`PR created: ${result.url}`, "info");
+      }
+    } catch (e) {
+      showToast(String(e), "error");
+    } finally {
+      mergeInProgress = false;
+      unlistenStatus?.();
+    }
+  }
+
+  function getSessionStatus(sessionId: string): SessionStatus {
     return statuses.get(sessionId) ?? "idle";
   }
 
@@ -485,9 +562,10 @@
                 >
                   <span
                     class="status-dot"
-                    class:running={getSessionStatus(session.id) === "running"}
+                    class:idle={getSessionStatus(session.id) === "idle"}
+                    class:working={getSessionStatus(session.id) === "working"}
                   >
-                    {getSessionStatus(session.id) === "running" ? "\u25CF" : "\u25CB"}
+                    {getSessionStatus(session.id) === "exited" ? "\u25CB" : "\u25CF"}
                   </span>
                   <span class="session-label">{session.label}</span>
                   {#if jumpState?.phase === 'session' && jumpState.projectId === project.id && sessionJumpLabels[sessionIdx]}
@@ -600,6 +678,21 @@
         archiveProjectTarget = null;
       }}
       onClose={() => (archiveProjectTarget = null)}
+    />
+  {/if}
+
+  {#if mergeSessionTarget}
+    <ConfirmModal
+      title="Merge Session Branch"
+      message={`Create PR to merge "${mergeSessionTarget.label}" into main?${mergeInProgress ? " Merging..." : ""}`}
+      confirmLabel="Merge"
+      onConfirm={() => {
+        if (mergeSessionTarget && !mergeInProgress) {
+          mergeSession(mergeSessionTarget.projectId, mergeSessionTarget.sessionId);
+        }
+        mergeSessionTarget = null;
+      }}
+      onClose={() => (mergeSessionTarget = null)}
     />
   {/if}
 
@@ -756,8 +849,12 @@
     color: #6c7086;
   }
 
-  .status-dot.running {
+  .status-dot.idle {
     color: #a6e3a1;
+  }
+
+  .status-dot.working {
+    color: #f9e2af;
   }
 
   .session-label {

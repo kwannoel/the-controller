@@ -45,6 +45,7 @@ pub fn run() {
             commands::scaffold_project,
             commands::list_github_issues,
             commands::create_github_issue,
+            commands::merge_session_branch,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

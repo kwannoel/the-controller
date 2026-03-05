@@ -117,6 +117,7 @@
       p.sessions.some((s) => s.id === activeId),
     );
     if (project) {
+      sidebarVisible.set(true);
       focusTarget.set({ type: "session", sessionId: activeId, projectId: project.id });
     }
   }
@@ -342,6 +343,11 @@
           dispatchAction({ type: "create-session", projectId: currentFocus.projectId });
         } else if (currentFocus?.type === "session") {
           dispatchAction({ type: "create-session", projectId: currentFocus.projectId });
+        }
+        return true;
+      case "m":
+        if (currentFocus?.type === "session") {
+          dispatchAction({ type: "merge-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
         }
         return true;
       case "s":

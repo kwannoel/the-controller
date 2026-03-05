@@ -2,6 +2,16 @@
 
 Tauri v2 + Svelte 5 desktop app for orchestrating multiple Claude Code terminal sessions.
 
+## Task Workflow (CRITICAL)
+
+For every new task, follow this workflow:
+
+1. **File a GitHub issue** — Create an issue in this repository describing the task before starting work.
+2. **Update with design plan** — Once the design is complete, update the GitHub issue with the design plan.
+3. **Update with implementation plan** — Once the implementation plan is ready, update the GitHub issue with it.
+4. **Close the issue** — Close the GitHub issue once the task is fully completed and verified.
+5. **Update the merge commit/PR** — After merging, update the merge note (PR description or commit message) to summarize what work was done.
+
 ## Task Structure (CRITICAL — NEVER SKIP)
 
 **This is the most important rule. Every task, no matter how small, MUST follow this structure before writing any code. No exceptions.**

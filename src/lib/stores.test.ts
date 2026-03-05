@@ -35,17 +35,19 @@ describe('stores', () => {
     expect(get(activeSessionId)).toBeNull();
   });
 
-  it('sessionStatuses can track running/idle', () => {
+  it('sessionStatuses can track working/idle/exited', () => {
     sessionStatuses.update((m) => {
       const next = new Map(m);
-      next.set('sess-1', 'running');
+      next.set('sess-1', 'working');
       next.set('sess-2', 'idle');
+      next.set('sess-3', 'exited');
       return next;
     });
     const statuses = get(sessionStatuses);
-    expect(statuses.get('sess-1')).toBe('running');
+    expect(statuses.get('sess-1')).toBe('working');
     expect(statuses.get('sess-2')).toBe('idle');
-    expect(statuses.size).toBe(2);
+    expect(statuses.get('sess-3')).toBe('exited');
+    expect(statuses.size).toBe(3);
   });
 
   it('hotkeyAction dispatch and reset', () => {
