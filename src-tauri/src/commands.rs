@@ -801,11 +801,7 @@ pub async fn merge_session_branch(
             }
             crate::worktree::MergeResult::RebaseConflicts => {
                 // Send a prompt to Claude to resolve conflicts
-                let prompt = if attempt == 0 {
-                    "There are rebase conflicts that need to be resolved. Please check `git status` to see the conflicting files, resolve all conflicts, then run `git add .` and `git rebase --continue`. Do NOT abort the rebase.\n"
-                } else {
-                    "There are new rebase conflicts after syncing with upstream. Please check `git status`, resolve all conflicts, then run `git add .` and `git rebase --continue`. Do NOT abort the rebase.\n"
-                };
+                let prompt = "merge\r";
                 {
                     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
                     let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
