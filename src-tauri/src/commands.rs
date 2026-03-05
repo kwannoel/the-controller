@@ -872,6 +872,36 @@ pub async fn create_github_issue(
     })
 }
 
+#[tauri::command]
+pub async fn post_github_comment(
+    repo_path: String,
+    issue_number: u64,
+    body: String,
+) -> Result<(), String> {
+    let repo_path_clone = repo_path.clone();
+    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))??;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue", "comment",
+            &issue_number.to_string(),
+            "--repo", &nwo,
+            "--body", &body,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue comment failed: {}", stderr));
+    }
+
+    Ok(())
+}
+
 const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;
 

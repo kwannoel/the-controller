@@ -51,6 +51,7 @@ pub fn run() {
             commands::list_github_issues,
             commands::generate_issue_body,
             commands::create_github_issue,
+            commands::post_github_comment,
             commands::merge_session_branch,
         ])
         .build(tauri::generate_context!())
