@@ -6,6 +6,7 @@ export interface SessionConfig {
   worktree_path: string | null;
   worktree_branch: string | null;
   archived: boolean;
+  kind: string;
 }
 
 export interface Project {
@@ -32,7 +33,7 @@ export const onboardingComplete = writable<boolean>(false);
 export type HotkeyAction =
   | { type: "open-fuzzy-finder" }
   | { type: "open-new-project" }
-  | { type: "create-session"; projectId?: string }
+  | { type: "create-session"; projectId?: string; kind?: string }
   | { type: "delete-session"; sessionId?: string; projectId?: string }
   | { type: "focus-terminal" }
   | { type: "toggle-help" }
@@ -65,7 +66,6 @@ export const focusTarget = writable<FocusTarget>(null);
 // Jump navigation
 export type JumpPhase =
   | { phase: "project" }
-  | { phase: "session"; projectId: string }
   | null;
 
 export const jumpMode = writable<JumpPhase>(null);
