@@ -80,14 +80,9 @@ impl PtyManager {
         cmd.cwd(working_dir);
         cmd.env_remove("CLAUDECODE");
         cmd.env("THE_CONTROLLER_SESSION_ID", session_id.to_string());
-        if command == "claude" {
-            let settings_json = crate::status_socket::hook_settings_json(session_id);
-            cmd.arg("--settings");
-            cmd.arg(settings_json);
-            if let Some(prompt) = initial_prompt {
-                cmd.arg("--prompt");
-                cmd.arg(prompt);
-            }
+        for arg in crate::session_args::build_session_args(command, session_id, false, initial_prompt)
+        {
+            cmd.arg(arg);
         }
 
         let _child = pair

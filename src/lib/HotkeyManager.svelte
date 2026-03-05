@@ -102,6 +102,10 @@
     return false;
   }
 
+  function isDialogOpen(): boolean {
+    return document.querySelector('[role="dialog"]') !== null;
+  }
+
   function forwardEscape() {
     if (activeId) {
       invoke("write_to_pty", { sessionId: activeId, data: "\x1b" });
@@ -385,6 +389,9 @@
     }
 
     // --- Ambient mode (not in terminal) ---
+    // Allow dialog-local keyboard handlers to own key events.
+    if (isDialogOpen()) return;
+
     // Don't intercept keys when typing in input fields
     if (isEditableElementFocused()) return;
 

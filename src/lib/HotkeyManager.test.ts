@@ -640,5 +640,20 @@ describe('HotkeyManager', () => {
       input.blur();
       input.remove();
     });
+
+    it('hotkeys are ignored when a dialog is open', () => {
+      const dialog = document.createElement('div');
+      dialog.setAttribute('role', 'dialog');
+      document.body.appendChild(dialog);
+
+      try {
+        focusTarget.set({ type: 'project', projectId: 'proj-1' });
+        pressKey('j');
+        expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
+        expect(get(hotkeyAction)).toBeNull();
+      } finally {
+        dialog.remove();
+      }
+    });
   });
 });

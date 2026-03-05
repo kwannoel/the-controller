@@ -33,21 +33,25 @@ impl TmuxManager {
         initial_prompt: Option<&str>,
     ) -> Result<(), String> {
         let name = Self::session_name(session_id);
-        let settings_json = crate::status_socket::hook_settings_json(session_id);
         let mut args = vec![
-            "new-session", "-d", "-s", &name, "-c", working_dir, "-x", "80", "-y", "24", command,
+            "new-session".to_string(),
+            "-d".to_string(),
+            "-s".to_string(),
+            name.clone(),
+            "-c".to_string(),
+            working_dir.to_string(),
+            "-x".to_string(),
+            "80".to_string(),
+            "-y".to_string(),
+            "24".to_string(),
+            command.to_string(),
         ];
-        if continue_session {
-            args.push("--continue");
-        }
-        if command == "claude" {
-            args.push("--settings");
-            args.push(&settings_json);
-            if let Some(prompt) = initial_prompt {
-                args.push("--prompt");
-                args.push(prompt);
-            }
-        }
+        args.extend(crate::session_args::build_session_args(
+            command,
+            session_id,
+            continue_session,
+            initial_prompt,
+        ));
         let output = Command::new(TMUX_BIN)
             .args(&args)
             .env("THE_CONTROLLER_SESSION_ID", session_id.to_string())
