@@ -136,6 +136,24 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
+    it('m dispatches merge-session when session focused', () => {
+      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('m');
+      expect(captured).toEqual({ type: 'merge-session', sessionId: 'sess-1', projectId: 'proj-1' });
+      unsub();
+    });
+
+    it('m does nothing when project focused', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('m');
+      expect(captured).toBeNull();
+      unsub();
+    });
+
     it('modifier keys alone do not dispatch', () => {
       const initial = get(activeSessionId);
       pressKey('Shift');

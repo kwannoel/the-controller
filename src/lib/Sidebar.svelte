@@ -27,6 +27,8 @@
   let deleteSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let archiveSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let archiveProjectTarget: Project | null = $state(null);
+  let mergeSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
+  let mergeInProgress = $state(false);
   let isArchiveView = $state(false);
   let archivedProjectList: Project[] = $state([]);
 
@@ -212,6 +214,18 @@
         }
         case "toggle-archive-view": {
           archiveView.update(v => !v);
+          break;
+        }
+        case "merge-session": {
+          const proj = projectList.find((p) => p.id === action.projectId);
+          const sess = proj?.sessions.find((s) => s.id === action.sessionId);
+          if (sess) {
+            mergeSessionTarget = {
+              sessionId: action.sessionId,
+              projectId: action.projectId,
+              label: sess.label,
+            };
+          }
           break;
         }
       }
@@ -421,6 +435,35 @@
       await loadProjects();
     } catch (e) {
       showToast(String(e), "error");
+    }
+  }
+
+  async function mergeSession(projectId: string, sessionId: string) {
+    mergeInProgress = true;
+
+    // Focus the terminal so user can watch Claude resolve conflicts if any
+    activeSessionId.set(sessionId);
+    setTimeout(() => {
+      hotkeyAction.set({ type: "focus-terminal" });
+      setTimeout(() => hotkeyAction.set(null), 0);
+    }, 50);
+
+    // Listen for intermediate merge status events
+    let unlistenStatus: (() => void) | null = null;
+    listen<string>("merge-status", (event) => {
+      showToast(event.payload, "info");
+    }).then(fn => { unlistenStatus = fn; });
+
+    try {
+      const result: { type: string; url?: string } = await invoke("merge_session_branch", { projectId, sessionId });
+      if (result.type === "pr_created") {
+        showToast(`PR created: ${result.url}`, "info");
+      }
+    } catch (e) {
+      showToast(String(e), "error");
+    } finally {
+      mergeInProgress = false;
+      unlistenStatus?.();
     }
   }
 
@@ -635,6 +678,21 @@
         archiveProjectTarget = null;
       }}
       onClose={() => (archiveProjectTarget = null)}
+    />
+  {/if}
+
+  {#if mergeSessionTarget}
+    <ConfirmModal
+      title="Merge Session Branch"
+      message={`Create PR to merge "${mergeSessionTarget.label}" into main?${mergeInProgress ? " Merging..." : ""}`}
+      confirmLabel="Merge"
+      onConfirm={() => {
+        if (mergeSessionTarget && !mergeInProgress) {
+          mergeSession(mergeSessionTarget.projectId, mergeSessionTarget.sessionId);
+        }
+        mergeSessionTarget = null;
+      }}
+      onClose={() => (mergeSessionTarget = null)}
     />
   {/if}
 

@@ -42,6 +42,7 @@ export type HotkeyAction =
   | { type: "unarchive-session"; sessionId: string; projectId: string }
   | { type: "unarchive-project"; projectId: string }
   | { type: "toggle-archive-view" }
+  | { type: "merge-session"; sessionId: string; projectId: string }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
