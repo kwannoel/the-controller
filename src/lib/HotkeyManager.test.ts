@@ -12,8 +12,8 @@ const testProject = {
   created_at: '2026-01-01',
   archived: false,
   sessions: [
-    { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-    { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false },
+    { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude' },
+    { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude' },
   ],
 };
 
@@ -24,8 +24,8 @@ const testProject2 = {
   created_at: '2026-01-01',
   archived: false,
   sessions: [
-    { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-    { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false },
+    { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude' },
+    { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude' },
   ],
 };
 
