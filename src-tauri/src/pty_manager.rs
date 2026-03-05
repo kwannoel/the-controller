@@ -77,6 +77,12 @@ impl PtyManager {
         let mut cmd = CommandBuilder::new(command);
         cmd.cwd(working_dir);
         cmd.env_remove("CLAUDECODE");
+        cmd.env("THE_CONTROLLER_SESSION_ID", session_id.to_string());
+        if command == "claude" {
+            let settings_json = crate::status_socket::hook_settings_json(session_id);
+            cmd.arg("--settings");
+            cmd.arg(settings_json);
+        }
 
         let _child = pair
             .slave

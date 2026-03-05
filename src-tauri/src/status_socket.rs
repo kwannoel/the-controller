@@ -89,6 +89,40 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
     }
 }
 
+/// Generate a JSON settings string for Claude Code's `--settings` flag.
+/// Configures hooks that report session status changes over the Unix socket.
+pub fn hook_settings_json(_session_id: Uuid) -> String {
+    let working_cmd = format!(
+        "timeout 2 bash -c 'echo \"working:$THE_CONTROLLER_SESSION_ID\" | nc -U {}' 2>/dev/null; true",
+        SOCKET_PATH
+    );
+    let idle_cmd = format!(
+        "timeout 2 bash -c 'echo \"idle:$THE_CONTROLLER_SESSION_ID\" | nc -U {}' 2>/dev/null; true",
+        SOCKET_PATH
+    );
+
+    serde_json::json!({
+        "hooks": {
+            "UserPromptSubmit": [{
+                "type": "command",
+                "command": working_cmd
+            }],
+            "Stop": [{
+                "type": "command",
+                "command": idle_cmd
+            }],
+            "Notification": [{
+                "matcher": "idle_prompt",
+                "hooks": [{
+                    "type": "command",
+                    "command": idle_cmd
+                }]
+            }]
+        }
+    })
+    .to_string()
+}
+
 /// Remove the socket file. Call on app shutdown.
 pub fn cleanup() {
     let _ = std::fs::remove_file(SOCKET_PATH);
@@ -114,6 +148,17 @@ mod tests {
         let (status, parsed_id) = parse_status_message(&msg).unwrap();
         assert_eq!(status, "idle");
         assert_eq!(parsed_id, id);
+    }
+
+    #[test]
+    fn test_hook_settings_json_is_valid() {
+        let id = uuid::Uuid::new_v4();
+        let json = hook_settings_json(id);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let hooks = parsed.get("hooks").unwrap();
+        assert!(hooks.get("UserPromptSubmit").is_some());
+        assert!(hooks.get("Stop").is_some());
+        assert!(hooks.get("Notification").is_some());
     }
 
     #[test]
