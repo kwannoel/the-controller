@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::config;
@@ -347,6 +347,11 @@ pub fn create_session(
         let label = next_session_label(&project.sessions);
         (project.repo_path.clone(), label, storage.base_dir(), project.name.clone())
     };
+
+    // Sync main branch before creating worktree so session starts from latest
+    if let Err(e) = WorktreeManager::sync_main(&repo_path) {
+        eprintln!("Warning: failed to sync main branch: {}", e);
+    }
 
     // Create worktree under ~/.the-controller/worktrees/{project_name}/{label}/
     let worktree_dir = base_dir
@@ -740,6 +745,103 @@ pub async fn list_github_issues(repo_path: String) -> Result<Vec<crate::models::
             .map_err(|e| format!("Failed to parse gh output: {}", e))?;
 
     Ok(issues)
+}
+
+const MAX_MERGE_RETRIES: u32 = 5;
+const REBASE_POLL_INTERVAL_SECS: u64 = 3;
+
+#[tauri::command]
+pub async fn merge_session_branch(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+    session_id: String,
+) -> Result<crate::models::MergeResponse, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let (repo_path, worktree_path, branch_name) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+        let session = project
+            .sessions
+            .iter()
+            .find(|s| s.id == session_uuid)
+            .ok_or_else(|| "Session not found".to_string())?;
+        let wt_path = session
+            .worktree_path
+            .clone()
+            .ok_or_else(|| "Session has no worktree".to_string())?;
+        let branch = session
+            .worktree_branch
+            .clone()
+            .ok_or_else(|| "Session has no branch".to_string())?;
+        (project.repo_path.clone(), wt_path, branch)
+    };
+
+    for attempt in 0..MAX_MERGE_RETRIES {
+        let rp = repo_path.clone();
+        let wt = worktree_path.clone();
+        let br = branch_name.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            if WorktreeManager::is_rebase_in_progress(&wt) {
+                // Rebase still in progress from a previous attempt — wait
+                Ok(crate::worktree::MergeResult::RebaseConflicts)
+            } else {
+                WorktreeManager::merge_via_pr(&rp, &wt, &br)
+            }
+        })
+        .await
+        .map_err(|e| format!("Task failed: {}", e))??;
+
+        match result {
+            crate::worktree::MergeResult::PrCreated(url) => {
+                return Ok(crate::models::MergeResponse::PrCreated { url });
+            }
+            crate::worktree::MergeResult::RebaseConflicts => {
+                // Send a prompt to Claude to resolve conflicts
+                let prompt = if attempt == 0 {
+                    "There are rebase conflicts that need to be resolved. Please check `git status` to see the conflicting files, resolve all conflicts, then run `git add .` and `git rebase --continue`. Do NOT abort the rebase.\n"
+                } else {
+                    "There are new rebase conflicts after syncing with upstream. Please check `git status`, resolve all conflicts, then run `git add .` and `git rebase --continue`. Do NOT abort the rebase.\n"
+                };
+                {
+                    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+                    let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
+                }
+
+                // Emit status event so frontend can show progress
+                let _ = app_handle.emit("merge-status", format!(
+                    "Rebase conflicts (attempt {}/{}). Claude is resolving...",
+                    attempt + 1, MAX_MERGE_RETRIES
+                ));
+
+                // Poll until rebase is no longer in progress
+                let wt_poll = worktree_path.clone();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS)).await;
+                    let wt_check = wt_poll.clone();
+                    let still_rebasing = tokio::task::spawn_blocking(move || {
+                        WorktreeManager::is_rebase_in_progress(&wt_check)
+                    })
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?;
+                    if !still_rebasing {
+                        break;
+                    }
+                }
+
+                // Loop back — will sync main and rebase again
+                continue;
+            }
+        }
+    }
+
+    Err(format!(
+        "Merge failed after {} attempts due to recurring conflicts",
+        MAX_MERGE_RETRIES
+    ))
 }
 
 #[cfg(test)]

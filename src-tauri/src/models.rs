@@ -56,6 +56,15 @@ pub struct GithubLabel {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum MergeResponse {
+    #[serde(rename = "pr_created")]
+    PrCreated { url: String },
+    #[serde(rename = "rebase_conflicts")]
+    RebaseConflicts,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

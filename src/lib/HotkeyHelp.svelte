@@ -16,6 +16,7 @@
     { key: "d", description: "Delete focused item (session or project)" },
     { key: "a", description: "Archive focused item (session or project)" },
     { key: "A", description: "View archived projects" },
+    { key: "m", description: "Merge session branch (create PR)" },
     { key: "f", description: "Find project (fuzzy finder)" },
     { key: "n", description: "New project" },
     { key: "s", description: "Toggle sidebar" },

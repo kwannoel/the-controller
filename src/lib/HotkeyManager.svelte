@@ -345,6 +345,11 @@
           dispatchAction({ type: "create-session", projectId: currentFocus.projectId });
         }
         return true;
+      case "m":
+        if (currentFocus?.type === "session") {
+          dispatchAction({ type: "merge-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
+        }
+        return true;
       case "s":
         sidebarVisible.update(v => !v);
         return true;
