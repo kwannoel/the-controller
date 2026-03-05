@@ -56,6 +56,7 @@ pub fn run() {
             commands::add_github_label,
             commands::remove_github_label,
             commands::merge_session_branch,
+            commands::copy_image_file_to_clipboard,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

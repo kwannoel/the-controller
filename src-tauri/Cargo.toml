@@ -25,6 +25,7 @@ dirs = "5"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-clipboard-manager = "2.3.2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 
 [dev-dependencies]
 tempfile = "3"

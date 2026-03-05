@@ -1077,6 +1077,29 @@ pub async fn merge_session_branch(
     ))
 }
 
+/// Read an image file from disk and copy it to the system clipboard.
+/// Used by the drag-and-drop handler to put the dropped image on the clipboard
+/// so Claude Code can read it via its standard clipboard image detection.
+#[tauri::command]
+pub async fn copy_image_file_to_clipboard(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+
+    let image_data = tokio::task::spawn_blocking(move || {
+        let img = image::open(&path).map_err(|e| format!("Failed to open image: {e}"))?;
+        let rgba = img.to_rgba8();
+        let (width, height) = rgba.dimensions();
+        Ok::<_, String>((rgba.into_raw(), width, height))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {e}"))??;
+
+    let (bytes, width, height) = image_data;
+    let img = tauri::image::Image::new_owned(bytes, width, height);
+    app.clipboard()
+        .write_image(&img)
+        .map_err(|e| format!("Failed to write image to clipboard: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
