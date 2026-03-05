@@ -38,6 +38,7 @@ impl PtyManager {
         kind: &str,
         app_handle: AppHandle,
         continue_session: bool,
+        initial_prompt: Option<&str>,
     ) -> Result<(), String> {
         let command = match kind {
             "codex" => "codex",
@@ -46,13 +47,13 @@ impl PtyManager {
         if TmuxManager::is_available() {
             // Create tmux session if it doesn't already exist
             if !TmuxManager::has_session(session_id) {
-                TmuxManager::create_session(session_id, working_dir, command, continue_session)?;
+                TmuxManager::create_session(session_id, working_dir, command, continue_session, initial_prompt)?;
             }
             // Attach to the tmux session via a local PTY
             self.attach_tmux_session(session_id, app_handle)
         } else {
             // No tmux — spawn the command directly in a PTY
-            self.spawn_direct_session(session_id, working_dir, command, app_handle)
+            self.spawn_direct_session(session_id, working_dir, command, app_handle, initial_prompt)
         }
     }
 
@@ -63,6 +64,7 @@ impl PtyManager {
         working_dir: &str,
         command: &str,
         app_handle: AppHandle,
+        initial_prompt: Option<&str>,
     ) -> Result<(), String> {
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -82,6 +84,10 @@ impl PtyManager {
             let settings_json = crate::status_socket::hook_settings_json(session_id);
             cmd.arg("--settings");
             cmd.arg(settings_json);
+            if let Some(prompt) = initial_prompt {
+                cmd.arg("--prompt");
+                cmd.arg(prompt);
+            }
         }
 
         let _child = pair
