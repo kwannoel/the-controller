@@ -702,6 +702,18 @@ pub(crate) fn parse_github_nwo(url: &str) -> Result<String, String> {
     Err(format!("Not a GitHub remote URL: {}", url))
 }
 
+/// Parse a GitHub issue URL like "https://github.com/owner/repo/issues/42" and return the issue number.
+fn parse_github_issue_url(url: &str) -> Result<u64, String> {
+    let url = url.trim();
+    let parts: Vec<&str> = url.rsplitn(2, '/').collect();
+    if parts.len() == 2 {
+        if let Ok(num) = parts[0].parse::<u64>() {
+            return Ok(num);
+        }
+    }
+    Err(format!("Could not parse issue number from URL: {}", url))
+}
+
 /// Extract the GitHub owner/repo from a local git repository's origin remote.
 /// Handles both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git) URLs.
 fn extract_github_repo(repo_path: &str) -> Result<String, String> {
@@ -748,9 +760,32 @@ pub async fn list_github_issues(repo_path: String) -> Result<Vec<crate::models::
 }
 
 #[tauri::command]
+pub async fn generate_issue_body(title: String) -> Result<String, String> {
+    let prompt = format!(
+        "Write a concise GitHub issue body for an issue titled: \"{}\". \
+         Include a Summary section and a Details section. \
+         Keep it under 200 words. Return only the markdown body, nothing else.",
+        title
+    );
+    let output = tokio::process::Command::new("claude")
+        .args(["--print", &prompt])
+        .env_remove("CLAUDECODE")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run claude: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Ok(String::new())
+    }
+}
+
+#[tauri::command]
 pub async fn create_github_issue(
     repo_path: String,
     title: String,
+    body: String,
 ) -> Result<crate::models::GithubIssue, String> {
     // Step 1: Extract GitHub owner/repo
     let repo_path_clone = repo_path.clone();
@@ -758,35 +793,13 @@ pub async fn create_github_issue(
         .await
         .map_err(|e| format!("Task failed: {}", e))??;
 
-    // Step 2: Generate issue body via Claude CLI
-    let prompt = format!(
-        "Write a concise GitHub issue body for an issue titled: \"{}\". \
-         Include a Summary section and a Details section. \
-         Keep it under 200 words. Return only the markdown body, nothing else.",
-        title
-    );
-    let body_output = tokio::process::Command::new("claude")
-        .args(["--print", &prompt])
-        .env_remove("CLAUDECODE")
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run claude: {}", e))?;
-
-    let body = if body_output.status.success() {
-        String::from_utf8_lossy(&body_output.stdout).trim().to_string()
-    } else {
-        // Fallback: create issue without body if Claude fails
-        String::new()
-    };
-
-    // Step 3: Create the issue via gh CLI
+    // Step 2: Create the issue via gh CLI (no --json flag)
     let output = tokio::process::Command::new("gh")
         .args([
             "issue", "create",
             "--repo", &nwo,
             "--title", &title,
             "--body", &body,
-            "--json", "number,title,url,labels",
         ])
         .output()
         .await
@@ -797,11 +810,16 @@ pub async fn create_github_issue(
         return Err(format!("gh issue create failed: {}", stderr));
     }
 
-    let issue: crate::models::GithubIssue =
-        serde_json::from_slice(&output.stdout)
-            .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+    // Step 3: Parse the issue URL from stdout
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let number = parse_github_issue_url(&url)?;
 
-    Ok(issue)
+    Ok(crate::models::GithubIssue {
+        number,
+        title,
+        url,
+        labels: vec![],
+    })
 }
 
 const MAX_MERGE_RETRIES: u32 = 5;
@@ -1055,5 +1073,28 @@ mod tests {
         let result = parse_github_nwo("https://gitlab.com/owner/repo.git");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Not a GitHub remote URL"));
+    }
+
+    // --- parse_github_issue_url tests ---
+
+    #[test]
+    fn test_parse_github_issue_url_basic() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/42").unwrap(),
+            42
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_trailing_newline() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/7\n").unwrap(),
+            7
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_invalid() {
+        assert!(parse_github_issue_url("not a url").is_err());
     }
 }

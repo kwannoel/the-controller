@@ -9,7 +9,15 @@
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
   import TaskPanel from "./lib/TaskPanel.svelte";
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
+  import { showToast } from "./lib/toast";
   import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, type Config, type FocusTarget, type Project } from "./lib/stores";
+
+  interface GithubIssue {
+    number: number;
+    title: string;
+    url: string;
+    labels: { name: string }[];
+  }
 
   let ready = $state(false);
   let needsOnboarding = $state(true);
@@ -45,12 +53,29 @@
     return unsub;
   });
 
-  function handleIssueCreated(issue: any) {
-    createIssueTarget = null;
-    taskPanelVisible.set(true);
-    setTimeout(() => {
-      taskPanelRef?.insertIssue(issue);
-    }, 50);
+  async function handleIssueSubmit(title: string) {
+    const repoPath = createIssueTarget!.repoPath;
+    createIssueTarget = null; // close modal immediately
+
+    try {
+      showToast("Generating issue description...", "info");
+      const body = await invoke<string>("generate_issue_body", { title });
+
+      showToast("Creating issue...", "info");
+      const issue = await invoke<GithubIssue>("create_github_issue", {
+        repoPath,
+        title,
+        body,
+      });
+
+      showToast(`Issue #${issue.number} created`, "info");
+      taskPanelVisible.set(true);
+      setTimeout(() => {
+        taskPanelRef?.insertIssue(issue);
+      }, 50);
+    } catch (e) {
+      showToast(String(e), "error");
+    }
   }
 
   onMount(async () => {
@@ -100,8 +125,7 @@
     {/if}
     {#if createIssueTarget}
       <CreateIssueModal
-        repoPath={createIssueTarget.repoPath}
-        onCreated={handleIssueCreated}
+        onSubmit={handleIssueSubmit}
         onClose={() => { createIssueTarget = null; }}
       />
     {/if}
