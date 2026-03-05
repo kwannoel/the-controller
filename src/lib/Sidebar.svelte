@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, type Project, type JumpPhase, type FocusTarget, type SessionStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, type Project, type FocusTarget, type SessionStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -109,28 +109,6 @@
     if (!jumpState || jumpState.phase !== 'project') return [];
     const list = isArchiveView ? archivedProjectList : projectList;
     return generateJumpLabels(list.length);
-  });
-
-  let sessionJumpLabels = $derived.by(() => {
-    const js = jumpState;
-    if (!js || js.phase !== 'session') return [];
-    const list = isArchiveView ? archivedProjectList : projectList;
-    const project = list.find(p => p.id === js.projectId);
-    if (!project) return [];
-    const sessions = isArchiveView
-      ? project.sessions.filter(s => s.archived)
-      : project.sessions.filter(s => !s.archived);
-    // In archive view, no "create new" option
-    return generateJumpLabels(isArchiveView ? sessions.length : sessions.length + 1);
-  });
-
-  // Auto-expand project when entering session jump phase
-  $effect(() => {
-    if (jumpState?.phase === 'session' && !expandedProjectSet.has(jumpState.projectId)) {
-      const next = new Set(expandedProjectSet);
-      next.add(jumpState.projectId);
-      expandedProjects.set(next);
-    }
   });
 
   // React to hotkey actions
@@ -504,9 +482,6 @@
                 >
                   <span class="status-dot archived-dot">&cir;</span>
                   <span class="session-label">{session.label}</span>
-                  {#if jumpState?.phase === 'session' && jumpState.projectId === project.id && sessionJumpLabels[sessionIdx]}
-                    <kbd class="jump-label">{sessionJumpLabels[sessionIdx]}</kbd>
-                  {/if}
                 </div>
               {/each}
             </div>
@@ -559,18 +534,8 @@
                     {getSessionStatus(session.id) === "exited" ? "\u25CB" : "\u25CF"}
                   </span>
                   <span class="session-label">{session.label}</span>
-                  {#if jumpState?.phase === 'session' && jumpState.projectId === project.id && sessionJumpLabels[sessionIdx]}
-                    <kbd class="jump-label">{sessionJumpLabels[sessionIdx]}</kbd>
-                  {/if}
                 </div>
               {/each}
-              {#if jumpState?.phase === 'session' && jumpState.projectId === project.id}
-                <div class="session-item create-option">
-                  <span class="status-dot">+</span>
-                  <span class="session-label">New session</span>
-                  <kbd class="jump-label">{sessionJumpLabels[activeSessions.length]}</kbd>
-                </div>
-              {/if}
             </div>
           {/if}
         </div>
