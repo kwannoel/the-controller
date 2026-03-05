@@ -559,6 +559,9 @@
                     {getSessionStatus(session.id) === "exited" ? "\u25CB" : "\u25CF"}
                   </span>
                   <span class="session-label">{session.label}</span>
+                  {#if session.github_issue}
+                    <span class="issue-badge">#{session.github_issue.number}</span>
+                  {/if}
                   {#if jumpState?.phase === 'session' && jumpState.projectId === project.id && sessionJumpLabels[sessionIdx]}
                     <kbd class="jump-label">{sessionJumpLabels[sessionIdx]}</kbd>
                   {/if}
@@ -853,6 +856,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+  }
+
+  .issue-badge {
+    font-size: 10px;
+    color: #89b4fa;
+    background: rgba(137, 180, 250, 0.15);
+    padding: 0 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .jump-label {

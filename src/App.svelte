@@ -9,8 +9,9 @@
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
   import TaskPanel from "./lib/TaskPanel.svelte";
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
+  import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, type Config, type FocusTarget, type Project } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, type Config, type FocusTarget, type Project } from "./lib/stores";
 
   interface GithubIssue {
     number: number;
@@ -25,6 +26,7 @@
   let hintsVisible = $state(false);
   let taskPanelIsVisible = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
+  let issuePickerTarget: { projectId: string; repoPath: string } | null = $state(null);
   let taskPanelRef: { insertIssue: (issue: any) => void } | undefined = $state();
 
   $effect(() => {
@@ -48,6 +50,8 @@
         showKeyHints.update((v) => !v);
       } else if (action?.type === "create-issue") {
         createIssueTarget = { projectId: action.projectId, repoPath: action.repoPath };
+      } else if (action?.type === "pick-issue-for-session") {
+        issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath };
       }
     });
     return unsub;
@@ -72,6 +76,57 @@
       taskPanelVisible.set(true);
       setTimeout(() => {
         taskPanelRef?.insertIssue(issue);
+      }, 50);
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  interface GithubIssueForSession {
+    number: number;
+    title: string;
+    url: string;
+    labels: { name: string }[];
+  }
+
+  function handleIssuePicked(issue: GithubIssueForSession) {
+    const target = issuePickerTarget!;
+    issuePickerTarget = null;
+    createSessionWithIssue(target.projectId, target.repoPath, issue);
+  }
+
+  function handleIssuePickerSkip() {
+    const target = issuePickerTarget!;
+    issuePickerTarget = null;
+    hotkeyAction.set({ type: "create-session", projectId: target.projectId });
+    setTimeout(() => hotkeyAction.set(null), 0);
+  }
+
+  async function createSessionWithIssue(projectId: string, repoPath: string, issue: GithubIssueForSession) {
+    try {
+      const sessionId: string = await invoke("create_session", {
+        projectId,
+        githubIssue: issue,
+      });
+      // Post comment on the issue (fire and forget)
+      invoke("post_github_comment", {
+        repoPath,
+        issueNumber: issue.number,
+        body: `Working on this in session \`${sessionId.substring(0, 8)}\``,
+      }).catch((e: unknown) => showToast(`Failed to post comment: ${e}`, "error"));
+
+      sessionStatuses.update((m: Map<string, string>) => {
+        const next = new Map(m);
+        next.set(sessionId, "working");
+        return next;
+      });
+      activeSessionId.set(sessionId);
+      const result = await invoke<Project[]>("list_projects");
+      projects.set(result);
+      expandedProjects.update((s: Set<string>) => { const next = new Set(s); next.add(projectId); return next; });
+      setTimeout(() => {
+        hotkeyAction.set({ type: "focus-terminal" });
+        setTimeout(() => hotkeyAction.set(null), 0);
       }, 50);
     } catch (e) {
       showToast(String(e), "error");
@@ -127,6 +182,14 @@
       <CreateIssueModal
         onSubmit={handleIssueSubmit}
         onClose={() => { createIssueTarget = null; }}
+      />
+    {/if}
+    {#if issuePickerTarget}
+      <IssuePickerModal
+        repoPath={issuePickerTarget.repoPath}
+        onSelect={handleIssuePicked}
+        onSkip={handleIssuePickerSkip}
+        onClose={() => { issuePickerTarget = null; }}
       />
     {/if}
   {/if}

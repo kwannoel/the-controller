@@ -1,11 +1,19 @@
 import { writable } from "svelte/store";
 
+export interface GithubIssue {
+  number: number;
+  title: string;
+  url: string;
+  labels: { name: string }[];
+}
+
 export interface SessionConfig {
   id: string;
   label: string;
   worktree_path: string | null;
   worktree_branch: string | null;
   archived: boolean;
+  github_issue: GithubIssue | null;
 }
 
 export interface Project {
@@ -43,6 +51,7 @@ export type HotkeyAction =
   | { type: "unarchive-project"; projectId: string }
   | { type: "toggle-archive-view" }
   | { type: "create-issue"; projectId: string; repoPath: string }
+  | { type: "pick-issue-for-session"; projectId: string; repoPath: string }
   | { type: "merge-session"; sessionId: string; projectId: string }
   | null;
 

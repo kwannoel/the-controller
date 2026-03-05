@@ -182,6 +182,7 @@ mod tests {
                 worktree_branch: None,
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             }],
         }
     }

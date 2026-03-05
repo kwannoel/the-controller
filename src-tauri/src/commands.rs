@@ -107,7 +107,7 @@ pub fn restore_sessions(
                 .clone()
                 .unwrap_or_else(|| project.repo_path.clone());
 
-            if let Err(e) = pty_manager.spawn_session(session.id, &session_dir, &session.kind, app_handle.clone(), true)
+            if let Err(e) = pty_manager.spawn_session(session.id, &session_dir, &session.kind, app_handle.clone(), true, None)
             {
                 eprintln!(
                     "Failed to restore session {} ({}): {}",
@@ -336,7 +336,7 @@ pub fn unarchive_project(
     // Spawn PTYs for restored sessions
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     for (session_id, session_dir, kind) in to_restore {
-        pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle.clone(), true)?;
+        pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle.clone(), true, None)?;
     }
 
     Ok(())
@@ -369,6 +369,7 @@ pub fn create_session(
     app_handle: AppHandle,
     project_id: String,
     kind: Option<String>,
+    github_issue: Option<crate::models::GithubIssue>,
 ) -> Result<String, String> {
     let kind = kind.unwrap_or_else(|| "claude".to_string());
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -410,6 +411,14 @@ pub fn create_session(
             Err(e) => return Err(e),
         };
 
+    // Build initial prompt from GitHub issue context (if any)
+    let initial_prompt = github_issue.as_ref().map(|issue| {
+        format!(
+            "You are working on GitHub issue #{}: {}\nIssue URL: {}\nPlease include 'closes #{}' in any PR descriptions or final commit messages.",
+            issue.number, issue.title, issue.url, issue.number
+        )
+    });
+
     // Save session config
     {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
@@ -422,6 +431,7 @@ pub fn create_session(
             worktree_branch: wt_branch,
             archived: false,
             kind: kind.clone(),
+            github_issue,
         };
         project.sessions.push(session_config);
         storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -429,7 +439,7 @@ pub fn create_session(
 
     // Spawn the PTY session in the worktree (or repo) directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle, false)?;
+    pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle, false, initial_prompt.as_deref())?;
 
     Ok(session_id.to_string())
 }
@@ -531,7 +541,7 @@ pub fn unarchive_session(
 
     // Spawn the PTY session in the existing worktree directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_uuid, &session_dir, &kind, app_handle, true)?;
+    pty_manager.spawn_session(session_uuid, &session_dir, &kind, app_handle, true, None)?;
 
     Ok(())
 }
@@ -871,6 +881,36 @@ pub async fn create_github_issue(
     })
 }
 
+#[tauri::command]
+pub async fn post_github_comment(
+    repo_path: String,
+    issue_number: u64,
+    body: String,
+) -> Result<(), String> {
+    let repo_path_clone = repo_path.clone();
+    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))??;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue", "comment",
+            &issue_number.to_string(),
+            "--repo", &nwo,
+            "--body", &body,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue comment failed: {}", stderr));
+    }
+
+    Ok(())
+}
+
 const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;
 
@@ -1023,6 +1063,7 @@ mod tests {
                 worktree_branch: None,
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1031,6 +1072,7 @@ mod tests {
                 worktree_branch: None,
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
         ];
         assert_eq!(next_session_label(&sessions), "session-3");
@@ -1047,6 +1089,7 @@ mod tests {
                 worktree_branch: Some("session-1".to_string()),
                 archived: true,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1055,6 +1098,7 @@ mod tests {
                 worktree_branch: Some("session-2".to_string()),
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1063,6 +1107,7 @@ mod tests {
                 worktree_branch: Some("session-3".to_string()),
                 archived: true,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
         ];
         // Max is session-3, so next is session-4
@@ -1079,6 +1124,7 @@ mod tests {
             worktree_branch: None,
             archived: false,
             kind: "claude".to_string(),
+            github_issue: None,
         }];
         assert_eq!(next_session_label(&sessions), "session-4");
     }

@@ -30,6 +30,7 @@ impl TmuxManager {
         working_dir: &str,
         command: &str,
         continue_session: bool,
+        initial_prompt: Option<&str>,
     ) -> Result<(), String> {
         let name = Self::session_name(session_id);
         let settings_json = crate::status_socket::hook_settings_json(session_id);
@@ -42,6 +43,10 @@ impl TmuxManager {
         if command == "claude" {
             args.push("--settings");
             args.push(&settings_json);
+            if let Some(prompt) = initial_prompt {
+                args.push("--prompt");
+                args.push(prompt);
+            }
         }
         let output = Command::new(TMUX_BIN)
             .args(&args)

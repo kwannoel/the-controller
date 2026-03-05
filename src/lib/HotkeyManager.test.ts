@@ -12,8 +12,8 @@ const testProject = {
   created_at: '2026-01-01',
   archived: false,
   sessions: [
-    { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-    { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false },
+    { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
+    { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
   ],
 };
 
@@ -24,8 +24,8 @@ const testProject2 = {
   created_at: '2026-01-01',
   archived: false,
   sessions: [
-    { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-    { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false },
+    { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
+    { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
   ],
 };
 
@@ -335,7 +335,7 @@ describe('HotkeyManager', () => {
         created_at: '2026-01-01',
         archived: false,
         sessions: [
-          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
         ],
       }]);
       activeSessionId.set(null);
@@ -354,7 +354,7 @@ describe('HotkeyManager', () => {
         created_at: '2026-01-01',
         archived: false,
         sessions: [
-          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
         ],
       }]);
       activeSessionId.set(null);
@@ -374,7 +374,7 @@ describe('HotkeyManager', () => {
         created_at: '2026-01-01',
         archived: false,
         sessions: [
-          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
         ],
       }]);
 
@@ -437,7 +437,7 @@ describe('HotkeyManager', () => {
           created_at: '2026-01-01',
           archived: false,
           sessions: [
-            { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+            { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
           ],
         },
       ]);
@@ -506,7 +506,7 @@ describe('HotkeyManager', () => {
         created_at: '2026-01-01',
         archived: false,
         sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
         ],
       }));
       projects.set(manyProjects);
@@ -529,7 +529,7 @@ describe('HotkeyManager', () => {
         created_at: '2026-01-01',
         archived: false,
         sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, github_issue: null },
         ],
       }));
       projects.set(manyProjects);
@@ -688,20 +688,29 @@ describe('HotkeyManager', () => {
       expect(get(hotkeyAction)).toBeNull();
     });
 
-    it('c on project dispatches create-session', () => {
+    it('c on project dispatches pick-issue-for-session', () => {
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'create-session', projectId: 'proj-1' });
+      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
       unsub();
     });
 
-    it('c on session dispatches create-session for that project', () => {
+    it('c on session dispatches pick-issue-for-session for that project', () => {
       focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
+      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
+      unsub();
+    });
+
+    it('C on project dispatches create-session (raw)', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('C');
       expect(captured).toEqual({ type: 'create-session', projectId: 'proj-1' });
       unsub();
     });

@@ -38,6 +38,7 @@ fn test_project_lifecycle() {
         worktree_branch: None,
         archived: false,
         kind: "claude".to_string(),
+        github_issue: None,
     });
     storage.save_project(&project).expect("save with session");
 
@@ -117,6 +118,7 @@ fn test_sessions_persist_across_restarts() {
                 worktree_branch: Some("session-1".to_string()),
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -125,6 +127,7 @@ fn test_sessions_persist_across_restarts() {
                 worktree_branch: Some("session-2".to_string()),
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -133,6 +136,7 @@ fn test_sessions_persist_across_restarts() {
                 worktree_branch: None,
                 archived: true,
                 kind: "claude".to_string(),
+                github_issue: None,
             },
         ],
     };
@@ -236,6 +240,7 @@ fn test_worktrees_persist_across_restarts() {
             worktree_branch: Some("session-1".to_string()),
             archived: false,
             kind: "claude".to_string(),
+            github_issue: None,
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -272,6 +277,7 @@ fn test_migrate_worktree_paths_renames_uuid_dir() {
             worktree_branch: Some("session-1".to_string()),
             archived: false,
             kind: "claude".to_string(),
+            github_issue: None,
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -314,6 +320,7 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
             worktree_branch: Some("session-1".to_string()),
             archived: false,
             kind: "claude".to_string(),
+            github_issue: None,
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -361,6 +368,7 @@ fn test_migrate_worktree_paths_noop_on_name_collision() {
             worktree_branch: Some("session-1".to_string()),
             archived: false,
             kind: "claude".to_string(),
+            github_issue: None,
         }],
     };
     storage.save_project(&project).expect("save project");

@@ -21,6 +21,8 @@ pub struct SessionConfig {
     pub archived: bool,
     #[serde(default = "default_kind")]
     pub kind: String,
+    #[serde(default)]
+    pub github_issue: Option<GithubIssue>,
 }
 
 fn default_kind() -> String {
@@ -84,6 +86,7 @@ mod tests {
                 worktree_branch: None,
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             }],
         };
 
@@ -134,6 +137,7 @@ mod tests {
                 worktree_branch: Some("feature/new-thing".to_string()),
                 archived: false,
                 kind: "claude".to_string(),
+                github_issue: None,
             }],
         };
 
@@ -152,5 +156,37 @@ mod tests {
             session.worktree_branch.as_deref(),
             Some("feature/new-thing")
         );
+    }
+
+    #[test]
+    fn test_session_config_github_issue_roundtrip() {
+        let session = SessionConfig {
+            id: Uuid::new_v4(),
+            label: "session-1".to_string(),
+            worktree_path: None,
+            worktree_branch: None,
+            archived: false,
+            kind: "claude".to_string(),
+            github_issue: Some(GithubIssue {
+                number: 22,
+                title: "Assign GitHub issue to a session".to_string(),
+                url: "https://github.com/kwannoel/the-controller/issues/22".to_string(),
+                labels: vec![],
+            }),
+        };
+        let json = serde_json::to_string(&session).expect("serialize");
+        let deserialized: SessionConfig = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.github_issue.as_ref().unwrap().number, 22);
+        assert_eq!(
+            deserialized.github_issue.as_ref().unwrap().title,
+            "Assign GitHub issue to a session"
+        );
+    }
+
+    #[test]
+    fn test_session_config_github_issue_defaults_to_none() {
+        let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","label":"session-1","worktree_path":null,"worktree_branch":null,"archived":false}"#;
+        let session: SessionConfig = serde_json::from_str(json).expect("deserialize");
+        assert!(session.github_issue.is_none());
     }
 }

@@ -339,9 +339,15 @@
         dispatchAction({ type: "toggle-archive-view" });
         return true;
       case "c":
-        if (currentFocus?.type === "project") {
-          dispatchAction({ type: "create-session", projectId: currentFocus.projectId });
-        } else if (currentFocus?.type === "session") {
+        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
+          const project = projectList.find(p => p.id === currentFocus.projectId);
+          if (project) {
+            dispatchAction({ type: "pick-issue-for-session", projectId: project.id, repoPath: project.repo_path });
+          }
+        }
+        return true;
+      case "C":
+        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
           dispatchAction({ type: "create-session", projectId: currentFocus.projectId });
         }
         return true;
