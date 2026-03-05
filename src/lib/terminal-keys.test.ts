@@ -71,4 +71,48 @@ describe("makeCustomKeyHandler", () => {
 
     expect(result).toBe(true);
   });
+
+  describe("image paste handling", () => {
+    it("blocks Cmd-V on keydown and calls onImagePaste", () => {
+      const write = vi.fn();
+      const onImagePaste = vi.fn();
+      const handler = makeCustomKeyHandler(write, { onImagePaste });
+
+      const result = handler(makeEvent({ key: "v", metaKey: true, type: "keydown" }));
+
+      expect(result).toBe(false);
+      expect(onImagePaste).toHaveBeenCalledOnce();
+    });
+
+    it("blocks Cmd-V on keyup without calling onImagePaste", () => {
+      const write = vi.fn();
+      const onImagePaste = vi.fn();
+      const handler = makeCustomKeyHandler(write, { onImagePaste });
+
+      const result = handler(makeEvent({ key: "v", metaKey: true, type: "keyup" }));
+
+      expect(result).toBe(false);
+      expect(onImagePaste).not.toHaveBeenCalled();
+    });
+
+    it("blocks Ctrl-V on keydown and calls onImagePaste", () => {
+      const write = vi.fn();
+      const onImagePaste = vi.fn();
+      const handler = makeCustomKeyHandler(write, { onImagePaste });
+
+      const result = handler(makeEvent({ key: "v", ctrlKey: true, type: "keydown" }));
+
+      expect(result).toBe(false);
+      expect(onImagePaste).toHaveBeenCalledOnce();
+    });
+
+    it("lets Cmd-V through when no onImagePaste callback", () => {
+      const write = vi.fn();
+      const handler = makeCustomKeyHandler(write);
+
+      const result = handler(makeEvent({ key: "v", metaKey: true, type: "keydown" }));
+
+      expect(result).toBe(true);
+    });
+  });
 });
