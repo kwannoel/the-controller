@@ -327,156 +327,24 @@ describe('HotkeyManager', () => {
       expect(get(jumpMode)).toEqual({ phase: 'project' });
     });
 
-    it('g then z on single-session project enters session phase', () => {
-      projects.set([{
-        id: 'proj-1',
-        name: 'solo-project',
-        repo_path: '/tmp/solo',
-        created_at: '2026-01-01',
-        archived: false,
-        sessions: [
-          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-        ],
-      }]);
-      activeSessionId.set(null);
-
+    it('g then z focuses first project and exits jump mode', () => {
       pressKey('g');
       pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-1' });
-      expect(get(activeSessionId)).toBeNull();
-    });
-
-    it('g then z then z selects session from single-session project', () => {
-      projects.set([{
-        id: 'proj-1',
-        name: 'solo-project',
-        repo_path: '/tmp/solo',
-        created_at: '2026-01-01',
-        archived: false,
-        sessions: [
-          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-        ],
-      }]);
-      activeSessionId.set(null);
-
-      pressKey('g');
-      pressKey('z');
-      pressKey('z');
-      expect(get(activeSessionId)).toBe('sess-only');
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
       expect(get(jumpMode)).toBeNull();
     });
 
-    it('last jump label in session phase dispatches create-session with projectId', () => {
-      projects.set([{
-        id: 'proj-1',
-        name: 'solo-project',
-        repo_path: '/tmp/solo',
-        created_at: '2026-01-01',
-        archived: false,
-        sessions: [
-          { id: 'sess-only', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-        ],
-      }]);
-
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-
-      pressKey('g');
-      pressKey('z');
-      pressKey('x');
-      expect(captured).toEqual({ type: 'create-session', projectId: 'proj-1' });
-      expect(get(jumpMode)).toBeNull();
-      unsub();
-    });
-
-    it('g on zero-session project enters session phase with create option', () => {
-      projects.set([{
-        id: 'proj-empty',
-        name: 'empty-project',
-        repo_path: '/tmp/empty',
-        created_at: '2026-01-01',
-        archived: false,
-        sessions: [],
-      }]);
-
-      pressKey('g');
-      pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-empty' });
-    });
-
-    it('g then z on multi-session project enters session phase', () => {
-      pressKey('g');
-      pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-1' });
-      expect(get(activeSessionId)).toBe('sess-1');
-    });
-
-    it('g then z then z selects first session of first project', () => {
-      pressKey('g');
-      pressKey('z');
-      pressKey('z');
-      expect(get(activeSessionId)).toBe('sess-1');
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('g then z then x selects second session of first project', () => {
-      pressKey('g');
-      pressKey('z');
-      pressKey('x');
-      expect(get(activeSessionId)).toBe('sess-2');
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('g then x on second project enters session phase', () => {
-      projects.set([
-        testProject,
-        {
-          id: 'proj-2',
-          name: 'other-project',
-          repo_path: '/tmp/other',
-          created_at: '2026-01-01',
-          archived: false,
-          sessions: [
-            { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
-          ],
-        },
-      ]);
-
+    it('g then x focuses second project and exits jump mode', () => {
+      projects.set([testProject, testProject2]);
       pressKey('g');
       pressKey('x');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-2' });
-    });
-
-    it('d in session phase dispatches delete-project with projectId', () => {
-      pressKey('g');
-      pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-1' });
-
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('d');
-      expect(captured).toEqual({ type: 'delete-project', projectId: 'proj-1' });
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
       expect(get(jumpMode)).toBeNull();
-      unsub();
-    });
-
-    it('a in session phase dispatches archive-project with projectId', () => {
-      pressKey('g');
-      pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-1' });
-
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('a');
-      expect(captured).toEqual({ type: 'archive-project', projectId: 'proj-1' });
-      expect(get(jumpMode)).toBeNull();
-      unsub();
     });
 
     it('g then Escape cancels jump mode', () => {
       pressKey('g');
       expect(get(jumpMode)).toEqual({ phase: 'project' });
-
       pressKey('Escape');
       expect(get(jumpMode)).toBeNull();
     });
@@ -484,17 +352,7 @@ describe('HotkeyManager', () => {
     it('g then unrecognized key cancels jump mode', () => {
       pressKey('g');
       expect(get(jumpMode)).toEqual({ phase: 'project' });
-
       pressKey('q');
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('Escape cancels session phase', () => {
-      pressKey('g');
-      pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-1' });
-
-      pressKey('Escape');
       expect(get(jumpMode)).toBeNull();
     });
 
@@ -506,7 +364,7 @@ describe('HotkeyManager', () => {
         created_at: '2026-01-01',
         archived: false,
         sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude' },
         ],
       }));
       projects.set(manyProjects);
@@ -514,11 +372,14 @@ describe('HotkeyManager', () => {
       pressKey('g');
       expect(get(jumpMode)).toEqual({ phase: 'project' });
 
+      // 'z' is a prefix of 'zz', 'zx', etc — should stay in jump mode
       pressKey('z');
       expect(get(jumpMode)).toEqual({ phase: 'project' });
 
+      // 'zz' matches first project
       pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-0' });
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-0' });
+      expect(get(jumpMode)).toBeNull();
     });
 
     it('two-char label second key selects correct project', () => {
@@ -529,7 +390,7 @@ describe('HotkeyManager', () => {
         created_at: '2026-01-01',
         archived: false,
         sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false },
+          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude' },
         ],
       }));
       projects.set(manyProjects);
@@ -537,7 +398,8 @@ describe('HotkeyManager', () => {
       pressKey('g');
       pressKey('z');
       pressKey('x');
-      expect(get(jumpMode)).toEqual({ phase: 'session', projectId: 'proj-1' });
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
+      expect(get(jumpMode)).toBeNull();
     });
 
     it('g with no projects does nothing', () => {

@@ -43,8 +43,6 @@
 
   // Jump navigation state
   let jumpActive = $state(false);
-  let jumpPhase: "project" | "session" = $state("project");
-  let jumpProjectId: string | null = $state(null);
   let jumpBuffer = $state("");
   let jumpLabels: string[] = $state([]);
 
@@ -136,8 +134,6 @@
     const list = getJumpProjects();
     if (list.length === 0) return;
     jumpActive = true;
-    jumpPhase = "project";
-    jumpProjectId = null;
     jumpBuffer = "";
     jumpLabels = generateJumpLabels(list.length);
     jumpMode.set({ phase: "project" });
@@ -145,8 +141,6 @@
 
   function exitJumpMode() {
     jumpActive = false;
-    jumpPhase = "project";
-    jumpProjectId = null;
     jumpBuffer = "";
     jumpLabels = [];
     jumpMode.set(null);
@@ -154,14 +148,6 @@
 
   function handleJumpKey(key: string) {
     if (key === "Escape") {
-      exitJumpMode();
-      return;
-    }
-
-    // In session phase, d/a operate on the jumped-to project
-    if (jumpPhase === "session" && jumpProjectId && (key === "d" || key === "a")) {
-      const actionType = key === "d" ? "delete-project" : "archive-project";
-      dispatchAction({ type: actionType, projectId: jumpProjectId } as NonNullable<HotkeyAction>);
       exitJumpMode();
       return;
     }
@@ -177,46 +163,11 @@
     const matchIndex = jumpLabels.indexOf(jumpBuffer);
     if (matchIndex !== -1) {
       const list = getJumpProjects();
-      if (jumpPhase === "project") {
-        const project = list[matchIndex];
-        if (!project) {
-          exitJumpMode();
-          return;
-        }
-        const sessions = isArchiveView
-          ? project.sessions.filter(s => s.archived)
-          : project.sessions.filter(s => !s.archived);
-        // In archive view, no "create new" option
-        const labelCount = isArchiveView ? sessions.length : sessions.length + 1;
-        jumpPhase = "session";
-        jumpProjectId = project.id;
-        jumpBuffer = "";
-        jumpLabels = generateJumpLabels(labelCount);
-        jumpMode.set({ phase: "session", projectId: project.id });
-      } else {
-        // Session phase
-        const project = list.find((p) => p.id === jumpProjectId);
-        if (project) {
-          const sessions = isArchiveView
-            ? project.sessions.filter(s => s.archived)
-            : project.sessions.filter(s => !s.archived);
-          if (matchIndex < sessions.length) {
-            const session = sessions[matchIndex];
-            if (isArchiveView) {
-              dispatchAction({ type: "unarchive-session", sessionId: session.id, projectId: project.id });
-            } else {
-              clearDwellTimer();
-              activeSessionId.set(session.id);
-              // Delay focus-terminal to let activeSessionId propagate to TerminalManager
-              setTimeout(() => dispatchAction({ type: "focus-terminal" }), 50);
-            }
-          } else if (!isArchiveView) {
-            // Last label = create new session (active view only)
-            dispatchAction({ type: "create-session", projectId: project.id });
-          }
-        }
-        exitJumpMode();
+      const project = list[matchIndex];
+      if (project) {
+        focusTarget.set({ type: "project", projectId: project.id });
       }
+      exitJumpMode();
       return;
     }
 
