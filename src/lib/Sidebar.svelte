@@ -353,6 +353,17 @@
       const list = isArchiveView ? archivedProjectList : projectList;
       const nextFocus = focusAfterSessionDelete(list, projectId, sessionId, isArchiveView);
 
+      // Remove in-progress label if session has a linked issue
+      const project = list.find(p => p.id === projectId);
+      const session = project?.sessions.find(s => s.id === sessionId);
+      if (session?.github_issue && project) {
+        invoke("remove_github_label", {
+          repoPath: project.repo_path,
+          issueNumber: session.github_issue.number,
+          label: "in-progress",
+        }).catch(() => {});
+      }
+
       await invoke("close_session", { projectId, sessionId, deleteWorktree });
       const closeTimer = idleTimers.get(sessionId);
       if (closeTimer) { clearTimeout(closeTimer); idleTimers.delete(sessionId); }
@@ -381,6 +392,16 @@
       const activeSessions = project?.sessions.filter(s => !s.archived) ?? [];
       const idx = activeSessions.findIndex(s => s.id === sessionId);
       const prevSession = idx > 0 ? activeSessions[idx - 1] : null;
+
+      // Remove in-progress label if session has a linked issue
+      const session = activeSessions.find(s => s.id === sessionId);
+      if (session?.github_issue && project) {
+        invoke("remove_github_label", {
+          repoPath: project.repo_path,
+          issueNumber: session.github_issue.number,
+          label: "in-progress",
+        }).catch(() => {});
+      }
 
       await invoke("archive_session", { projectId, sessionId });
       const archiveTimer = idleTimers.get(sessionId);
