@@ -147,8 +147,18 @@
 
     // Refit when becoming visible (display: none -> block doesn't trigger ResizeObserver)
     mutationObserver = new MutationObserver(() => {
-      if (containerEl && containerEl.offsetParent !== null && fitAddon) {
+      if (containerEl && containerEl.offsetParent !== null && fitAddon && term) {
         fitAddon.fit();
+        // Force full repaint — canvas content may be stale after display:none
+        term.refresh(0, term.rows - 1);
+        // Notify PTY of dimensions so the program gets SIGWINCH and redraws its TUI
+        invoke("resize_pty", {
+          sessionId,
+          rows: term.rows,
+          cols: term.cols,
+        }).catch((err: unknown) => {
+          console.error("Failed to resize PTY:", err);
+        });
       }
     });
     if (containerEl?.parentElement) {
