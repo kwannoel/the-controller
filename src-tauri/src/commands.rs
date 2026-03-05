@@ -50,6 +50,14 @@ pub fn restore_sessions(
 ) -> Result<(), String> {
     let projects = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let projects = storage.list_projects().map_err(|e| e.to_string())?;
+        // Migrate worktree paths from UUID-based to name-based directories
+        for project in &projects {
+            if let Err(e) = storage.migrate_worktree_paths(project) {
+                eprintln!("Failed to migrate worktrees for project '{}': {}", project.name, e);
+            }
+        }
+        // Reload after migration to get updated paths
         storage.list_projects().map_err(|e| e.to_string())?
     };
 
@@ -333,17 +341,17 @@ pub fn create_session(
     let session_id = Uuid::new_v4();
 
     // Load the project and generate session label
-    let (repo_path, label, base_dir) = {
+    let (repo_path, label, base_dir, project_name) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
         let label = next_session_label(&project.sessions);
-        (project.repo_path.clone(), label, storage.base_dir())
+        (project.repo_path.clone(), label, storage.base_dir(), project.name.clone())
     };
 
-    // Create worktree under ~/.the-controller/worktrees/{project_id}/{label}/
+    // Create worktree under ~/.the-controller/worktrees/{project_name}/{label}/
     let worktree_dir = base_dir
         .join("worktrees")
-        .join(project_uuid.to_string())
+        .join(&project_name)
         .join(&label);
 
     // Try to create a worktree; fall back to repo path for repos without commits
@@ -671,6 +679,69 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     Ok(project)
 }
 
+/// Parse a GitHub remote URL into an "owner/repo" string.
+/// Handles SSH (git@github.com:owner/repo.git), HTTPS, and HTTP URLs.
+pub(crate) fn parse_github_nwo(url: &str) -> Result<String, String> {
+    // SSH: git@github.com:owner/repo.git
+    if let Some(rest) = url.strip_prefix("git@github.com:") {
+        return Ok(rest.trim_end_matches(".git").to_string());
+    }
+    // HTTPS/HTTP: https://github.com/owner/repo.git
+    if let Some(rest) = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("http://github.com/"))
+    {
+        return Ok(rest.trim_end_matches(".git").to_string());
+    }
+
+    Err(format!("Not a GitHub remote URL: {}", url))
+}
+
+/// Extract the GitHub owner/repo from a local git repository's origin remote.
+/// Handles both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git) URLs.
+fn extract_github_repo(repo_path: &str) -> Result<String, String> {
+    let repo = git2::Repository::discover(repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let remote = repo
+        .find_remote("origin")
+        .map_err(|_| "No 'origin' remote found".to_string())?;
+    let url = remote
+        .url()
+        .ok_or_else(|| "Origin remote URL is not valid UTF-8".to_string())?;
+
+    parse_github_nwo(url)
+}
+
+#[tauri::command]
+pub async fn list_github_issues(repo_path: String) -> Result<Vec<crate::models::GithubIssue>, String> {
+    let repo_path_clone = repo_path.clone();
+    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))??;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue", "list",
+            "--repo", &nwo,
+            "--json", "number,title,url,labels",
+            "--limit", "50",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue list failed: {}", stderr));
+    }
+
+    let issues: Vec<crate::models::GithubIssue> =
+        serde_json::from_slice(&output.stdout)
+            .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+
+    Ok(issues)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,5 +859,46 @@ mod tests {
             kind: "claude".to_string(),
         }];
         assert_eq!(next_session_label(&sessions), "session-4");
+    }
+
+    // --- parse_github_nwo tests ---
+
+    #[test]
+    fn test_parse_github_nwo_ssh() {
+        assert_eq!(
+            parse_github_nwo("git@github.com:owner/repo.git").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_https() {
+        assert_eq!(
+            parse_github_nwo("https://github.com/owner/repo.git").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_https_no_git_suffix() {
+        assert_eq!(
+            parse_github_nwo("https://github.com/owner/repo").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_http() {
+        assert_eq!(
+            parse_github_nwo("http://github.com/owner/repo.git").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_non_github_url() {
+        let result = parse_github_nwo("https://gitlab.com/owner/repo.git");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not a GitHub remote URL"));
     }
 }

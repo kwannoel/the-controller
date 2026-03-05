@@ -7,12 +7,14 @@
   import Toast from "./lib/Toast.svelte";
   import HotkeyManager from "./lib/HotkeyManager.svelte";
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, type Config } from "./lib/stores";
+  import TaskPanel from "./lib/TaskPanel.svelte";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, type Config } from "./lib/stores";
 
   let ready = $state(false);
   let needsOnboarding = $state(true);
   let sidebarIsVisible = $state(true);
   let hintsVisible = $state(false);
+  let taskPanelIsVisible = $state(false);
 
   $effect(() => {
     const unsub = sidebarVisible.subscribe((v) => { sidebarIsVisible = v; });
@@ -21,6 +23,11 @@
 
   $effect(() => {
     const unsub = showKeyHints.subscribe((v) => { hintsVisible = v; });
+    return unsub;
+  });
+
+  $effect(() => {
+    const unsub = taskPanelVisible.subscribe((v) => { taskPanelIsVisible = v; });
     return unsub;
   });
 
@@ -70,6 +77,9 @@
       <main class="terminal-area">
         <TerminalManager />
       </main>
+      {#if taskPanelIsVisible}
+        <TaskPanel visible={taskPanelIsVisible} />
+      {/if}
     </div>
     <HotkeyManager />
     {#if hintsVisible}

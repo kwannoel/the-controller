@@ -43,6 +43,7 @@ pub fn run() {
             commands::list_root_directories,
             commands::generate_project_names,
             commands::scaffold_project,
+            commands::list_github_issues,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

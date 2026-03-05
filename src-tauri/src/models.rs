@@ -43,6 +43,19 @@ pub struct SessionInfo {
     pub status: SessionStatus,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubIssue {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    pub labels: Vec<GithubLabel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubLabel {
+    pub name: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
