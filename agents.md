@@ -33,6 +33,19 @@ For every new task, follow this workflow:
 - **Backend:** Rust (Tauri v2), portable-pty, git2
 - **Theme:** Catppuccin Mocha
 
+## Branch Completion Rules
+
+When merging a feature branch back to the base branch (e.g. master), you MUST push to remote after merging. Never leave the base branch out of sync with the remote.
+
+```bash
+git checkout <base-branch>
+git pull
+git merge <feature-branch>
+# verify tests
+git push              # <- REQUIRED, do not skip
+git branch -d <feature-branch>
+```
+
 ## Dev Commands
 
 - `npm run tauri dev` — Run the app in development mode
