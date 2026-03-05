@@ -22,24 +22,6 @@
   let lastEscapeTime = 0;
 
   const DOUBLE_ESCAPE_MS = 300;
-  const DWELL_FOCUS_MS = 5000;
-  let dwellTimer: ReturnType<typeof setTimeout> | null = null;
-
-  function clearDwellTimer() {
-    if (dwellTimer !== null) {
-      clearTimeout(dwellTimer);
-      dwellTimer = null;
-    }
-  }
-
-  function startDwellTimer() {
-    clearDwellTimer();
-    if (isArchiveView) return;
-    dwellTimer = setTimeout(() => {
-      dwellTimer = null;
-      dispatchAction({ type: "focus-terminal" });
-    }, DWELL_FOCUS_MS);
-  }
 
   // Jump navigation state
   let jumpActive = $state(false);
@@ -113,7 +95,6 @@
   }
 
   function focusActiveSession() {
-    clearDwellTimer();
     if (!activeId) return;
     const project = projectList.find((p) =>
       p.sessions.some((s) => s.id === activeId),
@@ -134,7 +115,6 @@
   }
 
   function enterJumpMode() {
-    clearDwellTimer();
     const list = getJumpProjects();
     if (list.length === 0) return;
     jumpActive = true;
@@ -203,7 +183,6 @@
   }
 
   function navigateItem(direction: 1 | -1) {
-    clearDwellTimer();
     const items = getVisibleItems();
     if (items.length === 0) return;
     let idx = -1;
@@ -219,14 +198,12 @@
         activeSessionId.set(next.sessionId);
       }
       focusTarget.set({ type: "session", sessionId: next.sessionId, projectId: next.projectId });
-      startDwellTimer();
     } else {
       focusTarget.set({ type: "project", projectId: next.projectId });
     }
   }
 
   function navigateProject(direction: 1 | -1) {
-    clearDwellTimer();
     const list = isArchiveView ? archivedProjectList : projectList;
     if (list.length === 0) return;
     let idx = -1;
@@ -330,7 +307,6 @@
         return true;
       case "l":
       case "Enter":
-        clearDwellTimer();
         if (currentFocus?.type === "project") {
           const next = new Set(expandedSet);
           if (next.has(currentFocus.projectId)) {
@@ -402,12 +378,10 @@
         // Double-tap Escape: forward to terminal and refocus it
         forwardEscape();
         lastEscapeTime = 0;
-        clearDwellTimer();
         dispatchAction({ type: "focus-terminal" });
         e.stopPropagation();
         e.preventDefault();
       } else if (currentFocus?.type === "session") {
-        clearDwellTimer();
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
         e.preventDefault();
@@ -426,7 +400,6 @@
   onMount(() => {
     window.addEventListener("keydown", onKeydown, { capture: true });
     return () => {
-      clearDwellTimer();
       window.removeEventListener("keydown", onKeydown, { capture: true });
     };
   });
