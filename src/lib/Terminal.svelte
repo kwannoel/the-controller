@@ -5,6 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { makeCustomKeyHandler } from "./terminal-keys";
+  import { clipboardHasImage } from "./clipboard";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {
@@ -20,6 +21,26 @@
   let mutationObserver: MutationObserver | undefined;
   let unlistenOutput: UnlistenFn | undefined;
   let unlistenStatus: UnlistenFn | undefined;
+
+  async function handleImagePaste(
+    writeToPty: (data: string) => Promise<unknown>,
+  ) {
+    const hasImage = await clipboardHasImage();
+    if (hasImage) {
+      // Send empty bracket paste to trigger Claude Code's clipboard image reader
+      await writeToPty("\x1b[200~\x1b[201~");
+    } else {
+      // No image — read text from clipboard and send as bracket paste
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          await writeToPty("\x1b[200~" + text + "\x1b[201~");
+        }
+      } catch {
+        // Clipboard read failed — nothing to paste
+      }
+    }
+  }
 
   onMount(() => {
     if (!containerEl) return;
@@ -41,16 +62,24 @@
     term.open(containerEl);
     fitAddon.fit();
 
+    const writeToPty = (data: string) =>
+      invoke("write_to_pty", { sessionId, data });
+
     // Handle keys that xterm.js doesn't natively support
     term.attachCustomKeyEventHandler(
       makeCustomKeyHandler(
         (data) => invoke("send_raw_to_pty", { sessionId, data }),
+        {
+          onImagePaste: () => {
+            handleImagePaste(writeToPty);
+          },
+        },
       ),
     );
 
     // Connect user input to PTY
     term.onData((data: string) => {
-      invoke("write_to_pty", { sessionId, data }).catch((err) => {
+      writeToPty(data).catch((err) => {
         console.error("Failed to write to PTY:", err);
       });
     });
