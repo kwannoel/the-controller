@@ -34,12 +34,46 @@ pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
     format!("session-{}", max_num + 1)
 }
 
-const DEFAULT_AGENTS_MD: &str = r#"# Agents
+const DEFAULT_AGENTS_MD: &str = r#"# {name}
 
-## Default Agent
+One-line project description.
 
-You are a helpful coding assistant working on this project.
+## Task Workflow (CRITICAL)
+
+For every new task, follow this workflow:
+
+1. **File a GitHub issue** -- Create an issue describing the task before starting work.
+2. **Update with design plan** -- Once the design is complete, update the GitHub issue with the design plan.
+3. **Update with implementation plan** -- Once the implementation plan is ready, update the GitHub issue with it.
+4. **Close the issue** -- Close the GitHub issue once the task is fully completed and verified.
+5. **Update the merge commit/PR** -- After merging, update the merge note to summarize what work was done.
+
+## Task Structure (CRITICAL -- NEVER SKIP)
+
+**This is the most important rule. Every task, no matter how small, MUST follow this structure before writing any code. No exceptions.**
+
+1. **Definition**: What's the task? Why are we doing it? How will we approach it?
+2. **Constraints**: What are the design constraints -- from the user prompt, codebase conventions, or what can be inferred?
+3. **Validation**: How do I know for sure it was implemented as expected? Can I enforce it with flexible and non-brittle tests? I must validate before I consider a task complete. For semantic changes (bug fixes, feature refinements): if I revert my implementation, the test must still fail. After the implementation, the test must pass.
+
+**If you catch yourself writing code without having stated all three above, STOP and state them first.**
+
+## Key Docs
+
+- `docs/plans/` -- Design and implementation plans.
+
+## Tech Stack
+
+<!-- Fill in your project's tech stack -->
+
+## Dev Commands
+
+<!-- Fill in your project's dev commands -->
 "#;
+
+pub fn render_agents_md(name: &str) -> String {
+    DEFAULT_AGENTS_MD.replace("{name}", name)
+}
 
 /// Re-spawn PTY sessions for all active (non-archived) sessions across all projects.
 /// PTY processes don't survive restart, but session metadata and worktrees persist.
@@ -121,7 +155,7 @@ pub fn create_project(
     let repo_agents = path.join("agents.md");
     if !repo_agents.exists() {
         storage
-            .save_agents_md(project.id, DEFAULT_AGENTS_MD)
+            .save_agents_md(project.id, &render_agents_md(&project.name))
             .map_err(|e| e.to_string())?;
     }
 
@@ -173,7 +207,7 @@ pub fn load_project(
     let repo_agents = path.join("agents.md");
     if !repo_agents.exists() {
         storage
-            .save_agents_md(project.id, DEFAULT_AGENTS_MD)
+            .save_agents_md(project.id, &render_agents_md(&project.name))
             .map_err(|e| e.to_string())?;
     }
 
@@ -650,18 +684,38 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     // Create directory
     std::fs::create_dir_all(&repo_path).map_err(|e| e.to_string())?;
 
-    // Git init + initial commit so worktrees can be created
+    // Git init
     let repo = git2::Repository::init(&repo_path).map_err(|e| e.to_string())?;
     let sig = repo
         .signature()
         .unwrap_or_else(|_| git2::Signature::now("The Controller", "noreply@controller").unwrap());
-    let tree_id = repo
-        .treebuilder(None)
-        .and_then(|tb| tb.write())
-        .map_err(|e| format!("failed to create initial tree: {}", e))?;
+
+    // Write template files to disk
+    let agents_content = render_agents_md(&name);
+    std::fs::write(repo_path.join("agents.md"), &agents_content)
+        .map_err(|e| format!("failed to write agents.md: {}", e))?;
+    let plans_dir = repo_path.join("docs").join("plans");
+    std::fs::create_dir_all(&plans_dir)
+        .map_err(|e| format!("failed to create docs/plans: {}", e))?;
+    std::fs::write(plans_dir.join(".gitkeep"), "")
+        .map_err(|e| format!("failed to write .gitkeep: {}", e))?;
+
+    // Build git tree with template files
+    let mut index = repo.index().map_err(|e| format!("failed to get index: {}", e))?;
+    index
+        .add_path(std::path::Path::new("agents.md"))
+        .map_err(|e| format!("failed to add agents.md to index: {}", e))?;
+    index
+        .add_path(std::path::Path::new("docs/plans/.gitkeep"))
+        .map_err(|e| format!("failed to add .gitkeep to index: {}", e))?;
+    index.write().map_err(|e| format!("failed to write index: {}", e))?;
+    let tree_id = index
+        .write_tree()
+        .map_err(|e| format!("failed to write tree: {}", e))?;
     let tree = repo
         .find_tree(tree_id)
         .map_err(|e| format!("failed to find tree: {}", e))?;
+
     repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
         .map_err(|e| format!("failed to create initial commit: {}", e))?;
 
@@ -675,11 +729,6 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         sessions: vec![],
     };
     storage.save_project(&project).map_err(|e| e.to_string())?;
-
-    // Create default agents.md
-    storage
-        .save_agents_md(project.id, DEFAULT_AGENTS_MD)
-        .map_err(|e| e.to_string())?;
 
     Ok(project)
 }

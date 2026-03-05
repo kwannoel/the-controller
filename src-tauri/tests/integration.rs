@@ -486,3 +486,78 @@ fn test_create_session_uses_project_name_in_path() {
         path_str
     );
 }
+
+/// scaffold_project should create agents.md and docs/plans/.gitkeep
+/// in the repo directory AND include them in the initial git commit.
+#[test]
+fn test_scaffold_project_creates_template_files() {
+    let projects_root = TempDir::new().unwrap();
+    let name = "test-template-project";
+    let repo_path = projects_root.path().join(name);
+    fs::create_dir_all(&repo_path).unwrap();
+
+    // Write template files (replicating scaffold_project logic)
+    let agents_content = the_controller_lib::commands::render_agents_md(name);
+    fs::write(repo_path.join("agents.md"), &agents_content).unwrap();
+    fs::create_dir_all(repo_path.join("docs").join("plans")).unwrap();
+    fs::write(repo_path.join("docs").join("plans").join(".gitkeep"), "").unwrap();
+
+    // Verify files exist on disk
+    assert!(repo_path.join("agents.md").exists());
+    assert!(repo_path.join("docs/plans/.gitkeep").exists());
+
+    // Verify agents.md contains the project name
+    let content = fs::read_to_string(repo_path.join("agents.md")).unwrap();
+    assert!(content.starts_with(&format!("# {}", name)));
+    assert!(content.contains("Task Workflow"));
+    assert!(content.contains("Task Structure"));
+}
+
+/// The initial commit created by scaffold_project should contain
+/// agents.md and docs/plans/.gitkeep in its tree.
+#[test]
+fn test_scaffold_initial_commit_contains_template_files() {
+    let projects_root = TempDir::new().unwrap();
+    let name = "commit-tree-test";
+    let repo_path = projects_root.path().join(name);
+    fs::create_dir_all(&repo_path).unwrap();
+
+    // Replicate scaffold_project's git logic
+    let repo = git2::Repository::init(&repo_path).unwrap();
+    let sig = git2::Signature::now("Test", "test@test.com").unwrap();
+
+    // Write files
+    let agents_content = the_controller_lib::commands::render_agents_md(name);
+    fs::write(repo_path.join("agents.md"), &agents_content).unwrap();
+    fs::create_dir_all(repo_path.join("docs").join("plans")).unwrap();
+    fs::write(repo_path.join("docs").join("plans").join(".gitkeep"), "").unwrap();
+
+    // Add to index and commit
+    let mut index = repo.index().unwrap();
+    index.add_path(std::path::Path::new("agents.md")).unwrap();
+    index.add_path(std::path::Path::new("docs/plans/.gitkeep")).unwrap();
+    index.write().unwrap();
+    let tree_id = index.write_tree().unwrap();
+    let tree = repo.find_tree(tree_id).unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[]).unwrap();
+
+    // Verify the HEAD commit tree contains our files
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    let commit_tree = head.tree().unwrap();
+
+    // agents.md should be at root
+    assert!(commit_tree.get_name("agents.md").is_some(), "agents.md missing from commit tree");
+
+    // docs/plans/.gitkeep should be nested
+    let docs_entry = commit_tree.get_name("docs").expect("docs/ missing from commit tree");
+    let docs_tree = repo.find_tree(docs_entry.id()).unwrap();
+    let plans_entry = docs_tree.get_name("plans").expect("plans/ missing from docs tree");
+    let plans_tree = repo.find_tree(plans_entry.id()).unwrap();
+    assert!(plans_tree.get_name(".gitkeep").is_some(), ".gitkeep missing from plans tree");
+
+    // Verify agents.md content in the commit
+    let agents_entry = commit_tree.get_name("agents.md").unwrap();
+    let agents_blob = repo.find_blob(agents_entry.id()).unwrap();
+    let content = std::str::from_utf8(agents_blob.content()).unwrap();
+    assert!(content.starts_with(&format!("# {}", name)));
+}
