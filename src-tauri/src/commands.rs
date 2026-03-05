@@ -702,6 +702,18 @@ pub(crate) fn parse_github_nwo(url: &str) -> Result<String, String> {
     Err(format!("Not a GitHub remote URL: {}", url))
 }
 
+/// Parse a GitHub issue URL like "https://github.com/owner/repo/issues/42" and return the issue number.
+fn parse_github_issue_url(url: &str) -> Result<u64, String> {
+    let url = url.trim();
+    let parts: Vec<&str> = url.rsplitn(2, '/').collect();
+    if parts.len() == 2 {
+        if let Ok(num) = parts[0].parse::<u64>() {
+            return Ok(num);
+        }
+    }
+    Err(format!("Could not parse issue number from URL: {}", url))
+}
+
 /// Extract the GitHub owner/repo from a local git repository's origin remote.
 /// Handles both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git) URLs.
 fn extract_github_repo(repo_path: &str) -> Result<String, String> {
@@ -1055,5 +1067,28 @@ mod tests {
         let result = parse_github_nwo("https://gitlab.com/owner/repo.git");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Not a GitHub remote URL"));
+    }
+
+    // --- parse_github_issue_url tests ---
+
+    #[test]
+    fn test_parse_github_issue_url_basic() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/42").unwrap(),
+            42
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_trailing_newline() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/7\n").unwrap(),
+            7
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_invalid() {
+        assert!(parse_github_issue_url("not a url").is_err());
     }
 }
