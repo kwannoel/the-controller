@@ -8,13 +8,16 @@
   import HotkeyManager from "./lib/HotkeyManager.svelte";
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
   import TaskPanel from "./lib/TaskPanel.svelte";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, type Config } from "./lib/stores";
+  import CreateIssueModal from "./lib/CreateIssueModal.svelte";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, type Config, type FocusTarget, type Project } from "./lib/stores";
 
   let ready = $state(false);
   let needsOnboarding = $state(true);
   let sidebarIsVisible = $state(true);
   let hintsVisible = $state(false);
   let taskPanelIsVisible = $state(false);
+  let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
+  let taskPanelRef: { insertIssue: (issue: any) => void } | undefined = $state();
 
   $effect(() => {
     const unsub = sidebarVisible.subscribe((v) => { sidebarIsVisible = v; });
@@ -35,10 +38,20 @@
     const unsub = hotkeyAction.subscribe((action) => {
       if (action?.type === "toggle-help") {
         showKeyHints.update((v) => !v);
+      } else if (action?.type === "create-issue") {
+        createIssueTarget = { projectId: action.projectId, repoPath: action.repoPath };
       }
     });
     return unsub;
   });
+
+  function handleIssueCreated(issue: any) {
+    createIssueTarget = null;
+    taskPanelVisible.set(true);
+    setTimeout(() => {
+      taskPanelRef?.insertIssue(issue);
+    }, 50);
+  }
 
   onMount(async () => {
     try {
@@ -78,12 +91,19 @@
         <TerminalManager />
       </main>
       {#if taskPanelIsVisible}
-        <TaskPanel visible={taskPanelIsVisible} />
+        <TaskPanel visible={taskPanelIsVisible} bind:this={taskPanelRef} />
       {/if}
     </div>
     <HotkeyManager />
     {#if hintsVisible}
       <HotkeyHelp onClose={() => showKeyHints.set(false)} />
+    {/if}
+    {#if createIssueTarget}
+      <CreateIssueModal
+        repoPath={createIssueTarget.repoPath}
+        onCreated={handleIssueCreated}
+        onClose={() => { createIssueTarget = null; }}
+      />
     {/if}
   {/if}
 {/if}

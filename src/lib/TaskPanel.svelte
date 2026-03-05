@@ -16,6 +16,10 @@
   }
 
   let issues: GithubIssue[] = $state([]);
+
+  export function insertIssue(issue: GithubIssue) {
+    issues = [issue, ...issues];
+  }
   let loading = $state(false);
   let error: string | null = $state(null);
   let currentRepoPath: string | null = $state(null);

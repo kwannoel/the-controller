@@ -353,6 +353,14 @@
       case "s":
         sidebarVisible.update(v => !v);
         return true;
+      case "i":
+        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
+          const project = projectList.find(p => p.id === currentFocus.projectId);
+          if (project) {
+            dispatchAction({ type: "create-issue", projectId: project.id, repoPath: project.repo_path });
+          }
+        }
+        return true;
       case "t":
         taskPanelVisible.update(v => !v);
         return true;
