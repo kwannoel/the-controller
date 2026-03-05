@@ -24,7 +24,10 @@
 
   onMount(async () => {
     try {
-      issues = await invoke<GithubIssue[]>("list_github_issues", { repoPath });
+      const allIssues = await invoke<GithubIssue[]>("list_github_issues", { repoPath });
+      issues = allIssues.filter(issue =>
+        !issue.labels.some(l => l.name === "in-progress")
+      );
     } catch (e) {
       error = String(e);
     } finally {
