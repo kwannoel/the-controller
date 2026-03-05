@@ -785,6 +785,7 @@ pub async fn generate_issue_body(title: String) -> Result<String, String> {
 pub async fn create_github_issue(
     repo_path: String,
     title: String,
+    body: String,
 ) -> Result<crate::models::GithubIssue, String> {
     // Step 1: Extract GitHub owner/repo
     let repo_path_clone = repo_path.clone();
@@ -792,35 +793,13 @@ pub async fn create_github_issue(
         .await
         .map_err(|e| format!("Task failed: {}", e))??;
 
-    // Step 2: Generate issue body via Claude CLI
-    let prompt = format!(
-        "Write a concise GitHub issue body for an issue titled: \"{}\". \
-         Include a Summary section and a Details section. \
-         Keep it under 200 words. Return only the markdown body, nothing else.",
-        title
-    );
-    let body_output = tokio::process::Command::new("claude")
-        .args(["--print", &prompt])
-        .env_remove("CLAUDECODE")
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run claude: {}", e))?;
-
-    let body = if body_output.status.success() {
-        String::from_utf8_lossy(&body_output.stdout).trim().to_string()
-    } else {
-        // Fallback: create issue without body if Claude fails
-        String::new()
-    };
-
-    // Step 3: Create the issue via gh CLI
+    // Step 2: Create the issue via gh CLI (no --json flag)
     let output = tokio::process::Command::new("gh")
         .args([
             "issue", "create",
             "--repo", &nwo,
             "--title", &title,
             "--body", &body,
-            "--json", "number,title,url,labels",
         ])
         .output()
         .await
@@ -831,11 +810,16 @@ pub async fn create_github_issue(
         return Err(format!("gh issue create failed: {}", stderr));
     }
 
-    let issue: crate::models::GithubIssue =
-        serde_json::from_slice(&output.stdout)
-            .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+    // Step 3: Parse the issue URL from stdout
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let number = parse_github_issue_url(&url)?;
 
-    Ok(issue)
+    Ok(crate::models::GithubIssue {
+        number,
+        title,
+        url,
+        labels: vec![],
+    })
 }
 
 const MAX_MERGE_RETRIES: u32 = 5;
