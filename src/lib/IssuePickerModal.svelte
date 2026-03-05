@@ -23,27 +23,35 @@
   let error: string | null = $state(null);
   let selectedIndex = $state(0);
 
-  // Total items: issues + "No issue" option at the end
+  // Total items: "No issue" (index 0) + issues
   let itemCount = $derived(issues.length + 1);
 
-  onMount(async () => {
-    try {
-      const allIssues = await invoke<GithubIssue[]>("list_github_issues", { repoPath });
-      issues = allIssues.filter(issue =>
-        !issue.labels.some(l => l.name === "in-progress")
-      );
-    } catch (e) {
-      error = String(e);
-    } finally {
-      loading = false;
-    }
+  onMount(() => {
+    window.addEventListener("keydown", handleKeydown, { capture: true });
+
+    (async () => {
+      try {
+        const allIssues = await invoke<GithubIssue[]>("list_github_issues", { repoPath });
+        issues = allIssues.filter(issue =>
+          !issue.labels.some(l => l.name === "in-progress")
+        );
+      } catch (e) {
+        error = String(e);
+      } finally {
+        loading = false;
+      }
+    })();
+
+    return () => {
+      window.removeEventListener("keydown", handleKeydown, { capture: true });
+    };
   });
 
   function confirm() {
-    if (selectedIndex < issues.length) {
-      onSelect(issues[selectedIndex]);
-    } else {
+    if (selectedIndex === 0) {
       onSkip();
+    } else {
+      onSelect(issues[selectedIndex - 1]);
     }
   }
 
@@ -77,7 +85,7 @@
   }
 </script>
 
-<div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog">
+<div class="overlay" onclick={onClose} role="dialog">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">Assign Issue to New Session</div>
@@ -87,19 +95,19 @@
       <div class="status error">{error}</div>
     {:else}
       <ul class="issue-list">
+        <li>
+          <button class="issue-btn no-issue" class:selected={selectedIndex === 0} onclick={onSkip}>
+            No issue
+          </button>
+        </li>
         {#each issues as issue, i}
           <li>
-            <button class="issue-btn" class:selected={selectedIndex === i} onclick={() => onSelect(issue)}>
+            <button class="issue-btn" class:selected={selectedIndex === i + 1} onclick={() => onSelect(issue)}>
               <span class="issue-number">#{issue.number}</span>
               <span class="issue-title">{issue.title}</span>
             </button>
           </li>
         {/each}
-        <li>
-          <button class="issue-btn no-issue" class:selected={selectedIndex === issues.length} onclick={onSkip}>
-            No issue
-          </button>
-        </li>
       </ul>
     {/if}
   </div>
