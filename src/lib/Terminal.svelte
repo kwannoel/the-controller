@@ -21,6 +21,7 @@
   let mutationObserver: MutationObserver | undefined;
   let unlistenOutput: UnlistenFn | undefined;
   let unlistenStatus: UnlistenFn | undefined;
+  let unlistenDragDrop: UnlistenFn | undefined;
 
   async function handleImagePaste(
     writeToPty: (data: string) => Promise<unknown>,
@@ -40,6 +41,15 @@
         // Clipboard read failed — nothing to paste
       }
     }
+  }
+
+  const IMAGE_EXTENSIONS = new Set([
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
+  ]);
+
+  function isImageFile(path: string): boolean {
+    const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
+    return IMAGE_EXTENSIONS.has(ext);
   }
 
   onMount(() => {
@@ -105,6 +115,21 @@
       unlistenStatus = fn;
     });
 
+    // Listen for drag-and-drop file events (from Finder)
+    listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
+      const imagePath = event.payload.paths.find(isImageFile);
+      if (imagePath) {
+        try {
+          await invoke("copy_image_file_to_clipboard", { path: imagePath });
+          await writeToPty("\x1b[200~\x1b[201~");
+        } catch (err) {
+          console.error("Failed to handle dropped image:", err);
+        }
+      }
+    }).then((fn) => {
+      unlistenDragDrop = fn;
+    });
+
     // Handle resize
     resizeObserver = new ResizeObserver(() => {
       if (fitAddon && term) {
@@ -141,6 +166,7 @@
   onDestroy(() => {
     unlistenOutput?.();
     unlistenStatus?.();
+    unlistenDragDrop?.();
     resizeObserver?.disconnect();
     mutationObserver?.disconnect();
     term?.dispose();
