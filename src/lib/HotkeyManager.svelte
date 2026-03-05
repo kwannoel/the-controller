@@ -22,7 +22,7 @@
   let lastEscapeTime = 0;
 
   const DOUBLE_ESCAPE_MS = 300;
-  const DWELL_FOCUS_MS = 2000;
+  const DWELL_FOCUS_MS = 5000;
   let dwellTimer: ReturnType<typeof setTimeout> | null = null;
 
   function clearDwellTimer() {
