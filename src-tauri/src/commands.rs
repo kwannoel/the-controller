@@ -155,7 +155,7 @@ pub fn create_project(
     let repo_agents = path.join("agents.md");
     if !repo_agents.exists() {
         storage
-            .save_agents_md(project.id, DEFAULT_AGENTS_MD)
+            .save_agents_md(project.id, &render_agents_md(&project.name))
             .map_err(|e| e.to_string())?;
     }
 
@@ -207,7 +207,7 @@ pub fn load_project(
     let repo_agents = path.join("agents.md");
     if !repo_agents.exists() {
         storage
-            .save_agents_md(project.id, DEFAULT_AGENTS_MD)
+            .save_agents_md(project.id, &render_agents_md(&project.name))
             .map_err(|e| e.to_string())?;
     }
 
