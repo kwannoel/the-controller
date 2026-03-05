@@ -76,6 +76,7 @@
         e.stopPropagation();
         selectedIndex = (selectedIndex - 1 + itemCount) % itemCount;
         break;
+      case "l":
       case "Enter":
         e.preventDefault();
         e.stopPropagation();
