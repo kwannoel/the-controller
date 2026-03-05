@@ -51,8 +51,6 @@
   let projectList: Project[] = $state([]);
   let activeSession: string | null = $state(null);
   let statuses: Map<string, SessionStatus> = $state(new Map());
-  const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  const IDLE_TIMEOUT_MS = 3000;
 
   $effect(() => {
     const unsub = projects.subscribe((value) => { projectList = value; });
@@ -245,22 +243,6 @@
     });
   }
 
-  function resetIdleTimer(sessionId: string) {
-    const existing = idleTimers.get(sessionId);
-    if (existing) clearTimeout(existing);
-    idleTimers.set(sessionId, setTimeout(() => {
-      // Only transition to idle if still working (not exited)
-      sessionStatuses.update(m => {
-        if (m.get(sessionId) === "working") {
-          const next = new Map(m);
-          next.set(sessionId, "idle");
-          return next;
-        }
-        return m;
-      });
-    }, IDLE_TIMEOUT_MS));
-  }
-
   $effect(() => {
     const unlisteners: (() => void)[] = [];
     let cancelled = false;
@@ -268,15 +250,15 @@
     for (const project of projectList) {
       for (const session of project.sessions) {
         listen<string>(`session-status-changed:${session.id}`, () => {
-          const timer = idleTimers.get(session.id);
-          if (timer) clearTimeout(timer);
-          idleTimers.delete(session.id);
           markSession(session.id, "exited");
         }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
 
-        listen<string>(`pty-output:${session.id}`, () => {
-          markSession(session.id, "working");
-          resetIdleTimer(session.id);
+        // Hook-based status: precise idle/working from Claude Code hooks
+        listen<string>(`session-status-hook:${session.id}`, (event) => {
+          const status = event.payload as SessionStatus;
+          if (status === "working" || status === "idle") {
+            markSession(session.id, status);
+          }
         }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
       }
     }
@@ -284,10 +266,6 @@
     return () => {
       cancelled = true;
       unlisteners.forEach(fn => fn());
-      for (const timer of idleTimers.values()) {
-        clearTimeout(timer);
-      }
-      idleTimers.clear();
     };
   });
 
@@ -361,9 +339,6 @@
       const nextFocus = focusAfterSessionDelete(list, projectId, sessionId, isArchiveView);
 
       await invoke("close_session", { projectId, sessionId, deleteWorktree });
-      const timer = idleTimers.get(sessionId);
-      if (timer) clearTimeout(timer);
-      idleTimers.delete(sessionId);
       sessionStatuses.update(m => {
         const next = new Map(m);
         next.delete(sessionId);
@@ -391,9 +366,6 @@
       const prevSession = idx > 0 ? activeSessions[idx - 1] : null;
 
       await invoke("archive_session", { projectId, sessionId });
-      const timer = idleTimers.get(sessionId);
-      if (timer) clearTimeout(timer);
-      idleTimers.delete(sessionId);
       sessionStatuses.update(m => {
         const next = new Map(m);
         next.delete(sessionId);
