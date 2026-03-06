@@ -109,6 +109,18 @@ pub fn hook_settings_json(_session_id: Uuid) -> String {
                     "command": working_cmd
                 }]
             }],
+            "PreToolUse": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": working_cmd
+                }]
+            }],
+            "PostToolUse": [{
+                "hooks": [{
+                    "type": "command",
+                    "command": working_cmd
+                }]
+            }],
             "Stop": [{
                 "hooks": [{
                     "type": "command",
@@ -161,11 +173,13 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         let hooks = parsed.get("hooks").unwrap();
         assert!(hooks.get("UserPromptSubmit").is_some());
+        assert!(hooks.get("PreToolUse").is_some());
+        assert!(hooks.get("PostToolUse").is_some());
         assert!(hooks.get("Stop").is_some());
         assert!(hooks.get("Notification").is_some());
 
         // Verify new hooks format: each event entry must have a nested "hooks" array
-        for event_name in &["UserPromptSubmit", "Stop", "Notification"] {
+        for event_name in &["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification"] {
             let entries = hooks.get(*event_name).unwrap().as_array().unwrap();
             for entry in entries {
                 assert!(
