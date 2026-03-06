@@ -27,8 +27,13 @@
     return unsub;
   });
 
+  let focusedSessionId: string | null = $state(null);
+
   $effect(() => {
-    const unsub = focusTarget.subscribe((v) => { isFocused = v?.type === "terminal"; });
+    const unsub = focusTarget.subscribe((v) => {
+      isFocused = v?.type === "terminal";
+      focusedSessionId = v?.type === "session" ? v.sessionId : null;
+    });
     return unsub;
   });
 
@@ -45,7 +50,9 @@
 <div class="terminal-manager" class:focused={isFocused} onfocusin={handleFocusIn}>
   {#each allSessionIds as sessionId (sessionId)}
     <div class="terminal-wrapper" class:visible={activeSession === sessionId}>
-      <SummaryPane {sessionId} />
+      {#if focusedSessionId === sessionId}
+        <SummaryPane {sessionId} />
+      {/if}
       <div class="terminal-inner">
         <Terminal {sessionId} bind:this={terminalComponents[sessionId]} />
       </div>
