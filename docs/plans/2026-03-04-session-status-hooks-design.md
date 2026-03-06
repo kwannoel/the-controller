@@ -41,24 +41,24 @@ When spawning a Claude Code session, The Controller:
   "hooks": {
     "UserPromptSubmit": [{
       "type": "command",
-      "command": "timeout 2 bash -c 'echo \"working:$THE_CONTROLLER_SESSION_ID\" | nc -U /tmp/the-controller.sock' 2>/dev/null; true"
+      "command": "echo \"working:$THE_CONTROLLER_SESSION_ID\" | nc -U -w 2 /tmp/the-controller.sock 2>/dev/null; true"
     }],
     "Stop": [{
       "type": "command",
-      "command": "timeout 2 bash -c 'echo \"idle:$THE_CONTROLLER_SESSION_ID\" | nc -U /tmp/the-controller.sock' 2>/dev/null; true"
+      "command": "echo \"idle:$THE_CONTROLLER_SESSION_ID\" | nc -U -w 2 /tmp/the-controller.sock 2>/dev/null; true"
     }],
     "Notification": [{
       "matcher": "idle_prompt",
       "hooks": [{
         "type": "command",
-        "command": "timeout 2 bash -c 'echo \"idle:$THE_CONTROLLER_SESSION_ID\" | nc -U /tmp/the-controller.sock' 2>/dev/null; true"
+        "command": "echo \"idle:$THE_CONTROLLER_SESSION_ID\" | nc -U -w 2 /tmp/the-controller.sock 2>/dev/null; true"
       }]
     }]
   }
 }
 ```
 
-The `timeout 2` prevents the hook from blocking Claude Code if the socket is unavailable. The `; true` ensures exit code 0 so Claude Code doesn't treat it as a hook failure.
+The `nc -w 2` flag sets a 2-second idle timeout, preventing the hook from blocking Claude Code if the socket is unavailable. The `; true` ensures exit code 0 so Claude Code doesn't treat it as a hook failure. Note: `timeout` is not available on macOS by default, so we use `nc -w` instead.
 
 ## Socket Listener
 

@@ -78,6 +78,6 @@ Session status (idle/working/exited) is detected using Claude Code hooks, not PT
 - `src/lib/Sidebar.svelte` — listens for `session-status-hook` events
 
 **Edge cases:**
-- Hook commands use `timeout 2` + `; true` to avoid blocking Claude Code
+- Hook commands use `nc -w 2` + `; true` to avoid blocking Claude Code (`timeout` is not available on macOS)
 - Stale socket files are cleaned up on startup
 - Reattached tmux sessions default to "idle" until the next hook fires
