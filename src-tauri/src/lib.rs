@@ -23,6 +23,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::restore_sessions,
+            commands::connect_session,
             commands::create_project,
             commands::load_project,
             commands::list_projects,
