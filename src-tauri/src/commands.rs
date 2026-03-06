@@ -806,8 +806,7 @@ fn extract_github_repo(repo_path: &str) -> Result<String, String> {
     parse_github_nwo(url)
 }
 
-#[tauri::command]
-pub async fn list_github_issues(repo_path: String) -> Result<Vec<crate::models::GithubIssue>, String> {
+pub(crate) async fn fetch_github_issues(repo_path: String) -> Result<Vec<crate::models::GithubIssue>, String> {
     let repo_path_clone = repo_path.clone();
     let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
         .await
@@ -833,6 +832,49 @@ pub async fn list_github_issues(repo_path: String) -> Result<Vec<crate::models::
         serde_json::from_slice(&output.stdout)
             .map_err(|e| format!("Failed to parse gh output: {}", e))?;
 
+    Ok(issues)
+}
+
+#[tauri::command]
+pub async fn list_github_issues(
+    repo_path: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::models::GithubIssue>, String> {
+    // Check cache (lock is dropped at end of block before any .await)
+    let cache_result = {
+        let cache = state.issue_cache.lock().map_err(|e| format!("Cache lock error: {}", e))?;
+        match cache.get(&repo_path) {
+            Some(entry) if entry.is_fresh() => {
+                return Ok(entry.issues.clone());
+            }
+            Some(entry) => {
+                // Stale hit: return stale data and refresh in background
+                Some(entry.issues.clone())
+            }
+            None => None,
+        }
+    };
+
+    if let Some(stale_issues) = cache_result {
+        // Spawn background refresh
+        let cache_arc = state.issue_cache.clone();
+        let repo_path_bg = repo_path.clone();
+        tokio::spawn(async move {
+            if let Ok(fresh_issues) = fetch_github_issues(repo_path_bg.clone()).await {
+                if let Ok(mut cache) = cache_arc.lock() {
+                    cache.insert(repo_path_bg, fresh_issues);
+                }
+            }
+        });
+        return Ok(stale_issues);
+    }
+
+    // Cache miss: fetch, cache, and return
+    let issues = fetch_github_issues(repo_path.clone()).await?;
+    {
+        let mut cache = state.issue_cache.lock().map_err(|e| format!("Cache lock error: {}", e))?;
+        cache.insert(repo_path, issues.clone());
+    }
     Ok(issues)
 }
 
