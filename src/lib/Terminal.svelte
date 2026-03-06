@@ -18,6 +18,7 @@
   let containerEl: HTMLDivElement | undefined = $state();
   let term: Terminal | undefined;
   let fitAddon: FitAddon | undefined;
+  let termOpened = false; // tracks whether term.open() produced valid measurements
   let resizeObserver: ResizeObserver | undefined;
   let mutationObserver: MutationObserver | undefined;
   let unlistenOutput: UnlistenFn | undefined;
@@ -108,7 +109,12 @@
     fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerEl);
-    fitAddon.fit();
+    // Only fit if the container is actually visible — xterm.js can't measure
+    // character cells in a display:none ancestor, which produces bogus cols.
+    if (containerEl.offsetParent !== null) {
+      fitAddon.fit();
+      termOpened = true;
+    }
 
     const writeToPty = (data: string) =>
       invoke("write_to_pty", { sessionId, data });
@@ -209,8 +215,22 @@
 
     // Handle resize
     resizeObserver = new ResizeObserver(() => {
-      if (fitAddon && term) {
+      if (fitAddon && term && containerEl) {
+        // Skip resize when container is hidden (display:none ancestor)
+        if (containerEl.offsetParent === null) return;
+
+        // If xterm was opened while hidden, cell measurements are invalid.
+        // Force a full canvas repaint first so FitAddon gets correct metrics.
+        if (!termOpened) {
+          term.refresh(0, term.rows - 1);
+          termOpened = true;
+        }
+
         fitAddon.fit();
+
+        // Guard against bogus dimensions from bad cell measurements
+        if (term.cols < 10) return;
+
         invoke("resize_pty", {
           sessionId,
           rows: term.rows,
@@ -222,10 +242,22 @@
     });
     resizeObserver.observe(containerEl);
 
-    // Refit when becoming visible (display: none -> block doesn't trigger ResizeObserver)
+    // Refit when becoming visible (display: none -> flex doesn't always trigger ResizeObserver).
+    // Watch .terminal-wrapper (grandparent) which is the element that gets the `visible` class.
     mutationObserver = new MutationObserver(() => {
       if (containerEl && containerEl.offsetParent !== null && fitAddon && term) {
+        // If xterm was opened while hidden, cell measurements are invalid.
+        // Force a full canvas repaint first so FitAddon gets correct metrics.
+        if (!termOpened) {
+          term.refresh(0, term.rows - 1);
+          termOpened = true;
+        }
+
         fitAddon.fit();
+
+        // Guard against bogus dimensions
+        if (term.cols < 10) return;
+
         // Force full repaint — canvas content may be stale after display:none
         term.refresh(0, term.rows - 1);
         // Notify PTY of dimensions so the program gets SIGWINCH and redraws its TUI
@@ -238,8 +270,11 @@
         });
       }
     });
-    if (containerEl?.parentElement) {
-      mutationObserver.observe(containerEl.parentElement, {
+    // Observe .terminal-wrapper (grandparent of .terminal-container) for class changes.
+    // Previously this watched .terminal-inner (parent) which never gets class changes.
+    const wrapperEl = containerEl?.parentElement?.parentElement;
+    if (wrapperEl) {
+      mutationObserver.observe(wrapperEl, {
         attributes: true,
         attributeFilter: ["class"],
       });
