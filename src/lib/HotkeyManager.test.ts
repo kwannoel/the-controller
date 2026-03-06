@@ -140,7 +140,7 @@ describe('HotkeyManager', () => {
       pressKey('m');
       expect(invoke).toHaveBeenCalledWith('write_to_pty', {
         sessionId: 'sess-1',
-        data: 'create pr, merge, sync local master\n',
+        data: 'create pr, merge, sync local master\r',
       });
     });
 

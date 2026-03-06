@@ -288,7 +288,7 @@
         return true;
       case "m":
         if (activeId) {
-          invoke("write_to_pty", { sessionId: activeId, data: "create pr, merge, sync local master\n" });
+          invoke("write_to_pty", { sessionId: activeId, data: "create pr, merge, sync local master\r" });
         }
         return true;
       case "s":
