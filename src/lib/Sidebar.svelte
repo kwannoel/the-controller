@@ -592,8 +592,10 @@
       onSelect={async (entry) => {
         showFuzzyFinder = false;
         try {
-          await invoke("load_project", { name: entry.name, repoPath: entry.path });
+          const project = await invoke<Project>("load_project", { name: entry.name, repoPath: entry.path });
           await loadProjects();
+          expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
+          focusTarget.set({ type: "project", projectId: project.id });
         } catch (e) {
           showToast(String(e), "error");
         }
@@ -604,9 +606,11 @@
 
   {#if showNewProjectModal}
     <NewProjectModal
-      onCreated={async () => {
+      onCreated={async (project) => {
         showNewProjectModal = false;
         await loadProjects();
+        expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
+        focusTarget.set({ type: "project", projectId: project.id });
       }}
       onClose={() => (showNewProjectModal = false)}
     />
