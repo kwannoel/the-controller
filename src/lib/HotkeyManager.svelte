@@ -338,6 +338,9 @@
           dispatchAction({ type: "focus-terminal" });
         }
         return true;
+      case "S":
+        dispatchAction({ type: "screenshot-to-session" });
+        return true;
       case "?":
         dispatchAction({ type: "toggle-help" });
         return true;

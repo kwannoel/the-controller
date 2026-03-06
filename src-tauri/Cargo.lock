@@ -4149,7 +4149,7 @@ dependencies = [
 
 [[package]]
 name = "the-controller"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4157,6 +4157,7 @@ dependencies = [
  "git2",
  "image",
  "portable-pty",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "tauri",
