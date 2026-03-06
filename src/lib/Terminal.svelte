@@ -30,6 +30,9 @@
   // sent to the PTY as input. See GitHub issue #49.
   let inputReady = false;
 
+  // Whether connect_session has been called for this terminal.
+  let connected = false;
+
   // Capture the first prompt typed by the user (text before first Enter).
   // Skip if session already has a prompt (e.g., from a GitHub issue).
   let promptBuffer = "";
@@ -121,6 +124,16 @@
     if (containerEl.offsetParent !== null) {
       fitAddon.fit();
       termOpened = true;
+      // Connect PTY at the measured size to avoid intermediate resizes
+      // that cause extra newlines on restart.
+      connected = true;
+      invoke("connect_session", {
+        sessionId,
+        rows: term.rows,
+        cols: term.cols,
+      }).catch((err) => {
+        console.error("Failed to connect session:", err);
+      });
     }
 
     const writeToPty = (data: string) =>
@@ -264,6 +277,18 @@
 
         // Guard against bogus dimensions
         if (term.cols < 10) return;
+
+        // Connect PTY if this terminal was hidden on mount
+        if (!connected) {
+          connected = true;
+          invoke("connect_session", {
+            sessionId,
+            rows: term.rows,
+            cols: term.cols,
+          }).catch((err: unknown) => {
+            console.error("Failed to connect session:", err);
+          });
+        }
 
         // Force full repaint — canvas content may be stale after display:none
         term.refresh(0, term.rows - 1);

@@ -75,49 +75,74 @@ pub fn render_agents_md(name: &str) -> String {
     DEFAULT_AGENTS_MD.replace("{name}", name)
 }
 
-/// Re-spawn PTY sessions for all active (non-archived) sessions across all projects.
-/// PTY processes don't survive restart, but session metadata and worktrees persist.
+/// Run storage migrations on startup (worktree path format, etc.).
+/// PTY connections are deferred to `connect_session` so each terminal
+/// can attach at the correct size.
 #[tauri::command]
 pub fn restore_sessions(
     state: State<AppState>,
-    app_handle: AppHandle,
 ) -> Result<(), String> {
-    let projects = {
-        let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let projects = storage.list_projects().map_err(|e| e.to_string())?;
-        // Migrate worktree paths from UUID-based to name-based directories
-        for project in &projects {
-            if let Err(e) = storage.migrate_worktree_paths(project) {
-                eprintln!("Failed to migrate worktrees for project '{}': {}", project.name, e);
-            }
-        }
-        // Reload after migration to get updated paths
-        storage.list_projects().map_err(|e| e.to_string())?
-    };
-
-    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let projects = storage.list_projects().map_err(|e| e.to_string())?;
+    // Migrate worktree paths from UUID-based to name-based directories
     for project in &projects {
-        for session in &project.sessions {
-            if session.archived {
-                continue;
-            }
-            let session_dir = session
-                .worktree_path
-                .clone()
-                .unwrap_or_else(|| project.repo_path.clone());
+        if let Err(e) = storage.migrate_worktree_paths(project) {
+            eprintln!("Failed to migrate worktrees for project '{}': {}", project.name, e);
+        }
+    }
+    Ok(())
+}
 
-            if let Err(e) = pty_manager.spawn_session(session.id, &session_dir, &session.kind, app_handle.clone(), true, None)
-            {
-                eprintln!(
-                    "Failed to restore session {} ({}): {}",
-                    session.label, session.id, e
-                );
-            }
+/// Connect a terminal to its PTY session at the given size.
+/// Called by each Terminal component after it measures its dimensions.
+/// No-op if the session is already connected.
+#[tauri::command]
+pub fn connect_session(
+    state: State<AppState>,
+    app_handle: AppHandle,
+    session_id: String,
+    rows: u16,
+    cols: u16,
+) -> Result<(), String> {
+    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    // Check if already connected
+    {
+        let pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+        if pty_manager.sessions.contains_key(&id) {
+            return Ok(());
         }
     }
 
-    Ok(())
+    // Find session config from storage
+    let (session_dir, kind) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let projects = storage.list_projects().map_err(|e| e.to_string())?;
+        projects
+            .iter()
+            .flat_map(|p| p.sessions.iter().map(move |s| (p, s)))
+            .find(|(_, s)| s.id == id)
+            .map(|(p, s)| {
+                let dir = s
+                    .worktree_path
+                    .clone()
+                    .unwrap_or_else(|| p.repo_path.clone());
+                (dir, s.kind.clone())
+            })
+            .ok_or_else(|| format!("session not found: {}", session_id))?
+    };
+
+    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+    pty_manager.spawn_session(
+        id,
+        &session_dir,
+        &kind,
+        app_handle,
+        true,
+        None,
+        rows,
+        cols,
+    )
 }
 
 #[tauri::command]
@@ -336,7 +361,7 @@ pub fn unarchive_project(
     // Spawn PTYs for restored sessions
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     for (session_id, session_dir, kind) in to_restore {
-        pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle.clone(), true, None)?;
+        pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle.clone(), true, None, 24, 80)?;
     }
 
     Ok(())
@@ -435,7 +460,7 @@ pub fn create_session(
 
     // Spawn the PTY session in the worktree (or repo) directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle, false, initial_prompt.as_deref())?;
+    pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle, false, initial_prompt.as_deref(), 24, 80)?;
 
     Ok(session_id.to_string())
 }
@@ -560,7 +585,7 @@ pub fn unarchive_session(
 
     // Spawn the PTY session in the existing worktree directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_uuid, &session_dir, &kind, app_handle, true, None)?;
+    pty_manager.spawn_session(session_uuid, &session_dir, &kind, app_handle, true, None, 24, 80)?;
 
     Ok(())
 }

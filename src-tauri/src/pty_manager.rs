@@ -17,7 +17,7 @@ pub struct PtySession {
 }
 
 pub struct PtyManager {
-    sessions: HashMap<Uuid, PtySession>,
+    pub(crate) sessions: HashMap<Uuid, PtySession>,
 }
 
 impl PtyManager {
@@ -39,7 +39,14 @@ impl PtyManager {
         app_handle: AppHandle,
         continue_session: bool,
         initial_prompt: Option<&str>,
+        rows: u16,
+        cols: u16,
     ) -> Result<(), String> {
+        // Skip if already connected
+        if self.sessions.contains_key(&session_id) {
+            return Ok(());
+        }
+
         let command = match kind {
             "codex" => "codex",
             _ => "claude",
@@ -49,11 +56,15 @@ impl PtyManager {
             if !TmuxManager::has_session(session_id) {
                 TmuxManager::create_session(session_id, working_dir, command, continue_session, initial_prompt)?;
             }
+            // Pre-resize tmux to the target size so attaching doesn't cause
+            // an intermediate resize (which would make claude re-render and
+            // produce extra newlines).
+            let _ = TmuxManager::resize_session(session_id, cols, rows);
             // Attach to the tmux session via a local PTY
-            self.attach_tmux_session(session_id, app_handle)
+            self.attach_tmux_session(session_id, app_handle, rows, cols)
         } else {
             // No tmux — spawn the command directly in a PTY
-            self.spawn_direct_session(session_id, working_dir, command, app_handle, initial_prompt)
+            self.spawn_direct_session(session_id, working_dir, command, app_handle, initial_prompt, rows, cols)
         }
     }
 
@@ -65,12 +76,14 @@ impl PtyManager {
         command: &str,
         app_handle: AppHandle,
         initial_prompt: Option<&str>,
+        rows: u16,
+        cols: u16,
     ) -> Result<(), String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
-                rows: 24,
-                cols: 80,
+                rows,
+                cols,
                 pixel_width: 0,
                 pixel_height: 0,
             })
@@ -152,14 +165,16 @@ impl PtyManager {
         &mut self,
         session_id: Uuid,
         app_handle: AppHandle,
+        rows: u16,
+        cols: u16,
     ) -> Result<(), String> {
         let tmux_name = TmuxManager::session_name(session_id);
 
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
-                rows: 24,
-                cols: 80,
+                rows,
+                cols,
                 pixel_width: 0,
                 pixel_height: 0,
             })
