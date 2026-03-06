@@ -1,5 +1,6 @@
 <script lang="ts">
   import Terminal from "./Terminal.svelte";
+  import SummaryPane from "./SummaryPane.svelte";
   import { projects, activeSessionId, hotkeyAction, focusTarget, type Project } from "./stores";
 
   let projectList: Project[] = $state([]);
@@ -44,7 +45,10 @@
 <div class="terminal-manager" class:focused={isFocused} onfocusin={handleFocusIn}>
   {#each allSessionIds as sessionId (sessionId)}
     <div class="terminal-wrapper" class:visible={activeSession === sessionId}>
-      <Terminal {sessionId} bind:this={terminalComponents[sessionId]} />
+      <SummaryPane {sessionId} />
+      <div class="terminal-inner">
+        <Terminal {sessionId} bind:this={terminalComponents[sessionId]} />
+      </div>
     </div>
   {/each}
 
@@ -74,10 +78,17 @@
     position: absolute;
     inset: 0;
     display: none;
+    flex-direction: column;
   }
 
   .terminal-wrapper.visible {
-    display: block;
+    display: flex;
+  }
+
+  .terminal-inner {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .empty-state {

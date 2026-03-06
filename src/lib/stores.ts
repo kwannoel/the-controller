@@ -15,6 +15,7 @@ export interface SessionConfig {
   archived: boolean;
   kind: string;
   github_issue: GithubIssue | null;
+  initial_prompt: string | null;
 }
 
 export interface Project {

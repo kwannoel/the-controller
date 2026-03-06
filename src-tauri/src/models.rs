@@ -23,6 +23,8 @@ pub struct SessionConfig {
     pub kind: String,
     #[serde(default)]
     pub github_issue: Option<GithubIssue>,
+    #[serde(default)]
+    pub initial_prompt: Option<String>,
 }
 
 fn default_kind() -> String {
@@ -87,6 +89,7 @@ mod tests {
                 archived: false,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             }],
         };
 
@@ -138,6 +141,7 @@ mod tests {
                 archived: false,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             }],
         };
 
@@ -173,6 +177,7 @@ mod tests {
                 url: "https://github.com/kwannoel/the-controller/issues/22".to_string(),
                 labels: vec![],
             }),
+            initial_prompt: None,
         };
         let json = serde_json::to_string(&session).expect("serialize");
         let deserialized: SessionConfig = serde_json::from_str(&json).expect("deserialize");
