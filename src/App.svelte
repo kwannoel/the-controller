@@ -27,7 +27,7 @@
   let taskPanelIsVisible = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
-  let taskPanelRef: { insertIssue: (issue: any) => void } | undefined = $state();
+
 
   $effect(() => {
     const unsub = sidebarVisible.subscribe((v) => { sidebarIsVisible = v; });
@@ -73,10 +73,6 @@
       });
 
       showToast(`Issue #${issue.number} created`, "info");
-      taskPanelVisible.set(true);
-      setTimeout(() => {
-        taskPanelRef?.insertIssue(issue);
-      }, 50);
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -179,7 +175,7 @@
         <TerminalManager />
       </main>
       {#if taskPanelIsVisible}
-        <TaskPanel visible={taskPanelIsVisible} bind:this={taskPanelRef} />
+        <TaskPanel visible={taskPanelIsVisible} />
       {/if}
     </div>
     <HotkeyManager />
