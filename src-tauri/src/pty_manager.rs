@@ -450,4 +450,19 @@ mod tests {
         let result = manager.close_session(invalid_id);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_session_ids_empty_manager() {
+        let manager = PtyManager::new();
+        assert!(manager.session_ids().is_empty());
+    }
+
+    #[test]
+    fn test_send_raw_to_invalid_session_returns_error() {
+        let mut manager = PtyManager::new();
+        let invalid_id = Uuid::new_v4();
+        let result = manager.send_raw_to_session(invalid_id, b"hello");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("session not found"));
+    }
 }

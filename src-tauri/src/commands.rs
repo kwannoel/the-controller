@@ -1375,4 +1375,131 @@ mod tests {
     fn test_parse_github_issue_url_invalid() {
         assert!(parse_github_issue_url("not a url").is_err());
     }
+
+    // --- render_agents_md tests ---
+
+    #[test]
+    fn test_render_agents_md_replaces_name() {
+        let result = render_agents_md("my-project");
+        assert!(result.starts_with("# my-project"));
+        assert!(!result.contains("{name}"));
+    }
+
+    #[test]
+    fn test_render_agents_md_empty_name() {
+        let result = render_agents_md("");
+        assert!(result.starts_with("# \n"));
+    }
+
+    // --- find_main_branch_oid tests ---
+
+    #[test]
+    fn test_find_main_branch_oid_with_main_branch() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let repo = git2::Repository::init(tmp.path()).unwrap();
+        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+        let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
+
+        // After init + commit, HEAD points to a branch — find_main_branch_oid should find it
+        let oid = find_main_branch_oid(&repo);
+        assert!(oid.is_some());
+    }
+
+    #[test]
+    fn test_find_main_branch_oid_no_main_or_master() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let repo = git2::Repository::init(tmp.path()).unwrap();
+        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+        let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let oid = repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
+
+        // Rename the default branch to something other than main/master
+        let commit = repo.find_commit(oid).unwrap();
+        repo.branch("develop", &commit, false).unwrap();
+        // Delete the original branch by setting HEAD to develop
+        repo.set_head("refs/heads/develop").unwrap();
+        if let Ok(mut branch) = repo.find_branch("main", git2::BranchType::Local) {
+            let _ = branch.delete();
+        }
+        if let Ok(mut branch) = repo.find_branch("master", git2::BranchType::Local) {
+            let _ = branch.delete();
+        }
+
+        let result = find_main_branch_oid(&repo);
+        assert!(result.is_none());
+    }
+
+    // --- CommitInfo serialization ---
+
+    #[test]
+    fn test_commit_info_serialization() {
+        let info = CommitInfo {
+            hash: "abc1234".to_string(),
+            message: "fix: resolve bug".to_string(),
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["hash"], "abc1234");
+        assert_eq!(parsed["message"], "fix: resolve bug");
+    }
+
+    // --- additional validate_project_name edge cases ---
+
+    #[test]
+    fn test_project_name_with_spaces_is_valid() {
+        // Spaces are not explicitly rejected
+        assert!(validate_project_name("my project").is_ok());
+    }
+
+    #[test]
+    fn test_project_name_with_hyphens_and_underscores() {
+        assert!(validate_project_name("my-cool_project-2").is_ok());
+    }
+
+    #[test]
+    fn test_project_name_single_char() {
+        assert!(validate_project_name("a").is_ok());
+    }
+
+    // --- parse_github_nwo edge cases ---
+
+    #[test]
+    fn test_parse_github_nwo_ssh_no_git_suffix() {
+        // SSH URL without .git suffix
+        assert_eq!(
+            parse_github_nwo("git@github.com:owner/repo").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_empty_string() {
+        assert!(parse_github_nwo("").is_err());
+    }
+
+    // --- parse_github_issue_url edge cases ---
+
+    #[test]
+    fn test_parse_github_issue_url_large_number() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/99999").unwrap(),
+            99999
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_zero() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/0").unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_empty() {
+        assert!(parse_github_issue_url("").is_err());
+    }
 }

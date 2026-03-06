@@ -124,4 +124,30 @@ mod tests {
         // Only the 4 permission args, no positional prompt
         assert_eq!(codex_args.len(), 4);
     }
+
+    #[test]
+    fn unknown_command_produces_empty_args() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("unknown-tool", session_id, false, None);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn unknown_command_with_continue_only_has_continue() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("unknown-tool", session_id, true, None);
+        assert_eq!(args, vec!["--continue".to_string()]);
+    }
+
+    #[test]
+    fn claude_args_continue_plus_prompt() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("claude", session_id, true, Some("do stuff"));
+        assert_eq!(args[0], "--continue");
+        assert_eq!(args[1], "--settings");
+        // args[2] is settings JSON
+        assert_eq!(args[3], "--append-system-prompt");
+        assert_eq!(args[4], "do stuff");
+        assert_eq!(args[5], "do stuff"); // positional prompt at end
+    }
 }
