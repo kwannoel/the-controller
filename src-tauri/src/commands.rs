@@ -980,6 +980,8 @@ pub async fn merge_session_branch(
     ))
 }
 
+use crate::models::CommitInfo;
+
 #[tauri::command]
 pub fn get_session_commits(
     state: State<AppState>,
