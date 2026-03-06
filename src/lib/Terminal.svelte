@@ -51,6 +51,11 @@
       try {
         const text = await navigator.clipboard.readText();
         if (text) {
+          // Capture pasted text into the prompt buffer so the summary pane
+          // shows the full prompt (paste bypasses term.onData).
+          if (!promptCaptured) {
+            promptBuffer += text;
+          }
           await writeToPty("\x1b[200~" + text + "\x1b[201~");
         }
       } catch {
