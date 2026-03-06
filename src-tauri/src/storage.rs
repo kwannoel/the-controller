@@ -184,6 +184,7 @@ mod tests {
                 kind: "claude".to_string(),
                 github_issue: None,
                 initial_prompt: None,
+                done_commits: vec![],
             }],
         }
     }
