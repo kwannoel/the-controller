@@ -192,4 +192,47 @@ mod tests {
         assert_eq!(dirs[0].name, "alpha");
         assert_eq!(dirs[1].name, "beta");
     }
+
+    #[test]
+    fn test_config_path_returns_expected() {
+        let base = Path::new("/tmp/test-base");
+        assert_eq!(config_path(base), PathBuf::from("/tmp/test-base/config.json"));
+    }
+
+    #[test]
+    fn test_load_config_invalid_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(config_path(tmp.path()), "not valid json").unwrap();
+        let result = load_config(tmp.path());
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_list_directories_empty_dir() {
+        let tmp = TempDir::new().unwrap();
+        let dirs = list_directories(tmp.path()).unwrap();
+        assert!(dirs.is_empty());
+    }
+
+    #[test]
+    fn test_generate_names_via_cli_empty_description() {
+        let result = generate_names_via_cli("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must not be empty"));
+    }
+
+    #[test]
+    fn test_generate_names_via_cli_whitespace_only() {
+        let result = generate_names_via_cli("   ");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("must not be empty"));
+    }
+
+    #[test]
+    fn test_generate_names_via_cli_too_long() {
+        let long = "a".repeat(501);
+        let result = generate_names_via_cli(&long);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("too long"));
+    }
 }

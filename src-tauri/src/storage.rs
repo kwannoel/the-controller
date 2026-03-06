@@ -274,4 +274,73 @@ mod tests {
         storage.delete_project_dir(project.id).expect("delete");
         assert!(storage.load_project(project.id).is_err());
     }
+
+    #[test]
+    fn test_ensure_dirs_creates_projects_directory() {
+        let tmp = TempDir::new().unwrap();
+        let storage = Storage::new(tmp.path().to_path_buf());
+        storage.ensure_dirs().expect("ensure_dirs");
+        assert!(tmp.path().join("projects").is_dir());
+    }
+
+    #[test]
+    fn test_project_dir_format() {
+        let tmp = TempDir::new().unwrap();
+        let storage = Storage::new(tmp.path().to_path_buf());
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let dir = storage.project_dir(id);
+        assert!(dir.ends_with("projects/550e8400-e29b-41d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn test_delete_nonexistent_project_is_ok() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let id = Uuid::new_v4();
+        // Deleting a project that was never saved should succeed (idempotent)
+        assert!(storage.delete_project_dir(id).is_ok());
+    }
+
+    #[test]
+    fn test_base_dir_returns_correct_path() {
+        let tmp = TempDir::new().unwrap();
+        let storage = Storage::new(tmp.path().to_path_buf());
+        assert_eq!(storage.base_dir(), tmp.path().to_path_buf());
+    }
+
+    #[test]
+    fn test_save_and_get_agents_md_roundtrip() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project = make_project("test-project", "/tmp/nonexistent-repo");
+        let id = project.id;
+
+        storage.save_agents_md(id, "# My Agents\nContent here").unwrap();
+
+        // get_agents_md falls back to config dir when repo doesn't exist
+        let content = storage.get_agents_md(&project).unwrap();
+        assert_eq!(content, "# My Agents\nContent here");
+    }
+
+    #[test]
+    fn test_load_nonexistent_project_returns_error() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let id = Uuid::new_v4();
+        assert!(storage.load_project(id).is_err());
+    }
+
+    #[test]
+    fn test_save_project_overwrites_existing() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let mut project = make_project("test-project", "/tmp/repo");
+
+        storage.save_project(&project).expect("first save");
+        project.name = "updated-name".to_string();
+        storage.save_project(&project).expect("second save");
+
+        let loaded = storage.load_project(project.id).expect("load");
+        assert_eq!(loaded.name, "updated-name");
+    }
 }

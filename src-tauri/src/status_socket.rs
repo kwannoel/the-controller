@@ -201,4 +201,27 @@ mod tests {
         assert!(parse_status_message("unknown:550e8400-e29b-41d4-a716-446655440000").is_none());
         assert!(parse_status_message("").is_none());
     }
+
+    #[test]
+    fn test_socket_path_returns_expected() {
+        assert_eq!(socket_path(), "/tmp/the-controller.sock");
+    }
+
+    #[test]
+    fn test_hook_settings_json_contains_socket_path() {
+        let id = uuid::Uuid::new_v4();
+        let json = hook_settings_json(id);
+        assert!(json.contains("/tmp/the-controller.sock"));
+    }
+
+    #[test]
+    fn test_parse_status_message_with_extra_colons() {
+        // UUID contains hyphens not colons, but test split_once behavior
+        // "working:550e8400-e29b-41d4-a716-446655440000" should work
+        let msg = "working:550e8400-e29b-41d4-a716-446655440000";
+        let result = parse_status_message(msg);
+        assert!(result.is_some());
+        let (status, _) = result.unwrap();
+        assert_eq!(status, "working");
+    }
 }

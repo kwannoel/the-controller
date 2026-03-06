@@ -357,4 +357,40 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "unborn_branch");
     }
+
+    #[test]
+    fn test_is_rebase_in_progress_false_for_regular_dir() {
+        let tmp = TempDir::new().expect("create temp dir");
+        assert!(!WorktreeManager::is_rebase_in_progress(
+            tmp.path().to_str().unwrap()
+        ));
+    }
+
+    #[test]
+    fn test_is_rebase_in_progress_false_for_clean_repo() {
+        let (_tmp, repo_path) = setup_test_repo();
+        assert!(!WorktreeManager::is_rebase_in_progress(&repo_path));
+    }
+
+    #[test]
+    fn test_remove_worktree_nonexistent_path_prunes_reference() {
+        let (_tmp, repo_path) = setup_test_repo();
+        // Removing a worktree that doesn't exist on disk should not error
+        let result = WorktreeManager::remove_worktree(
+            "/tmp/nonexistent-worktree-path",
+            &repo_path,
+            "nonexistent-branch",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_detect_main_branch_on_empty_repo_errors() {
+        let tmp = TempDir::new().expect("create temp dir");
+        let repo_path = tmp.path().to_str().unwrap().to_string();
+        Repository::init(&repo_path).expect("init repo");
+        // No commits = unborn HEAD, detect_main_branch should error
+        let result = WorktreeManager::detect_main_branch(&repo_path);
+        assert!(result.is_err());
+    }
 }

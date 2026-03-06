@@ -194,4 +194,91 @@ mod tests {
         let session: SessionConfig = serde_json::from_str(json).expect("deserialize");
         assert!(session.github_issue.is_none());
     }
+
+    #[test]
+    fn test_session_config_initial_prompt_defaults_to_none() {
+        let json = r#"{"id":"550e8400-e29b-41d4-a716-446655440000","label":"session-1","worktree_path":null,"worktree_branch":null,"archived":false}"#;
+        let session: SessionConfig = serde_json::from_str(json).expect("deserialize");
+        assert!(session.initial_prompt.is_none());
+    }
+
+    #[test]
+    fn test_session_config_initial_prompt_roundtrip() {
+        let session = SessionConfig {
+            id: Uuid::new_v4(),
+            label: "session-1".to_string(),
+            worktree_path: None,
+            worktree_branch: None,
+            archived: false,
+            kind: "claude".to_string(),
+            github_issue: None,
+            initial_prompt: Some("fix the bug".to_string()),
+        };
+        let json = serde_json::to_string(&session).expect("serialize");
+        let deserialized: SessionConfig = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.initial_prompt.as_deref(), Some("fix the bug"));
+    }
+
+    #[test]
+    fn test_merge_response_pr_created_serialization() {
+        let response = MergeResponse::PrCreated {
+            url: "https://github.com/owner/repo/pull/1".to_string(),
+        };
+        let json = serde_json::to_string(&response).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["type"], "pr_created");
+        assert_eq!(parsed["url"], "https://github.com/owner/repo/pull/1");
+    }
+
+    #[test]
+    fn test_merge_response_rebase_conflicts_serialization() {
+        let response = MergeResponse::RebaseConflicts;
+        let json = serde_json::to_string(&response).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["type"], "rebase_conflicts");
+    }
+
+    #[test]
+    fn test_session_status_serialization() {
+        let running = SessionStatus::Running;
+        let idle = SessionStatus::Idle;
+        let running_json = serde_json::to_string(&running).unwrap();
+        let idle_json = serde_json::to_string(&idle).unwrap();
+        assert_eq!(running_json, "\"Running\"");
+        assert_eq!(idle_json, "\"Idle\"");
+    }
+
+    #[test]
+    fn test_github_issue_with_labels() {
+        let issue = GithubIssue {
+            number: 42,
+            title: "Bug fix".to_string(),
+            url: "https://github.com/owner/repo/issues/42".to_string(),
+            labels: vec![
+                GithubLabel { name: "bug".to_string() },
+                GithubLabel { name: "priority".to_string() },
+            ],
+        };
+        let json = serde_json::to_string(&issue).unwrap();
+        let deserialized: GithubIssue = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.labels.len(), 2);
+        assert_eq!(deserialized.labels[0].name, "bug");
+        assert_eq!(deserialized.labels[1].name, "priority");
+    }
+
+    #[test]
+    fn test_session_info_serialization_roundtrip() {
+        let info = SessionInfo {
+            id: Uuid::new_v4(),
+            label: "session-1".to_string(),
+            project_id: Uuid::new_v4(),
+            worktree_path: Some("/tmp/wt".to_string()),
+            worktree_branch: Some("session-1".to_string()),
+            status: SessionStatus::Running,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let deserialized: SessionInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, info.id);
+        assert_eq!(deserialized.status, SessionStatus::Running);
+    }
 }
