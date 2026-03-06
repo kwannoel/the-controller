@@ -119,7 +119,7 @@
     border-bottom: 1px solid #313244;
     font-size: 12px;
     flex-shrink: 0;
-    max-height: 120px;
+    max-height: 360px;
     overflow-y: auto;
   }
 
