@@ -67,6 +67,14 @@ impl WorktreeManager {
         repo.worktree(branch_name, worktree_dir, Some(&opts))
             .map_err(|e| format!("failed to create worktree: {}", e))?;
 
+        // Copy .env from the main repo into the worktree if it exists
+        let env_src = Path::new(repo_path).join(".env");
+        if env_src.exists() {
+            if let Err(e) = std::fs::copy(&env_src, worktree_dir.join(".env")) {
+                eprintln!("Warning: failed to copy .env to worktree: {}", e);
+            }
+        }
+
         Ok(worktree_dir.to_path_buf())
     }
 
@@ -382,6 +390,43 @@ mod tests {
             "nonexistent-branch",
         );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_create_worktree_copies_env_file() {
+        let (_tmp, repo_path) = setup_test_repo();
+
+        // Create a .env file in the repo
+        let env_content = "SECRET_KEY=abc123\nDB_URL=postgres://localhost/test\n";
+        std::fs::write(Path::new(&repo_path).join(".env"), env_content).unwrap();
+
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("env-test");
+
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "env-test", &worktree_dir)
+            .expect("create worktree");
+
+        // .env should have been copied into the worktree
+        let copied_env = wt_path.join(".env");
+        assert!(copied_env.exists(), ".env should be copied to worktree");
+        assert_eq!(
+            std::fs::read_to_string(&copied_env).unwrap(),
+            env_content,
+            ".env contents should match"
+        );
+    }
+
+    #[test]
+    fn test_create_worktree_no_env_file_is_fine() {
+        let (_tmp, repo_path) = setup_test_repo();
+        // No .env file in repo — should not fail
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("no-env-test");
+
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "no-env-test", &worktree_dir)
+            .expect("create worktree");
+
+        assert!(!wt_path.join(".env").exists(), ".env should not exist in worktree");
     }
 
     #[test]
