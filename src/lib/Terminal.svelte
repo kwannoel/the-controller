@@ -103,6 +103,7 @@
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      scrollback: 10000,
       theme: {
         background: "#11111b",
         foreground: "#cdd6f4",
@@ -114,6 +115,7 @@
     fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerEl);
+
     // Only fit if the container is actually visible — xterm.js can't measure
     // character cells in a display:none ancestor, which produces bogus cols.
     if (containerEl.offsetParent !== null) {

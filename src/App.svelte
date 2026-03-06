@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
@@ -211,6 +212,10 @@
   }
 
   onMount(async () => {
+    getCurrentWindow().setTitle(
+      `The Controller (${__BUILD_COMMIT__}, ${__BUILD_BRANCH__}, localhost:${__DEV_PORT__})`,
+    );
+
     try {
       // Re-spawn PTY sessions for persisted active sessions
       await invoke("restore_sessions");

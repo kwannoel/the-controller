@@ -14,16 +14,15 @@ Built with Tauri v2 + Svelte 5 + Rust.
 
 ### tmux Configuration
 
-If you use Claude Code inside tmux to develop this project, add the following to `~/.tmux.conf` to fix scrambled output when scrolling:
+If you use Claude Code inside tmux to develop this project, add the following to `~/.tmux.conf` for a cleaner UI:
 
 ```
-set -g mouse on
 set -g status off
 ```
 
 Reload with `tmux source-file ~/.tmux.conf`.
 
-Without `mouse on`, trackpad scrolling sends raw escape sequences to Claude Code's TUI, producing garbled output in the scrollback buffer. `status off` hides the tmux status bar for a cleaner UI.
+`status off` hides the tmux status bar for a cleaner UI.
 
 ## Demo Ideas
 
