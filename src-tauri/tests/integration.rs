@@ -40,6 +40,7 @@ fn test_project_lifecycle() {
         kind: "claude".to_string(),
         github_issue: None,
         initial_prompt: None,
+        done_commits: vec![],
     });
     storage.save_project(&project).expect("save with session");
 
@@ -121,6 +122,7 @@ fn test_sessions_persist_across_restarts() {
                 kind: "claude".to_string(),
                 github_issue: None,
                 initial_prompt: None,
+                done_commits: vec![],
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -131,6 +133,7 @@ fn test_sessions_persist_across_restarts() {
                 kind: "claude".to_string(),
                 github_issue: None,
                 initial_prompt: None,
+                done_commits: vec![],
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -141,6 +144,7 @@ fn test_sessions_persist_across_restarts() {
                 kind: "claude".to_string(),
                 github_issue: None,
                 initial_prompt: None,
+                done_commits: vec![],
             },
         ],
     };
@@ -246,6 +250,7 @@ fn test_worktrees_persist_across_restarts() {
             kind: "claude".to_string(),
             github_issue: None,
             initial_prompt: None,
+            done_commits: vec![],
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -284,6 +289,7 @@ fn test_migrate_worktree_paths_renames_uuid_dir() {
             kind: "claude".to_string(),
             github_issue: None,
             initial_prompt: None,
+            done_commits: vec![],
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -328,6 +334,7 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
             kind: "claude".to_string(),
             github_issue: None,
             initial_prompt: None,
+            done_commits: vec![],
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -377,6 +384,7 @@ fn test_migrate_worktree_paths_noop_on_name_collision() {
             kind: "claude".to_string(),
             github_issue: None,
             initial_prompt: None,
+            done_commits: vec![],
         }],
     };
     storage.save_project(&project).expect("save project");

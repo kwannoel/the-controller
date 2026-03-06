@@ -25,6 +25,15 @@ pub struct SessionConfig {
     pub github_issue: Option<GithubIssue>,
     #[serde(default)]
     pub initial_prompt: Option<String>,
+    /// Accumulated commit summaries — persisted so they survive merge/rebase.
+    #[serde(default)]
+    pub done_commits: Vec<CommitInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CommitInfo {
+    pub hash: String,
+    pub message: String,
 }
 
 fn default_kind() -> String {
@@ -90,6 +99,7 @@ mod tests {
                 kind: "claude".to_string(),
                 github_issue: None,
                 initial_prompt: None,
+                done_commits: vec![],
             }],
         };
 
@@ -142,6 +152,7 @@ mod tests {
                 kind: "claude".to_string(),
                 github_issue: None,
                 initial_prompt: None,
+                done_commits: vec![],
             }],
         };
 
@@ -178,6 +189,7 @@ mod tests {
                 labels: vec![],
             }),
             initial_prompt: None,
+            done_commits: vec![],
         };
         let json = serde_json::to_string(&session).expect("serialize");
         let deserialized: SessionConfig = serde_json::from_str(&json).expect("deserialize");
@@ -213,6 +225,7 @@ mod tests {
             kind: "claude".to_string(),
             github_issue: None,
             initial_prompt: Some("fix the bug".to_string()),
+            done_commits: vec![],
         };
         let json = serde_json::to_string(&session).expect("serialize");
         let deserialized: SessionConfig = serde_json::from_str(&json).expect("deserialize");
