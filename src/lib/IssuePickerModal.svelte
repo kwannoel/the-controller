@@ -55,6 +55,14 @@
     }
   }
 
+  function scrollSelectedIntoView() {
+    // Wait a tick for Svelte to update the DOM with the new selected class
+    requestAnimationFrame(() => {
+      const el = document.querySelector('.issue-list .issue-btn.selected');
+      el?.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -70,11 +78,13 @@
         e.preventDefault();
         e.stopPropagation();
         selectedIndex = (selectedIndex + 1) % itemCount;
+        scrollSelectedIntoView();
         break;
       case "k":
         e.preventDefault();
         e.stopPropagation();
         selectedIndex = (selectedIndex - 1 + itemCount) % itemCount;
+        scrollSelectedIntoView();
         break;
       case "l":
       case "Enter":
