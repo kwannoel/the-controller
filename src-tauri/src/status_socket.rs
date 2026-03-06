@@ -93,11 +93,11 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
 /// Configures hooks that report session status changes over the Unix socket.
 pub fn hook_settings_json(_session_id: Uuid) -> String {
     let working_cmd = format!(
-        "timeout 2 bash -c 'echo \"working:$THE_CONTROLLER_SESSION_ID\" | nc -U {}' 2>/dev/null; true",
+        "echo \"working:$THE_CONTROLLER_SESSION_ID\" | nc -U -w 2 {} 2>/dev/null; true",
         SOCKET_PATH
     );
     let idle_cmd = format!(
-        "timeout 2 bash -c 'echo \"idle:$THE_CONTROLLER_SESSION_ID\" | nc -U {}' 2>/dev/null; true",
+        "echo \"idle:$THE_CONTROLLER_SESSION_ID\" | nc -U -w 2 {} 2>/dev/null; true",
         SOCKET_PATH
     );
 
@@ -177,6 +177,21 @@ mod tests {
                 assert!(!inner.is_empty(), "{} has empty hooks array", event_name);
             }
         }
+    }
+
+    #[test]
+    fn test_hook_commands_use_nc_timeout_not_timeout_binary() {
+        // macOS doesn't have `timeout` — hook commands must use `nc -w` instead
+        let id = uuid::Uuid::new_v4();
+        let json = hook_settings_json(id);
+        assert!(
+            !json.contains("timeout "),
+            "hook commands must not use `timeout` (not available on macOS)"
+        );
+        assert!(
+            json.contains("nc -U -w 2"),
+            "hook commands must use `nc -w 2` for timeout"
+        );
     }
 
     #[test]
