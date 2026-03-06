@@ -113,20 +113,20 @@
   .summary-pane {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 24px 36px;
+    gap: 6px;
+    padding: 12px 18px;
     background: #181825;
     border-bottom: 1px solid #313244;
-    font-size: 36px;
+    font-size: 18px;
     flex-shrink: 0;
-    max-height: 1080px;
+    max-height: 540px;
     overflow-y: auto;
   }
 
   .summary-row {
     display: flex;
     align-items: baseline;
-    gap: 24px;
+    gap: 12px;
     min-width: 0;
   }
 
@@ -137,10 +137,10 @@
   .label {
     color: #6c7086;
     font-weight: 600;
-    font-size: 30px;
-    letter-spacing: 1.5px;
+    font-size: 15px;
+    letter-spacing: 0.75px;
     flex-shrink: 0;
-    width: 126px;
+    width: 63px;
   }
 
   .value {
@@ -168,14 +168,14 @@
   .commit-item {
     display: flex;
     align-items: baseline;
-    gap: 18px;
+    gap: 9px;
     line-height: 1.5;
   }
 
   .commit-hash {
     color: #89b4fa;
     font-family: monospace;
-    font-size: 33px;
+    font-size: 16px;
     flex-shrink: 0;
   }
 
