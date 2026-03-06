@@ -1181,6 +1181,48 @@ fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     None
 }
 
+#[tauri::command]
+pub async fn export_backup(
+    state: State<'_, AppState>,
+    passphrase: String,
+    path: String,
+) -> Result<(), String> {
+    let base_dir = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        storage.base_dir()
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let storage = crate::storage::Storage::new(base_dir);
+        let data =
+            crate::backup::export_backup(&storage, &passphrase).map_err(|e| e.to_string())?;
+        std::fs::write(&path, data).map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn import_backup(
+    state: State<'_, AppState>,
+    passphrase: String,
+    path: String,
+) -> Result<u32, String> {
+    let base_dir = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        storage.base_dir()
+    };
+
+    tokio::task::spawn_blocking(move || {
+        let storage = crate::storage::Storage::new(base_dir);
+        let data = std::fs::read(&path).map_err(|e| e.to_string())?;
+        crate::backup::import_backup(&storage, &data, &passphrase).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

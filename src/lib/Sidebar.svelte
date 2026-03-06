@@ -9,8 +9,10 @@
   import DeleteProjectModal from "./DeleteProjectModal.svelte";
   import ConfirmModal from "./ConfirmModal.svelte";
   import DeleteSessionModal from "./DeleteSessionModal.svelte";
+  import BackupModal from "./BackupModal.svelte";
 
   let sidebarEl: HTMLElement | undefined = $state();
+  let showBackupModal = $state(false);
   let hintsVisible = $state(false);
   $effect(() => {
     const unsub = showKeyHints.subscribe((v) => { hintsVisible = v; });
@@ -581,6 +583,11 @@
     >Archives</button>
     <button
       class="btn-help"
+      onclick={() => { showBackupModal = true; }}
+      title="Backup / Restore"
+    >B</button>
+    <button
+      class="btn-help"
       class:active={hintsVisible}
       onclick={() => showKeyHints.update(v => !v)}
       title="Keyboard shortcuts (?)"
@@ -678,6 +685,12 @@
         mergeSessionTarget = null;
       }}
       onClose={() => (mergeSessionTarget = null)}
+    />
+  {/if}
+
+  {#if showBackupModal}
+    <BackupModal
+      onClose={() => { showBackupModal = false; loadProjects(); }}
     />
   {/if}
 

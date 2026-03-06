@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+pub mod backup;
 pub mod commands;
 pub mod config;
 pub mod models;
@@ -16,6 +17,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::new())
         .setup(|app| {
             status_socket::start_listener(app.handle().clone());
@@ -58,6 +60,8 @@ pub fn run() {
             commands::merge_session_branch,
             commands::copy_image_file_to_clipboard,
             commands::get_session_commits,
+            commands::export_backup,
+            commands::import_backup,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
