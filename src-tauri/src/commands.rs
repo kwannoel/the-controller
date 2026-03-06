@@ -902,6 +902,7 @@ pub async fn generate_issue_body(title: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn create_github_issue(
+    state: State<'_, AppState>,
     repo_path: String,
     title: String,
     body: String,
@@ -933,12 +934,18 @@ pub async fn create_github_issue(
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let number = parse_github_issue_url(&url)?;
 
-    Ok(crate::models::GithubIssue {
+    let issue = crate::models::GithubIssue {
         number,
         title,
         url,
         labels: vec![],
-    })
+    };
+
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.add_issue(&repo_path, issue.clone());
+    }
+
+    Ok(issue)
 }
 
 #[tauri::command]
@@ -973,6 +980,7 @@ pub async fn post_github_comment(
 
 #[tauri::command]
 pub async fn add_github_label(
+    state: State<'_, AppState>,
     repo_path: String,
     issue_number: u64,
     label: String,
@@ -1011,11 +1019,16 @@ pub async fn add_github_label(
         return Err(format!("gh issue edit failed: {}", stderr));
     }
 
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.add_label(&repo_path, issue_number, &label);
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 pub async fn remove_github_label(
+    state: State<'_, AppState>,
     repo_path: String,
     issue_number: u64,
     label: String,
@@ -1039,6 +1052,10 @@ pub async fn remove_github_label(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("gh issue edit failed: {}", stderr));
+    }
+
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.remove_label(&repo_path, issue_number, &label);
     }
 
     Ok(())

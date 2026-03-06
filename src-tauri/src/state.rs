@@ -1,4 +1,4 @@
-use crate::models::GithubIssue;
+use crate::models::{GithubIssue, GithubLabel};
 use crate::pty_manager::PtyManager;
 use crate::storage::Storage;
 use std::collections::HashMap;
@@ -39,6 +39,31 @@ impl IssueCache {
             fetched_at: Instant::now(),
         });
     }
+
+    /// Add a newly created issue to the cache for a repo (if cached).
+    pub fn add_issue(&mut self, repo_path: &str, issue: GithubIssue) {
+        if let Some(entry) = self.entries.get_mut(repo_path) {
+            entry.issues.push(issue);
+        }
+    }
+
+    /// Add a label to a cached issue.
+    pub fn add_label(&mut self, repo_path: &str, issue_number: u64, label: &str) {
+        if let Some(entry) = self.entries.get_mut(repo_path) {
+            if let Some(issue) = entry.issues.iter_mut().find(|i| i.number == issue_number) {
+                issue.labels.push(GithubLabel { name: label.to_string() });
+            }
+        }
+    }
+
+    /// Remove a label from a cached issue.
+    pub fn remove_label(&mut self, repo_path: &str, issue_number: u64, label: &str) {
+        if let Some(entry) = self.entries.get_mut(repo_path) {
+            if let Some(issue) = entry.issues.iter_mut().find(|i| i.number == issue_number) {
+                issue.labels.retain(|l| l.name != label);
+            }
+        }
+    }
 }
 
 pub struct AppState {
@@ -62,7 +87,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::GithubIssue;
+    use crate::models::{GithubIssue, GithubLabel};
 
     #[test]
     fn test_issue_cache_get_returns_none_on_miss() {
@@ -103,5 +128,63 @@ mod tests {
         cache.entries.insert("/repo".to_string(), entry);
         let entry = cache.get("/repo").unwrap();
         assert!(!entry.is_fresh());
+    }
+
+    #[test]
+    fn test_issue_cache_add_issue() {
+        let mut cache = IssueCache::new();
+        cache.insert("/repo".to_string(), vec![]);
+        let issue = GithubIssue {
+            number: 5,
+            title: "New".to_string(),
+            url: "https://github.com/o/r/issues/5".to_string(),
+            labels: vec![],
+        };
+        cache.add_issue("/repo", issue);
+        let entry = cache.get("/repo").unwrap();
+        assert_eq!(entry.issues.len(), 1);
+        assert_eq!(entry.issues[0].number, 5);
+    }
+
+    #[test]
+    fn test_issue_cache_add_issue_no_entry_is_noop() {
+        let mut cache = IssueCache::new();
+        let issue = GithubIssue {
+            number: 5,
+            title: "New".to_string(),
+            url: "https://github.com/o/r/issues/5".to_string(),
+            labels: vec![],
+        };
+        cache.add_issue("/repo", issue);
+        assert!(cache.get("/repo").is_none());
+    }
+
+    #[test]
+    fn test_issue_cache_add_label() {
+        let mut cache = IssueCache::new();
+        cache.insert("/repo".to_string(), vec![GithubIssue {
+            number: 1,
+            title: "Test".to_string(),
+            url: "https://github.com/o/r/issues/1".to_string(),
+            labels: vec![],
+        }]);
+        cache.add_label("/repo", 1, "in-progress");
+        let entry = cache.get("/repo").unwrap();
+        assert_eq!(entry.issues[0].labels.len(), 1);
+        assert_eq!(entry.issues[0].labels[0].name, "in-progress");
+    }
+
+    #[test]
+    fn test_issue_cache_remove_label() {
+        let mut cache = IssueCache::new();
+        cache.insert("/repo".to_string(), vec![GithubIssue {
+            number: 1,
+            title: "Test".to_string(),
+            url: "https://github.com/o/r/issues/1".to_string(),
+            labels: vec![GithubLabel { name: "in-progress".to_string() }],
+        }]);
+        cache.remove_label("/repo", 1, "in-progress");
+        let entry = cache.get("/repo").unwrap();
+        assert!(entry.issues[0].labels.is_empty());
     }
 }
