@@ -286,6 +286,22 @@
           }
         }
         return true;
+      case "C":
+        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
+          const project = projectList.find(p => p.id === currentFocus.projectId);
+          if (project) {
+            dispatchAction({ type: "pick-issue-for-session", projectId: project.id, repoPath: project.repo_path, background: true });
+          }
+        }
+        return true;
+      case "X":
+        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
+          const project = projectList.find(p => p.id === currentFocus.projectId);
+          if (project) {
+            dispatchAction({ type: "pick-issue-for-session", projectId: project.id, repoPath: project.repo_path, kind: "codex", background: true });
+          }
+        }
+        return true;
       case "m":
         if (activeId) {
           invoke("write_to_pty", { sessionId: activeId, data: "create pr, merge, sync local master\n" });

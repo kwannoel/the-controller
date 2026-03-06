@@ -370,8 +370,10 @@ pub fn create_session(
     project_id: String,
     kind: Option<String>,
     github_issue: Option<crate::models::GithubIssue>,
+    background: Option<bool>,
 ) -> Result<String, String> {
     let kind = kind.unwrap_or_else(|| "claude".to_string());
+    let background = background.unwrap_or(false);
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_id = Uuid::new_v4();
 
@@ -408,10 +410,7 @@ pub fn create_session(
 
     // Build initial prompt from GitHub issue context (if any)
     let initial_prompt = github_issue.as_ref().map(|issue| {
-        format!(
-            "You are working on GitHub issue #{}: {}\nIssue URL: {}\nPlease include 'closes #{}' in any PR descriptions or final commit messages.",
-            issue.number, issue.title, issue.url, issue.number
-        )
+        crate::session_args::build_issue_prompt(issue.number, &issue.title, &issue.url, background)
     });
 
     // Save session config

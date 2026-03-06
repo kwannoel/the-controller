@@ -1,5 +1,21 @@
 use uuid::Uuid;
 
+const BACKGROUND_WORKFLOW_SUFFIX: &str = "\n\nYou are an autonomous background worker. Complete the following workflow end-to-end without waiting for user input:\n1. **Design** — Analyze the issue and plan the approach\n2. **Implement** — Write the code changes\n3. **Review** — Self-review the changes for correctness and quality\n4. **Push PR** — Create and push a pull request\n5. **Merge** — Merge the PR once checks pass\n6. **Sync local master** — Pull merged changes to local master";
+
+/// Build the initial prompt injected into a session from a GitHub issue.
+/// When `background` is true, appends the autonomous workflow instructions.
+pub fn build_issue_prompt(issue_number: u64, title: &str, url: &str, background: bool) -> String {
+    let base = format!(
+        "You are working on GitHub issue #{}: {}\nIssue URL: {}\nPlease include 'closes #{}' in any PR descriptions or final commit messages.",
+        issue_number, title, url, issue_number
+    );
+    if background {
+        format!("{}{}", base, BACKGROUND_WORKFLOW_SUFFIX)
+    } else {
+        base
+    }
+}
+
 const CODEX_FULL_PERMISSION_ARGS: [&str; 4] = [
     "--sandbox",
     "danger-full-access",
@@ -111,6 +127,27 @@ mod tests {
                 "fix this".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn build_issue_prompt_without_background() {
+        let prompt = build_issue_prompt(42, "Fix the bug", "https://github.com/foo/bar/issues/42", false);
+        assert!(prompt.contains("GitHub issue #42: Fix the bug"));
+        assert!(prompt.contains("closes #42"));
+        assert!(!prompt.contains("autonomous background worker"));
+    }
+
+    #[test]
+    fn build_issue_prompt_with_background() {
+        let prompt = build_issue_prompt(42, "Fix the bug", "https://github.com/foo/bar/issues/42", true);
+        assert!(prompt.contains("GitHub issue #42: Fix the bug"));
+        assert!(prompt.contains("closes #42"));
+        assert!(prompt.contains("autonomous background worker"));
+        assert!(prompt.contains("Design"));
+        assert!(prompt.contains("Implement"));
+        assert!(prompt.contains("Push PR"));
+        assert!(prompt.contains("Merge"));
+        assert!(prompt.contains("Sync local master"));
     }
 
     #[test]

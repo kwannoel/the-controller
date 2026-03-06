@@ -26,7 +26,7 @@
   let hintsVisible = $state(false);
   let taskPanelIsVisible = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
-  let issuePickerTarget: { projectId: string; repoPath: string; kind?: string } | null = $state(null);
+  let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
   let taskPanelRef: { insertIssue: (issue: any) => void } | undefined = $state();
 
   $effect(() => {
@@ -51,7 +51,7 @@
       } else if (action?.type === "create-issue") {
         createIssueTarget = { projectId: action.projectId, repoPath: action.repoPath };
       } else if (action?.type === "pick-issue-for-session") {
-        issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath, kind: action.kind };
+        issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath, kind: action.kind, background: action.background };
       }
     });
     return unsub;
@@ -92,7 +92,7 @@
   function handleIssuePicked(issue: GithubIssueForSession) {
     const target = issuePickerTarget!;
     issuePickerTarget = null;
-    createSessionWithIssue(target.projectId, target.repoPath, issue, target.kind);
+    createSessionWithIssue(target.projectId, target.repoPath, issue, target.kind, target.background);
   }
 
   function handleIssuePickerSkip() {
@@ -102,12 +102,13 @@
     setTimeout(() => hotkeyAction.set(null), 0);
   }
 
-  async function createSessionWithIssue(projectId: string, repoPath: string, issue: GithubIssueForSession, kind?: string) {
+  async function createSessionWithIssue(projectId: string, repoPath: string, issue: GithubIssueForSession, kind?: string, background?: boolean) {
     try {
       const sessionId: string = await invoke("create_session", {
         projectId,
         githubIssue: issue,
         kind: kind ?? "claude",
+        background: background ?? false,
       });
       // Post comment on the issue (fire and forget)
       invoke("post_github_comment", {
