@@ -55,6 +55,7 @@ export type HotkeyAction =
   | { type: "create-issue"; projectId: string; repoPath: string }
   | { type: "pick-issue-for-session"; projectId: string; repoPath: string; kind?: string; background?: boolean }
   | { type: "merge-session"; sessionId: string; projectId: string }
+  | { type: "screenshot-to-session" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);

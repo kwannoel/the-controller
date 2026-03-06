@@ -58,6 +58,7 @@ pub fn run() {
             commands::remove_github_label,
             commands::merge_session_branch,
             commands::copy_image_file_to_clipboard,
+            commands::capture_app_screenshot,
             commands::get_session_commits,
         ])
         .build(tauri::generate_context!())

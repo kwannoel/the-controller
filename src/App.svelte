@@ -52,6 +52,8 @@
         createIssueTarget = { projectId: action.projectId, repoPath: action.repoPath };
       } else if (action?.type === "pick-issue-for-session") {
         issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath, kind: action.kind, background: action.background };
+      } else if (action?.type === "screenshot-to-session") {
+        screenshotToNewSession();
       }
     });
     return unsub;
@@ -132,6 +134,77 @@
         hotkeyAction.set({ type: "focus-terminal" });
         setTimeout(() => hotkeyAction.set(null), 0);
       }, 50);
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function screenshotToNewSession() {
+    // Determine project from current focus or active session
+    let projectList: Project[] = [];
+    projects.subscribe((v) => { projectList = v; })();
+    let active: string | null = null;
+    activeSessionId.subscribe((v) => { active = v; })();
+    let focus: FocusTarget = null;
+    focusTarget.subscribe((v) => { focus = v; })();
+
+    const projectId = focus?.projectId
+      ?? projectList.find((p) => p.sessions.some((s) => s.id === active))?.id
+      ?? projectList[0]?.id;
+
+    if (!projectId) {
+      showToast("No project to create session in", "error");
+      return;
+    }
+
+    try {
+      // 1. Capture screenshot of the app window → clipboard
+      showToast("Capturing screenshot...", "info");
+      const screenshotPath: string = await invoke("capture_app_screenshot");
+
+      // Open in Preview so user can verify the capture
+      const { openPath } = await import("@tauri-apps/plugin-opener");
+      await openPath(screenshotPath);
+
+      // 2. Create a new session
+      const sessionId: string = await invoke("create_session", {
+        projectId,
+        kind: "claude",
+      });
+
+      sessionStatuses.update((m: Map<string, string>) => {
+        const next = new Map(m);
+        next.set(sessionId, "working");
+        return next;
+      });
+      activeSessionId.set(sessionId);
+      const result = await invoke<Project[]>("list_projects");
+      projects.set(result);
+      expandedProjects.update((s: Set<string>) => {
+        const next = new Set(s);
+        next.add(projectId);
+        return next;
+      });
+
+      // 3. Focus the terminal
+      setTimeout(() => {
+        hotkeyAction.set({ type: "focus-terminal" });
+        setTimeout(() => hotkeyAction.set(null), 0);
+      }, 50);
+
+      // 4. When session becomes idle (Claude Code ready), auto-paste the screenshot
+      const unsubStatus = sessionStatuses.subscribe((statuses) => {
+        if (statuses.get(sessionId) === "idle") {
+          unsubStatus();
+          // Send bracket paste to trigger Claude Code's clipboard image reader
+          invoke("write_to_pty", { sessionId, data: "\x1b[200~\x1b[201~" });
+        }
+      });
+
+      // Timeout: clean up subscription after 30s if idle never fires
+      setTimeout(() => {
+        unsubStatus();
+      }, 30000);
     } catch (e) {
       showToast(String(e), "error");
     }

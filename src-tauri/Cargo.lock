@@ -4157,6 +4157,7 @@ dependencies = [
  "git2",
  "image",
  "portable-pty",
+ "raw-window-handle",
  "serde",
  "serde_json",
  "tauri",
