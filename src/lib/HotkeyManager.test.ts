@@ -136,22 +136,12 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('m dispatches merge-session when session focused', () => {
-      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+    it('m writes merge command to PTY when session is active', () => {
       pressKey('m');
-      expect(captured).toEqual({ type: 'merge-session', sessionId: 'sess-1', projectId: 'proj-1' });
-      unsub();
-    });
-
-    it('m does nothing when project focused', () => {
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('m');
-      expect(captured).toBeNull();
-      unsub();
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: 'create pr, merge, sync local master\n',
+      });
     });
 
     it('modifier keys alone do not dispatch', () => {

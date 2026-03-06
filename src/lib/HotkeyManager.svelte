@@ -287,8 +287,8 @@
         }
         return true;
       case "m":
-        if (currentFocus?.type === "session") {
-          dispatchAction({ type: "merge-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
+        if (activeId) {
+          invoke("write_to_pty", { sessionId: activeId, data: "create pr, merge, sync local master\n" });
         }
         return true;
       case "s":
