@@ -183,6 +183,7 @@ mod tests {
                 archived: false,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             }],
         }
     }

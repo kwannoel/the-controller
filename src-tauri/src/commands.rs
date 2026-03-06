@@ -427,6 +427,7 @@ pub fn create_session(
             archived: false,
             kind: kind.clone(),
             github_issue,
+            initial_prompt: initial_prompt.clone(),
         };
         project.sessions.push(session_config);
         storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -1095,6 +1096,91 @@ pub async fn copy_image_file_to_clipboard(app: AppHandle, path: String) -> Resul
         .map_err(|e| format!("Failed to write image to clipboard: {e}"))
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CommitInfo {
+    pub hash: String,
+    pub message: String,
+}
+
+#[tauri::command]
+pub fn get_session_commits(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<Vec<CommitInfo>, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
+    let session = project
+        .sessions
+        .iter()
+        .find(|s| s.id == session_uuid)
+        .ok_or_else(|| "Session not found".to_string())?;
+
+    let worktree_path = match &session.worktree_path {
+        Some(p) => p.clone(),
+        None => return Ok(vec![]),
+    };
+
+    let repo = git2::Repository::discover(&worktree_path)
+        .map_err(|e| format!("Failed to open repo: {e}"))?;
+
+    // Walk commits on the session branch that aren't on the main branch.
+    // The session branch name matches the session label.
+    let head = repo.head().map_err(|e| format!("No HEAD: {e}"))?;
+    let head_commit = head.peel_to_commit().map_err(|e| e.to_string())?;
+
+    // Find the merge base with the default branch (master or main)
+    let main_oid = find_main_branch_oid(&repo);
+
+    let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
+    revwalk.push(head_commit.id()).map_err(|e| e.to_string())?;
+    revwalk.set_sorting(git2::Sort::TOPOLOGICAL).map_err(|e| e.to_string())?;
+
+    let mut commits = Vec::new();
+    for oid in revwalk {
+        let oid = oid.map_err(|e| e.to_string())?;
+        // Stop at merge base (commits shared with main)
+        if let Some(main) = main_oid {
+            if oid == main {
+                break;
+            }
+            if let Ok(base) = repo.merge_base(oid, main) {
+                if base == oid {
+                    break;
+                }
+            }
+        }
+        let commit = repo.find_commit(oid).map_err(|e| e.to_string())?;
+        let message = commit.summary().unwrap_or("").to_string();
+        // Skip the initial worktree commit
+        if message.starts_with("Initial commit") {
+            continue;
+        }
+        let hash = format!("{}", &oid.to_string()[..7]);
+        commits.push(CommitInfo { hash, message });
+        if commits.len() >= 20 {
+            break;
+        }
+    }
+
+    Ok(commits)
+}
+
+fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
+    for name in &["refs/heads/master", "refs/heads/main"] {
+        if let Ok(reference) = repo.find_reference(name) {
+            if let Ok(commit) = reference.peel_to_commit() {
+                return Some(commit.id());
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1155,6 +1241,7 @@ mod tests {
                 archived: false,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1164,6 +1251,7 @@ mod tests {
                 archived: false,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             },
         ];
         assert_eq!(next_session_label(&sessions), "session-3");
@@ -1181,6 +1269,7 @@ mod tests {
                 archived: true,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1190,6 +1279,7 @@ mod tests {
                 archived: false,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1199,6 +1289,7 @@ mod tests {
                 archived: true,
                 kind: "claude".to_string(),
                 github_issue: None,
+                initial_prompt: None,
             },
         ];
         // Max is session-3, so next is session-4
@@ -1216,6 +1307,7 @@ mod tests {
             archived: false,
             kind: "claude".to_string(),
             github_issue: None,
+            initial_prompt: None,
         }];
         assert_eq!(next_session_label(&sessions), "session-4");
     }
