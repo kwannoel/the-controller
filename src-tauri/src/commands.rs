@@ -747,6 +747,17 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
         .map_err(|e| format!("failed to create initial commit: {}", e))?;
 
+    // Create GitHub remote — required for worktree push/PR workflows
+    let gh_output = std::process::Command::new("gh")
+        .args(["repo", "create", &name, "--private", "--source=.", "--push"])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh CLI: {}. Is gh installed?", e))?;
+    if !gh_output.status.success() {
+        let stderr = String::from_utf8_lossy(&gh_output.stderr);
+        return Err(format!("Failed to create GitHub repo: {}", stderr.trim()));
+    }
+
     // Create project entry
     let project = Project {
         id: Uuid::new_v4(),
