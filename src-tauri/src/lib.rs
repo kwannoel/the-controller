@@ -37,6 +37,7 @@ pub fn run() {
             commands::send_raw_to_pty,
             commands::resize_pty,
             commands::close_session,
+            commands::set_initial_prompt,
             commands::archive_session,
             commands::unarchive_session,
             commands::start_claude_login,

@@ -6,7 +6,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
-  import { activeSessionId } from "./stores";
+  import { activeSessionId, projects, type Project } from "./stores";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {
@@ -29,6 +29,16 @@
   // sent to the PTY as input. See GitHub issue #49.
   let inputReady = false;
 
+  // Capture the first prompt typed by the user (text before first Enter).
+  // Skip if session already has a prompt (e.g., from a GitHub issue).
+  let promptBuffer = "";
+  let promptCaptured = (() => {
+    let list: Project[] = [];
+    projects.subscribe((v) => { list = v; })();
+    const session = list.flatMap((p) => p.sessions).find((s) => s.id === sessionId);
+    return session?.initial_prompt != null || session?.github_issue != null;
+  })();
+
   async function handleImagePaste(
     writeToPty: (data: string) => Promise<unknown>,
   ) {
@@ -47,6 +57,28 @@
         // Clipboard read failed — nothing to paste
       }
     }
+  }
+
+  function saveInitialPrompt(prompt: string) {
+    let projectList: Project[] = [];
+    projects.subscribe((v) => { projectList = v; })();
+    const match = projectList.flatMap((p) =>
+      p.sessions.map((s) => ({ session: s, projectId: p.id }))
+    ).find((x) => x.session.id === sessionId);
+    if (!match || match.session.initial_prompt != null) return;
+
+    invoke("set_initial_prompt", {
+      projectId: match.projectId,
+      sessionId,
+      prompt,
+    }).then(() => {
+      // Refresh the store so SummaryPane picks up the change
+      invoke<Project[]>("list_projects").then((result) => {
+        projects.set(result);
+      });
+    }).catch((err) => {
+      console.error("Failed to save initial prompt:", err);
+    });
   }
 
   const IMAGE_EXTENSIONS = new Set([
@@ -100,6 +132,28 @@
     // Connect user input to PTY (gated until initialization settles)
     term.onData((data: string) => {
       if (!inputReady) return;
+
+      // Capture the first prompt: buffer keystrokes until Enter
+      if (!promptCaptured) {
+        for (const ch of data) {
+          if (ch === "\r" || ch === "\n") {
+            const trimmed = promptBuffer.trim();
+            if (trimmed.length > 0) {
+              promptCaptured = true;
+              saveInitialPrompt(trimmed);
+            }
+            promptBuffer = "";
+            break;
+          } else if (ch === "\x7f" || ch === "\b") {
+            // Backspace
+            promptBuffer = promptBuffer.slice(0, -1);
+          } else if (ch >= " ") {
+            // Printable character
+            promptBuffer += ch;
+          }
+        }
+      }
+
       writeToPty(data).catch((err) => {
         console.error("Failed to write to PTY:", err);
       });

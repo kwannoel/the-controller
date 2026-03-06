@@ -82,10 +82,10 @@
     <div class="summary-row">
       <span class="label">PROMPT</span>
       <span class="value prompt-text">
-        {#if session.initial_prompt}
-          {session.initial_prompt}
-        {:else if session.github_issue}
+        {#if session.github_issue}
           #{session.github_issue.number}: {session.github_issue.title}
+        {:else if session.initial_prompt}
+          {session.initial_prompt}
         {:else}
           <span class="muted">No prompt</span>
         {/if}

@@ -475,6 +475,29 @@ pub fn resize_pty(
 }
 
 #[tauri::command]
+pub fn set_initial_prompt(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+    prompt: String,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
+    if let Some(session) = project.sessions.iter_mut().find(|s| s.id == session_uuid) {
+        if session.initial_prompt.is_none() {
+            session.initial_prompt = Some(prompt);
+            storage.save_project(&project).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 pub fn archive_session(
     state: State<AppState>,
     project_id: String,
