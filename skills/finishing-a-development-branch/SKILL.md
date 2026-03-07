@@ -1,58 +1,22 @@
 ---
 name: finishing-a-development-branch
-description: Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup
+description: Use when implementation is complete and you need to merge the branch — verifies tests, rebases, creates PR, squash merges, deletes remote branch, syncs local master, and closes the issue
 ---
 
 # Finishing a Development Branch
 
-## Overview
+## Step 1: Verify Tests
 
-Guide completion of development work by presenting clear options and handling chosen workflow.
+Run the project's test suite. If tests fail, fix them before proceeding.
 
-**Core principle:** Verify tests → Present options → Execute choice → Clean up.
+## Step 2: Execute Merge Workflow
 
-**Announce at start:** "I'm using the finishing-a-development-branch skill to complete this work."
-
-## The Process
-
-### Step 1: Verify Tests
-
-**Before presenting options, verify tests pass:**
-
-```bash
-# Run project's test suite
-npm test
-```
-
-**If tests fail:**
-```
-Tests failing (<N> failures). Must fix before completing:
-
-[Show failures]
-
-Cannot proceed with merge/PR until tests pass.
-```
-
-Stop. Don't proceed to Step 2.
-
-**If tests pass:** Continue to Step 2.
-
-### Step 2: Determine Base Branch
-
-The base branch for this project is `master`.
-
-```bash
-git merge-base HEAD master
-```
-
-### Step 3: Execute Merge Workflow
-
-After tests pass, execute the following steps in sequence:
-
-1. File a PR to `master`
-2. Merge the PR
-3. Sync local master: `git checkout master && git pull`
-4. Close the associated issue with a summary of what was done
+1. Rebase onto `master`
+2. Create a PR to `master`
+3. Squash merge the PR (include commit messages inline in the squash message)
+4. Delete the remote branch
+5. Sync local master: `git checkout master && git pull`
+6. Close the associated issue with a summary of what was done
 
 ## Integration
 
