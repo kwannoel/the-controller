@@ -331,6 +331,12 @@
           return true;
         }
         return false;
+      case "r":
+        if (isMaintainerPanelVisible) {
+          dispatchAction({ type: "trigger-maintainer-check" });
+          return true;
+        }
+        return false;
       case "b":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;

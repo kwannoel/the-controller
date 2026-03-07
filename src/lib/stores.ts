@@ -91,6 +91,7 @@ export type HotkeyAction =
   | { type: "toggle-maintainer-panel" }
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-triage-panel" }
+  | { type: "trigger-maintainer-check" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
