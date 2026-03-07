@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
@@ -149,18 +150,23 @@
       // 3. Focus the terminal
       focusTerminalSoon();
 
-      // 4. When session becomes idle (Claude Code ready), auto-paste the screenshot
-      const unsubStatus = sessionStatuses.subscribe((statuses) => {
-        if (statuses.get(sessionId) === "idle") {
-          unsubStatus();
-          // Send bracket paste to trigger Claude Code's clipboard image reader
-          invoke("write_to_pty", { sessionId, data: "\x1b[200~\x1b[201~" });
-        }
+      // 4. Listen directly for idle hook so we don't miss the first idle event
+      // while Sidebar is still wiring listeners for a newly created session.
+      let done = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const unlisten = await listen<string>(`session-status-hook:${sessionId}`, (event) => {
+        if (event.payload !== "idle" || done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        unlisten();
+        // Send bracket paste to trigger Claude Code's clipboard image reader
+        invoke("write_to_pty", { sessionId, data: "\x1b[200~\x1b[201~" });
       });
 
-      // Timeout: clean up subscription after 30s if idle never fires
-      setTimeout(() => {
-        unsubStatus();
+      timeoutId = setTimeout(() => {
+        if (done) return;
+        done = true;
+        unlisten();
       }, 30000);
     } catch (e) {
       showToast(String(e), "error");
