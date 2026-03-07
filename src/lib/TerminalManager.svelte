@@ -34,20 +34,21 @@
     }
   }
 
-  let allSessionIds: string[] = $derived(
-    projectList.flatMap((p) => p.sessions.map((s) => s.id)),
+  let allSessions: { id: string; kind: string }[] = $derived(
+    projectList.flatMap((p) => p.sessions.map((s) => ({ id: s.id, kind: s.kind }))),
   );
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="terminal-manager" class:focused={isFocused} onfocusin={handleFocusIn}>
-  {#each allSessionIds as sessionId (sessionId)}
+  {#each allSessions as session (session.id)}
+    {@const sessionId = session.id}
     <div class="terminal-wrapper" class:visible={activeSession === sessionId}>
       {#if focusedSessionId === sessionId}
         <SummaryPane {sessionId} />
       {/if}
       <div class="terminal-inner">
-        <Terminal {sessionId} bind:this={terminalComponents[sessionId]} />
+        <Terminal {sessionId} kind={session.kind} bind:this={terminalComponents[sessionId]} />
       </div>
     </div>
   {/each}

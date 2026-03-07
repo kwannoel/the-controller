@@ -12,9 +12,10 @@
 
   interface Props {
     sessionId: string;
+    kind?: string;
   }
 
-  let { sessionId }: Props = $props();
+  let { sessionId, kind = "claude" }: Props = $props();
 
   let containerEl: HTMLDivElement | undefined = $state();
   let term: Terminal | undefined;
@@ -136,19 +137,25 @@
     const writeToPty = (data: string) =>
       invoke("write_to_pty", { sessionId, data });
 
-    // Handle keys that xterm.js doesn't natively support
+    // Handle keys that xterm.js doesn't natively support.
+    // Only intercept paste for Claude sessions (image paste is Claude Code-specific).
+    // For other session types (e.g. Codex), let xterm handle paste natively.
+    const keyHandlerOptions = kind === "claude"
+      ? {
+          onImagePaste: () => {
+            if (!inputReady) return;
+            handleImagePaste(writeToPty);
+          },
+        }
+      : undefined;
+
     term.attachCustomKeyEventHandler(
       makeCustomKeyHandler(
         (data) => {
           if (!inputReady) return;
           invoke("send_raw_to_pty", { sessionId, data });
         },
-        {
-          onImagePaste: () => {
-            if (!inputReady) return;
-            handleImagePaste(writeToPty);
-          },
-        },
+        keyHandlerOptions,
       ),
     );
 
