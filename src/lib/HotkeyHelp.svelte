@@ -27,6 +27,7 @@
     { key: "i", description: "Create GitHub issue for focused project" },
     { key: "S", description: "Screenshot app → new session with image" },
     { key: "b", description: "Toggle background agent panel" },
+    { key: "o", description: "Toggle maintainer on/off (when panel open)" },
     { key: "Esc", description: "Move focus up (terminal → session → project)" },
     { key: "?", description: "Toggle this help" },
   ];

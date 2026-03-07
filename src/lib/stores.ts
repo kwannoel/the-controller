@@ -89,6 +89,7 @@ export type HotkeyAction =
   | { type: "finish-branch"; sessionId: string; kind?: string }
   | { type: "screenshot-to-session" }
   | { type: "toggle-maintainer-panel" }
+  | { type: "toggle-maintainer-enabled" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);

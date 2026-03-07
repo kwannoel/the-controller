@@ -42,10 +42,32 @@
         screenshotToNewSession();
       } else if (action?.type === "toggle-maintainer-panel") {
         maintainerPanelVisible.update(v => !v);
+      } else if (action?.type === "toggle-maintainer-enabled") {
+        toggleMaintainerEnabled();
       }
     });
     return unsub;
   });
+
+  async function toggleMaintainerEnabled() {
+    const focus = focusTargetState.current;
+    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
+    const project = projectsState.current.find((p) => p.id === focus.projectId);
+    if (!project) return;
+    const newEnabled = !project.maintainer.enabled;
+    try {
+      await invoke("configure_maintainer", {
+        projectId: project.id,
+        enabled: newEnabled,
+        intervalMinutes: project.maintainer.interval_minutes,
+      });
+      const result: Project[] = await invoke("list_projects");
+      projects.set(result);
+      showToast(`Maintainer ${newEnabled ? "enabled" : "disabled"}`, "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
 
   async function handleIssueSubmit(title: string, priority: "high" | "low") {
     const repoPath = createIssueTarget!.repoPath;

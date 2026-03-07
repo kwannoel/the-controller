@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, maintainerPanelVisible } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 const testProject = {
@@ -11,6 +11,7 @@ const testProject = {
   repo_path: '/tmp/test',
   created_at: '2026-01-01',
   archived: false,
+  maintainer: { enabled: false, interval_minutes: 60 },
   sessions: [
     { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
     { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
@@ -23,6 +24,7 @@ const testProject2 = {
   repo_path: '/tmp/other',
   created_at: '2026-01-01',
   archived: false,
+  maintainer: { enabled: false, interval_minutes: 60 },
   sessions: [
     { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
     { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
@@ -57,6 +59,7 @@ describe('HotkeyManager', () => {
     focusTarget.set(null);
     jumpMode.set(null);
     sidebarVisible.set(true);
+    maintainerPanelVisible.set(false);
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
     vi.clearAllMocks();
     render(HotkeyManager);
@@ -601,6 +604,50 @@ describe('HotkeyManager', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('x');
+      expect(captured).toBeNull();
+      unsub();
+    });
+  });
+
+  // ── Maintainer toggle (o) ──
+
+  describe('maintainer toggle (o)', () => {
+    it('o dispatches toggle-maintainer-enabled when panel visible and project focused', () => {
+      maintainerPanelVisible.set(true);
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('o');
+      expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
+      unsub();
+    });
+
+    it('o dispatches toggle-maintainer-enabled when panel visible and session focused', () => {
+      maintainerPanelVisible.set(true);
+      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('o');
+      expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
+      unsub();
+    });
+
+    it('o does nothing when panel is hidden', () => {
+      maintainerPanelVisible.set(false);
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('o');
+      expect(captured).toBeNull();
+      unsub();
+    });
+
+    it('o does nothing when no project focused', () => {
+      maintainerPanelVisible.set(true);
+      focusTarget.set(null);
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('o');
       expect(captured).toBeNull();
       unsub();
     });

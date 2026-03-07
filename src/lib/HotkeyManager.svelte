@@ -10,6 +10,7 @@
     JUMP_KEYS,
     sidebarVisible,
     taskPanelVisible,
+    maintainerPanelVisible,
     archiveView,
     archivedProjects,
     focusTarget,
@@ -41,6 +42,8 @@
   let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
   const expandedProjectsState = fromStore(expandedProjects);
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
+  const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
+  let isMaintainerPanelVisible = $derived(maintainerPanelVisibleState.current);
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -322,6 +325,12 @@
           dispatchAction({ type: "focus-terminal" });
         }
         return true;
+      case "o":
+        if (isMaintainerPanelVisible && getFocusedProject()) {
+          dispatchAction({ type: "toggle-maintainer-enabled" });
+          return true;
+        }
+        return false;
       case "b":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
