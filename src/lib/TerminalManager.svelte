@@ -1,22 +1,14 @@
 <script lang="ts">
+  import { fromStore } from "svelte/store";
   import Terminal from "./Terminal.svelte";
   import SummaryPane from "./SummaryPane.svelte";
   import { projects, activeSessionId, hotkeyAction, focusTarget, type Project } from "./stores";
 
-  let projectList: Project[] = $state([]);
-  let activeSession: string | null = $state(null);
+  const projectsState = fromStore(projects);
+  let projectList: Project[] = $derived(projectsState.current);
+  const activeSessionIdState = fromStore(activeSessionId);
+  let activeSession: string | null = $derived(activeSessionIdState.current);
   let terminalComponents: Record<string, Terminal> = $state({});
-  let isFocused = $state(false);
-
-  $effect(() => {
-    const unsub = projects.subscribe((value) => { projectList = value; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = activeSessionId.subscribe((value) => { activeSession = value; });
-    return unsub;
-  });
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
@@ -27,15 +19,11 @@
     return unsub;
   });
 
-  let focusedSessionId: string | null = $state(null);
-
-  $effect(() => {
-    const unsub = focusTarget.subscribe((v) => {
-      isFocused = v?.type === "terminal";
-      focusedSessionId = v?.type === "session" ? v.sessionId : null;
-    });
-    return unsub;
-  });
+  const focusTargetState = fromStore(focusTarget);
+  let isFocused = $derived(focusTargetState.current?.type === "terminal");
+  let focusedSessionId: string | null = $derived(
+    focusTargetState.current?.type === "session" ? focusTargetState.current.sessionId : null,
+  );
 
   function handleFocusIn() {
     const project = activeSession

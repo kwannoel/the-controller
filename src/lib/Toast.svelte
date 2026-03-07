@@ -1,11 +1,9 @@
 <script lang="ts">
+  import { fromStore } from "svelte/store";
   import { toasts } from "./toast";
 
-  let toastList: { id: number; text: string; type: "error" | "info" }[] = $state([]);
-
-  toasts.subscribe((value) => {
-    toastList = value;
-  });
+  const toastsState = fromStore(toasts);
+  let toastList = $derived(toastsState.current);
 </script>
 
 {#if toastList.length > 0}

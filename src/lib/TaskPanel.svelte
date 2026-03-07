@@ -1,12 +1,7 @@
 <script lang="ts">
+  import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { focusTarget, projects, type GithubIssue, type Project, type FocusTarget } from "./stores";
-
-  interface Props {
-    visible: boolean;
-  }
-
-  let { visible }: Props = $props();
 
   let issues: GithubIssue[] = $state([]);
 
@@ -14,27 +9,13 @@
   let error: string | null = $state(null);
   let currentRepoPath: string | null = $state(null);
 
-  let projectList: Project[] = $state([]);
-  let currentFocus: FocusTarget = $state(null);
+  const projectsState = fromStore(projects);
+  let projectList: Project[] = $derived(projectsState.current);
+  const focusTargetState = fromStore(focusTarget);
+  let currentFocus: FocusTarget = $derived(focusTargetState.current);
 
   $effect(() => {
-    const unsub = projects.subscribe((v) => { projectList = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = focusTarget.subscribe((v) => { currentFocus = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const projectId = currentFocus?.type === "project"
-      ? currentFocus.projectId
-      : currentFocus?.type === "session"
-        ? currentFocus.projectId
-        : currentFocus?.type === "terminal"
-          ? currentFocus.projectId
-          : null;
+    const projectId = currentFocus?.projectId ?? null;
 
     const project = projectId
       ? projectList.find((p) => p.id === projectId)
@@ -45,12 +26,6 @@
     if (repoPath && repoPath !== currentRepoPath) {
       currentRepoPath = repoPath;
       fetchIssues(repoPath);
-    }
-  });
-
-  $effect(() => {
-    if (visible && currentRepoPath) {
-      fetchIssues(currentRepoPath);
     }
   });
 

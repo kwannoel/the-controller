@@ -1,7 +1,7 @@
 <script lang="ts">
+  import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { onDestroy } from "svelte";
   import { projects, sessionStatuses, type Project, type SessionStatus } from "./stores";
 
   interface Props {
@@ -15,19 +15,11 @@
     message: string;
   }
 
-  let projectList: Project[] = $state([]);
-  let statuses: Map<string, SessionStatus> = $state(new Map());
+  const projectsState = fromStore(projects);
+  let projectList: Project[] = $derived(projectsState.current);
+  const sessionStatusesState = fromStore(sessionStatuses);
+  let statuses: Map<string, SessionStatus> = $derived(sessionStatusesState.current);
   let commits: CommitInfo[] = $state([]);
-
-  $effect(() => {
-    const unsub = projects.subscribe((v) => { projectList = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = sessionStatuses.subscribe((v) => { statuses = v; });
-    return unsub;
-  });
 
   let session = $derived(
     projectList.flatMap((p) =>

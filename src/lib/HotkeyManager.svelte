@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import {
     projects,
     activeSessionId,
-    hotkeyAction,
     jumpMode,
     generateJumpLabels,
     JUMP_KEYS,
@@ -14,6 +14,7 @@
     archivedProjects,
     focusTarget,
     expandedProjects,
+    dispatchHotkeyAction,
     type Project,
     type HotkeyAction,
     type FocusTarget,
@@ -28,44 +29,18 @@
   let jumpBuffer = $state("");
   let jumpLabels: string[] = $state([]);
 
-  // Reactive store subscriptions
-  let projectList: Project[] = $state([]);
-  let activeId: string | null = $state(null);
-  let currentFocus: FocusTarget = $state(null);
-
-  $effect(() => {
-    const unsub = projects.subscribe((value) => { projectList = value; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = activeSessionId.subscribe((value) => { activeId = value; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = focusTarget.subscribe((v) => { currentFocus = v; });
-    return unsub;
-  });
-
-  let isArchiveView = $state(false);
-  let archivedProjectList: Project[] = $state([]);
-  let expandedSet: Set<string> = $state(new Set());
-
-  $effect(() => {
-    const unsub = archiveView.subscribe((v) => { isArchiveView = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = archivedProjects.subscribe((v) => { archivedProjectList = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = expandedProjects.subscribe((v) => { expandedSet = v; });
-    return unsub;
-  });
+  const projectsState = fromStore(projects);
+  let projectList: Project[] = $derived(projectsState.current);
+  const activeSessionIdState = fromStore(activeSessionId);
+  let activeId: string | null = $derived(activeSessionIdState.current);
+  const focusTargetState = fromStore(focusTarget);
+  let currentFocus: FocusTarget = $derived(focusTargetState.current);
+  const archiveViewState = fromStore(archiveView);
+  let isArchiveView = $derived(archiveViewState.current);
+  const archivedProjectsState = fromStore(archivedProjects);
+  let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
+  const expandedProjectsState = fromStore(expandedProjects);
+  let expandedSet: Set<string> = $derived(expandedProjectsState.current);
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -106,8 +81,7 @@
   }
 
   function dispatchAction(action: NonNullable<HotkeyAction>) {
-    hotkeyAction.set(action);
-    setTimeout(() => hotkeyAction.set(null), 0);
+    dispatchHotkeyAction(action);
   }
 
   function getJumpProjects(): Project[] {
@@ -206,19 +180,71 @@
   function navigateProject(direction: 1 | -1) {
     const list = isArchiveView ? archivedProjectList : projectList;
     if (list.length === 0) return;
+    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session"
+      ? currentFocus.projectId
+      : null;
     let idx = -1;
-    if (currentFocus?.type === "project") {
-      idx = list.findIndex(p => p.id === currentFocus.projectId);
-    } else if (currentFocus?.type === "session") {
-      idx = list.findIndex(p => p.id === currentFocus.projectId);
-    }
+    if (focusedProjectId) idx = list.findIndex(p => p.id === focusedProjectId);
     const len = list.length;
     const next = list[((idx + direction) % len + len) % len];
     focusTarget.set({ type: "project", projectId: next.id });
   }
 
-  function handleHotkey(e: KeyboardEvent): boolean {
-    const key = e.key;
+  function getFocusedProject(): Project | null {
+    if (currentFocus?.type !== "project" && currentFocus?.type !== "session") return null;
+    return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
+  }
+
+  function dispatchDeleteAction() {
+    if (currentFocus?.type === "session") {
+      dispatchAction({ type: "delete-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
+      return;
+    }
+    if (currentFocus?.type === "project") {
+      dispatchAction({ type: "delete-project", projectId: currentFocus.projectId });
+      return;
+    }
+    dispatchAction({ type: "delete-project" });
+  }
+
+  function dispatchArchiveAction() {
+    if (isArchiveView) {
+      if (currentFocus?.type === "session") {
+        dispatchAction({ type: "unarchive-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
+      } else if (currentFocus?.type === "project") {
+        dispatchAction({ type: "unarchive-project", projectId: currentFocus.projectId });
+      }
+      return;
+    }
+
+    if (currentFocus?.type === "session") {
+      dispatchAction({ type: "archive-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
+    } else if (currentFocus?.type === "project") {
+      dispatchAction({ type: "archive-project", projectId: currentFocus.projectId });
+    } else {
+      dispatchAction({ type: "archive-project" });
+    }
+  }
+
+  function dispatchIssuePicker(opts?: { kind?: string; background?: boolean }) {
+    const project = getFocusedProject();
+    if (!project) return;
+    dispatchAction({
+      type: "pick-issue-for-session",
+      projectId: project.id,
+      repoPath: project.repo_path,
+      kind: opts?.kind,
+      background: opts?.background,
+    });
+  }
+
+  function dispatchCreateIssue() {
+    const project = getFocusedProject();
+    if (!project) return;
+    dispatchAction({ type: "create-issue", projectId: project.id, repoPath: project.repo_path });
+  }
+
+  function handleHotkey(key: string): boolean {
 
     switch (key) {
       case "g":
@@ -243,64 +269,25 @@
         dispatchAction({ type: "open-new-project" });
         return true;
       case "d":
-        if (currentFocus?.type === "session") {
-          dispatchAction({ type: "delete-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
-        } else if (currentFocus?.type === "project") {
-          dispatchAction({ type: "delete-project", projectId: currentFocus.projectId });
-        } else {
-          dispatchAction({ type: "delete-project" });
-        }
+        dispatchDeleteAction();
         return true;
       case "a":
-        if (isArchiveView) {
-          // In archive view, a unarchives the focused item
-          if (currentFocus?.type === "session") {
-            dispatchAction({ type: "unarchive-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
-          } else if (currentFocus?.type === "project") {
-            dispatchAction({ type: "unarchive-project", projectId: currentFocus.projectId });
-          }
-        } else if (currentFocus?.type === "session") {
-          dispatchAction({ type: "archive-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
-        } else if (currentFocus?.type === "project") {
-          dispatchAction({ type: "archive-project", projectId: currentFocus.projectId });
-        } else {
-          dispatchAction({ type: "archive-project" });
-        }
+        dispatchArchiveAction();
         return true;
       case "A":
         dispatchAction({ type: "toggle-archive-view" });
         return true;
       case "c":
-        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
-          const project = projectList.find(p => p.id === currentFocus.projectId);
-          if (project) {
-            dispatchAction({ type: "pick-issue-for-session", projectId: project.id, repoPath: project.repo_path });
-          }
-        }
+        dispatchIssuePicker();
         return true;
       case "x":
-        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
-          const project = projectList.find(p => p.id === currentFocus.projectId);
-          if (project) {
-            dispatchAction({ type: "pick-issue-for-session", projectId: project.id, repoPath: project.repo_path, kind: "codex" });
-          }
-        }
+        dispatchIssuePicker({ kind: "codex" });
         return true;
       case "C":
-        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
-          const project = projectList.find(p => p.id === currentFocus.projectId);
-          if (project) {
-            dispatchAction({ type: "pick-issue-for-session", projectId: project.id, repoPath: project.repo_path, background: true });
-          }
-        }
+        dispatchIssuePicker({ background: true });
         return true;
       case "X":
-        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
-          const project = projectList.find(p => p.id === currentFocus.projectId);
-          if (project) {
-            dispatchAction({ type: "pick-issue-for-session", projectId: project.id, repoPath: project.repo_path, kind: "codex", background: true });
-          }
-        }
+        dispatchIssuePicker({ kind: "codex", background: true });
         return true;
       case "m":
         if (activeId) {
@@ -317,12 +304,7 @@
         sidebarVisible.update(v => !v);
         return true;
       case "i":
-        if (currentFocus?.type === "project" || currentFocus?.type === "session") {
-          const project = projectList.find(p => p.id === currentFocus.projectId);
-          if (project) {
-            dispatchAction({ type: "create-issue", projectId: project.id, repoPath: project.repo_path });
-          }
-        }
+        dispatchCreateIssue();
         return true;
       case "t":
         taskPanelVisible.update(v => !v);
@@ -415,7 +397,7 @@
     }
 
     // Try to handle as hotkey
-    if (handleHotkey(e)) {
+    if (handleHotkey(e.key)) {
       e.stopPropagation();
       e.preventDefault();
     }

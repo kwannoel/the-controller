@@ -71,6 +71,15 @@ export const sidebarVisible = writable<boolean>(true);
 export const taskPanelVisible = writable<boolean>(false);
 export const expandedProjects = writable<Set<string>>(new Set());
 
+export function dispatchHotkeyAction(action: NonNullable<HotkeyAction>) {
+  hotkeyAction.set(action);
+  setTimeout(() => hotkeyAction.set(null), 0);
+}
+
+export function focusTerminalSoon(delayMs = 50) {
+  setTimeout(() => dispatchHotkeyAction({ type: "focus-terminal" }), delayMs);
+}
+
 // Focus tracking — granular: which element is focused
 export type FocusTarget =
   | { type: "terminal"; projectId: string }

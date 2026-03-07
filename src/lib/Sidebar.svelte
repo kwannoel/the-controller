@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, type Project, type JumpPhase, type FocusTarget, type SessionStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -9,38 +10,24 @@
   import DeleteProjectModal from "./DeleteProjectModal.svelte";
   import ConfirmModal from "./ConfirmModal.svelte";
   import DeleteSessionModal from "./DeleteSessionModal.svelte";
+  import ProjectTree from "./sidebar/ProjectTree.svelte";
 
   let sidebarEl: HTMLElement | undefined = $state();
-  let hintsVisible = $state(false);
-  $effect(() => {
-    const unsub = showKeyHints.subscribe((v) => { hintsVisible = v; });
-    return unsub;
-  });
+  const showKeyHintsState = fromStore(showKeyHints);
   let showFuzzyFinder = $state(false);
   let showNewProjectModal = $state(false);
-  let expandedProjectSet: Set<string> = $state(new Set());
-  $effect(() => {
-    const unsub = expandedProjects.subscribe((v) => { expandedProjectSet = v; });
-    return unsub;
-  });
+  const expandedProjectsState = fromStore(expandedProjects);
+  let expandedProjectSet: Set<string> = $derived(expandedProjectsState.current);
   let deleteTarget: Project | null = $state(null);
   let deleteSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let archiveSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let archiveProjectTarget: Project | null = $state(null);
   let mergeSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let mergeInProgress = $state(false);
-  let isArchiveView = $state(false);
-  let archivedProjectList: Project[] = $state([]);
-
-  $effect(() => {
-    const unsub = archiveView.subscribe((v) => { isArchiveView = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = archivedProjects.subscribe((v) => { archivedProjectList = v; });
-    return unsub;
-  });
+  const archiveViewState = fromStore(archiveView);
+  let isArchiveView = $derived(archiveViewState.current);
+  const archivedProjectsState = fromStore(archivedProjects);
+  let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
 
   // Load archived projects when entering archive view
   $effect(() => {
@@ -48,38 +35,20 @@
       loadArchivedProjects();
     }
   });
-  let projectList: Project[] = $state([]);
-  let activeSession: string | null = $state(null);
-  let statuses: Map<string, SessionStatus> = $state(new Map());
+  const projectsState = fromStore(projects);
+  let projectList: Project[] = $derived(projectsState.current);
+  const activeSessionIdState = fromStore(activeSessionId);
+  let activeSession: string | null = $derived(activeSessionIdState.current);
+  const sessionStatusesState = fromStore(sessionStatuses);
+  let statuses: Map<string, SessionStatus> = $derived(sessionStatusesState.current);
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const IDLE_DEBOUNCE_MS = 1500;
 
-  $effect(() => {
-    const unsub = projects.subscribe((value) => { projectList = value; });
-    return unsub;
-  });
+  const jumpModeState = fromStore(jumpMode);
+  let jumpState: JumpPhase = $derived(jumpModeState.current);
 
-  $effect(() => {
-    const unsub = activeSessionId.subscribe((value) => { activeSession = value; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = sessionStatuses.subscribe((value) => { statuses = value; });
-    return unsub;
-  });
-
-  let jumpState: JumpPhase = $state(null);
-  $effect(() => {
-    const unsub = jumpMode.subscribe((v) => { jumpState = v; });
-    return unsub;
-  });
-
-  let currentFocus: FocusTarget = $state(null);
-  $effect(() => {
-    const unsub = focusTarget.subscribe((v) => { currentFocus = v; });
-    return unsub;
-  });
+  const focusTargetState = fromStore(focusTarget);
+  let currentFocus: FocusTarget = $derived(focusTargetState.current);
 
   // When focusTarget changes, expand and focus the relevant DOM element
   $effect(() => {
@@ -314,10 +283,7 @@
       next.add(projectId);
       expandedProjects.set(next);
       // Auto-focus the terminal (slight delay for component mount)
-      setTimeout(() => {
-        hotkeyAction.set({ type: "focus-terminal" });
-        setTimeout(() => hotkeyAction.set(null), 0);
-      }, 50);
+      focusTerminalSoon();
     } catch (err) {
       showToast(String(err), "error");
     }
@@ -327,38 +293,53 @@
     activeSessionId.set(sessionId);
   }
 
+  async function maybeRemoveInProgressLabel(projectId: string, sessionId: string, fromArchivedList = false) {
+    const list = fromArchivedList ? archivedProjectList : projectList;
+    const project = list.find((p) => p.id === projectId);
+    const session = project?.sessions.find((s) => s.id === sessionId);
+    if (session?.github_issue && project) {
+      invoke("remove_github_label", {
+        repoPath: project.repo_path,
+        issueNumber: session.github_issue.number,
+        label: "in-progress",
+      }).catch(() => {});
+    }
+  }
+
+  function clearSessionTracking(sessionId: string) {
+    const timer = idleTimers.get(sessionId);
+    if (timer) {
+      clearTimeout(timer);
+      idleTimers.delete(sessionId);
+    }
+    sessionStatuses.update((m) => {
+      const next = new Map(m);
+      next.delete(sessionId);
+      return next;
+    });
+  }
+
+  async function refreshProjectLists() {
+    await loadProjects();
+    if (isArchiveView) await loadArchivedProjects();
+  }
+
   async function closeSession(projectId: string, sessionId: string, deleteWorktree: boolean) {
     try {
       const list = isArchiveView ? archivedProjectList : projectList;
       const nextFocus = focusAfterSessionDelete(list, projectId, sessionId, isArchiveView);
 
-      // Remove in-progress label if session has a linked issue
-      const project = list.find(p => p.id === projectId);
-      const session = project?.sessions.find(s => s.id === sessionId);
-      if (session?.github_issue && project) {
-        invoke("remove_github_label", {
-          repoPath: project.repo_path,
-          issueNumber: session.github_issue.number,
-          label: "in-progress",
-        }).catch(() => {});
-      }
+      await maybeRemoveInProgressLabel(projectId, sessionId, isArchiveView);
 
       await invoke("close_session", { projectId, sessionId, deleteWorktree });
-      const closeTimer = idleTimers.get(sessionId);
-      if (closeTimer) { clearTimeout(closeTimer); idleTimers.delete(sessionId); }
-      sessionStatuses.update(m => {
-        const next = new Map(m);
-        next.delete(sessionId);
-        return next;
-      });
+      clearSessionTracking(sessionId);
       activeSessionId.update(current => {
         if (current !== sessionId) return current;
         if (nextFocus?.type === "session") return nextFocus.sessionId;
         return null;
       });
       focusTarget.set(nextFocus);
-      await loadProjects();
-      if (isArchiveView) await loadArchivedProjects();
+      await refreshProjectLists();
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -372,32 +353,17 @@
       const idx = activeSessions.findIndex(s => s.id === sessionId);
       const prevSession = idx > 0 ? activeSessions[idx - 1] : null;
 
-      // Remove in-progress label if session has a linked issue
-      const session = activeSessions.find(s => s.id === sessionId);
-      if (session?.github_issue && project) {
-        invoke("remove_github_label", {
-          repoPath: project.repo_path,
-          issueNumber: session.github_issue.number,
-          label: "in-progress",
-        }).catch(() => {});
-      }
+      await maybeRemoveInProgressLabel(projectId, sessionId);
 
       await invoke("archive_session", { projectId, sessionId });
-      const archiveTimer = idleTimers.get(sessionId);
-      if (archiveTimer) { clearTimeout(archiveTimer); idleTimers.delete(sessionId); }
-      sessionStatuses.update(m => {
-        const next = new Map(m);
-        next.delete(sessionId);
-        return next;
-      });
+      clearSessionTracking(sessionId);
       activeSessionId.update(current => current === sessionId ? (prevSession?.id ?? null) : current);
       if (prevSession) {
         focusTarget.set({ type: "session", sessionId: prevSession.id, projectId });
       } else {
         focusTarget.set({ type: "project", projectId });
       }
-      await loadProjects();
-      if (isArchiveView) await loadArchivedProjects();
+      await refreshProjectLists();
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -408,8 +374,7 @@
       await invoke("unarchive_session", { projectId, sessionId });
       markSession(sessionId, "working");
       activeSessionId.set(sessionId);
-      await loadProjects();
-      if (isArchiveView) await loadArchivedProjects();
+      await refreshProjectLists();
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -434,10 +399,7 @@
 
     // Focus the terminal so user can watch Claude resolve conflicts if any
     activeSessionId.set(sessionId);
-    setTimeout(() => {
-      hotkeyAction.set({ type: "focus-terminal" });
-      setTimeout(() => hotkeyAction.set(null), 0);
-    }, 50);
+    focusTerminalSoon();
 
     // Listen for intermediate merge status events
     let unlistenStatus: (() => void) | null = null;
@@ -470,102 +432,27 @@
   </div>
 
   <div class="project-list">
-    {#if isArchiveView}
-      {#each archivedProjectList as project, i (project.id)}
-        {@const archivedSessions = project.sessions.filter(s => s.archived)}
-        <div class="project-item">
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="project-header"
-            class:focus-target={currentFocus?.type === 'project' && currentFocus.projectId === project.id}
-            tabindex="0"
-            data-project-id={project.id}
-            onfocusin={(e: FocusEvent) => { if (e.target === e.currentTarget) focusTarget.set({ type: 'project', projectId: project.id }); }}
-          >
-            <button class="btn-expand" onclick={() => toggleProject(project.id)}>
-              {expandedProjectSet.has(project.id) ? "\u25BC" : "\u25B6"}
-            </button>
-            <span class="project-name">{project.name}</span>
-            {#if jumpState?.phase === 'project' && projectJumpLabels[i]}
-              <kbd class="jump-label">{projectJumpLabels[i]}</kbd>
-            {/if}
-            <span class="session-count">{archivedSessions.length}</span>
-          </div>
-
-          {#if expandedProjectSet.has(project.id)}
-            <div class="session-list">
-              {#each archivedSessions as session, sessionIdx (session.id)}
-                <div
-                  class="session-item archived"
-                  class:focus-target={currentFocus?.type === 'session' && currentFocus.sessionId === session.id}
-                  data-session-id={session.id}
-                  tabindex="0"
-                  onfocusin={() => { focusTarget.set({ type: 'session', sessionId: session.id, projectId: project.id }); }}
-                >
-                  <span class="status-dot archived-dot">&cir;</span>
-                  <span class="session-label">{session.label}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {:else}
-        <div class="empty-state">No archived sessions</div>
-      {/each}
-    {:else}
-      {#each projectList as project, i (project.id)}
-        <div class="project-item">
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="project-header"
-            class:focus-target={currentFocus?.type === 'project' && currentFocus.projectId === project.id}
-            tabindex="0"
-            data-project-id={project.id}
-            onfocusin={(e: FocusEvent) => { if (e.target === e.currentTarget) focusTarget.set({ type: 'project', projectId: project.id }); }}
-          >
-            <button class="btn-expand" onclick={() => toggleProject(project.id)}>
-              {expandedProjectSet.has(project.id) ? "\u25BC" : "\u25B6"}
-            </button>
-            <span class="project-name">{project.name}</span>
-            {#if jumpState?.phase === 'project' && projectJumpLabels[i]}
-              <kbd class="jump-label">{projectJumpLabels[i]}</kbd>
-            {/if}
-            <span class="session-count">{project.sessions.filter(s => !s.archived).length}</span>
-          </div>
-
-          {#if expandedProjectSet.has(project.id)}
-            {@const activeSessions = project.sessions.filter(s => !s.archived)}
-            <div class="session-list">
-              {#each activeSessions as session, sessionIdx (session.id)}
-                <div
-                  class="session-item"
-                  class:active={activeSession === session.id}
-                  class:focus-target={currentFocus?.type === 'session' && currentFocus.sessionId === session.id}
-                  data-session-id={session.id}
-                  role="button"
-                  tabindex="0"
-                  onclick={() => { selectSession(session.id); focusTarget.set({ type: 'session', sessionId: session.id, projectId: project.id }); }}
-                  onfocusin={() => { focusTarget.set({ type: 'session', sessionId: session.id, projectId: project.id }); }}
-                  onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') selectSession(session.id); }}
-                >
-                  <span
-                    class="status-dot"
-                    class:idle={getSessionStatus(session.id) === "idle"}
-                    class:working={getSessionStatus(session.id) === "working"}
-                  >
-                    {getSessionStatus(session.id) === "exited" ? "\u25CB" : "\u25CF"}
-                  </span>
-                  <span class="session-label">{session.label}</span>
-                  {#if session.github_issue}
-                    <span class="issue-badge">#{session.github_issue.number}</span>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
-      {/each}
-    {/if}
+    <ProjectTree
+      projects={isArchiveView ? archivedProjectList : projectList}
+      mode={isArchiveView ? "archived" : "active"}
+      {expandedProjectSet}
+      {activeSession}
+      {currentFocus}
+      jumpState={jumpState}
+      {projectJumpLabels}
+      {getSessionStatus}
+      onToggleProject={toggleProject}
+      onProjectFocus={(projectId) => {
+        focusTarget.set({ type: "project", projectId });
+      }}
+      onSessionFocus={(sessionId, projectId) => {
+        focusTarget.set({ type: "session", sessionId, projectId });
+      }}
+      onSessionSelect={(sessionId, projectId) => {
+        selectSession(sessionId);
+        focusTarget.set({ type: "session", sessionId, projectId });
+      }}
+    />
   </div>
 
   <div class="sidebar-footer">
@@ -581,7 +468,7 @@
     >Archives</button>
     <button
       class="btn-help"
-      class:active={hintsVisible}
+      class:active={showKeyHintsState.current}
       onclick={() => showKeyHints.update(v => !v)}
       title="Keyboard shortcuts (?)"
     >?</button>
@@ -735,164 +622,6 @@
     overflow-y: auto;
   }
 
-  .project-item {
-    border-bottom: 1px solid #313244;
-  }
-
-  .project-header {
-    display: flex;
-    align-items: center;
-    padding: 8px 16px;
-    gap: 8px;
-  }
-
-  .project-header:hover {
-    background: #313244;
-  }
-
-  .project-header.focus-target {
-    outline: 2px solid #89b4fa;
-    outline-offset: -2px;
-    border-radius: 4px;
-  }
-
-  .btn-expand {
-    background: none;
-    border: none;
-    color: #6c7086;
-    cursor: pointer;
-    padding: 0;
-    font-size: 10px;
-    width: 16px;
-    text-align: center;
-    box-shadow: none;
-  }
-
-  .project-name {
-    flex: 1;
-    font-size: 13px;
-    font-weight: 500;
-    word-break: break-word;
-  }
-
-  .session-count {
-    font-size: 11px;
-    color: #6c7086;
-    background: #313244;
-    padding: 1px 6px;
-    border-radius: 8px;
-  }
-
-  .session-list {
-    padding: 0;
-  }
-
-  .session-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px 6px 40px;
-    cursor: pointer;
-    font-size: 12px;
-    width: 100%;
-    background: none;
-    border: none;
-    color: #cdd6f4;
-    text-align: left;
-    box-shadow: none;
-  }
-
-  .session-item:hover {
-    background: #313244;
-  }
-
-  .session-item.active {
-    background: #45475a;
-  }
-
-  .session-item.focus-target {
-    outline: 2px solid #89b4fa;
-    outline-offset: -2px;
-    border-radius: 4px;
-  }
-
-  .session-item.create-option {
-    color: #a6e3a1;
-    font-style: italic;
-  }
-
-  .session-item.archived {
-    opacity: 0.6;
-  }
-
-  .archived-dot {
-    color: #6c7086;
-  }
-
-  .status-dot {
-    font-size: 10px;
-    color: #6c7086;
-  }
-
-  .status-dot.idle {
-    color: #a6e3a1;
-  }
-
-  .status-dot.working {
-    color: #f9e2af;
-  }
-
-  .session-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
-  }
-
-  .issue-badge {
-    font-size: 10px;
-    color: #89b4fa;
-    background: rgba(137, 180, 250, 0.15);
-    padding: 0 4px;
-    border-radius: 3px;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .jump-label {
-    background: #fab387;
-    color: #1e1e2e;
-    padding: 0 5px;
-    border-radius: 3px;
-    font-family: monospace;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 16px;
-    flex-shrink: 0;
-    margin-left: auto;
-  }
-
-  .hint {
-    background: #313244;
-    color: #89b4fa;
-    padding: 0 5px;
-    border-radius: 3px;
-    font-family: monospace;
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 16px;
-    white-space: nowrap;
-    flex-shrink: 0;
-    margin-left: 4px;
-  }
-
-  .empty-state {
-    padding: 24px 16px;
-    color: #6c7086;
-    font-size: 13px;
-    text-align: center;
-  }
-
   /* Footer */
   .sidebar-footer {
     display: flex;
@@ -945,34 +674,5 @@
 
   .btn-help.active {
     color: #89b4fa;
-  }
-
-  .new-menu {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    background: #1e1e2e;
-    border: 1px solid #313244;
-    border-radius: 4px;
-    z-index: 10;
-    min-width: 140px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
-
-  .new-menu-item {
-    display: block;
-    width: 100%;
-    padding: 8px 12px;
-    background: none;
-    border: none;
-    color: #cdd6f4;
-    font-size: 12px;
-    text-align: left;
-    cursor: pointer;
-    box-shadow: none;
-  }
-
-  .new-menu-item:hover {
-    background: #313244;
   }
 </style>

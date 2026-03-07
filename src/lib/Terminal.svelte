@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { get } from "svelte/store";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
-  import { activeSessionId, projects, type Project } from "./stores";
+  import { activeSessionId, projects } from "./stores";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {
@@ -37,9 +38,7 @@
   // Skip if session already has a prompt (e.g., from a GitHub issue).
   let promptBuffer = "";
   let promptCaptured = (() => {
-    let list: Project[] = [];
-    projects.subscribe((v) => { list = v; })();
-    const session = list.flatMap((p) => p.sessions).find((s) => s.id === sessionId);
+    const session = get(projects).flatMap((p) => p.sessions).find((s) => s.id === sessionId);
     return session?.initial_prompt != null || session?.github_issue != null;
   })();
 
@@ -69,9 +68,7 @@
   }
 
   function saveInitialPrompt(prompt: string) {
-    let projectList: Project[] = [];
-    projects.subscribe((v) => { projectList = v; })();
-    const match = projectList.flatMap((p) =>
+    const match = get(projects).flatMap((p) =>
       p.sessions.map((s) => ({ session: s, projectId: p.id }))
     ).find((x) => x.session.id === sessionId);
     if (!match || match.session.initial_prompt != null) return;
@@ -216,9 +213,7 @@
     // Gate on active session — this is a window-level event so all
     // mounted Terminal instances receive it; only the active one should act.
     listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
-      let active: string | null = null;
-      activeSessionId.subscribe((v) => { active = v; })();
-      if (active !== sessionId) return;
+      if (get(activeSessionId) !== sessionId) return;
 
       const imagePath = event.payload.paths.find(isImageFile);
       if (imagePath) {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
@@ -12,31 +13,19 @@
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, type Config, type FocusTarget, type GithubIssue, type Project } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus } from "./lib/stores";
 
   let ready = $state(false);
-  let needsOnboarding = $state(true);
-  let sidebarIsVisible = $state(true);
-  let hintsVisible = $state(false);
-  let taskPanelIsVisible = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
 
-
-  $effect(() => {
-    const unsub = sidebarVisible.subscribe((v) => { sidebarIsVisible = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = showKeyHints.subscribe((v) => { hintsVisible = v; });
-    return unsub;
-  });
-
-  $effect(() => {
-    const unsub = taskPanelVisible.subscribe((v) => { taskPanelIsVisible = v; });
-    return unsub;
-  });
+  const sidebarVisibleState = fromStore(sidebarVisible);
+  const showKeyHintsState = fromStore(showKeyHints);
+  const taskPanelVisibleState = fromStore(taskPanelVisible);
+  const onboardingCompleteState = fromStore(onboardingComplete);
+  const projectsState = fromStore(projects);
+  const activeSessionIdState = fromStore(activeSessionId);
+  const focusTargetState = fromStore(focusTarget);
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
@@ -83,8 +72,22 @@
   function handleIssuePickerSkip() {
     const target = issuePickerTarget!;
     issuePickerTarget = null;
-    hotkeyAction.set({ type: "create-session", projectId: target.projectId, kind: target.kind });
-    setTimeout(() => hotkeyAction.set(null), 0);
+    dispatchHotkeyAction({ type: "create-session", projectId: target.projectId, kind: target.kind });
+  }
+
+  async function activateNewSession(sessionId: string, projectId: string) {
+    sessionStatuses.update((m: Map<string, SessionStatus>) => {
+      const next = new Map(m);
+      next.set(sessionId, "working");
+      return next;
+    });
+    activeSessionId.set(sessionId);
+    projects.set(await invoke<Project[]>("list_projects"));
+    expandedProjects.update((s: Set<string>) => {
+      const next = new Set(s);
+      next.add(projectId);
+      return next;
+    });
   }
 
   async function createSessionWithIssue(projectId: string, repoPath: string, issue: GithubIssue, kind?: string, background?: boolean) {
@@ -108,19 +111,8 @@
         label: "in-progress",
       }).catch((e: unknown) => showToast(`Failed to add label: ${e}`, "error"));
 
-      sessionStatuses.update((m: Map<string, string>) => {
-        const next = new Map(m);
-        next.set(sessionId, "working");
-        return next;
-      });
-      activeSessionId.set(sessionId);
-      const result = await invoke<Project[]>("list_projects");
-      projects.set(result);
-      expandedProjects.update((s: Set<string>) => { const next = new Set(s); next.add(projectId); return next; });
-      setTimeout(() => {
-        hotkeyAction.set({ type: "focus-terminal" });
-        setTimeout(() => hotkeyAction.set(null), 0);
-      }, 50);
+      await activateNewSession(sessionId, projectId);
+      focusTerminalSoon();
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -128,16 +120,9 @@
 
   async function screenshotToNewSession() {
     // Determine project from current focus or active session
-    let projectList: Project[] = [];
-    projects.subscribe((v) => { projectList = v; })();
-    let active: string | null = null;
-    activeSessionId.subscribe((v) => { active = v; })();
-    let focus: FocusTarget = null;
-    focusTarget.subscribe((v) => { focus = v; })();
-
-    const projectId = focus?.projectId
-      ?? projectList.find((p) => p.sessions.some((s) => s.id === active))?.id
-      ?? projectList[0]?.id;
+    const projectId = focusTargetState.current?.projectId
+      ?? projectsState.current.find((p) => p.sessions.some((s) => s.id === activeSessionIdState.current))?.id
+      ?? projectsState.current[0]?.id;
 
     if (!projectId) {
       showToast("No project to create session in", "error");
@@ -159,25 +144,10 @@
         kind: "claude",
       });
 
-      sessionStatuses.update((m: Map<string, string>) => {
-        const next = new Map(m);
-        next.set(sessionId, "working");
-        return next;
-      });
-      activeSessionId.set(sessionId);
-      const result = await invoke<Project[]>("list_projects");
-      projects.set(result);
-      expandedProjects.update((s: Set<string>) => {
-        const next = new Set(s);
-        next.add(projectId);
-        return next;
-      });
+      await activateNewSession(sessionId, projectId);
 
       // 3. Focus the terminal
-      setTimeout(() => {
-        hotkeyAction.set({ type: "focus-terminal" });
-        setTimeout(() => hotkeyAction.set(null), 0);
-      }, 50);
+      focusTerminalSoon();
 
       // 4. When session becomes idle (Claude Code ready), auto-paste the screenshot
       const unsubStatus = sessionStatuses.subscribe((statuses) => {
@@ -210,40 +180,31 @@
       if (config) {
         appConfig.set(config);
         onboardingComplete.set(true);
-        needsOnboarding = false;
       }
     } catch (e) {
       // Config check failed, show onboarding
     }
     ready = true;
   });
-
-  // Listen for onboarding completion
-  $effect(() => {
-    const unsub = onboardingComplete.subscribe((complete) => {
-      if (complete) needsOnboarding = false;
-    });
-    return unsub;
-  });
 </script>
 
 {#if ready}
-  {#if needsOnboarding}
+  {#if !onboardingCompleteState.current}
     <Onboarding />
   {:else}
     <div class="app-layout">
-      {#if sidebarIsVisible}
+      {#if sidebarVisibleState.current}
         <Sidebar />
       {/if}
       <main class="terminal-area">
         <TerminalManager />
       </main>
-      {#if taskPanelIsVisible}
-        <TaskPanel visible={taskPanelIsVisible} />
+      {#if taskPanelVisibleState.current}
+        <TaskPanel />
       {/if}
     </div>
     <HotkeyManager />
-    {#if hintsVisible}
+    {#if showKeyHintsState.current}
       <HotkeyHelp onClose={() => showKeyHints.set(false)} />
     {/if}
     {#if createIssueTarget}
