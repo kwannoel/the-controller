@@ -209,8 +209,14 @@
 
         // Cleanup: backend already deleted the session and worktree, just refresh.
         listen<string>(`session-cleanup:${session.id}`, () => {
+          const nextFocus = focusAfterSessionDelete(projectList, project.id, session.id, isArchiveView);
           clearSessionTracking(session.id);
-          activeSessionId.update(current => current === session.id ? null : current);
+          activeSessionId.update(current => {
+            if (current !== session.id) return current;
+            if (nextFocus?.type === "session") return nextFocus.sessionId;
+            return null;
+          });
+          focusTarget.set(nextFocus);
           refreshProjectLists();
         }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
 
