@@ -2,18 +2,14 @@
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
   import { showToast } from "./toast";
+  import type { DirEntry } from "./stores";
 
   interface Props {
-    onSelect: (entry: { name: string; path: string }) => void;
+    onSelect: (entry: DirEntry) => void;
     onClose: () => void;
   }
 
   let { onSelect, onClose }: Props = $props();
-
-  interface DirEntry {
-    name: string;
-    path: string;
-  }
 
   let query = $state("");
   let entries = $state<DirEntry[]>([]);

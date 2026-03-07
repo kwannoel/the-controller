@@ -1,14 +1,9 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
   import { onMount, onDestroy } from "svelte";
-  import { appConfig, onboardingComplete } from "./stores";
+  import { appConfig, onboardingComplete, type DirEntry } from "./stores";
   import { showToast } from "./toast";
   import Terminal from "./Terminal.svelte";
-
-  interface DirEntry {
-    name: string;
-    path: string;
-  }
 
   let step = $state<"pick-dir" | "cli-check">("pick-dir");
   let projectsRoot = $state("");

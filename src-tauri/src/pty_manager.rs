@@ -61,7 +61,7 @@ impl PtyManager {
             // produce extra newlines).
             let _ = TmuxManager::resize_session(session_id, cols, rows);
             // Attach to the tmux session via a local PTY
-            self.attach_tmux_session(session_id, app_handle, rows, cols)
+            self.attach_tmux_session(session_id, app_handle)
         } else {
             // No tmux — spawn the command directly in a PTY
             self.spawn_direct_session(session_id, working_dir, command, app_handle, initial_prompt, rows, cols)
@@ -165,8 +165,6 @@ impl PtyManager {
         &mut self,
         session_id: Uuid,
         app_handle: AppHandle,
-        rows: u16,
-        cols: u16,
     ) -> Result<(), String> {
         let tmux_name = TmuxManager::session_name(session_id);
 

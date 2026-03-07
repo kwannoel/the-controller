@@ -1,19 +1,12 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, type Project, type FocusTarget } from "./stores";
+  import { focusTarget, projects, type GithubIssue, type Project, type FocusTarget } from "./stores";
 
   interface Props {
     visible: boolean;
   }
 
   let { visible }: Props = $props();
-
-  interface GithubIssue {
-    number: number;
-    title: string;
-    url: string;
-    labels: { name: string }[];
-  }
 
   let issues: GithubIssue[] = $state([]);
 

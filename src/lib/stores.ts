@@ -7,6 +7,11 @@ export interface GithubIssue {
   labels: { name: string }[];
 }
 
+export interface DirEntry {
+  name: string;
+  path: string;
+}
+
 export interface SessionConfig {
   id: string;
   label: string;

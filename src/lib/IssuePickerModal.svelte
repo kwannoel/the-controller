@@ -1,13 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-
-  interface GithubIssue {
-    number: number;
-    title: string;
-    url: string;
-    labels: { name: string }[];
-  }
+  import type { GithubIssue } from "./stores";
 
   interface Props {
     repoPath: string;

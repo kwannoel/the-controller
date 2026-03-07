@@ -12,14 +12,7 @@
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, type Config, type FocusTarget, type Project } from "./lib/stores";
-
-  interface GithubIssue {
-    number: number;
-    title: string;
-    url: string;
-    labels: { name: string }[];
-  }
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, type Config, type FocusTarget, type GithubIssue, type Project } from "./lib/stores";
 
   let ready = $state(false);
   let needsOnboarding = $state(true);
@@ -81,14 +74,7 @@
     }
   }
 
-  interface GithubIssueForSession {
-    number: number;
-    title: string;
-    url: string;
-    labels: { name: string }[];
-  }
-
-  function handleIssuePicked(issue: GithubIssueForSession) {
+  function handleIssuePicked(issue: GithubIssue) {
     const target = issuePickerTarget!;
     issuePickerTarget = null;
     createSessionWithIssue(target.projectId, target.repoPath, issue, target.kind, target.background);
@@ -101,7 +87,7 @@
     setTimeout(() => hotkeyAction.set(null), 0);
   }
 
-  async function createSessionWithIssue(projectId: string, repoPath: string, issue: GithubIssueForSession, kind?: string, background?: boolean) {
+  async function createSessionWithIssue(projectId: string, repoPath: string, issue: GithubIssue, kind?: string, background?: boolean) {
     try {
       const sessionId: string = await invoke("create_session", {
         projectId,
