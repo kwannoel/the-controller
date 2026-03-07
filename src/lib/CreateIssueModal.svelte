@@ -68,8 +68,8 @@
     {:else}
       <div class="title-preview">{title}</div>
       <div class="priority-prompt">
-        <span class="priority-key high">k</span> High
-        <span class="priority-key low">j</span> Low
+        <span class="priority-key low">j</span> Low Priority
+        <span class="priority-key high">k</span> High Priority
       </div>
       <div class="hint">Press Esc to go back</div>
     {/if}
