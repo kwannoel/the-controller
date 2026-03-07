@@ -31,6 +31,10 @@ Run the project's test suite. If tests fail, fix them before proceeding.
    fi
    ```
 6. Close the associated issue with a summary of what was done
+7. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree:
+   ```bash
+   echo "cleanup:$THE_CONTROLLER_SESSION_ID" | nc -U -w 2 /tmp/the-controller.sock 2>/dev/null; true
+   ```
 
 ## Integration
 

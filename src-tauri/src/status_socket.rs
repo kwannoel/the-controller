@@ -10,12 +10,12 @@ pub fn socket_path() -> &'static str {
     SOCKET_PATH
 }
 
-/// Parse a "working:uuid" or "idle:uuid" message.
+/// Parse a "working:uuid", "idle:uuid", or "cleanup:uuid" message.
 /// Returns None for anything that doesn't match.
 pub fn parse_status_message(msg: &str) -> Option<(&str, Uuid)> {
     let (status, id_str) = msg.split_once(':')?;
     match status {
-        "working" | "idle" => {
+        "working" | "idle" | "cleanup" => {
             let id = Uuid::parse_str(id_str).ok()?;
             Some((status, id))
         }
@@ -75,7 +75,11 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
             Ok(msg) => {
                 let msg = msg.trim();
                 if let Some((status, session_id)) = parse_status_message(msg) {
-                    let event_name = format!("session-status-hook:{}", session_id);
+                    let event_name = if status == "cleanup" {
+                        format!("session-cleanup:{}", session_id)
+                    } else {
+                        format!("session-status-hook:{}", session_id)
+                    };
                     if let Err(e) = app_handle.emit(&event_name, status) {
                         eprintln!("Failed to emit {}: {}", event_name, e);
                     }
@@ -206,6 +210,15 @@ mod tests {
             json.contains("nc -U -w 2"),
             "hook commands must use `nc -w 2` for timeout"
         );
+    }
+
+    #[test]
+    fn test_parse_status_message_cleanup() {
+        let id = uuid::Uuid::new_v4();
+        let msg = format!("cleanup:{}", id);
+        let (status, parsed_id) = parse_status_message(&msg).unwrap();
+        assert_eq!(status, "cleanup");
+        assert_eq!(parsed_id, id);
     }
 
     #[test]
