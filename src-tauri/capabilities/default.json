@@ -7,7 +7,10 @@
     "core:default",
     "core:window:allow-set-title",
     "opener:default",
-    "opener:allow-open-path",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "$TEMP/the-controller-screenshot.png" }]
+    },
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-read-image",
     "clipboard-manager:allow-write-image"
