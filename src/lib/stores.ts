@@ -88,7 +88,7 @@ export type HotkeyAction =
   | { type: "pick-issue-for-session"; projectId: string; repoPath: string; kind?: string; background?: boolean }
   | { type: "merge-session"; sessionId: string; projectId: string }
   | { type: "finish-branch"; sessionId: string; kind?: string }
-  | { type: "screenshot-to-session" }
+  | { type: "screenshot-to-session"; preview?: boolean; cropped?: boolean }
   | { type: "toggle-maintainer-panel" }
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-triage-panel" }

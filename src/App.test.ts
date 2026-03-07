@@ -76,7 +76,7 @@ describe("App screenshot flow", () => {
     expandedProjects.set(new Set());
   });
 
-  it("creates session with initial prompt referencing screenshot file", async () => {
+  function setupMocks() {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
@@ -103,17 +103,56 @@ describe("App screenshot flow", () => {
       }
       return;
     });
+  }
 
+  it("Cmd+S: captures screenshot without preview", async () => {
+    setupMocks();
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot");
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
       expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
         projectId: "proj-1",
         kind: "claude",
         initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
       }));
+    });
+
+    expect(mocks.openPath).not.toHaveBeenCalled();
+  });
+
+  it("Cmd+Shift+S: captures screenshot with preview", async () => {
+    setupMocks();
+    render(App);
+    hotkeyAction.set({ type: "screenshot-to-session", preview: true });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
+      expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
+    });
+  });
+
+  it("Cmd+D: captures cropped screenshot without preview", async () => {
+    setupMocks();
+    render(App);
+    hotkeyAction.set({ type: "screenshot-to-session", cropped: true });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+    });
+
+    expect(mocks.openPath).not.toHaveBeenCalled();
+  });
+
+  it("Cmd+Shift+D: captures cropped screenshot with preview", async () => {
+    setupMocks();
+    render(App);
+    hotkeyAction.set({ type: "screenshot-to-session", preview: true, cropped: true });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+      expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
     });
   });
 });

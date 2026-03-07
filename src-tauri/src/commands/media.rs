@@ -27,10 +27,11 @@ pub(crate) async fn copy_image_file_to_clipboard(
         .map_err(|e| format!("Failed to write image to clipboard: {e}"))
 }
 
-/// Capture a screenshot of the app window and copy it to the system clipboard.
-/// Uses macOS `screencapture` with the window ID obtained from the NSWindow.
+/// Capture a screenshot and copy it to the system clipboard.
+/// When `cropped` is false, captures the app window using the window ID.
+/// When `cropped` is true, launches interactive crop selection via `screencapture -i`.
 /// Returns the path to the screenshot file so the caller can preview it.
-pub(crate) async fn capture_app_screenshot(app: AppHandle) -> Result<String, String> {
+pub(crate) async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<String, String> {
     #[cfg(not(target_os = "macos"))]
     return Err("Screenshot capture is only supported on macOS".into());
 
@@ -39,34 +40,46 @@ pub(crate) async fn capture_app_screenshot(app: AppHandle) -> Result<String, Str
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
         use tauri_plugin_clipboard_manager::ClipboardExt;
 
-        let window = app
-            .get_webview_window("main")
-            .ok_or("No main window found")?;
-
-        let window_id = {
-            let handle = window.window_handle().map_err(|e| e.to_string())?;
-            match handle.as_raw() {
-                RawWindowHandle::AppKit(appkit) => {
-                    let ns_view = appkit.ns_view.as_ptr() as *mut std::ffi::c_void;
-                    unsafe { macos_window_number(ns_view) }
-                }
-                _ => return Err("Not a macOS window".into()),
-            }
-        };
-
         let tmp_path = std::env::temp_dir().join("the-controller-screenshot.png");
         let tmp_str = tmp_path.to_str().ok_or("Invalid temp path")?.to_string();
 
-        let status = tokio::task::spawn_blocking({
-            let tmp_str = tmp_str.clone();
-            move || {
-                std::process::Command::new("screencapture")
-                    .arg("-x")
-                    .arg(format!("-l{}", window_id))
-                    .arg(&tmp_str)
-                    .status()
-            }
-        })
+        let status = if cropped {
+            tokio::task::spawn_blocking({
+                let tmp_str = tmp_str.clone();
+                move || {
+                    std::process::Command::new("screencapture")
+                        .arg("-i")
+                        .arg(&tmp_str)
+                        .status()
+                }
+            })
+        } else {
+            let window = app
+                .get_webview_window("main")
+                .ok_or("No main window found")?;
+
+            let window_id = {
+                let handle = window.window_handle().map_err(|e| e.to_string())?;
+                match handle.as_raw() {
+                    RawWindowHandle::AppKit(appkit) => {
+                        let ns_view = appkit.ns_view.as_ptr() as *mut std::ffi::c_void;
+                        unsafe { macos_window_number(ns_view) }
+                    }
+                    _ => return Err("Not a macOS window".into()),
+                }
+            };
+
+            tokio::task::spawn_blocking({
+                let tmp_str = tmp_str.clone();
+                move || {
+                    std::process::Command::new("screencapture")
+                        .arg("-x")
+                        .arg(format!("-l{}", window_id))
+                        .arg(&tmp_str)
+                        .status()
+                }
+            })
+        }
         .await
         .map_err(|e| format!("Task failed: {e}"))?
         .map_err(|e| format!("Failed to run screencapture: {e}"))?;

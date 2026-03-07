@@ -40,7 +40,7 @@
       } else if (action?.type === "pick-issue-for-session") {
         issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath, kind: action.kind, background: action.background };
       } else if (action?.type === "screenshot-to-session") {
-        screenshotToNewSession();
+        screenshotToNewSession(action.preview ?? false, action.cropped ?? false);
       } else if (action?.type === "toggle-maintainer-panel") {
         maintainerPanelVisible.update(v => !v);
       } else if (action?.type === "toggle-maintainer-enabled") {
@@ -172,7 +172,7 @@
     }
   }
 
-  async function screenshotToNewSession() {
+  async function screenshotToNewSession(preview: boolean, cropped: boolean) {
     // Determine project from current focus or active session
     const projectId = focusTargetState.current?.projectId
       ?? projectsState.current.find((p) => p.sessions.some((s) => s.id === activeSessionIdState.current))?.id
@@ -184,12 +184,14 @@
     }
 
     try {
-      // 1. Capture screenshot of the app window
-      showToast("Capturing screenshot...", "info");
-      const screenshotPath: string = await invoke("capture_app_screenshot");
+      // 1. Capture screenshot
+      showToast(cropped ? "Select area to capture..." : "Capturing screenshot...", "info");
+      const screenshotPath: string = await invoke("capture_app_screenshot", { cropped });
 
-      // Open in Preview so user can verify the capture (fire-and-forget)
-      import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
+      // Open in Preview only when preview is requested
+      if (preview) {
+        import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
+      }
 
       // 2. Create a new session with initial prompt referencing the screenshot file.
       // Tell Claude to share the path and wait for further instructions.
