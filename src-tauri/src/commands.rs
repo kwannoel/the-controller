@@ -1,21 +1,20 @@
 use std::path::Path;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::config;
-use crate::models::{Project, SessionConfig};
+use crate::models::{CommitInfo, Project, SessionConfig};
 use crate::state::AppState;
 use crate::worktree::WorktreeManager;
+
+mod github;
+mod media;
 
 /// Validate a project name. Rejects empty names, names containing `/` or `\`,
 /// and names starting with `.`.
 pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
-    if name.is_empty()
-        || name.contains('/')
-        || name.contains('\\')
-        || name.starts_with('.')
-    {
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name.starts_with('.') {
         return Err(format!("Invalid project name: {}", name));
     }
     Ok(())
@@ -79,15 +78,16 @@ pub fn render_agents_md(name: &str) -> String {
 /// PTY connections are deferred to `connect_session` so each terminal
 /// can attach at the correct size.
 #[tauri::command]
-pub fn restore_sessions(
-    state: State<AppState>,
-) -> Result<(), String> {
+pub fn restore_sessions(state: State<AppState>) -> Result<(), String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
     // Migrate worktree paths from UUID-based to name-based directories
     for project in &projects {
         if let Err(e) = storage.migrate_worktree_paths(project) {
-            eprintln!("Failed to migrate worktrees for project '{}': {}", project.name, e);
+            eprintln!(
+                "Failed to migrate worktrees for project '{}': {}",
+                project.name, e
+            );
         }
     }
     Ok(())
@@ -133,16 +133,7 @@ pub fn connect_session(
     };
 
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(
-        id,
-        &session_dir,
-        &kind,
-        app_handle,
-        true,
-        None,
-        rows,
-        cols,
-    )
+    pty_manager.spawn_session(id, &session_dir, &kind, app_handle, true, None, rows, cols)
 }
 
 #[tauri::command]
@@ -243,10 +234,7 @@ pub fn load_project(
 pub fn list_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects
-        .into_iter()
-        .filter(|p| !p.archived)
-        .collect())
+    Ok(projects.into_iter().filter(|p| !p.archived).collect())
 }
 
 #[tauri::command]
@@ -292,16 +280,13 @@ pub fn delete_project(
             if let (Some(wt_path), Some(branch)) =
                 (&session.worktree_path, &session.worktree_branch)
             {
-                let _ =
-                    WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+                let _ = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
             }
         }
     }
 
     // Delete project metadata from ~/.the-controller/projects/{id}/
-    storage
-        .delete_project_dir(id)
-        .map_err(|e| e.to_string())?;
+    storage.delete_project_dir(id).map_err(|e| e.to_string())?;
 
     // Optionally delete the repo directory
     if delete_repo {
@@ -318,10 +303,7 @@ pub fn delete_project(
 pub fn list_archived_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects
-        .into_iter()
-        .filter(|p| p.archived)
-        .collect())
+    Ok(projects.into_iter().filter(|p| p.archived).collect())
 }
 
 #[tauri::command]
@@ -361,7 +343,16 @@ pub fn unarchive_project(
     // Spawn PTYs for restored sessions
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     for (session_id, session_dir, kind) in to_restore {
-        pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle.clone(), true, None, 24, 80)?;
+        pty_manager.spawn_session(
+            session_id,
+            &session_dir,
+            &kind,
+            app_handle.clone(),
+            true,
+            None,
+            24,
+            80,
+        )?;
     }
 
     Ok(())
@@ -405,16 +396,20 @@ pub fn create_session(
     // Load the project and generate session label
     let (repo_path, label, base_dir, project_name) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+        let project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
         let label = next_session_label(&project.sessions);
-        (project.repo_path.clone(), label, storage.base_dir(), project.name.clone())
+        (
+            project.repo_path.clone(),
+            label,
+            storage.base_dir(),
+            project.name.clone(),
+        )
     };
 
     // Create worktree under ~/.the-controller/worktrees/{project_name}/{label}/
-    let worktree_dir = base_dir
-        .join("worktrees")
-        .join(&project_name)
-        .join(&label);
+    let worktree_dir = base_dir.join("worktrees").join(&project_name).join(&label);
 
     // Try to create a worktree; fall back to repo path for repos without commits
     let (session_dir, wt_path, wt_branch) =
@@ -441,7 +436,9 @@ pub fn create_session(
     // Save session config
     {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+        let mut project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
 
         let session_config = SessionConfig {
             id: session_id,
@@ -460,7 +457,16 @@ pub fn create_session(
 
     // Spawn the PTY session in the worktree (or repo) directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_id, &session_dir, &kind, app_handle, false, initial_prompt.as_deref(), 24, 80)?;
+    pty_manager.spawn_session(
+        session_id,
+        &session_dir,
+        &kind,
+        app_handle,
+        false,
+        initial_prompt.as_deref(),
+        24,
+        80,
+    )?;
 
     Ok(session_id.to_string())
 }
@@ -510,7 +516,9 @@ pub fn set_initial_prompt(
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
 
     if let Some(session) = project.sessions.iter_mut().find(|s| s.id == session_uuid) {
         if session.initial_prompt.is_none() {
@@ -539,7 +547,9 @@ pub fn archive_session(
 
     // Mark session as archived — keep worktree path/branch intact
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
 
     if let Some(session) = project.sessions.iter_mut().find(|s| s.id == session_uuid) {
         session.archived = true;
@@ -562,7 +572,9 @@ pub fn unarchive_session(
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
 
     let session = project
         .sessions
@@ -585,7 +597,16 @@ pub fn unarchive_session(
 
     // Spawn the PTY session in the existing worktree directory
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(session_uuid, &session_dir, &kind, app_handle, true, None, 24, 80)?;
+    pty_manager.spawn_session(
+        session_uuid,
+        &session_dir,
+        &kind,
+        app_handle,
+        true,
+        None,
+        24,
+        80,
+    )?;
 
     Ok(())
 }
@@ -612,18 +633,20 @@ pub fn close_session(
         .load_project(project_uuid)
         .map_err(|e| e.to_string())?;
 
-    let session = project.sessions.iter().find(|s| s.id == session_uuid).cloned();
+    let session = project
+        .sessions
+        .iter()
+        .find(|s| s.id == session_uuid)
+        .cloned();
     project.sessions.retain(|s| s.id != session_uuid);
     storage.save_project(&project).map_err(|e| e.to_string())?;
 
     // Optionally clean up worktree
     if delete_worktree {
         if let Some(session) = session {
-            if let (Some(wt_path), Some(branch)) =
-                (session.worktree_path, session.worktree_branch)
+            if let (Some(wt_path), Some(branch)) = (session.worktree_path, session.worktree_branch)
             {
-                let _ =
-                    WorktreeManager::remove_worktree(&wt_path, &project.repo_path, &branch);
+                let _ = WorktreeManager::remove_worktree(&wt_path, &project.repo_path, &branch);
             }
         }
     }
@@ -632,10 +655,7 @@ pub fn close_session(
 }
 
 #[tauri::command]
-pub fn start_claude_login(
-    state: State<AppState>,
-    app_handle: AppHandle,
-) -> Result<String, String> {
+pub fn start_claude_login(state: State<AppState>, app_handle: AppHandle) -> Result<String, String> {
     let session_id = Uuid::new_v4();
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.spawn_command(session_id, "claude", &["login"], app_handle)?;
@@ -664,10 +684,7 @@ pub fn check_onboarding(state: State<AppState>) -> Result<Option<config::Config>
 }
 
 #[tauri::command]
-pub fn save_onboarding_config(
-    state: State<AppState>,
-    projects_root: String,
-) -> Result<(), String> {
+pub fn save_onboarding_config(state: State<AppState>, projects_root: String) -> Result<(), String> {
     let path = Path::new(&projects_root);
     if !path.is_dir() {
         return Err(format!(
@@ -684,10 +701,9 @@ pub fn save_onboarding_config(
 
 #[tauri::command]
 pub async fn check_claude_cli() -> Result<String, String> {
-    let result =
-        tokio::task::spawn_blocking(|| config::check_claude_cli_status())
-            .await
-            .map_err(|e| format!("Task failed: {}", e))?;
+    let result = tokio::task::spawn_blocking(|| config::check_claude_cli_status())
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?;
     Ok(result)
 }
 
@@ -755,14 +771,18 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         .map_err(|e| format!("failed to write .gitkeep: {}", e))?;
 
     // Build git tree with template files
-    let mut index = repo.index().map_err(|e| format!("failed to get index: {}", e))?;
+    let mut index = repo
+        .index()
+        .map_err(|e| format!("failed to get index: {}", e))?;
     index
         .add_path(std::path::Path::new("agents.md"))
         .map_err(|e| format!("failed to add agents.md to index: {}", e))?;
     index
         .add_path(std::path::Path::new("docs/plans/.gitkeep"))
         .map_err(|e| format!("failed to add .gitkeep to index: {}", e))?;
-    index.write().map_err(|e| format!("failed to write index: {}", e))?;
+    index
+        .write()
+        .map_err(|e| format!("failed to write index: {}", e))?;
     let tree_id = index
         .write_tree()
         .map_err(|e| format!("failed to write tree: {}", e))?;
@@ -798,143 +818,17 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     Ok(project)
 }
 
-/// Parse a GitHub remote URL into an "owner/repo" string.
-/// Handles SSH (git@github.com:owner/repo.git), HTTPS, and HTTP URLs.
-pub(crate) fn parse_github_nwo(url: &str) -> Result<String, String> {
-    // SSH: git@github.com:owner/repo.git
-    if let Some(rest) = url.strip_prefix("git@github.com:") {
-        return Ok(rest.trim_end_matches(".git").to_string());
-    }
-    // HTTPS/HTTP: https://github.com/owner/repo.git
-    if let Some(rest) = url
-        .strip_prefix("https://github.com/")
-        .or_else(|| url.strip_prefix("http://github.com/"))
-    {
-        return Ok(rest.trim_end_matches(".git").to_string());
-    }
-
-    Err(format!("Not a GitHub remote URL: {}", url))
-}
-
-/// Parse a GitHub issue URL like "https://github.com/owner/repo/issues/42" and return the issue number.
-fn parse_github_issue_url(url: &str) -> Result<u64, String> {
-    let url = url.trim();
-    let parts: Vec<&str> = url.rsplitn(2, '/').collect();
-    if parts.len() == 2 {
-        if let Ok(num) = parts[0].parse::<u64>() {
-            return Ok(num);
-        }
-    }
-    Err(format!("Could not parse issue number from URL: {}", url))
-}
-
-/// Extract the GitHub owner/repo from a local git repository's origin remote.
-/// Handles both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git) URLs.
-fn extract_github_repo(repo_path: &str) -> Result<String, String> {
-    let repo = git2::Repository::discover(repo_path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
-    let remote = repo
-        .find_remote("origin")
-        .map_err(|_| "No 'origin' remote found".to_string())?;
-    let url = remote
-        .url()
-        .ok_or_else(|| "Origin remote URL is not valid UTF-8".to_string())?;
-
-    parse_github_nwo(url)
-}
-
-pub(crate) async fn fetch_github_issues(repo_path: String) -> Result<Vec<crate::models::GithubIssue>, String> {
-    let repo_path_clone = repo_path.clone();
-    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
-
-    let output = tokio::process::Command::new("gh")
-        .args([
-            "issue", "list",
-            "--repo", &nwo,
-            "--json", "number,title,url,labels",
-            "--limit", "50",
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue list failed: {}", stderr));
-    }
-
-    let issues: Vec<crate::models::GithubIssue> =
-        serde_json::from_slice(&output.stdout)
-            .map_err(|e| format!("Failed to parse gh output: {}", e))?;
-
-    Ok(issues)
-}
-
 #[tauri::command]
 pub async fn list_github_issues(
     repo_path: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::models::GithubIssue>, String> {
-    // Check cache (lock is dropped at end of block before any .await)
-    let cache_result = {
-        let cache = state.issue_cache.lock().map_err(|e| format!("Cache lock error: {}", e))?;
-        match cache.get(&repo_path) {
-            Some(entry) if entry.is_fresh() => {
-                return Ok(entry.issues.clone());
-            }
-            Some(entry) => {
-                // Stale hit: return stale data and refresh in background
-                Some(entry.issues.clone())
-            }
-            None => None,
-        }
-    };
-
-    if let Some(stale_issues) = cache_result {
-        // Spawn background refresh
-        let cache_arc = state.issue_cache.clone();
-        let repo_path_bg = repo_path.clone();
-        tokio::spawn(async move {
-            if let Ok(fresh_issues) = fetch_github_issues(repo_path_bg.clone()).await {
-                if let Ok(mut cache) = cache_arc.lock() {
-                    cache.insert(repo_path_bg, fresh_issues);
-                }
-            }
-        });
-        return Ok(stale_issues);
-    }
-
-    // Cache miss: fetch, cache, and return
-    let issues = fetch_github_issues(repo_path.clone()).await?;
-    {
-        let mut cache = state.issue_cache.lock().map_err(|e| format!("Cache lock error: {}", e))?;
-        cache.insert(repo_path, issues.clone());
-    }
-    Ok(issues)
+    github::list_github_issues(repo_path, state).await
 }
 
 #[tauri::command]
 pub async fn generate_issue_body(title: String) -> Result<String, String> {
-    let prompt = format!(
-        "Write a concise GitHub issue body for an issue titled: \"{}\". \
-         Include a Summary section and a Details section. \
-         Keep it under 200 words. Return only the markdown body, nothing else.",
-        title
-    );
-    let output = tokio::process::Command::new("claude")
-        .args(["--print", &prompt])
-        .env_remove("CLAUDECODE")
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run claude: {}", e))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Ok(String::new())
-    }
+    github::generate_issue_body(title).await
 }
 
 #[tauri::command]
@@ -944,45 +838,7 @@ pub async fn create_github_issue(
     title: String,
     body: String,
 ) -> Result<crate::models::GithubIssue, String> {
-    // Step 1: Extract GitHub owner/repo
-    let repo_path_clone = repo_path.clone();
-    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
-
-    // Step 2: Create the issue via gh CLI (no --json flag)
-    let output = tokio::process::Command::new("gh")
-        .args([
-            "issue", "create",
-            "--repo", &nwo,
-            "--title", &title,
-            "--body", &body,
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue create failed: {}", stderr));
-    }
-
-    // Step 3: Parse the issue URL from stdout
-    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let number = parse_github_issue_url(&url)?;
-
-    let issue = crate::models::GithubIssue {
-        number,
-        title,
-        url,
-        labels: vec![],
-    };
-
-    if let Ok(mut cache) = state.issue_cache.lock() {
-        cache.add_issue(&repo_path, issue.clone());
-    }
-
-    Ok(issue)
+    github::create_github_issue(state, repo_path, title, body).await
 }
 
 #[tauri::command]
@@ -991,28 +847,7 @@ pub async fn post_github_comment(
     issue_number: u64,
     body: String,
 ) -> Result<(), String> {
-    let repo_path_clone = repo_path.clone();
-    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
-
-    let output = tokio::process::Command::new("gh")
-        .args([
-            "issue", "comment",
-            &issue_number.to_string(),
-            "--repo", &nwo,
-            "--body", &body,
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue comment failed: {}", stderr));
-    }
-
-    Ok(())
+    github::post_github_comment(repo_path, issue_number, body).await
 }
 
 #[tauri::command]
@@ -1022,45 +857,7 @@ pub async fn add_github_label(
     issue_number: u64,
     label: String,
 ) -> Result<(), String> {
-    let repo_path_clone = repo_path.clone();
-    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
-
-    // Ensure the label exists on the repo (ignore errors if it already exists)
-    let _ = tokio::process::Command::new("gh")
-        .args([
-            "label", "create",
-            &label,
-            "--repo", &nwo,
-            "--description", "Issue is being worked on in a session",
-            "--color", "F9E2AF",
-        ])
-        .output()
-        .await;
-
-    // Add label to the issue
-    let output = tokio::process::Command::new("gh")
-        .args([
-            "issue", "edit",
-            &issue_number.to_string(),
-            "--repo", &nwo,
-            "--add-label", &label,
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue edit failed: {}", stderr));
-    }
-
-    if let Ok(mut cache) = state.issue_cache.lock() {
-        cache.add_label(&repo_path, issue_number, &label);
-    }
-
-    Ok(())
+    github::add_github_label(state, repo_path, issue_number, label).await
 }
 
 #[tauri::command]
@@ -1070,32 +867,17 @@ pub async fn remove_github_label(
     issue_number: u64,
     label: String,
 ) -> Result<(), String> {
-    let repo_path_clone = repo_path.clone();
-    let nwo = tokio::task::spawn_blocking(move || extract_github_repo(&repo_path_clone))
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
+    github::remove_github_label(state, repo_path, issue_number, label).await
+}
 
-    let output = tokio::process::Command::new("gh")
-        .args([
-            "issue", "edit",
-            &issue_number.to_string(),
-            "--repo", &nwo,
-            "--remove-label", &label,
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+#[tauri::command]
+pub async fn copy_image_file_to_clipboard(app: AppHandle, path: String) -> Result<(), String> {
+    media::copy_image_file_to_clipboard(app, path).await
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue edit failed: {}", stderr));
-    }
-
-    if let Ok(mut cache) = state.issue_cache.lock() {
-        cache.remove_label(&repo_path, issue_number, &label);
-    }
-
-    Ok(())
+#[tauri::command]
+pub async fn capture_app_screenshot(app: AppHandle) -> Result<String, String> {
+    media::capture_app_screenshot(app).await
 }
 
 const MAX_MERGE_RETRIES: u32 = 5;
@@ -1113,7 +895,9 @@ pub async fn merge_session_branch(
 
     let (repo_path, worktree_path, branch_name) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+        let project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
         let session = project
             .sessions
             .iter()
@@ -1159,15 +943,20 @@ pub async fn merge_session_branch(
                 }
 
                 // Emit status event so frontend can show progress
-                let _ = app_handle.emit("merge-status", format!(
-                    "Rebase conflicts (attempt {}/{}). Claude is resolving...",
-                    attempt + 1, MAX_MERGE_RETRIES
-                ));
+                let _ = app_handle.emit(
+                    "merge-status",
+                    format!(
+                        "Rebase conflicts (attempt {}/{}). Claude is resolving...",
+                        attempt + 1,
+                        MAX_MERGE_RETRIES
+                    ),
+                );
 
                 // Poll until rebase is no longer in progress
                 let wt_poll = worktree_path.clone();
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS))
+                        .await;
                     let wt_check = wt_poll.clone();
                     let still_rebasing = tokio::task::spawn_blocking(move || {
                         WorktreeManager::is_rebase_in_progress(&wt_check)
@@ -1191,128 +980,6 @@ pub async fn merge_session_branch(
     ))
 }
 
-/// Read an image file from disk and copy it to the system clipboard.
-/// Used by the drag-and-drop handler to put the dropped image on the clipboard
-/// so Claude Code can read it via its standard clipboard image detection.
-#[tauri::command]
-pub async fn copy_image_file_to_clipboard(app: AppHandle, path: String) -> Result<(), String> {
-    use tauri_plugin_clipboard_manager::ClipboardExt;
-
-    let image_data = tokio::task::spawn_blocking(move || {
-        let img = image::open(&path).map_err(|e| format!("Failed to open image: {e}"))?;
-        let rgba = img.to_rgba8();
-        let (width, height) = rgba.dimensions();
-        Ok::<_, String>((rgba.into_raw(), width, height))
-    })
-    .await
-    .map_err(|e| format!("Task failed: {e}"))??;
-
-    let (bytes, width, height) = image_data;
-    let img = tauri::image::Image::new_owned(bytes, width, height);
-    app.clipboard()
-        .write_image(&img)
-        .map_err(|e| format!("Failed to write image to clipboard: {e}"))
-}
-
-/// Capture a screenshot of the app window and copy it to the system clipboard.
-/// Uses macOS `screencapture` with the window ID obtained from the NSWindow.
-/// Returns the path to the screenshot file so the caller can preview it.
-#[tauri::command]
-pub async fn capture_app_screenshot(app: AppHandle) -> Result<String, String> {
-    #[cfg(not(target_os = "macos"))]
-    return Err("Screenshot capture is only supported on macOS".into());
-
-    #[cfg(target_os = "macos")]
-    {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        use tauri_plugin_clipboard_manager::ClipboardExt;
-
-        let window = app
-            .get_webview_window("main")
-            .ok_or("No main window found")?;
-
-        let window_id = {
-            let handle = window.window_handle().map_err(|e| e.to_string())?;
-            match handle.as_raw() {
-                RawWindowHandle::AppKit(appkit) => {
-                    let ns_view = appkit.ns_view.as_ptr() as *mut std::ffi::c_void;
-                    unsafe { macos_window_number(ns_view) }
-                }
-                _ => return Err("Not a macOS window".into()),
-            }
-        };
-
-        let tmp_path = std::env::temp_dir().join("the-controller-screenshot.png");
-        let tmp_str = tmp_path
-            .to_str()
-            .ok_or("Invalid temp path")?
-            .to_string();
-
-        let status = tokio::task::spawn_blocking({
-            let tmp_str = tmp_str.clone();
-            move || {
-                std::process::Command::new("screencapture")
-                    .arg("-x")
-                    .arg(format!("-l{}", window_id))
-                    .arg(&tmp_str)
-                    .status()
-            }
-        })
-        .await
-        .map_err(|e| format!("Task failed: {e}"))?
-        .map_err(|e| format!("Failed to run screencapture: {e}"))?;
-
-        if !status.success() {
-            return Err(
-                "screencapture failed (screen recording permission may be required)".into(),
-            );
-        }
-
-        let image_data = tokio::task::spawn_blocking({
-            let tmp_str = tmp_str.clone();
-            move || {
-                let img = image::open(&tmp_str)
-                    .map_err(|e| format!("Failed to open screenshot: {e}"))?;
-                let rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                Ok::<_, String>((rgba.into_raw(), w, h))
-            }
-        })
-        .await
-        .map_err(|e| format!("Task failed: {e}"))??;
-
-        let (bytes, width, height) = image_data;
-        let img = tauri::image::Image::new_owned(bytes, width, height);
-        app.clipboard()
-            .write_image(&img)
-            .map_err(|e| format!("Failed to write to clipboard: {e}"))?;
-
-        Ok(tmp_str)
-    }
-}
-
-/// Get the macOS CGWindowID from an NSView pointer.
-/// Uses the Objective-C runtime to call [NSView window] then [NSWindow windowNumber].
-#[cfg(target_os = "macos")]
-unsafe fn macos_window_number(ns_view: *mut std::ffi::c_void) -> isize {
-    extern "C" {
-        fn sel_registerName(name: *const u8) -> *mut std::ffi::c_void;
-        fn objc_msgSend(
-            obj: *mut std::ffi::c_void,
-            sel: *mut std::ffi::c_void,
-            ...
-        ) -> *mut std::ffi::c_void;
-    }
-
-    let sel_window = sel_registerName(b"window\0".as_ptr());
-    let ns_window = objc_msgSend(ns_view, sel_window);
-
-    let sel_number = sel_registerName(b"windowNumber\0".as_ptr());
-    objc_msgSend(ns_window, sel_number) as isize
-}
-
-use crate::models::CommitInfo;
-
 #[tauri::command]
 pub fn get_session_commits(
     state: State<AppState>,
@@ -1323,7 +990,9 @@ pub fn get_session_commits(
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+    let project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
 
     let session = project
         .sessions
@@ -1372,7 +1041,9 @@ fn discover_branch_commits(worktree_path: &str) -> Result<Vec<CommitInfo>, Strin
 
     let mut revwalk = repo.revwalk().map_err(|e| e.to_string())?;
     revwalk.push(head_commit.id()).map_err(|e| e.to_string())?;
-    revwalk.set_sorting(git2::Sort::TOPOLOGICAL).map_err(|e| e.to_string())?;
+    revwalk
+        .set_sorting(git2::Sort::TOPOLOGICAL)
+        .map_err(|e| e.to_string())?;
 
     let mut commits = Vec::new();
     for oid in revwalk {
@@ -1550,70 +1221,6 @@ mod tests {
         assert_eq!(next_session_label(&sessions), "session-4");
     }
 
-    // --- parse_github_nwo tests ---
-
-    #[test]
-    fn test_parse_github_nwo_ssh() {
-        assert_eq!(
-            parse_github_nwo("git@github.com:owner/repo.git").unwrap(),
-            "owner/repo"
-        );
-    }
-
-    #[test]
-    fn test_parse_github_nwo_https() {
-        assert_eq!(
-            parse_github_nwo("https://github.com/owner/repo.git").unwrap(),
-            "owner/repo"
-        );
-    }
-
-    #[test]
-    fn test_parse_github_nwo_https_no_git_suffix() {
-        assert_eq!(
-            parse_github_nwo("https://github.com/owner/repo").unwrap(),
-            "owner/repo"
-        );
-    }
-
-    #[test]
-    fn test_parse_github_nwo_http() {
-        assert_eq!(
-            parse_github_nwo("http://github.com/owner/repo.git").unwrap(),
-            "owner/repo"
-        );
-    }
-
-    #[test]
-    fn test_parse_github_nwo_non_github_url() {
-        let result = parse_github_nwo("https://gitlab.com/owner/repo.git");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Not a GitHub remote URL"));
-    }
-
-    // --- parse_github_issue_url tests ---
-
-    #[test]
-    fn test_parse_github_issue_url_basic() {
-        assert_eq!(
-            parse_github_issue_url("https://github.com/owner/repo/issues/42").unwrap(),
-            42
-        );
-    }
-
-    #[test]
-    fn test_parse_github_issue_url_trailing_newline() {
-        assert_eq!(
-            parse_github_issue_url("https://github.com/owner/repo/issues/7\n").unwrap(),
-            7
-        );
-    }
-
-    #[test]
-    fn test_parse_github_issue_url_invalid() {
-        assert!(parse_github_issue_url("not a url").is_err());
-    }
-
     // --- render_agents_md tests ---
 
     #[test]
@@ -1638,7 +1245,8 @@ mod tests {
         let sig = git2::Signature::now("Test", "test@example.com").unwrap();
         let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
 
         // After init + commit, HEAD points to a branch — find_main_branch_oid should find it
         let oid = find_main_branch_oid(&repo);
@@ -1652,7 +1260,9 @@ mod tests {
         let sig = git2::Signature::now("Test", "test@example.com").unwrap();
         let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        let oid = repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[]).unwrap();
+        let oid = repo
+            .commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
 
         // Rename the default branch to something other than main/master
         let commit = repo.find_commit(oid).unwrap();
@@ -1700,44 +1310,5 @@ mod tests {
     #[test]
     fn test_project_name_single_char() {
         assert!(validate_project_name("a").is_ok());
-    }
-
-    // --- parse_github_nwo edge cases ---
-
-    #[test]
-    fn test_parse_github_nwo_ssh_no_git_suffix() {
-        // SSH URL without .git suffix
-        assert_eq!(
-            parse_github_nwo("git@github.com:owner/repo").unwrap(),
-            "owner/repo"
-        );
-    }
-
-    #[test]
-    fn test_parse_github_nwo_empty_string() {
-        assert!(parse_github_nwo("").is_err());
-    }
-
-    // --- parse_github_issue_url edge cases ---
-
-    #[test]
-    fn test_parse_github_issue_url_large_number() {
-        assert_eq!(
-            parse_github_issue_url("https://github.com/owner/repo/issues/99999").unwrap(),
-            99999
-        );
-    }
-
-    #[test]
-    fn test_parse_github_issue_url_zero() {
-        assert_eq!(
-            parse_github_issue_url("https://github.com/owner/repo/issues/0").unwrap(),
-            0
-        );
-    }
-
-    #[test]
-    fn test_parse_github_issue_url_empty() {
-        assert!(parse_github_issue_url("").is_err());
     }
 }

@@ -1,0 +1,403 @@
+use tauri::State;
+
+use crate::models::GithubIssue;
+use crate::state::AppState;
+
+/// Parse a GitHub remote URL into an "owner/repo" string.
+/// Handles SSH (git@github.com:owner/repo.git), HTTPS, and HTTP URLs.
+fn parse_github_nwo(url: &str) -> Result<String, String> {
+    // SSH: git@github.com:owner/repo.git
+    if let Some(rest) = url.strip_prefix("git@github.com:") {
+        return Ok(rest.trim_end_matches(".git").to_string());
+    }
+    // HTTPS/HTTP: https://github.com/owner/repo.git
+    if let Some(rest) = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("http://github.com/"))
+    {
+        return Ok(rest.trim_end_matches(".git").to_string());
+    }
+
+    Err(format!("Not a GitHub remote URL: {}", url))
+}
+
+/// Parse a GitHub issue URL like "https://github.com/owner/repo/issues/42" and return the issue number.
+fn parse_github_issue_url(url: &str) -> Result<u64, String> {
+    let url = url.trim();
+    let parts: Vec<&str> = url.rsplitn(2, '/').collect();
+    if parts.len() == 2 {
+        if let Ok(num) = parts[0].parse::<u64>() {
+            return Ok(num);
+        }
+    }
+    Err(format!("Could not parse issue number from URL: {}", url))
+}
+
+/// Extract the GitHub owner/repo from a local git repository's origin remote.
+/// Handles both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git) URLs.
+fn extract_github_repo(repo_path: &str) -> Result<String, String> {
+    let repo =
+        git2::Repository::discover(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+    let remote = repo
+        .find_remote("origin")
+        .map_err(|_| "No 'origin' remote found".to_string())?;
+    let url = remote
+        .url()
+        .ok_or_else(|| "Origin remote URL is not valid UTF-8".to_string())?;
+
+    parse_github_nwo(url)
+}
+
+async fn extract_github_repo_async(repo_path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || extract_github_repo(&repo_path))
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+}
+
+async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, String> {
+    let nwo = extract_github_repo_async(repo_path).await?;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "list",
+            "--repo",
+            &nwo,
+            "--json",
+            "number,title,url,labels",
+            "--limit",
+            "50",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue list failed: {}", stderr));
+    }
+
+    let issues: Vec<GithubIssue> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+
+    Ok(issues)
+}
+
+pub(crate) async fn list_github_issues(
+    repo_path: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<GithubIssue>, String> {
+    // Check cache (lock is dropped at end of block before any .await)
+    let cache_result = {
+        let cache = state
+            .issue_cache
+            .lock()
+            .map_err(|e| format!("Cache lock error: {}", e))?;
+        match cache.get(&repo_path) {
+            Some(entry) if entry.is_fresh() => {
+                return Ok(entry.issues.clone());
+            }
+            Some(entry) => {
+                // Stale hit: return stale data and refresh in background
+                Some(entry.issues.clone())
+            }
+            None => None,
+        }
+    };
+
+    if let Some(stale_issues) = cache_result {
+        // Spawn background refresh
+        let cache_arc = state.issue_cache.clone();
+        let repo_path_bg = repo_path.clone();
+        tokio::spawn(async move {
+            if let Ok(fresh_issues) = fetch_github_issues(repo_path_bg.clone()).await {
+                if let Ok(mut cache) = cache_arc.lock() {
+                    cache.insert(repo_path_bg, fresh_issues);
+                }
+            }
+        });
+        return Ok(stale_issues);
+    }
+
+    // Cache miss: fetch, cache, and return
+    let issues = fetch_github_issues(repo_path.clone()).await?;
+    {
+        let mut cache = state
+            .issue_cache
+            .lock()
+            .map_err(|e| format!("Cache lock error: {}", e))?;
+        cache.insert(repo_path, issues.clone());
+    }
+    Ok(issues)
+}
+
+pub(crate) async fn generate_issue_body(title: String) -> Result<String, String> {
+    let prompt = format!(
+        "Write a concise GitHub issue body for an issue titled: \"{}\". \
+         Include a Summary section and a Details section. \
+         Keep it under 200 words. Return only the markdown body, nothing else.",
+        title
+    );
+    let output = tokio::process::Command::new("claude")
+        .args(["--print", &prompt])
+        .env_remove("CLAUDECODE")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run claude: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Ok(String::new())
+    }
+}
+
+pub(crate) async fn create_github_issue(
+    state: State<'_, AppState>,
+    repo_path: String,
+    title: String,
+    body: String,
+) -> Result<GithubIssue, String> {
+    let nwo = extract_github_repo_async(repo_path.clone()).await?;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue", "create", "--repo", &nwo, "--title", &title, "--body", &body,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue create failed: {}", stderr));
+    }
+
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let number = parse_github_issue_url(&url)?;
+
+    let issue = GithubIssue {
+        number,
+        title,
+        url,
+        labels: vec![],
+    };
+
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.add_issue(&repo_path, issue.clone());
+    }
+
+    Ok(issue)
+}
+
+pub(crate) async fn post_github_comment(
+    repo_path: String,
+    issue_number: u64,
+    body: String,
+) -> Result<(), String> {
+    let nwo = extract_github_repo_async(repo_path).await?;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "comment",
+            &issue_number.to_string(),
+            "--repo",
+            &nwo,
+            "--body",
+            &body,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue comment failed: {}", stderr));
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn add_github_label(
+    state: State<'_, AppState>,
+    repo_path: String,
+    issue_number: u64,
+    label: String,
+) -> Result<(), String> {
+    let nwo = extract_github_repo_async(repo_path.clone()).await?;
+
+    // Ensure the label exists on the repo (ignore errors if it already exists)
+    let _ = tokio::process::Command::new("gh")
+        .args([
+            "label",
+            "create",
+            &label,
+            "--repo",
+            &nwo,
+            "--description",
+            "Issue is being worked on in a session",
+            "--color",
+            "F9E2AF",
+        ])
+        .output()
+        .await;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "edit",
+            &issue_number.to_string(),
+            "--repo",
+            &nwo,
+            "--add-label",
+            &label,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue edit failed: {}", stderr));
+    }
+
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.add_label(&repo_path, issue_number, &label);
+    }
+
+    Ok(())
+}
+
+pub(crate) async fn remove_github_label(
+    state: State<'_, AppState>,
+    repo_path: String,
+    issue_number: u64,
+    label: String,
+) -> Result<(), String> {
+    let nwo = extract_github_repo_async(repo_path.clone()).await?;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "edit",
+            &issue_number.to_string(),
+            "--repo",
+            &nwo,
+            "--remove-label",
+            &label,
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue edit failed: {}", stderr));
+    }
+
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.remove_label(&repo_path, issue_number, &label);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_github_nwo_ssh() {
+        assert_eq!(
+            parse_github_nwo("git@github.com:owner/repo.git").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_https() {
+        assert_eq!(
+            parse_github_nwo("https://github.com/owner/repo.git").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_https_no_git_suffix() {
+        assert_eq!(
+            parse_github_nwo("https://github.com/owner/repo").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_http() {
+        assert_eq!(
+            parse_github_nwo("http://github.com/owner/repo.git").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_non_github_url() {
+        let result = parse_github_nwo("https://gitlab.com/owner/repo.git");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not a GitHub remote URL"));
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_basic() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/42").unwrap(),
+            42
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_trailing_newline() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/7\n").unwrap(),
+            7
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_invalid() {
+        assert!(parse_github_issue_url("not a url").is_err());
+    }
+
+    #[test]
+    fn test_parse_github_nwo_ssh_no_git_suffix() {
+        assert_eq!(
+            parse_github_nwo("git@github.com:owner/repo").unwrap(),
+            "owner/repo"
+        );
+    }
+
+    #[test]
+    fn test_parse_github_nwo_empty_string() {
+        assert!(parse_github_nwo("").is_err());
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_large_number() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/99999").unwrap(),
+            99999
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_zero() {
+        assert_eq!(
+            parse_github_issue_url("https://github.com/owner/repo/issues/0").unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_parse_github_issue_url_empty() {
+        assert!(parse_github_issue_url("").is_err());
+    }
+}
