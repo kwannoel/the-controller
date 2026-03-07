@@ -9,6 +9,23 @@ pub struct Project {
     pub created_at: String,
     pub archived: bool,
     pub sessions: Vec<SessionConfig>,
+    #[serde(default)]
+    pub maintainer: MaintainerConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerConfig {
+    pub enabled: bool,
+    pub interval_minutes: u64,
+}
+
+impl Default for MaintainerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_minutes: 60,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +107,7 @@ mod tests {
             repo_path: "/tmp/test-repo".to_string(),
             created_at: "2026-02-28T00:00:00Z".to_string(),
             archived: false,
+            maintainer: MaintainerConfig::default(),
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),
@@ -143,6 +161,7 @@ mod tests {
             repo_path: "/tmp/worktree-repo".to_string(),
             created_at: "2026-02-28T12:00:00Z".to_string(),
             archived: false,
+            maintainer: MaintainerConfig::default(),
             sessions: vec![SessionConfig {
                 id: session_id,
                 label: "feature-branch".to_string(),
@@ -277,6 +296,41 @@ mod tests {
         assert_eq!(deserialized.labels.len(), 2);
         assert_eq!(deserialized.labels[0].name, "bug");
         assert_eq!(deserialized.labels[1].name, "priority");
+    }
+
+    #[test]
+    fn test_maintainer_config_defaults_when_absent() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "test-project",
+            "repo_path": "/tmp/test-repo",
+            "created_at": "2026-02-28T00:00:00Z",
+            "archived": false,
+            "sessions": []
+        }"#;
+        let project: Project = serde_json::from_str(json).expect("deserialize");
+        assert!(!project.maintainer.enabled);
+        assert_eq!(project.maintainer.interval_minutes, 60);
+    }
+
+    #[test]
+    fn test_maintainer_config_roundtrip() {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "test-project".to_string(),
+            repo_path: "/tmp/test-repo".to_string(),
+            created_at: "2026-02-28T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig {
+                enabled: true,
+                interval_minutes: 30,
+            },
+            sessions: vec![],
+        };
+        let json = serde_json::to_string(&project).expect("serialize");
+        let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
+        assert!(deserialized.maintainer.enabled);
+        assert_eq!(deserialized.maintainer.interval_minutes, 30);
     }
 
     #[test]

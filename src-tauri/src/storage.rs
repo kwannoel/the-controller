@@ -175,6 +175,7 @@ mod tests {
             repo_path: repo_path.to_string(),
             created_at: "2026-02-28T00:00:00Z".to_string(),
             archived: false,
+            maintainer: crate::models::MaintainerConfig::default(),
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),

@@ -164,6 +164,7 @@ pub fn create_project(
         repo_path: repo_path.clone(),
         created_at: chrono::Utc::now().to_rfc3339(),
         archived: false,
+        maintainer: crate::models::MaintainerConfig::default(),
         sessions: vec![],
     };
 
@@ -216,6 +217,7 @@ pub fn load_project(
         repo_path: repo_path.clone(),
         created_at: chrono::Utc::now().to_rfc3339(),
         archived: false,
+        maintainer: crate::models::MaintainerConfig::default(),
         sessions: vec![],
     };
 
@@ -813,6 +815,7 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         repo_path: repo_path.to_string_lossy().to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
         archived: false,
+        maintainer: crate::models::MaintainerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project).map_err(|e| e.to_string())?;
