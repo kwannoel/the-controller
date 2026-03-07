@@ -21,16 +21,18 @@ pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
 }
 
 /// Generate the next session label by finding the highest existing session number
-/// and returning "session-N" where N = max + 1. This avoids collisions when
-/// sessions are deleted or archived out of order.
+/// and returning "session-N-<6-char-uuid>" where N = max + 1. The UUID suffix
+/// guarantees uniqueness even when branches from deleted sessions persist on the
+/// remote.
 pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
     let max_num = sessions
         .iter()
         .filter_map(|s| s.label.strip_prefix("session-"))
-        .filter_map(|n| n.parse::<u32>().ok())
+        .filter_map(|n| n.split('-').next()?.parse::<u32>().ok())
         .max()
         .unwrap_or(0);
-    format!("session-{}", max_num + 1)
+    let short_id = &Uuid::new_v4().to_string()[..6];
+    format!("session-{}-{}", max_num + 1, short_id)
 }
 
 const DEFAULT_AGENTS_MD: &str = r#"# {name}
@@ -1130,7 +1132,9 @@ mod tests {
     #[test]
     fn test_next_session_label_empty() {
         let sessions: Vec<SessionConfig> = vec![];
-        assert_eq!(next_session_label(&sessions), "session-1");
+        let label = next_session_label(&sessions);
+        assert!(label.starts_with("session-1-"), "expected session-1-<uuid>, got {}", label);
+        assert_eq!(label.len(), "session-1-".len() + 6);
     }
 
     #[test]
@@ -1159,7 +1163,8 @@ mod tests {
                 done_commits: vec![],
             },
         ];
-        assert_eq!(next_session_label(&sessions), "session-3");
+        let label = next_session_label(&sessions);
+        assert!(label.starts_with("session-3-"), "expected session-3-<uuid>, got {}", label);
     }
 
     #[test]
@@ -1201,7 +1206,8 @@ mod tests {
             },
         ];
         // Max is session-3, so next is session-4
-        assert_eq!(next_session_label(&sessions), "session-4");
+        let label = next_session_label(&sessions);
+        assert!(label.starts_with("session-4-"), "expected session-4-<uuid>, got {}", label);
     }
 
     #[test]
@@ -1218,7 +1224,8 @@ mod tests {
             initial_prompt: None,
             done_commits: vec![],
         }];
-        assert_eq!(next_session_label(&sessions), "session-4");
+        let label = next_session_label(&sessions);
+        assert!(label.starts_with("session-4-"), "expected session-4-<uuid>, got {}", label);
     }
 
     // --- render_agents_md tests ---
