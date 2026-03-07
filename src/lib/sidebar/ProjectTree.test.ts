@@ -11,6 +11,7 @@ const baseProjects: Project[] = [
     repo_path: "/tmp/proj-1",
     created_at: "2026-01-01",
     archived: false,
+    maintainer: { enabled: false, interval_minutes: 60 },
     sessions: [
       {
         id: "sess-1",
@@ -67,6 +68,7 @@ describe("ProjectTree", () => {
       jumpState: { phase: "project" } as JumpPhase,
       projectJumpLabels: ["z"],
       getSessionStatus: (id: string) => statuses.get(id) ?? "idle",
+      getMaintainerStatus: () => null,
       onToggleProject,
       onProjectFocus,
       onSessionFocus,

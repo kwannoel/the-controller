@@ -23,6 +23,29 @@ export interface SessionConfig {
   initial_prompt: string | null;
 }
 
+export interface MaintainerConfig {
+  enabled: boolean;
+  interval_minutes: number;
+}
+
+export interface MaintainerFinding {
+  severity: "info" | "warning" | "error";
+  category: string;
+  description: string;
+  action_taken: { type: "reported" } | { type: "fixed" } | { type: "pr_created"; url: string };
+}
+
+export interface MaintainerReport {
+  id: string;
+  project_id: string;
+  timestamp: string;
+  status: "passing" | "warnings" | "failing";
+  findings: MaintainerFinding[];
+  summary: string;
+}
+
+export type MaintainerStatus = "idle" | "running" | "passing" | "warnings" | "failing" | "error";
+
 export interface Project {
   id: string;
   name: string;
@@ -30,6 +53,7 @@ export interface Project {
   created_at: string;
   archived: boolean;
   sessions: SessionConfig[];
+  maintainer: MaintainerConfig;
 }
 
 export interface Config {
@@ -42,6 +66,8 @@ export type SessionStatus = "working" | "idle" | "exited";
 export const sessionStatuses = writable<Map<string, SessionStatus>>(new Map());
 export const appConfig = writable<Config | null>(null);
 export const onboardingComplete = writable<boolean>(false);
+export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(new Map());
+export const maintainerPanelVisible = writable<boolean>(false);
 
 // Hotkey state
 export type HotkeyAction =
