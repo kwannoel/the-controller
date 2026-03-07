@@ -46,6 +46,8 @@
         maintainerPanelVisible.update(v => !v);
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
+      } else if (action?.type === "trigger-maintainer-check") {
+        triggerMaintainerCheck();
       } else if (action?.type === "toggle-triage-panel") {
         triagePanelOpen = !triagePanelOpen;
       }
@@ -68,6 +70,19 @@
       const result: Project[] = await invoke("list_projects");
       projects.set(result);
       showToast(`Maintainer ${newEnabled ? "enabled" : "disabled"}`, "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function triggerMaintainerCheck() {
+    const focus = focusTargetState.current;
+    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
+    const project = projectsState.current.find((p) => p.id === focus.projectId);
+    if (!project) return;
+    try {
+      await invoke<any>("trigger_maintainer_check", { projectId: project.id });
+      showToast("Maintainer check complete", "info");
     } catch (e) {
       showToast(String(e), "error");
     }

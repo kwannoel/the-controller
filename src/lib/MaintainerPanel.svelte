@@ -139,7 +139,7 @@
     <div class="status">
       <p>No reports yet</p>
       <button class="btn-run" onclick={triggerCheck} disabled={triggerLoading}>
-        {triggerLoading ? "Running..." : "Run check now"}
+        {triggerLoading ? "Running..." : "(r) Run check now"}
       </button>
     </div>
   {:else}
@@ -163,7 +163,7 @@
 
     <div class="panel-actions">
       <button class="btn-run" onclick={triggerCheck} disabled={triggerLoading}>
-        {triggerLoading ? "Running..." : "Run again"}
+        {triggerLoading ? "Running..." : "(r) Run again"}
       </button>
     </div>
   {/if}
@@ -175,7 +175,7 @@
     min-width: 320px;
     height: 100vh;
     background: #1e1e2e;
-    border-left: 1px solid #313244;
+    border-left: 2px solid #89b4fa;
     display: flex;
     flex-direction: column;
     overflow: hidden;
