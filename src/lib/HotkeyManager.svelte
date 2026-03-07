@@ -304,10 +304,7 @@
         return true;
       case "m":
         if (activeId) {
-          const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
-          const sess = proj?.sessions.find((s) => s.id === activeId);
-          const eol = sess?.kind === "codex" ? "\n" : "\r";
-          invoke("write_to_pty", { sessionId: activeId, data: `create pr, merge, sync local master${eol}` });
+          invoke("write_to_pty", { sessionId: activeId, data: "create pr, merge, sync local master\r" });
         }
         return true;
       case "s":

@@ -28,7 +28,7 @@
   let taskPanelIsVisible = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
-  let taskPanelRef: { insertIssue: (issue: any) => void } | undefined = $state();
+
 
   $effect(() => {
     const unsub = sidebarVisible.subscribe((v) => { sidebarIsVisible = v; });

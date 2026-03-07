@@ -136,27 +136,11 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('m writes merge command to PTY with \\r for claude session', () => {
+    it('m writes merge command to PTY when session is active', () => {
       pressKey('m');
       expect(invoke).toHaveBeenCalledWith('write_to_pty', {
         sessionId: 'sess-1',
         data: 'create pr, merge, sync local master\r',
-      });
-    });
-
-    it('m writes merge command to PTY with \\n for codex session', () => {
-      const codexProject = {
-        ...testProject,
-        sessions: [
-          { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'codex', github_issue: null },
-        ],
-      };
-      projects.set([codexProject]);
-      (invoke as ReturnType<typeof vi.fn>).mockClear();
-      pressKey('m');
-      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
-        sessionId: 'sess-1',
-        data: 'create pr, merge, sync local master\n',
       });
     });
 
