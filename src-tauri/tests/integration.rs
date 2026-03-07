@@ -613,6 +613,7 @@ fn test_load_archived_project_by_repo_path_unarchives_it() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         sessions: vec![],
+        maintainer: MaintainerConfig::default(),
     };
     storage.save_project(&project).expect("save project");
 
