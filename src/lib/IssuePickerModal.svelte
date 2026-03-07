@@ -26,9 +26,16 @@
     (async () => {
       try {
         const allIssues = await invoke<GithubIssue[]>("list_github_issues", { repoPath });
-        issues = allIssues.filter(issue =>
-          !issue.labels.some(l => l.name === "in-progress")
-        );
+        issues = allIssues
+          .filter(issue => !issue.labels.some(l => l.name === "in-progress"))
+          .sort((a, b) => {
+            const priorityOf = (issue: GithubIssue) => {
+              if (issue.labels.some(l => l.name === "priority: high")) return 0;
+              if (issue.labels.some(l => l.name === "priority: low")) return 2;
+              return 1; // unprioritized in the middle
+            };
+            return priorityOf(a) - priorityOf(b);
+          });
       } catch (e) {
         error = String(e);
       } finally {
@@ -103,6 +110,11 @@
         {#each issues as issue, i}
           <li>
             <button class="issue-btn" class:selected={selectedIndex === i} onclick={() => onSelect(issue)}>
+              <span
+                class="priority-dot"
+                class:high={issue.labels.some(l => l.name === "priority: high")}
+                class:low={issue.labels.some(l => l.name === "priority: low")}
+              ></span>
               <span class="issue-number">#{issue.number}</span>
               <span class="issue-title">{issue.title}</span>
             </button>
@@ -168,7 +180,7 @@
     width: 100%;
     display: flex;
     gap: 8px;
-    align-items: baseline;
+    align-items: center;
     padding: 10px 8px;
     background: none;
     border: none;
@@ -182,6 +194,19 @@
   .issue-btn.selected {
     background: #313244;
     border-radius: 4px;
+  }
+  .priority-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #585b70;
+  }
+  .priority-dot.high {
+    background: #f38ba8;
+  }
+  .priority-dot.low {
+    background: #a6e3a1;
   }
   .issue-number {
     color: #89b4fa;
