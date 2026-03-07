@@ -202,6 +202,11 @@
           markSession(session.id, "exited");
         }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
 
+        // Cleanup: session finished its branch and requests worktree deletion.
+        listen<string>(`session-cleanup:${session.id}`, () => {
+          closeSession(project.id, session.id, true);
+        }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+
         // Hook-based status: precise idle/working from Claude Code hooks.
         // Debounce idle transitions to avoid flickering between tool calls
         // (Stop hook fires after each assistant turn, even mid-task).
