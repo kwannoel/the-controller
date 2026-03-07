@@ -24,6 +24,7 @@
   let archiveProjectTarget: Project | null = $state(null);
   let mergeSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let mergeInProgress = $state(false);
+  let finishBranchTarget: { sessionId: string; kind?: string } | null = $state(null);
   const archiveViewState = fromStore(archiveView);
   let isArchiveView = $derived(archiveViewState.current);
   const archivedProjectsState = fromStore(archivedProjects);
@@ -173,6 +174,10 @@
               label: sess.label,
             };
           }
+          break;
+        }
+        case "finish-branch": {
+          finishBranchTarget = { sessionId: action.sessionId, kind: action.kind };
           break;
         }
       }
@@ -586,6 +591,32 @@
         mergeSessionTarget = null;
       }}
       onClose={() => (mergeSessionTarget = null)}
+    />
+  {/if}
+
+  {#if finishBranchTarget}
+    <ConfirmModal
+      title="Confirm Merge"
+      message="Merge this session's branch?"
+      confirmLabel="Merge"
+      onConfirm={() => {
+        if (finishBranchTarget) {
+          const { sessionId, kind } = finishBranchTarget;
+          const isCodex = kind === "codex";
+          const prompt = isCodex
+            ? `$finishing-a-development-branch`
+            : `/finishing-a-development-branch`;
+          if (isCodex) {
+            invoke("write_to_pty", { sessionId, data: prompt }).then(() => {
+              invoke("write_to_pty", { sessionId, data: "\r" });
+            });
+          } else {
+            invoke("write_to_pty", { sessionId, data: `${prompt}\r` });
+          }
+        }
+        finishBranchTarget = null;
+      }}
+      onClose={() => (finishBranchTarget = null)}
     />
   {/if}
 

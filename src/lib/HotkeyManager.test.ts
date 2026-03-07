@@ -136,15 +136,16 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('m writes merge command to PTY when session is active', () => {
+    it('m dispatches finish-branch action instead of writing directly', () => {
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('m');
-      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
-        sessionId: 'sess-1',
-        data: '/finishing-a-development-branch\r',
-      });
+      expect(captured).toEqual({ type: 'finish-branch', sessionId: 'sess-1', kind: 'claude' });
+      expect(invoke).not.toHaveBeenCalled();
+      unsub();
     });
 
-    it('m sends codex merge text and Enter as separate writes', async () => {
+    it('m dispatches finish-branch with codex kind', () => {
       projects.set([
         {
           ...testProject,
@@ -155,20 +156,12 @@ describe('HotkeyManager', () => {
       ]);
       activeSessionId.set('sess-1');
 
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('m');
-      // Wait for the .then() chain to resolve
-      await vi.waitFor(() => {
-        expect(invoke).toHaveBeenCalledTimes(2);
-      });
-
-      expect(invoke).toHaveBeenNthCalledWith(1, 'write_to_pty', {
-        sessionId: 'sess-1',
-        data: '$finishing-a-development-branch',
-      });
-      expect(invoke).toHaveBeenNthCalledWith(2, 'write_to_pty', {
-        sessionId: 'sess-1',
-        data: '\r',
-      });
+      expect(captured).toEqual({ type: 'finish-branch', sessionId: 'sess-1', kind: 'codex' });
+      expect(invoke).not.toHaveBeenCalled();
+      unsub();
     });
 
     it('modifier keys alone do not dispatch', () => {
