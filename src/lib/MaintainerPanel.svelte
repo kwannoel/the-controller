@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { focusTarget, projects, type Project, type FocusTarget, type MaintainerReport } from "./stores";
@@ -13,6 +14,8 @@
   let projectList: Project[] = $derived(projectsState.current);
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
+
+  let nextRunText = $state("");
 
   let project = $derived(
     currentFocus?.projectId
@@ -68,6 +71,33 @@
     }
   }
 
+  function formatCountdown(diffMs: number): string {
+    if (diffMs <= 0) return "Due now";
+    const totalSecs = Math.floor(diffMs / 1000);
+    const hours = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+    if (mins > 0) return `${mins}m ${secs}s`;
+    return `${secs}s`;
+  }
+
+  function computeNextRunText(): string {
+    if (!project?.maintainer.enabled) return "Disabled";
+    if (!report) return "Pending";
+    const lastRun = new Date(report.timestamp).getTime();
+    const intervalMs = project.maintainer.interval_minutes * 60 * 1000;
+    const nextRun = lastRun + intervalMs;
+    return formatCountdown(nextRun - Date.now());
+  }
+
+  // Tick the countdown every 30s while the panel is mounted
+  $effect(() => {
+    nextRunText = computeNextRunText();
+    const id = setInterval(() => { nextRunText = computeNextRunText(); }, 1_000);
+    return () => clearInterval(id);
+  });
+
   function severityColor(severity: string): string {
     switch (severity) {
       case "error": return "#f38ba8";
@@ -93,6 +123,13 @@
       </button>
     {/if}
   </div>
+
+  {#if project}
+    <div class="schedule-info">
+      <span class="schedule-label">Interval: {project.maintainer.interval_minutes}m</span>
+      <span class="schedule-label">Next: {nextRunText}</span>
+    </div>
+  {/if}
 
   {#if !project}
     <div class="status">No project selected</div>
@@ -153,6 +190,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+  }
+
+  .schedule-info {
+    padding: 8px 16px;
+    border-bottom: 1px solid #313244;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #6c7086;
+  }
+
+  .schedule-label {
+    color: #6c7086;
   }
 
   .btn-toggle {
