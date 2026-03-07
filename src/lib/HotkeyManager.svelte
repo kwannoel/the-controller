@@ -340,7 +340,7 @@
       case "b":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
-      // Cmd+S (screenshot) is handled earlier in onKeydown
+      // Cmd+S/D (screenshot) is handled earlier in onKeydown
       case "?":
         dispatchAction({ type: "toggle-help" });
         return true;
@@ -353,11 +353,16 @@
     // Ignore modifier-only keypresses
     if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
 
-    // Cmd+S: screenshot (works from any context, including terminal)
-    if (e.metaKey && e.key === "s") {
+    // Cmd+S/Cmd+Shift+S: full window screenshot (shift = preview)
+    // Cmd+D/Cmd+Shift+D: cropped screenshot (shift = preview)
+    if (e.metaKey && (e.key === "s" || e.key === "d")) {
       e.stopPropagation();
       e.preventDefault();
-      dispatchAction({ type: "screenshot-to-session" });
+      dispatchAction({
+        type: "screenshot-to-session",
+        preview: e.shiftKey,
+        cropped: e.key === "d",
+      });
       return;
     }
 

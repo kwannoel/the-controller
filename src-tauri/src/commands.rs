@@ -908,8 +908,8 @@ pub async fn copy_image_file_to_clipboard(app: AppHandle, path: String) -> Resul
 }
 
 #[tauri::command]
-pub async fn capture_app_screenshot(app: AppHandle) -> Result<String, String> {
-    media::capture_app_screenshot(app).await
+pub async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<String, String> {
+    media::capture_app_screenshot(app, cropped).await
 }
 
 const MAX_MERGE_RETRIES: u32 = 5;
