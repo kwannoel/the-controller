@@ -19,7 +19,7 @@
   let swipeDirection: "left" | "right" | null = $state(null);
   let step: "priority" | "complexity" = $state("priority");
   let pendingPriority: "high" | "low" | null = $state(null);
-  let triageCount = $state({ high: 0, low: 0, skipped: 0, simple: 0, complex: 0 });
+  let triageCount = $state({ high: 0, low: 0, simple: 0, complex: 0, prioritySkipped: 0, complexitySkipped: 0 });
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -103,12 +103,14 @@
 
   function skipPriority() {
     if (!currentIssue) return;
+    triageCount.prioritySkipped++;
     pendingPriority = null;
     step = "complexity";
   }
 
   function skipComplexity() {
     if (!currentIssue) return;
+    triageCount.complexitySkipped++;
 
     const issue = currentIssue;
     const priority = pendingPriority;
@@ -116,8 +118,6 @@
   }
 
   function advanceCard(issue: GithubIssue, priority: "high" | "low" | null, complexity: "simple" | "complex" | null) {
-    if (!priority && !complexity) triageCount.skipped++;
-
     currentIndex++;
     step = "priority";
     pendingPriority = null;
@@ -206,7 +206,9 @@
         <span class="stat low">{triageCount.low} low</span>
         <span class="stat simple">{triageCount.simple} simple</span>
         <span class="stat complex">{triageCount.complex} complex</span>
-        <span class="stat skipped">{triageCount.skipped} skipped</span>
+        {#if triageCount.prioritySkipped || triageCount.complexitySkipped}
+          <span class="stat skipped">{triageCount.prioritySkipped + triageCount.complexitySkipped} skipped</span>
+        {/if}
       </div>
     </div>
 
@@ -225,7 +227,9 @@
           <span class="stat low">{triageCount.low} low</span>
           <span class="stat simple">{triageCount.simple} simple</span>
           <span class="stat complex">{triageCount.complex} complex</span>
-          <span class="stat skipped">{triageCount.skipped} skipped</span>
+          {#if triageCount.prioritySkipped || triageCount.complexitySkipped}
+          <span class="stat skipped">{triageCount.prioritySkipped + triageCount.complexitySkipped} skipped</span>
+        {/if}
         </div>
         <div class="done-hint">Press <kbd>Esc</kbd> to close</div>
       </div>
@@ -428,7 +432,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #313244;
+    background: #45475a;
   }
 
   .step-dot.active {
