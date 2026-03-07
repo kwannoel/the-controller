@@ -333,7 +333,7 @@
           dispatchAction({ type: "focus-terminal" });
         }
         return true;
-      case "M":
+      case "B":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
       case "S":

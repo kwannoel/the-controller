@@ -26,6 +26,7 @@
     { key: "t", description: "Toggle GitHub issues panel" },
     { key: "i", description: "Create GitHub issue for focused project" },
     { key: "S", description: "Screenshot app → new session with image" },
+    { key: "B", description: "Toggle background agent panel" },
     { key: "Esc", description: "Move focus up (terminal → session → project)" },
     { key: "?", description: "Toggle this help" },
   ];
