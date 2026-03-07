@@ -329,7 +329,10 @@ pub fn delete_project(
 pub fn list_archived_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects.into_iter().filter(|p| p.archived).collect())
+    Ok(projects
+        .into_iter()
+        .filter(|p| p.archived || p.sessions.iter().any(|s| s.archived))
+        .collect())
 }
 
 #[tauri::command]
