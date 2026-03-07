@@ -97,7 +97,7 @@
     return IMAGE_EXTENSIONS.has(ext);
   }
 
-  onMount(() => {
+  onMount(async () => {
     if (!containerEl) return;
 
     term = new Terminal({
@@ -116,23 +116,6 @@
     fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerEl);
-
-    // Only fit if the container is actually visible — xterm.js can't measure
-    // character cells in a display:none ancestor, which produces bogus cols.
-    if (containerEl.offsetParent !== null) {
-      fitAddon.fit();
-      termOpened = true;
-      // Connect PTY at the measured size to avoid intermediate resizes
-      // that cause extra newlines on restart.
-      connected = true;
-      invoke("connect_session", {
-        sessionId,
-        rows: term.rows,
-        cols: term.cols,
-      }).catch((err) => {
-        console.error("Failed to connect session:", err);
-      });
-    }
 
     const writeToPty = (data: string) =>
       invoke("write_to_pty", { sessionId, data });
@@ -189,23 +172,38 @@
       });
     });
 
-    // Listen for PTY output (base64-encoded).
-    // After the listener is set up, allow a brief window for tmux's
-    // initial terminal queries and xterm auto-responses to settle,
-    // then enable input forwarding.
-    listen<string>(`pty-output:${sessionId}`, (event) => {
+    // Register PTY output listener BEFORE connecting the session to avoid a
+    // race where early output (including the alternate-screen escape sequence)
+    // is emitted before the handler exists, causing xterm.js to miss the
+    // screen-buffer switch and break trackpad scrolling.
+    unlistenOutput = await listen<string>(`pty-output:${sessionId}`, (event) => {
       if (term) {
         const bytes = Uint8Array.from(atob(event.payload), (c) =>
           c.charCodeAt(0),
         );
         term.write(bytes);
       }
-    }).then((fn) => {
-      unlistenOutput = fn;
-      setTimeout(() => {
-        inputReady = true;
-      }, 100);
     });
+    setTimeout(() => {
+      inputReady = true;
+    }, 100);
+
+    // Only fit if the container is actually visible — xterm.js can't measure
+    // character cells in a display:none ancestor, which produces bogus cols.
+    if (containerEl.offsetParent !== null) {
+      fitAddon.fit();
+      termOpened = true;
+      // Connect PTY at the measured size to avoid intermediate resizes
+      // that cause extra newlines on restart.
+      connected = true;
+      invoke("connect_session", {
+        sessionId,
+        rows: term.rows,
+        cols: term.cols,
+      }).catch((err) => {
+        console.error("Failed to connect session:", err);
+      });
+    }
 
     // Listen for session status changes
     listen<string>(`session-status-changed:${sessionId}`, () => {
