@@ -17,7 +17,9 @@
   let loading = $state(false);
   let error: string | null = $state(null);
   let swipeDirection: "left" | "right" | null = $state(null);
-  let triageCount = $state({ high: 0, low: 0, skipped: 0 });
+  let step: "priority" | "complexity" = $state("priority");
+  let pendingPriority: "high" | "low" | null = $state(null);
+  let triageCount = $state({ high: 0, low: 0, skipped: 0, simple: 0, complex: 0 });
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -73,34 +75,76 @@
   async function assignPriority(priority: "high" | "low") {
     if (!currentIssue || !repoPath) return;
 
-    const issue = currentIssue;
-    const label = `priority: ${priority}`;
     swipeDirection = priority === "high" ? "right" : "left";
 
-    // Update count
     if (priority === "high") triageCount.high++;
     else triageCount.low++;
 
-    // Wait for animation
     await new Promise(r => setTimeout(r, 300));
     swipeDirection = null;
-    currentIndex++;
-
-    // Fire and forget the label assignment
-    invoke("add_github_label", {
-      repoPath,
-      issueNumber: issue.number,
-      label,
-      description: priority === "high" ? "Important, should be tackled soon" : "Nice to have, can wait",
-      color: priority === "high" ? "F38BA8" : "A6E3A1",
-    }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));
+    pendingPriority = priority;
+    step = "complexity";
   }
 
-  function skip() {
-    if (!currentIssue) return;
-    triageCount.skipped++;
+  async function assignComplexity(complexity: "simple" | "complex") {
+    if (!currentIssue || !repoPath) return;
+
+    const issue = currentIssue;
+    const priority = pendingPriority;
+    swipeDirection = complexity === "complex" ? "right" : "left";
+
+    if (complexity === "simple") triageCount.simple++;
+    else triageCount.complex++;
+
+    await new Promise(r => setTimeout(r, 300));
     swipeDirection = null;
+    advanceCard(issue, priority, complexity);
+  }
+
+  function skipPriority() {
+    if (!currentIssue) return;
+    pendingPriority = null;
+    step = "complexity";
+  }
+
+  function skipComplexity() {
+    if (!currentIssue) return;
+
+    const issue = currentIssue;
+    const priority = pendingPriority;
+    advanceCard(issue, priority, null);
+  }
+
+  function advanceCard(issue: GithubIssue, priority: "high" | "low" | null, complexity: "simple" | "complex" | null) {
+    if (!priority && !complexity) triageCount.skipped++;
+
     currentIndex++;
+    step = "priority";
+    pendingPriority = null;
+
+    if (!repoPath) return;
+    const path = repoPath;
+
+    // Fire and forget label assignments
+    if (priority) {
+      invoke("add_github_label", {
+        repoPath: path,
+        issueNumber: issue.number,
+        label: `priority: ${priority}`,
+        description: priority === "high" ? "Important, should be tackled soon" : "Nice to have, can wait",
+        color: priority === "high" ? "F38BA8" : "A6E3A1",
+      }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));
+    }
+
+    if (complexity) {
+      invoke("add_github_label", {
+        repoPath: path,
+        issueNumber: issue.number,
+        label: `complexity: ${complexity}`,
+        description: complexity === "simple" ? "Quick task, suitable for simple agents" : "Multi-step task, needs capable agents",
+        color: complexity === "simple" ? "89DCEB" : "FAB387",
+      }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));
+    }
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -113,18 +157,34 @@
 
     if (swipeDirection) return; // animating
 
-    if (e.key === "ArrowRight" || e.key === "k") {
-      e.preventDefault();
-      e.stopPropagation();
-      assignPriority("high");
-    } else if (e.key === "ArrowLeft" || e.key === "j") {
-      e.preventDefault();
-      e.stopPropagation();
-      assignPriority("low");
-    } else if (e.key === "s" || e.key === "ArrowDown") {
-      e.preventDefault();
-      e.stopPropagation();
-      skip();
+    if (step === "priority") {
+      if (e.key === "ArrowRight" || e.key === "k") {
+        e.preventDefault();
+        e.stopPropagation();
+        assignPriority("high");
+      } else if (e.key === "ArrowLeft" || e.key === "j") {
+        e.preventDefault();
+        e.stopPropagation();
+        assignPriority("low");
+      } else if (e.key === "s" || e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
+        skipPriority();
+      }
+    } else {
+      if (e.key === "ArrowRight" || e.key === "k") {
+        e.preventDefault();
+        e.stopPropagation();
+        assignComplexity("complex");
+      } else if (e.key === "ArrowLeft" || e.key === "j") {
+        e.preventDefault();
+        e.stopPropagation();
+        assignComplexity("simple");
+      } else if (e.key === "s" || e.key === "ArrowDown") {
+        e.preventDefault();
+        e.stopPropagation();
+        skipComplexity();
+      }
     }
   }
 
@@ -144,6 +204,8 @@
       <div class="triage-stats">
         <span class="stat high">{triageCount.high} high</span>
         <span class="stat low">{triageCount.low} low</span>
+        <span class="stat simple">{triageCount.simple} simple</span>
+        <span class="stat complex">{triageCount.complex} complex</span>
         <span class="stat skipped">{triageCount.skipped} skipped</span>
       </div>
     </div>
@@ -161,15 +223,25 @@
         <div class="done-summary">
           <span class="stat high">{triageCount.high} high</span>
           <span class="stat low">{triageCount.low} low</span>
+          <span class="stat simple">{triageCount.simple} simple</span>
+          <span class="stat complex">{triageCount.complex} complex</span>
           <span class="stat skipped">{triageCount.skipped} skipped</span>
         </div>
         <div class="done-hint">Press <kbd>Esc</kbd> to close</div>
       </div>
     {:else}
+      <div class="step-indicator">
+        <span class="step-dot" class:active={step === "priority"}></span>
+        <span class="step-dot" class:active={step === "complexity"}></span>
+        <span class="step-label">{step === "priority" ? "Step 1: Priority" : "Step 2: Complexity"}</span>
+      </div>
+
       <div class="card-area">
         <div class="label-hint left">
-          <span class="label-arrow">←</span>
-          <span class="label-text low">Low</span>
+          <span class="label-arrow">&#8592;</span>
+          <span class="label-text" class:low={step === "priority"} class:simple={step === "complexity"}>
+            {step === "priority" ? "Low" : "Simple"}
+          </span>
         </div>
 
         <div
@@ -193,23 +265,25 @@
         </div>
 
         <div class="label-hint right">
-          <span class="label-text high">High</span>
-          <span class="label-arrow">→</span>
+          <span class="label-text" class:high={step === "priority"} class:complex={step === "complexity"}>
+            {step === "priority" ? "High" : "Complex"}
+          </span>
+          <span class="label-arrow">&#8594;</span>
         </div>
       </div>
 
       <div class="hotkey-bar">
         <div class="hotkey-group">
-          <kbd>←</kbd> / <kbd>j</kbd>
-          <span class="hotkey-desc">Low priority</span>
+          <kbd>&#8592;</kbd> / <kbd>j</kbd>
+          <span class="hotkey-desc">{step === "priority" ? "Low priority" : "Simple"}</span>
         </div>
         <div class="hotkey-group">
-          <kbd>↓</kbd> / <kbd>s</kbd>
+          <kbd>&#8595;</kbd> / <kbd>s</kbd>
           <span class="hotkey-desc">Skip</span>
         </div>
         <div class="hotkey-group">
-          <kbd>→</kbd> / <kbd>k</kbd>
-          <span class="hotkey-desc">High priority</span>
+          <kbd>&#8594;</kbd> / <kbd>k</kbd>
+          <span class="hotkey-desc">{step === "priority" ? "High priority" : "Complex"}</span>
         </div>
       </div>
     {/if}
@@ -324,6 +398,47 @@
 
   .label-text.low {
     color: #a6e3a1;
+  }
+
+  .label-text.simple {
+    color: #89dceb;
+  }
+
+  .label-text.complex {
+    color: #fab387;
+  }
+
+  .stat.simple {
+    color: #89dceb;
+    background: rgba(137, 220, 235, 0.1);
+  }
+
+  .stat.complex {
+    color: #fab387;
+    background: rgba(250, 179, 135, 0.1);
+  }
+
+  .step-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #313244;
+  }
+
+  .step-dot.active {
+    background: #89b4fa;
+  }
+
+  .step-label {
+    font-size: 12px;
+    color: #6c7086;
+    margin-left: 4px;
   }
 
   .issue-card {
