@@ -224,8 +224,13 @@ pub(crate) async fn add_github_label(
     repo_path: String,
     issue_number: u64,
     label: String,
+    description: Option<String>,
+    color: Option<String>,
 ) -> Result<(), String> {
     let nwo = extract_github_repo_async(repo_path.clone()).await?;
+
+    let desc = description.as_deref().unwrap_or("Issue is being worked on in a session");
+    let col = color.as_deref().unwrap_or("F9E2AF");
 
     // Ensure the label exists on the repo (ignore errors if it already exists)
     let _ = tokio::process::Command::new("gh")
@@ -236,9 +241,9 @@ pub(crate) async fn add_github_label(
             "--repo",
             &nwo,
             "--description",
-            "Issue is being worked on in a session",
+            desc,
             "--color",
-            "F9E2AF",
+            col,
         ])
         .output()
         .await;

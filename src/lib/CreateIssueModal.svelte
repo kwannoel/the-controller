@@ -1,14 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
+  type Priority = "high" | "low";
+
   interface Props {
-    onSubmit: (title: string) => void;
+    onSubmit: (title: string, priority: Priority) => void;
     onClose: () => void;
   }
 
   let { onSubmit, onClose }: Props = $props();
 
   let title = $state("");
+  let priority: Priority = $state("low");
   let titleInput: HTMLInputElement | undefined = $state();
 
   onMount(() => {
@@ -17,7 +20,7 @@
 
   function submit() {
     if (!title.trim()) return;
-    onSubmit(title.trim());
+    onSubmit(title.trim(), priority);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -42,6 +45,23 @@
       placeholder="Issue title"
       class="input"
     />
+    <div class="priority-row">
+      <span class="priority-label">Priority:</span>
+      <div class="priority-buttons">
+        <button
+          class="priority-btn high"
+          class:selected={priority === "high"}
+          onclick={() => priority = "high"}
+          type="button"
+        >High</button>
+        <button
+          class="priority-btn low"
+          class:selected={priority === "low"}
+          onclick={() => priority = "low"}
+          type="button"
+        >Low</button>
+      </div>
+    </div>
     <button
       class="btn-primary"
       onclick={submit}
@@ -105,5 +125,36 @@
   .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  .priority-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .priority-label {
+    color: #a6adc8;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .priority-buttons {
+    display: flex;
+    gap: 6px;
+  }
+  .priority-btn {
+    background: #313244;
+    color: #a6adc8;
+    border: 1px solid #45475a;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .priority-btn.high.selected {
+    border-color: #f38ba8;
+    color: #f38ba8;
+  }
+  .priority-btn.low.selected {
+    border-color: #a6e3a1;
+    color: #a6e3a1;
   }
 </style>

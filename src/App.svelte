@@ -47,7 +47,7 @@
     return unsub;
   });
 
-  async function handleIssueSubmit(title: string) {
+  async function handleIssueSubmit(title: string, priority: "high" | "low") {
     const repoPath = createIssueTarget!.repoPath;
     createIssueTarget = null; // close modal immediately
 
@@ -61,6 +61,15 @@
         title,
         body,
       });
+
+      const label = `priority: ${priority}`;
+      invoke("add_github_label", {
+        repoPath,
+        issueNumber: issue.number,
+        label,
+        description: priority === "high" ? "Important, should be tackled soon" : "Nice to have, can wait",
+        color: priority === "high" ? "F38BA8" : "A6E3A1",
+      }).catch((e: unknown) => showToast(`Failed to add priority label: ${e}`, "error"));
 
       showToast(`Issue #${issue.number} created`, "info");
     } catch (e) {

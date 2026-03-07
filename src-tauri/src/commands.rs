@@ -870,8 +870,10 @@ pub async fn add_github_label(
     repo_path: String,
     issue_number: u64,
     label: String,
+    description: Option<String>,
+    color: Option<String>,
 ) -> Result<(), String> {
-    github::add_github_label(state, repo_path, issue_number, label).await
+    github::add_github_label(state, repo_path, issue_number, label, description, color).await
 }
 
 #[tauri::command]
