@@ -806,6 +806,24 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         return Err(format!("Failed to create GitHub repo: {}", stderr.trim()));
     }
 
+    // Configure repo to only allow squash merges
+    let merge_cfg = std::process::Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{{owner}}/{}", name),
+            "-X", "PATCH",
+            "-f", "allow_squash_merge=true",
+            "-f", "allow_merge_commit=false",
+            "-f", "allow_rebase_merge=false",
+        ])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("Failed to configure merge settings: {}", e))?;
+    if !merge_cfg.status.success() {
+        let stderr = String::from_utf8_lossy(&merge_cfg.stderr);
+        return Err(format!("Failed to configure merge settings: {}", stderr.trim()));
+    }
+
     // Create project entry
     let project = Project {
         id: Uuid::new_v4(),
