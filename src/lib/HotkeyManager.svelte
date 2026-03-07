@@ -306,6 +306,9 @@
         dispatchCreateIssue();
         return true;
       case "t":
+        dispatchAction({ type: "toggle-triage-panel", category: "low" });
+        return true;
+      case "T":
         dispatchAction({ type: "toggle-triage-panel" });
         return true;
       case "l":

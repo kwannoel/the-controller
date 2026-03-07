@@ -71,6 +71,8 @@ export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(new Ma
 export const maintainerPanelVisible = writable<boolean>(false);
 
 // Hotkey state
+export type TriageCategory = "untagged" | "high" | "low";
+
 export type HotkeyAction =
   | { type: "open-fuzzy-finder" }
   | { type: "open-new-project" }
@@ -91,7 +93,7 @@ export type HotkeyAction =
   | { type: "screenshot-to-session" }
   | { type: "toggle-maintainer-panel" }
   | { type: "toggle-maintainer-enabled" }
-  | { type: "toggle-triage-panel" }
+  | { type: "toggle-triage-panel"; category?: TriageCategory }
   | { type: "trigger-maintainer-check" }
   | null;
 
