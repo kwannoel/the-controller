@@ -36,6 +36,10 @@ git push              # <- REQUIRED, do not skip
 git branch -d <feature-branch>
 ```
 
+## Dependencies
+
+After merging a branch that modifies `package.json`, run `npm install` in the project root (not the worktree). The dev server won't auto-install — missing packages cause a white screen.
+
 ## Dev Commands
 
 - `npm run tauri dev` — Run the app in development mode
