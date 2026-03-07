@@ -104,11 +104,11 @@
 
     if (swipeDirection) return; // animating
 
-    if (e.key === "ArrowRight" || e.key === "h") {
+    if (e.key === "ArrowRight" || e.key === "k") {
       e.preventDefault();
       e.stopPropagation();
       assignPriority("high");
-    } else if (e.key === "ArrowLeft" || e.key === "l") {
+    } else if (e.key === "ArrowLeft" || e.key === "j") {
       e.preventDefault();
       e.stopPropagation();
       assignPriority("low");
@@ -191,7 +191,7 @@
 
       <div class="hotkey-bar">
         <div class="hotkey-group">
-          <kbd>←</kbd> / <kbd>l</kbd>
+          <kbd>←</kbd> / <kbd>j</kbd>
           <span class="hotkey-desc">Low priority</span>
         </div>
         <div class="hotkey-group">
@@ -199,7 +199,7 @@
           <span class="hotkey-desc">Skip</span>
         </div>
         <div class="hotkey-group">
-          <kbd>→</kbd> / <kbd>h</kbd>
+          <kbd>→</kbd> / <kbd>k</kbd>
           <span class="hotkey-desc">High priority</span>
         </div>
       </div>
