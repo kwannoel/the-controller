@@ -98,9 +98,13 @@ pub fn restore_sessions(state: State<AppState>) -> Result<(), String> {
 /// Connect a terminal to its PTY session at the given size.
 /// Called by each Terminal component after it measures its dimensions.
 /// No-op if the session is already connected.
+///
+/// This command is async because it shells out to tmux (create, resize, attach),
+/// which would block the main thread and prevent event delivery — including the
+/// alternate-screen escape sequence that xterm.js needs for correct scrolling.
 #[tauri::command]
-pub fn connect_session(
-    state: State<AppState>,
+pub async fn connect_session(
+    state: State<'_, AppState>,
     app_handle: AppHandle,
     session_id: String,
     rows: u16,
@@ -134,8 +138,17 @@ pub fn connect_session(
             .ok_or_else(|| format!("session not found: {}", session_id))?
     };
 
-    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(id, &session_dir, &kind, app_handle, true, None, rows, cols)
+    // Run on a background thread to avoid blocking the main thread.
+    // This is critical: the reader thread spawned inside spawn_session emits
+    // pty-output events immediately, and the main thread must be free to
+    // deliver them to the webview (especially the smcup/alternate-screen escape).
+    let pty_manager = state.pty_manager.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut mgr = pty_manager.lock().map_err(|e| e.to_string())?;
+        mgr.spawn_session(id, &session_dir, &kind, app_handle, true, None, rows, cols)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]

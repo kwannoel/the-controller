@@ -614,7 +614,6 @@ fn test_load_archived_project_by_repo_path_unarchives_it() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         sessions: vec![],
-        maintainer: MaintainerConfig::default(),
     };
     storage.save_project(&project).expect("save project");
 

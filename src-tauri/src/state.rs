@@ -68,7 +68,7 @@ impl IssueCache {
 
 pub struct AppState {
     pub storage: Mutex<Storage>,
-    pub pty_manager: Mutex<PtyManager>,
+    pub pty_manager: Arc<Mutex<PtyManager>>,
     pub issue_cache: Arc<Mutex<IssueCache>>,
 }
 
@@ -78,7 +78,7 @@ impl AppState {
         storage.ensure_dirs().unwrap();
         Self {
             storage: Mutex::new(storage),
-            pty_manager: Mutex::new(PtyManager::new()),
+            pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
         }
     }
