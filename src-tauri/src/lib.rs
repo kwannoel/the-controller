@@ -2,6 +2,7 @@ use tauri::Manager;
 
 pub mod commands;
 pub mod config;
+pub mod maintainer;
 pub mod models;
 pub mod pty_manager;
 pub mod session_args;
