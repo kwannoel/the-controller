@@ -144,7 +144,7 @@ describe('HotkeyManager', () => {
       });
     });
 
-    it('m submits codex merge command without needing extra Enter', () => {
+    it('m sends codex merge text and Enter as separate writes', async () => {
       projects.set([
         {
           ...testProject,
@@ -156,10 +156,18 @@ describe('HotkeyManager', () => {
       activeSessionId.set('sess-1');
 
       pressKey('m');
+      // Wait for the .then() chain to resolve
+      await vi.waitFor(() => {
+        expect(invoke).toHaveBeenCalledTimes(2);
+      });
 
-      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+      expect(invoke).toHaveBeenNthCalledWith(1, 'write_to_pty', {
         sessionId: 'sess-1',
-        data: '$finishing-a-development-branch\r',
+        data: '$finishing-a-development-branch',
+      });
+      expect(invoke).toHaveBeenNthCalledWith(2, 'write_to_pty', {
+        sessionId: 'sess-1',
+        data: '\r',
       });
     });
 
