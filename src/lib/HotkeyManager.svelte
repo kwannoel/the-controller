@@ -307,7 +307,10 @@
           const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
           const sess = proj?.sessions.find((s) => s.id === activeId);
           const eol = sess?.kind === "codex" ? "\n" : "\r";
-          invoke("write_to_pty", { sessionId: activeId, data: `rebase onto master, create pr, squash merge, sync local master${eol}` });
+          const prompt = sess?.kind === "codex"
+            ? `$finishing-a-development-branch`
+            : `/finishing-a-development-branch`;
+          invoke("write_to_pty", { sessionId: activeId, data: `${prompt}${eol}` });
         }
         return true;
       case "s":
