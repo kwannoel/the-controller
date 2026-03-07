@@ -333,6 +333,9 @@
           dispatchAction({ type: "focus-terminal" });
         }
         return true;
+      case "M":
+        dispatchAction({ type: "toggle-maintainer-panel" });
+        return true;
       case "S":
         dispatchAction({ type: "screenshot-to-session" });
         return true;

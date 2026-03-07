@@ -87,6 +87,7 @@ export type HotkeyAction =
   | { type: "pick-issue-for-session"; projectId: string; repoPath: string; kind?: string; background?: boolean }
   | { type: "merge-session"; sessionId: string; projectId: string }
   | { type: "screenshot-to-session" }
+  | { type: "toggle-maintainer-panel" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
