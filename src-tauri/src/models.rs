@@ -96,6 +96,7 @@ pub enum MergeResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum FindingSeverity {
     Info,
     Warning,
@@ -103,6 +104,7 @@ pub enum FindingSeverity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum FindingAction {
     Reported,
     Fixed,
@@ -118,6 +120,7 @@ pub struct MaintainerFinding {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum ReportStatus {
     Passing,
     Warnings,
@@ -128,6 +131,7 @@ pub enum ReportStatus {
 pub struct MaintainerReport {
     pub id: Uuid,
     pub project_id: Uuid,
+    /// ISO 8601 UTC timestamp (e.g. "2026-03-07T12:00:00Z"). Lexicographic order must equal chronological order.
     pub timestamp: String,
     pub status: ReportStatus,
     pub findings: Vec<MaintainerFinding>,
