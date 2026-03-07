@@ -9,6 +9,23 @@ pub struct Project {
     pub created_at: String,
     pub archived: bool,
     pub sessions: Vec<SessionConfig>,
+    #[serde(default)]
+    pub maintainer: MaintainerConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerConfig {
+    pub enabled: bool,
+    pub interval_minutes: u64,
+}
+
+impl Default for MaintainerConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_minutes: 60,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -78,6 +95,49 @@ pub enum MergeResponse {
     RebaseConflicts,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FindingAction {
+    Reported,
+    Fixed,
+    PrCreated { url: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerFinding {
+    pub severity: FindingSeverity,
+    pub category: String,
+    pub description: String,
+    pub action_taken: FindingAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReportStatus {
+    Passing,
+    Warnings,
+    Failing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerReport {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    /// ISO 8601 UTC timestamp (e.g. "2026-03-07T12:00:00Z"). Lexicographic order must equal chronological order.
+    pub timestamp: String,
+    pub status: ReportStatus,
+    pub findings: Vec<MaintainerFinding>,
+    pub summary: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,6 +150,7 @@ mod tests {
             repo_path: "/tmp/test-repo".to_string(),
             created_at: "2026-02-28T00:00:00Z".to_string(),
             archived: false,
+            maintainer: MaintainerConfig::default(),
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),
@@ -143,6 +204,7 @@ mod tests {
             repo_path: "/tmp/worktree-repo".to_string(),
             created_at: "2026-02-28T12:00:00Z".to_string(),
             archived: false,
+            maintainer: MaintainerConfig::default(),
             sessions: vec![SessionConfig {
                 id: session_id,
                 label: "feature-branch".to_string(),
@@ -280,6 +342,41 @@ mod tests {
     }
 
     #[test]
+    fn test_maintainer_config_defaults_when_absent() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "test-project",
+            "repo_path": "/tmp/test-repo",
+            "created_at": "2026-02-28T00:00:00Z",
+            "archived": false,
+            "sessions": []
+        }"#;
+        let project: Project = serde_json::from_str(json).expect("deserialize");
+        assert!(!project.maintainer.enabled);
+        assert_eq!(project.maintainer.interval_minutes, 60);
+    }
+
+    #[test]
+    fn test_maintainer_config_roundtrip() {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "test-project".to_string(),
+            repo_path: "/tmp/test-repo".to_string(),
+            created_at: "2026-02-28T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig {
+                enabled: true,
+                interval_minutes: 30,
+            },
+            sessions: vec![],
+        };
+        let json = serde_json::to_string(&project).expect("serialize");
+        let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
+        assert!(deserialized.maintainer.enabled);
+        assert_eq!(deserialized.maintainer.interval_minutes, 30);
+    }
+
+    #[test]
     fn test_session_info_serialization_roundtrip() {
         let info = SessionInfo {
             id: Uuid::new_v4(),
@@ -293,5 +390,39 @@ mod tests {
         let deserialized: SessionInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.id, info.id);
         assert_eq!(deserialized.status, SessionStatus::Running);
+    }
+
+    #[test]
+    fn test_maintainer_finding_serialization() {
+        let finding = MaintainerFinding {
+            severity: FindingSeverity::Warning,
+            category: "dependencies".to_string(),
+            description: "Outdated dependency found".to_string(),
+            action_taken: FindingAction::Reported,
+        };
+        let json = serde_json::to_string(&finding).expect("serialize");
+        let deserialized: MaintainerFinding = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.category, "dependencies");
+    }
+
+    #[test]
+    fn test_maintainer_report_serialization() {
+        let report = MaintainerReport {
+            id: Uuid::new_v4(),
+            project_id: Uuid::new_v4(),
+            timestamp: "2026-03-07T00:00:00Z".to_string(),
+            status: ReportStatus::Warnings,
+            findings: vec![MaintainerFinding {
+                severity: FindingSeverity::Info,
+                category: "ci".to_string(),
+                description: "CI pipeline healthy".to_string(),
+                action_taken: FindingAction::Fixed,
+            }],
+            summary: "One finding detected".to_string(),
+        };
+        let json = serde_json::to_string(&report).expect("serialize");
+        let deserialized: MaintainerReport = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.findings.len(), 1);
+        assert_eq!(deserialized.summary, "One finding detected");
     }
 }

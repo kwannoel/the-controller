@@ -2,6 +2,7 @@ use tauri::Manager;
 
 pub mod commands;
 pub mod config;
+pub mod maintainer;
 pub mod models;
 pub mod pty_manager;
 pub mod session_args;
@@ -19,6 +20,7 @@ pub fn run() {
         .manage(state::AppState::new())
         .setup(|app| {
             status_socket::start_listener(app.handle().clone());
+            maintainer::MaintainerScheduler::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -61,6 +63,10 @@ pub fn run() {
             commands::copy_image_file_to_clipboard,
             commands::capture_app_screenshot,
             commands::get_session_commits,
+            commands::configure_maintainer,
+            commands::get_maintainer_status,
+            commands::get_maintainer_history,
+            commands::trigger_maintainer_check,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

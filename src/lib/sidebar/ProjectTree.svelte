@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FocusTarget, JumpPhase, Project, SessionStatus } from "../stores";
+  import type { FocusTarget, JumpPhase, MaintainerStatus, Project, SessionStatus } from "../stores";
 
   interface Props {
     projects: Project[];
@@ -10,6 +10,7 @@
     jumpState: JumpPhase;
     projectJumpLabels: string[];
     getSessionStatus: (sessionId: string) => SessionStatus;
+    getMaintainerStatus: (projectId: string) => MaintainerStatus | null;
     onToggleProject: (projectId: string) => void;
     onProjectFocus: (projectId: string) => void;
     onSessionFocus: (sessionId: string, projectId: string) => void;
@@ -25,6 +26,7 @@
     jumpState,
     projectJumpLabels,
     getSessionStatus,
+    getMaintainerStatus,
     onToggleProject,
     onProjectFocus,
     onSessionFocus,
@@ -43,6 +45,7 @@
     {@const visibleSessions = isArchivedMode()
       ? project.sessions.filter((s) => s.archived)
       : project.sessions.filter((s) => !s.archived)}
+    {@const maintainerStatus = getMaintainerStatus(project.id)}
     <div class="project-item">
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -63,6 +66,16 @@
           <kbd class="jump-label">{projectJumpLabels[i]}</kbd>
         {/if}
         <span class="session-count">{visibleSessions.length}</span>
+        {#if maintainerStatus && maintainerStatus !== "idle"}
+          <span
+            class="maintainer-dot"
+            class:passing={maintainerStatus === "passing"}
+            class:warnings={maintainerStatus === "warnings"}
+            class:failing={maintainerStatus === "failing"}
+            class:running={maintainerStatus === "running"}
+            title="Maintainer: {maintainerStatus}"
+          ></span>
+        {/if}
       </div>
 
       {#if expandedProjectSet.has(project.id)}
@@ -252,6 +265,36 @@
     line-height: 16px;
     flex-shrink: 0;
     margin-left: auto;
+  }
+
+  .maintainer-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #6c7086;
+    flex-shrink: 0;
+  }
+
+  .maintainer-dot.passing {
+    background: #a6e3a1;
+  }
+
+  .maintainer-dot.warnings {
+    background: #f9e2af;
+  }
+
+  .maintainer-dot.failing {
+    background: #f38ba8;
+  }
+
+  .maintainer-dot.running {
+    background: #89b4fa;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
   }
 
   .empty-state {

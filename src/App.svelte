@@ -11,10 +11,11 @@
   import HotkeyManager from "./lib/HotkeyManager.svelte";
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
   import TaskPanel from "./lib/TaskPanel.svelte";
+  import MaintainerPanel from "./lib/MaintainerPanel.svelte";
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, maintainerPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus } from "./lib/stores";
 
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
@@ -23,6 +24,7 @@
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
   const taskPanelVisibleState = fromStore(taskPanelVisible);
+  const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   const onboardingCompleteState = fromStore(onboardingComplete);
   const projectsState = fromStore(projects);
   const activeSessionIdState = fromStore(activeSessionId);
@@ -38,6 +40,8 @@
         issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath, kind: action.kind, background: action.background };
       } else if (action?.type === "screenshot-to-session") {
         screenshotToNewSession();
+      } else if (action?.type === "toggle-maintainer-panel") {
+        maintainerPanelVisible.update(v => !v);
       }
     });
     return unsub;
@@ -210,6 +214,9 @@
       </main>
       {#if taskPanelVisibleState.current}
         <TaskPanel />
+      {/if}
+      {#if maintainerPanelVisibleState.current}
+        <MaintainerPanel />
       {/if}
     </div>
     <HotkeyManager />

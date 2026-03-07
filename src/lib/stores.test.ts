@@ -4,6 +4,7 @@ import {
   projects,
   activeSessionId,
   sessionStatuses,
+  maintainerStatuses,
   hotkeyAction,
   showKeyHints,
   appConfig,
@@ -88,6 +89,14 @@ describe('stores', () => {
 
   it('sidebarVisible defaults to true', () => {
     expect(get(sidebarVisible)).toBe(true);
+  });
+
+  describe('maintainerStatuses store', () => {
+    it('starts as empty map', () => {
+      const statuses = get(maintainerStatuses);
+      expect(statuses).toBeInstanceOf(Map);
+      expect(statuses.size).toBe(0);
+    });
   });
 
   describe('generateJumpLabels', () => {

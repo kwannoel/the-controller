@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-use crate::models::Project;
+use crate::models::{MaintainerReport, Project};
 
 pub struct Storage {
     base_dir: PathBuf,
@@ -154,12 +154,68 @@ impl Storage {
         fs::create_dir_all(&dir)?;
         fs::write(dir.join("agents.md"), content)
     }
+
+    /// Return the path to a project's maintainer reports directory.
+    pub fn maintainer_reports_dir(&self, project_id: Uuid) -> PathBuf {
+        self.project_dir(project_id).join("maintainer-reports")
+    }
+
+    /// Save a maintainer report to disk.
+    pub fn save_maintainer_report(&self, report: &MaintainerReport) -> std::io::Result<()> {
+        let dir = self.maintainer_reports_dir(report.project_id);
+        fs::create_dir_all(&dir)?;
+        let filename = format!("{}.json", report.id);
+        let json = serde_json::to_string_pretty(report)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        fs::write(dir.join(filename), json)
+    }
+
+    /// Load the most recent maintainer report for a project.
+    pub fn latest_maintainer_report(&self, project_id: Uuid) -> std::io::Result<Option<MaintainerReport>> {
+        let dir = self.maintainer_reports_dir(project_id);
+        if !dir.exists() {
+            return Ok(None);
+        }
+        let mut reports = self.load_maintainer_reports_from_dir(&dir)?;
+        reports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        Ok(reports.into_iter().next())
+    }
+
+    /// Load maintainer report history for a project, most recent first.
+    pub fn maintainer_report_history(&self, project_id: Uuid, limit: usize) -> std::io::Result<Vec<MaintainerReport>> {
+        let dir = self.maintainer_reports_dir(project_id);
+        if !dir.exists() {
+            return Ok(vec![]);
+        }
+        let mut reports = self.load_maintainer_reports_from_dir(&dir)?;
+        reports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        reports.truncate(limit);
+        Ok(reports)
+    }
+
+    fn load_maintainer_reports_from_dir(&self, dir: &std::path::Path) -> std::io::Result<Vec<MaintainerReport>> {
+        let mut reports = Vec::new();
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "json") {
+                let json = fs::read_to_string(&path)?;
+                if let Ok(report) = serde_json::from_str::<MaintainerReport>(&json) {
+                    reports.push(report);
+                }
+            }
+        }
+        Ok(reports)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::SessionConfig;
+    use crate::models::{
+        FindingAction, FindingSeverity, MaintainerFinding, MaintainerReport, ReportStatus,
+        SessionConfig,
+    };
     use tempfile::TempDir;
 
     fn make_storage(tmp: &TempDir) -> Storage {
@@ -175,6 +231,7 @@ mod tests {
             repo_path: repo_path.to_string(),
             created_at: "2026-02-28T00:00:00Z".to_string(),
             archived: false,
+            maintainer: crate::models::MaintainerConfig::default(),
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),
@@ -343,5 +400,69 @@ mod tests {
 
         let loaded = storage.load_project(project.id).expect("load");
         assert_eq!(loaded.name, "updated-name");
+    }
+
+    fn make_report(project_id: Uuid, timestamp: &str) -> MaintainerReport {
+        MaintainerReport {
+            id: Uuid::new_v4(),
+            project_id,
+            timestamp: timestamp.to_string(),
+            status: ReportStatus::Passing,
+            findings: vec![MaintainerFinding {
+                severity: FindingSeverity::Info,
+                category: "ci".to_string(),
+                description: "All checks pass".to_string(),
+                action_taken: FindingAction::Reported,
+            }],
+            summary: "All good".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_save_and_load_maintainer_report() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+        let report = make_report(project_id, "2026-03-07T00:00:00Z");
+        let report_id = report.id;
+
+        storage.save_maintainer_report(&report).expect("save");
+        let latest = storage.latest_maintainer_report(project_id).expect("load");
+        assert!(latest.is_some());
+        let latest = latest.unwrap();
+        assert_eq!(latest.id, report_id);
+        assert_eq!(latest.summary, "All good");
+    }
+
+    #[test]
+    fn test_latest_maintainer_report_returns_none_when_empty() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+
+        let latest = storage.latest_maintainer_report(project_id).expect("load");
+        assert!(latest.is_none());
+    }
+
+    #[test]
+    fn test_maintainer_report_history() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+
+        let r1 = make_report(project_id, "2026-03-07T01:00:00Z");
+        let r2 = make_report(project_id, "2026-03-07T02:00:00Z");
+        let r3 = make_report(project_id, "2026-03-07T03:00:00Z");
+
+        storage.save_maintainer_report(&r1).expect("save r1");
+        storage.save_maintainer_report(&r2).expect("save r2");
+        storage.save_maintainer_report(&r3).expect("save r3");
+
+        let history = storage.maintainer_report_history(project_id, 10).expect("history");
+        assert_eq!(history.len(), 3);
+        // Most recent first
+        assert_eq!(history[0].timestamp, "2026-03-07T03:00:00Z");
+        assert_eq!(history[1].timestamp, "2026-03-07T02:00:00Z");
+        assert_eq!(history[2].timestamp, "2026-03-07T01:00:00Z");
     }
 }

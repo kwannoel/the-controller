@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -226,6 +226,14 @@
           }
         }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
       }
+
+      listen<string>(`maintainer-status:${project.id}`, (event) => {
+        maintainerStatuses.update(m => {
+          const next = new Map(m);
+          next.set(project.id, event.payload as MaintainerStatus);
+          return next;
+        });
+      }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
     }
 
     return () => {
@@ -429,6 +437,13 @@
     return statuses.get(sessionId) ?? "idle";
   }
 
+  const maintainerStatusesState = fromStore(maintainerStatuses);
+  let maintainerStatusMap: Map<string, MaintainerStatus> = $derived(maintainerStatusesState.current);
+
+  function getMaintainerStatus(projectId: string): MaintainerStatus | null {
+    return maintainerStatusMap.get(projectId) ?? null;
+  }
+
 </script>
 
 <aside class="sidebar" bind:this={sidebarEl}>
@@ -446,6 +461,7 @@
       jumpState={jumpState}
       {projectJumpLabels}
       {getSessionStatus}
+      {getMaintainerStatus}
       onToggleProject={toggleProject}
       onProjectFocus={(projectId) => {
         focusTarget.set({ type: "project", projectId });
