@@ -3,13 +3,14 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { showToast } from "./toast";
-  import { focusTarget, projects, type GithubIssue, type Project, type FocusTarget } from "./stores";
+  import { focusTarget, projects, type GithubIssue, type Project, type FocusTarget, type TriageCategory } from "./stores";
 
   interface Props {
+    category: TriageCategory;
     onClose: () => void;
   }
 
-  let { onClose }: Props = $props();
+  let { category, onClose }: Props = $props();
 
   let issues: GithubIssue[] = $state([]);
   let currentIndex = $state(0);
@@ -47,11 +48,19 @@
     error = null;
     try {
       const allIssues = await invoke<GithubIssue[]>("list_github_issues", { repoPath: path });
-      // Only show issues without a priority label and not in-progress
-      issues = allIssues.filter(issue =>
-        !issue.labels.some(l => l.name === "in-progress") &&
-        !issue.labels.some(l => l.name.startsWith("priority:"))
-      );
+      // Filter based on triage category
+      issues = allIssues.filter(issue => {
+        if (issue.labels.some(l => l.name === "in-progress")) return false;
+        if (category === "untagged") {
+          return !issue.labels.some(l => l.name.startsWith("priority:"));
+        } else if (category === "high") {
+          return issue.labels.some(l => l.name === "priority: high");
+        } else {
+          // "low" includes both untagged and low-priority issues
+          return !issue.labels.some(l => l.name.startsWith("priority:")) ||
+            issue.labels.some(l => l.name === "priority: low");
+        }
+      });
       currentIndex = 0;
     } catch (e) {
       error = String(e);
@@ -131,7 +140,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="triage-container" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="triage-header">
-      <h2>Triage Issues</h2>
+      <h2>Triage: {category === "untagged" ? "Untagged" : category === "high" ? "High Priority" : "Untagged + Low"}</h2>
       <div class="triage-stats">
         <span class="stat high">{triageCount.high} high</span>
         <span class="stat low">{triageCount.low} low</span>

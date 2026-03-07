@@ -15,12 +15,14 @@
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, maintainerPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, maintainerPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import TriageCategoryPicker from "./lib/TriageCategoryPicker.svelte";
 
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
-  let triagePanelOpen = $state(false);
+  let triagePanelOpen: TriageCategory | null = $state(null);
+  let triageCategoryPickerOpen = $state(false);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
@@ -48,7 +50,15 @@
       } else if (action?.type === "trigger-maintainer-check") {
         triggerMaintainerCheck();
       } else if (action?.type === "toggle-triage-panel") {
-        triagePanelOpen = !triagePanelOpen;
+        if (action.category) {
+          triagePanelOpen = triagePanelOpen ? null : action.category;
+        } else {
+          if (triagePanelOpen) {
+            triagePanelOpen = null;
+          } else {
+            triageCategoryPickerOpen = true;
+          }
+        }
       }
     });
     return unsub;
@@ -264,7 +274,13 @@
       />
     {/if}
     {#if triagePanelOpen}
-      <TriagePanel onClose={() => { triagePanelOpen = false; }} />
+      <TriagePanel category={triagePanelOpen} onClose={() => { triagePanelOpen = null; }} />
+    {/if}
+    {#if triageCategoryPickerOpen}
+      <TriageCategoryPicker
+        onSelect={(cat) => { triageCategoryPickerOpen = false; triagePanelOpen = cat; }}
+        onClose={() => { triageCategoryPickerOpen = false; }}
+      />
     {/if}
   {/if}
 {/if}
