@@ -21,18 +21,16 @@ pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
 }
 
 /// Generate the next session label by finding the highest existing session number
-/// and returning "session-N-<6-char-uuid>" where N = max + 1. The UUID suffix
-/// guarantees uniqueness even when branches from deleted sessions persist on the
-/// remote.
+/// and returning "session-N" where N = max + 1. This avoids collisions when
+/// sessions are deleted or archived out of order.
 pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
     let max_num = sessions
         .iter()
         .filter_map(|s| s.label.strip_prefix("session-"))
-        .filter_map(|n| n.split('-').next()?.parse::<u32>().ok())
+        .filter_map(|n| n.parse::<u32>().ok())
         .max()
         .unwrap_or(0);
-    let short_id = &Uuid::new_v4().to_string()[..6];
-    format!("session-{}-{}", max_num + 1, short_id)
+    format!("session-{}", max_num + 1)
 }
 
 const DEFAULT_AGENTS_MD: &str = r#"# {name}
@@ -806,24 +804,6 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         return Err(format!("Failed to create GitHub repo: {}", stderr.trim()));
     }
 
-    // Configure repo to only allow squash merges
-    let merge_cfg = std::process::Command::new("gh")
-        .args([
-            "api",
-            &format!("repos/{{owner}}/{}", name),
-            "-X", "PATCH",
-            "-f", "allow_squash_merge=true",
-            "-f", "allow_merge_commit=false",
-            "-f", "allow_rebase_merge=false",
-        ])
-        .current_dir(&repo_path)
-        .output()
-        .map_err(|e| format!("Failed to configure merge settings: {}", e))?;
-    if !merge_cfg.status.success() {
-        let stderr = String::from_utf8_lossy(&merge_cfg.stderr);
-        return Err(format!("Failed to configure merge settings: {}", stderr.trim()));
-    }
-
     // Create project entry
     let project = Project {
         id: Uuid::new_v4(),
@@ -1150,9 +1130,7 @@ mod tests {
     #[test]
     fn test_next_session_label_empty() {
         let sessions: Vec<SessionConfig> = vec![];
-        let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-1-"), "expected session-1-<id>, got {}", label);
-        assert_eq!(label.len(), "session-1-".len() + 6); // 6-char UUID suffix
+        assert_eq!(next_session_label(&sessions), "session-1");
     }
 
     #[test]
@@ -1181,8 +1159,7 @@ mod tests {
                 done_commits: vec![],
             },
         ];
-        let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-3-"), "expected session-3-<id>, got {}", label);
+        assert_eq!(next_session_label(&sessions), "session-3");
     }
 
     #[test]
@@ -1224,8 +1201,7 @@ mod tests {
             },
         ];
         // Max is session-3, so next is session-4
-        let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-4-"), "expected session-4-<id>, got {}", label);
+        assert_eq!(next_session_label(&sessions), "session-4");
     }
 
     #[test]
@@ -1242,34 +1218,7 @@ mod tests {
             initial_prompt: None,
             done_commits: vec![],
         }];
-        let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-4-"), "expected session-4-<id>, got {}", label);
-    }
-
-    #[test]
-    fn test_next_session_label_parses_new_format() {
-        // Labels with UUID suffix (session-2-abc123) should parse correctly
-        let sessions = vec![SessionConfig {
-            id: Uuid::new_v4(),
-            label: "session-2-a1b2c3".to_string(),
-            worktree_path: None,
-            worktree_branch: None,
-            archived: false,
-            kind: "claude".to_string(),
-            github_issue: None,
-            initial_prompt: None,
-            done_commits: vec![],
-        }];
-        let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-3-"), "expected session-3-<id>, got {}", label);
-    }
-
-    #[test]
-    fn test_next_session_label_unique() {
-        let sessions: Vec<SessionConfig> = vec![];
-        let label1 = next_session_label(&sessions);
-        let label2 = next_session_label(&sessions);
-        assert_ne!(label1, label2, "labels should be unique across calls");
+        assert_eq!(next_session_label(&sessions), "session-4");
     }
 
     // --- render_agents_md tests ---
