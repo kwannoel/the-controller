@@ -20,6 +20,7 @@ pub fn run() {
         .manage(state::AppState::new())
         .setup(|app| {
             status_socket::start_listener(app.handle().clone());
+            maintainer::MaintainerScheduler::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

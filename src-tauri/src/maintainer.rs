@@ -1,10 +1,101 @@
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use chrono::Utc;
 use serde::Deserialize;
+use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
 use crate::models::{
     FindingAction, FindingSeverity, MaintainerFinding, MaintainerReport, ReportStatus,
 };
+use crate::state::AppState;
+
+pub struct MaintainerScheduler;
+
+impl MaintainerScheduler {
+    /// Start the scheduler loop in a background thread.
+    /// Checks every 60 seconds which projects are due for a health check.
+    pub fn start(app_handle: AppHandle) {
+        std::thread::spawn(move || {
+            let mut last_run: HashMap<Uuid, Instant> = HashMap::new();
+
+            loop {
+                std::thread::sleep(Duration::from_secs(60));
+
+                let state = match app_handle.try_state::<AppState>() {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                let projects = {
+                    let storage = match state.storage.lock() {
+                        Ok(s) => s,
+                        Err(_) => continue,
+                    };
+                    match storage.list_projects() {
+                        Ok(p) => p,
+                        Err(_) => continue,
+                    }
+                };
+
+                for project in &projects {
+                    if !project.maintainer.enabled || project.archived {
+                        continue;
+                    }
+
+                    let interval =
+                        Duration::from_secs(project.maintainer.interval_minutes * 60);
+                    let should_run = last_run
+                        .get(&project.id)
+                        .map_or(true, |t| t.elapsed() >= interval);
+
+                    if !should_run {
+                        continue;
+                    }
+
+                    last_run.insert(project.id, Instant::now());
+
+                    let _ = app_handle.emit(
+                        &format!("maintainer-status:{}", project.id),
+                        "running",
+                    );
+
+                    let result = run_health_check(&project.repo_path, project.id);
+
+                    match result {
+                        Ok(report) => {
+                            let status_str = match report.status {
+                                ReportStatus::Passing => "passing",
+                                ReportStatus::Warnings => "warnings",
+                                ReportStatus::Failing => "failing",
+                            };
+
+                            if let Ok(storage) = state.storage.lock() {
+                                let _ = storage.save_maintainer_report(&report);
+                            }
+
+                            let _ = app_handle.emit(
+                                &format!("maintainer-status:{}", project.id),
+                                status_str,
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "Maintainer check failed for {}: {}",
+                                project.name, e
+                            );
+                            let _ = app_handle.emit(
+                                &format!("maintainer-status:{}", project.id),
+                                "error",
+                            );
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
 
 pub fn build_health_check_prompt(repo_path: &str) -> String {
     format!(
