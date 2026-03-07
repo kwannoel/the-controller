@@ -95,6 +95,45 @@ pub enum MergeResponse {
     RebaseConflicts,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum FindingSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum FindingAction {
+    Reported,
+    Fixed,
+    PrCreated { url: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerFinding {
+    pub severity: FindingSeverity,
+    pub category: String,
+    pub description: String,
+    pub action_taken: FindingAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ReportStatus {
+    Passing,
+    Warnings,
+    Failing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerReport {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub timestamp: String,
+    pub status: ReportStatus,
+    pub findings: Vec<MaintainerFinding>,
+    pub summary: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +386,39 @@ mod tests {
         let deserialized: SessionInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.id, info.id);
         assert_eq!(deserialized.status, SessionStatus::Running);
+    }
+
+    #[test]
+    fn test_maintainer_finding_serialization() {
+        let finding = MaintainerFinding {
+            severity: FindingSeverity::Warning,
+            category: "dependencies".to_string(),
+            description: "Outdated dependency found".to_string(),
+            action_taken: FindingAction::Reported,
+        };
+        let json = serde_json::to_string(&finding).expect("serialize");
+        let deserialized: MaintainerFinding = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.category, "dependencies");
+    }
+
+    #[test]
+    fn test_maintainer_report_serialization() {
+        let report = MaintainerReport {
+            id: Uuid::new_v4(),
+            project_id: Uuid::new_v4(),
+            timestamp: "2026-03-07T00:00:00Z".to_string(),
+            status: ReportStatus::Warnings,
+            findings: vec![MaintainerFinding {
+                severity: FindingSeverity::Info,
+                category: "ci".to_string(),
+                description: "CI pipeline healthy".to_string(),
+                action_taken: FindingAction::Fixed,
+            }],
+            summary: "One finding detected".to_string(),
+        };
+        let json = serde_json::to_string(&report).expect("serialize");
+        let deserialized: MaintainerReport = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.findings.len(), 1);
+        assert_eq!(deserialized.summary, "One finding detected");
     }
 }
