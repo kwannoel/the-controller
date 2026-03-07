@@ -144,6 +144,25 @@ describe('HotkeyManager', () => {
       });
     });
 
+    it('m submits codex merge command without needing extra Enter', () => {
+      projects.set([
+        {
+          ...testProject,
+          sessions: [
+            { ...testProject.sessions[0], kind: 'codex' },
+          ],
+        },
+      ]);
+      activeSessionId.set('sess-1');
+
+      pressKey('m');
+
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: '$finishing-a-development-branch\r',
+      });
+    });
+
     it('modifier keys alone do not dispatch', () => {
       const initial = get(activeSessionId);
       pressKey('Shift');

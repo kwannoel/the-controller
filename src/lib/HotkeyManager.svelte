@@ -293,7 +293,7 @@
         if (activeId) {
           const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
           const sess = proj?.sessions.find((s) => s.id === activeId);
-          const eol = sess?.kind === "codex" ? "\n" : "\r";
+          const eol = "\r";
           const prompt = sess?.kind === "codex"
             ? `$finishing-a-development-branch`
             : `/finishing-a-development-branch`;
