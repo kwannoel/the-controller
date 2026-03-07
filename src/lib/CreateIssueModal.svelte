@@ -11,64 +11,68 @@
   let { onSubmit, onClose }: Props = $props();
 
   let title = $state("");
-  let priority: Priority = $state("low");
+  let stage: "title" | "priority" = $state("title");
   let titleInput: HTMLInputElement | undefined = $state();
+  let overlayEl: HTMLDivElement | undefined = $state();
 
   onMount(() => {
     titleInput?.focus();
   });
 
-  function submit() {
-    if (!title.trim()) return;
-    onSubmit(title.trim(), priority);
-  }
-
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      onClose();
-    } else if (e.key === "Enter") {
+      if (stage === "priority") {
+        stage = "title";
+        requestAnimationFrame(() => titleInput?.focus());
+      } else {
+        onClose();
+      }
+      return;
+    }
+
+    if (stage === "title" && e.key === "Enter") {
       e.preventDefault();
-      submit();
+      if (!title.trim()) return;
+      stage = "priority";
+      requestAnimationFrame(() => overlayEl?.focus());
+      return;
+    }
+
+    if (stage === "priority") {
+      if (e.key === "j") {
+        e.preventDefault();
+        onSubmit(title.trim(), "low");
+      } else if (e.key === "k") {
+        e.preventDefault();
+        onSubmit(title.trim(), "high");
+      }
     }
   }
 </script>
 
-<div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div class="overlay" bind:this={overlayEl} tabindex="0" onclick={onClose} onkeydown={handleKeydown} role="dialog">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">New GitHub Issue</div>
-    <input
-      bind:this={titleInput}
-      bind:value={title}
-      placeholder="Issue title"
-      class="input"
-    />
-    <div class="priority-row">
-      <span class="priority-label">Priority:</span>
-      <div class="priority-buttons">
-        <button
-          class="priority-btn high"
-          class:selected={priority === "high"}
-          onclick={() => priority = "high"}
-          type="button"
-        >High</button>
-        <button
-          class="priority-btn low"
-          class:selected={priority === "low"}
-          onclick={() => priority = "low"}
-          type="button"
-        >Low</button>
+    {#if stage === "title"}
+      <input
+        bind:this={titleInput}
+        bind:value={title}
+        placeholder="Issue title"
+        class="input"
+      />
+      <div class="hint">Press Enter to continue</div>
+    {:else}
+      <div class="title-preview">{title}</div>
+      <div class="priority-prompt">
+        <span class="priority-key high">k</span> High
+        <span class="priority-key low">j</span> Low
       </div>
-    </div>
-    <button
-      class="btn-primary"
-      onclick={submit}
-      disabled={!title.trim()}
-    >
-      Create Issue
-    </button>
+      <div class="hint">Press Esc to go back</div>
+    {/if}
   </div>
 </div>
 
@@ -82,6 +86,7 @@
     justify-content: center;
     padding-top: 20vh;
     z-index: 100;
+    outline: none;
   }
   .modal {
     background: #1e1e2e;
@@ -112,49 +117,46 @@
   .input:focus {
     border-color: #89b4fa;
   }
-  .btn-primary {
-    background: #89b4fa;
-    color: #1e1e2e;
-    border: none;
-    padding: 10px;
-    border-radius: 6px;
+  .hint {
+    color: #585b70;
+    font-size: 12px;
+    text-align: center;
+  }
+  .title-preview {
+    color: #cdd6f4;
     font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
+    padding: 10px 12px;
+    background: #313244;
+    border-radius: 6px;
   }
-  .btn-primary:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .priority-row {
+  .priority-prompt {
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    gap: 20px;
+    font-size: 15px;
+    color: #cdd6f4;
+    padding: 8px 0;
   }
-  .priority-label {
-    color: #a6adc8;
-    font-size: 13px;
-    flex-shrink: 0;
-  }
-  .priority-buttons {
-    display: flex;
-    gap: 6px;
-  }
-  .priority-btn {
+  .priority-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
     background: #313244;
-    color: #a6adc8;
     border: 1px solid #45475a;
-    padding: 4px 12px;
     border-radius: 4px;
     font-size: 13px;
-    cursor: pointer;
+    font-weight: 600;
+    margin-right: 4px;
   }
-  .priority-btn.high.selected {
-    border-color: #f38ba8;
+  .priority-key.high {
     color: #f38ba8;
+    border-color: #f38ba8;
   }
-  .priority-btn.low.selected {
-    border-color: #a6e3a1;
+  .priority-key.low {
     color: #a6e3a1;
+    border-color: #a6e3a1;
   }
 </style>
