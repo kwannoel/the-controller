@@ -37,7 +37,9 @@ pub fn extract_json(output: &str) -> Option<&str> {
         }
     }
 
-    // Fall back to finding raw { ... }
+    // Best-effort heuristic: find first '{' and last '}'. If the output contains
+    // extra '}' characters in trailing prose, this may extract an invalid slice.
+    // The ```json block path above is more reliable.
     if let Some(start) = output.find('{') {
         if let Some(end) = output.rfind('}') {
             if end >= start {
@@ -202,6 +204,19 @@ mod tests {
         let result = parse_report_output(output, project_id);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().summary, "ok");
+    }
+
+    #[test]
+    fn test_parse_report_output_pr_created_action() {
+        let output = r#"{"findings":[{"severity":"Info","category":"ci","description":"opened fix","action":{"pr_created":"https://github.com/owner/repo/pull/1"}}],"summary":"pr opened"}"#;
+        let project_id = Uuid::new_v4();
+        let result = parse_report_output(output, project_id);
+        assert!(result.is_ok());
+        let report = result.unwrap();
+        assert!(matches!(
+            &report.findings[0].action_taken,
+            FindingAction::PrCreated { url } if url == "https://github.com/owner/repo/pull/1"
+        ));
     }
 
     #[test]
