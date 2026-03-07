@@ -207,9 +207,11 @@
           markSession(session.id, "exited");
         }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
 
-        // Cleanup: session finished its branch and requests worktree deletion.
+        // Cleanup: backend already deleted the session and worktree, just refresh.
         listen<string>(`session-cleanup:${session.id}`, () => {
-          closeSession(project.id, session.id, true);
+          clearSessionTracking(session.id);
+          activeSessionId.update(current => current === session.id ? null : current);
+          refreshProjectLists();
         }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
 
         // Hook-based status: precise idle/working from Claude Code hooks.
