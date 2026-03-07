@@ -25,25 +25,29 @@ impl TmuxManager {
             .unwrap_or(false)
     }
 
-    pub fn create_session(
+    /// Build the argument list for `tmux new-session`.
+    /// Extracted for testability.
+    fn build_create_args(
         session_id: Uuid,
         working_dir: &str,
         command: &str,
         continue_session: bool,
         initial_prompt: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Vec<String> {
         let name = Self::session_name(session_id);
         let mut args = vec![
             "new-session".to_string(),
             "-d".to_string(),
             "-s".to_string(),
-            name.clone(),
+            name,
             "-c".to_string(),
             working_dir.to_string(),
             "-x".to_string(),
             "80".to_string(),
             "-y".to_string(),
             "24".to_string(),
+            "-e".to_string(),
+            format!("THE_CONTROLLER_SESSION_ID={}", session_id),
             command.to_string(),
         ];
         args.extend(crate::session_args::build_session_args(
@@ -52,6 +56,18 @@ impl TmuxManager {
             continue_session,
             initial_prompt,
         ));
+        args
+    }
+
+    pub fn create_session(
+        session_id: Uuid,
+        working_dir: &str,
+        command: &str,
+        continue_session: bool,
+        initial_prompt: Option<&str>,
+    ) -> Result<(), String> {
+        let args = Self::build_create_args(session_id, working_dir, command, continue_session, initial_prompt);
+        let name = Self::session_name(session_id);
         let output = Command::new(TMUX_BIN)
             .args(&args)
             .env("THE_CONTROLLER_SESSION_ID", session_id.to_string())
@@ -187,6 +203,29 @@ mod tests {
             TmuxManager::session_name(id),
             "ctrl-550e8400-e29b-41d4-a716-446655440000"
         );
+    }
+
+    #[test]
+    fn test_create_args_passes_env_via_tmux_e_flag() {
+        // The -e flag ensures THE_CONTROLLER_SESSION_ID is set inside the tmux
+        // session, not just on the tmux client process. Without -e, the env var
+        // doesn't propagate when the tmux server is already running.
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let args = TmuxManager::build_create_args(id, "/tmp", "claude", false, None);
+
+        let e_idx = args.iter().position(|a| a == "-e")
+            .expect("-e flag must be present in tmux new-session args");
+        let env_val = &args[e_idx + 1];
+        assert_eq!(
+            env_val,
+            &format!("THE_CONTROLLER_SESSION_ID={}", id),
+            "-e must be followed by THE_CONTROLLER_SESSION_ID=<uuid>"
+        );
+
+        // -e must appear before the shell command (which is the first
+        // positional arg after all flags)
+        let cmd_idx = args.iter().position(|a| a == "claude").unwrap();
+        assert!(e_idx < cmd_idx, "-e flag must come before the shell command");
     }
 
     #[test]
