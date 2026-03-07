@@ -145,13 +145,11 @@
         kind: "claude",
       });
 
-      await activateNewSession(sessionId, projectId);
-
-      // 3. Focus the terminal
-      focusTerminalSoon();
-
-      // 4. Listen directly for idle hook so we don't miss the first idle event
-      // while Sidebar is still wiring listeners for a newly created session.
+      // 3. Register idle listener IMMEDIATELY after session creation.
+      // create_session is synchronous (blocks main thread) while Claude Code
+      // starts in tmux — if worktree creation is slow, Claude may already be
+      // idle by the time JS resumes. Registering the listener before any other
+      // async work ensures we catch events queued during the blocked period.
       let done = false;
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
       const unlisten = await listen<string>(`session-status-hook:${sessionId}`, (event) => {
@@ -168,6 +166,11 @@
         done = true;
         unlisten();
       }, 30000);
+
+      await activateNewSession(sessionId, projectId);
+
+      // 4. Focus the terminal
+      focusTerminalSoon();
     } catch (e) {
       showToast(String(e), "error");
     }
