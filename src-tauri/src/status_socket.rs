@@ -1,7 +1,10 @@
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::{UnixListener, UnixStream};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
+
+use crate::state::AppState;
+use crate::worktree::WorktreeManager;
 
 const SOCKET_PATH: &str = "/tmp/the-controller.sock";
 
@@ -75,13 +78,13 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
             Ok(msg) => {
                 let msg = msg.trim();
                 if let Some((status, session_id)) = parse_status_message(msg) {
-                    let event_name = if status == "cleanup" {
-                        format!("session-cleanup:{}", session_id)
+                    if status == "cleanup" {
+                        handle_cleanup(app_handle, session_id);
                     } else {
-                        format!("session-status-hook:{}", session_id)
-                    };
-                    if let Err(e) = app_handle.emit(&event_name, status) {
-                        eprintln!("Failed to emit {}: {}", event_name, e);
+                        let event_name = format!("session-status-hook:{}", session_id);
+                        if let Err(e) = app_handle.emit(&event_name, status) {
+                            eprintln!("Failed to emit {}: {}", event_name, e);
+                        }
                     }
                 }
             }
@@ -90,6 +93,56 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
                 break;
             }
         }
+    }
+}
+
+/// Handle a cleanup message by deleting the session and worktree directly
+/// on the backend, then telling the frontend to refresh.
+fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
+    let state = match app_handle.try_state::<AppState>() {
+        Some(s) => s,
+        None => {
+            eprintln!("cleanup: AppState not available");
+            return;
+        }
+    };
+
+    // Close the PTY / kill tmux session
+    if let Ok(mut pty_manager) = state.pty_manager.lock() {
+        let _ = pty_manager.close_session(session_id);
+    }
+
+    // Find and remove the session from its project, delete worktree
+    if let Ok(storage) = state.storage.lock() {
+        if let Ok(mut projects) = storage.list_projects() {
+            for project in &mut projects {
+                if let Some(pos) = project.sessions.iter().position(|s| s.id == session_id) {
+                    let session = project.sessions.remove(pos);
+                    if let Err(e) = storage.save_project(project) {
+                        eprintln!("cleanup: failed to save project: {}", e);
+                    }
+                    // Delete the worktree
+                    if let (Some(wt_path), Some(branch)) =
+                        (&session.worktree_path, &session.worktree_branch)
+                    {
+                        if let Err(e) = WorktreeManager::remove_worktree(
+                            wt_path,
+                            &project.repo_path,
+                            branch,
+                        ) {
+                            eprintln!("cleanup: failed to remove worktree: {}", e);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Tell the frontend to refresh its project list
+    let event_name = format!("session-cleanup:{}", session_id);
+    if let Err(e) = app_handle.emit(&event_name, "cleanup") {
+        eprintln!("Failed to emit {}: {}", event_name, e);
     }
 }
 
