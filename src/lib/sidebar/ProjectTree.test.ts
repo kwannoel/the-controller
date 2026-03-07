@@ -68,7 +68,6 @@ describe("ProjectTree", () => {
       jumpState: { phase: "project" } as JumpPhase,
       projectJumpLabels: ["z"],
       getSessionStatus: (id: string) => statuses.get(id) ?? "idle",
-      getMaintainerStatus: () => null,
       onToggleProject,
       onProjectFocus,
       onSessionFocus,

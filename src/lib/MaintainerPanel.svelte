@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, type Project, type FocusTarget, type MaintainerReport } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus } from "./stores";
   import { showToast } from "./toast";
 
   let report: MaintainerReport | null = $state(null);
@@ -98,6 +98,12 @@
     return () => clearInterval(id);
   });
 
+  const maintainerStatusesState = fromStore(maintainerStatuses);
+  let maintainerStatusMap: Map<string, MaintainerStatus> = $derived(maintainerStatusesState.current);
+  let maintainerStatus: MaintainerStatus | null = $derived(
+    project ? (maintainerStatusMap.get(project.id) ?? null) : null
+  );
+
   function severityColor(severity: string): string {
     switch (severity) {
       case "error": return "#f38ba8";
@@ -117,6 +123,11 @@
 <aside class="maintainer-panel">
   <div class="panel-header">
     <span class="panel-title">Maintainer</span>
+    {#if maintainerStatus && maintainerStatus !== "idle"}
+      <span class="maintainer-status" class:passing={maintainerStatus === "passing"} class:warnings={maintainerStatus === "warnings"} class:failing={maintainerStatus === "failing"} class:running={maintainerStatus === "running"} class:error={maintainerStatus === "error"}>
+        {#if maintainerStatus === "running"}Running…{:else if maintainerStatus === "passing"}Passing{:else if maintainerStatus === "warnings"}Warnings{:else if maintainerStatus === "failing"}Failing{:else if maintainerStatus === "error"}Error{/if}
+      </span>
+    {/if}
     {#if project}
       <button class="btn-toggle" class:enabled={project.maintainer.enabled} onclick={toggleMaintainer}>
         {project.maintainer.enabled ? "ON" : "OFF"}
@@ -281,6 +292,20 @@
   .finding-category { color: #89b4fa; font-size: 11px; }
   .finding-desc { color: #cdd6f4; }
   .finding-action { color: #6c7086; font-size: 11px; font-style: italic; }
+
+  .maintainer-status {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: #6c7086;
+  }
+
+  .maintainer-status.passing { color: #a6e3a1; }
+  .maintainer-status.warnings { color: #f9e2af; }
+  .maintainer-status.failing { color: #f38ba8; }
+  .maintainer-status.error { color: #f38ba8; }
+  .maintainer-status.running { color: #89b4fa; }
 
   .panel-actions {
     padding: 12px 16px;

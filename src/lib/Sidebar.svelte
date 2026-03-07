@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -450,12 +450,6 @@
     return statuses.get(sessionId) ?? "idle";
   }
 
-  const maintainerStatusesState = fromStore(maintainerStatuses);
-  let maintainerStatusMap: Map<string, MaintainerStatus> = $derived(maintainerStatusesState.current);
-
-  function getMaintainerStatus(projectId: string): MaintainerStatus | null {
-    return maintainerStatusMap.get(projectId) ?? null;
-  }
 
 </script>
 
@@ -474,7 +468,6 @@
       jumpState={jumpState}
       {projectJumpLabels}
       {getSessionStatus}
-      {getMaintainerStatus}
       onToggleProject={toggleProject}
       onProjectFocus={(projectId) => {
         focusTarget.set({ type: "project", projectId });
