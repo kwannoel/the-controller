@@ -13,7 +13,7 @@ import {
   sessionStatuses,
   showKeyHints,
   sidebarVisible,
-  taskPanelVisible,
+
 } from "./lib/stores";
 
 const mocks = vi.hoisted(() => ({
@@ -40,7 +40,7 @@ vi.mock("./lib/Onboarding.svelte", () => ({ default: function MockOnboarding() {
 vi.mock("./lib/Toast.svelte", () => ({ default: function MockToast() {} }));
 vi.mock("./lib/HotkeyManager.svelte", () => ({ default: function MockHotkeyManager() {} }));
 vi.mock("./lib/HotkeyHelp.svelte", () => ({ default: function MockHotkeyHelp() {} }));
-vi.mock("./lib/TaskPanel.svelte", () => ({ default: function MockTaskPanel() {} }));
+
 vi.mock("./lib/CreateIssueModal.svelte", () => ({ default: function MockCreateIssueModal() {} }));
 vi.mock("./lib/IssuePickerModal.svelte", () => ({ default: function MockIssuePickerModal() {} }));
 
@@ -71,7 +71,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set(null);
     showKeyHints.set(false);
     sidebarVisible.set(true);
-    taskPanelVisible.set(false);
+
     onboardingComplete.set(true);
     appConfig.set({ projects_root: "/tmp/projects" });
     sessionStatuses.set(new Map());

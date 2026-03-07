@@ -10,13 +10,13 @@
   import Toast from "./lib/Toast.svelte";
   import HotkeyManager from "./lib/HotkeyManager.svelte";
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
-  import TaskPanel from "./lib/TaskPanel.svelte";
+
   import MaintainerPanel from "./lib/MaintainerPanel.svelte";
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, maintainerPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, maintainerPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus } from "./lib/stores";
 
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
@@ -25,7 +25,7 @@
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
-  const taskPanelVisibleState = fromStore(taskPanelVisible);
+
   const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   const onboardingCompleteState = fromStore(onboardingComplete);
   const projectsState = fromStore(projects);
@@ -262,9 +262,7 @@
       <main class="terminal-area">
         <TerminalManager />
       </main>
-      {#if taskPanelVisibleState.current}
-        <TaskPanel />
-      {/if}
+
       {#if maintainerPanelVisibleState.current}
         <MaintainerPanel />
       {/if}

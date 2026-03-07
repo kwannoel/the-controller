@@ -4,6 +4,7 @@ export interface GithubIssue {
   number: number;
   title: string;
   url: string;
+  body?: string | null;
   labels: { name: string }[];
 }
 
@@ -99,7 +100,7 @@ export const showKeyHints = writable<boolean>(false);
 export const archiveView = writable<boolean>(false);
 export const archivedProjects = writable<Project[]>([]);
 export const sidebarVisible = writable<boolean>(true);
-export const taskPanelVisible = writable<boolean>(false);
+
 export const expandedProjects = writable<Set<string>>(new Set());
 
 export function dispatchHotkeyAction(action: NonNullable<HotkeyAction>) {

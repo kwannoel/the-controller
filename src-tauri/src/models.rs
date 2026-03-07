@@ -78,6 +78,8 @@ pub struct GithubIssue {
     pub number: u64,
     pub title: String,
     pub url: String,
+    #[serde(default)]
+    pub body: Option<String>,
     pub labels: Vec<GithubLabel>,
 }
 
@@ -248,6 +250,7 @@ mod tests {
                 number: 22,
                 title: "Assign GitHub issue to a session".to_string(),
                 url: "https://github.com/kwannoel/the-controller/issues/22".to_string(),
+                body: None,
                 labels: vec![],
             }),
             initial_prompt: None,
@@ -329,6 +332,7 @@ mod tests {
             number: 42,
             title: "Bug fix".to_string(),
             url: "https://github.com/owner/repo/issues/42".to_string(),
+            body: None,
             labels: vec![
                 GithubLabel { name: "bug".to_string() },
                 GithubLabel { name: "priority".to_string() },

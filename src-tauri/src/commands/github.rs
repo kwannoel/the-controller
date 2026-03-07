@@ -64,7 +64,7 @@ async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, Stri
             "--repo",
             &nwo,
             "--json",
-            "number,title,url,labels",
+            "number,title,url,body,labels",
             "--limit",
             "50",
         ])
@@ -180,6 +180,7 @@ pub(crate) async fn create_github_issue(
         number,
         title,
         url,
+        body: Some(body),
         labels: vec![],
     };
 

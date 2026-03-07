@@ -9,7 +9,7 @@
     generateJumpLabels,
     JUMP_KEYS,
     sidebarVisible,
-    taskPanelVisible,
+
     maintainerPanelVisible,
     archiveView,
     archivedProjects,
@@ -306,7 +306,7 @@
         dispatchCreateIssue();
         return true;
       case "t":
-        taskPanelVisible.update(v => !v);
+        dispatchAction({ type: "toggle-triage-panel" });
         return true;
       case "l":
       case "Enter":
@@ -340,9 +340,7 @@
       case "b":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
-      case "p":
-        dispatchAction({ type: "toggle-triage-panel" });
-        return true;
+
       case "S":
         dispatchAction({ type: "screenshot-to-session" });
         return true;

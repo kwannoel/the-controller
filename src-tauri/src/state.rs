@@ -102,6 +102,7 @@ mod tests {
             number: 1,
             title: "Test".to_string(),
             url: "https://github.com/owner/repo/issues/1".to_string(),
+            body: None,
             labels: vec![],
         }];
         cache.insert("/some/repo".to_string(), issues.clone());
@@ -138,6 +139,7 @@ mod tests {
             number: 5,
             title: "New".to_string(),
             url: "https://github.com/o/r/issues/5".to_string(),
+            body: None,
             labels: vec![],
         };
         cache.add_issue("/repo", issue);
@@ -153,6 +155,7 @@ mod tests {
             number: 5,
             title: "New".to_string(),
             url: "https://github.com/o/r/issues/5".to_string(),
+            body: None,
             labels: vec![],
         };
         cache.add_issue("/repo", issue);
@@ -166,6 +169,7 @@ mod tests {
             number: 1,
             title: "Test".to_string(),
             url: "https://github.com/o/r/issues/1".to_string(),
+            body: None,
             labels: vec![],
         }]);
         cache.add_label("/repo", 1, "in-progress");
@@ -181,6 +185,7 @@ mod tests {
             number: 1,
             title: "Test".to_string(),
             url: "https://github.com/o/r/issues/1".to_string(),
+            body: None,
             labels: vec![GithubLabel { name: "in-progress".to_string() }],
         }]);
         cache.remove_label("/repo", 1, "in-progress");

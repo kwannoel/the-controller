@@ -170,6 +170,9 @@
         >
           <div class="card-number">#{currentIssue.number}</div>
           <div class="card-title">{currentIssue.title}</div>
+          {#if currentIssue.body}
+            <div class="card-body">{currentIssue.body}</div>
+          {/if}
           {#if currentIssue.labels.length > 0}
             <div class="card-labels">
               {#each currentIssue.labels as label}
@@ -346,6 +349,17 @@
     color: #cdd6f4;
     font-size: 16px;
     line-height: 1.4;
+  }
+
+  .card-body {
+    color: #a6adc8;
+    font-size: 13px;
+    line-height: 1.5;
+    max-height: 160px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    border-top: 1px solid #313244;
+    padding-top: 8px;
   }
 
   .card-labels {
