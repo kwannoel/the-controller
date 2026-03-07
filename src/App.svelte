@@ -189,9 +189,8 @@
       showToast("Capturing screenshot...", "info");
       const screenshotPath: string = await invoke("capture_app_screenshot");
 
-      // Open in Preview so user can verify the capture
-      const { openPath } = await import("@tauri-apps/plugin-opener");
-      await openPath(screenshotPath);
+      // Open in Preview so user can verify the capture (fire-and-forget)
+      import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
 
       // 2. Create a new session
       const sessionId: string = await invoke("create_session", {
@@ -212,6 +211,7 @@
         if (timeoutId) clearTimeout(timeoutId);
         unlisten();
         // Send bracket paste to trigger Claude Code's clipboard image reader
+        showToast(`Idle hook fired for ${sessionId}, sending bracket paste`, "info");
         invoke("write_to_pty", { sessionId, data: "\x1b[200~\x1b[201~" });
       });
 

@@ -340,10 +340,7 @@
       case "b":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
-
-      case "S":
-        dispatchAction({ type: "screenshot-to-session" });
-        return true;
+      // Cmd+S (screenshot) is handled earlier in onKeydown
       case "?":
         dispatchAction({ type: "toggle-help" });
         return true;
@@ -355,6 +352,14 @@
   function onKeydown(e: KeyboardEvent) {
     // Ignore modifier-only keypresses
     if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+
+    // Cmd+S: screenshot (works from any context, including terminal)
+    if (e.metaKey && e.key === "s") {
+      e.stopPropagation();
+      e.preventDefault();
+      dispatchAction({ type: "screenshot-to-session" });
+      return;
+    }
 
     // Jump mode intercepts all keys
     if (jumpActive) {

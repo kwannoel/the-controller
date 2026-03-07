@@ -25,7 +25,7 @@
     { key: "s", description: "Toggle sidebar" },
     { key: "t", description: "Triage issues (swipe high/low priority)" },
     { key: "i", description: "Create GitHub issue for focused project" },
-    { key: "S", description: "Screenshot app → new session with image" },
+    { key: "⌘S", description: "Screenshot app → new session with image" },
     { key: "b", description: "Toggle background agent panel" },
     { key: "o", description: "Toggle maintainer on/off (when panel open)" },
     { key: "r", description: "Run maintainer check now (when panel open)" },
