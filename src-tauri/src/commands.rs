@@ -202,10 +202,19 @@ pub fn load_project(
     // Return existing project if one with the same repo_path exists
     if let Ok(existing) = storage.list_projects() {
         if let Some(project) = existing.iter().find(|p| p.repo_path == repo_path) {
+            if project.archived {
+                // Unarchive the project so it becomes active again
+                let mut unarchived = project.clone();
+                unarchived.archived = false;
+                storage
+                    .save_project(&unarchived)
+                    .map_err(|e| e.to_string())?;
+                return Ok(unarchived);
+            }
             return Ok(project.clone());
         }
-        // Reject duplicate project names when creating new
-        if existing.iter().any(|p| p.name == name) {
+        // Reject duplicate project names when creating new (skip archived projects)
+        if existing.iter().any(|p| p.name == name && !p.archived) {
             return Err(format!("A project named '{}' already exists", name));
         }
     }

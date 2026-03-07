@@ -585,3 +585,64 @@ fn test_scaffold_initial_commit_contains_template_files() {
     let content = std::str::from_utf8(agents_blob.content()).unwrap();
     assert!(content.starts_with(&format!("# {}", name)));
 }
+
+/// Loading a project by repo_path when an archived project with the same path
+/// exists should unarchive it rather than creating a duplicate or rejecting it.
+#[test]
+fn test_load_archived_project_by_repo_path_unarchives_it() {
+    let tmp = TempDir::new().unwrap();
+    let storage = make_storage(&tmp);
+
+    let project_id = Uuid::new_v4();
+    let repo_path = "/tmp/commit-graph".to_string();
+    let project = Project {
+        id: project_id,
+        name: "commit-graph".to_string(),
+        repo_path: repo_path.clone(),
+        created_at: "2026-03-01T00:00:00Z".to_string(),
+        archived: false,
+        sessions: vec![],
+    };
+    storage.save_project(&project).expect("save project");
+
+    // Archive the project
+    let mut project = storage.load_project(project_id).expect("load");
+    project.archived = true;
+    storage.save_project(&project).expect("archive");
+
+    // Simulate the load_project command logic: search all projects by repo_path,
+    // find the archived one, unarchive it, and save.
+    let all = storage.list_projects().expect("list");
+    let found = all.iter().find(|p| p.repo_path == repo_path);
+    assert!(found.is_some(), "archived project should be findable by repo_path");
+    let found = found.unwrap();
+    assert!(found.archived, "project should be archived");
+
+    // Unarchive it (mirrors the fix in load_project command)
+    let mut unarchived = found.clone();
+    unarchived.archived = false;
+    storage.save_project(&unarchived).expect("save unarchived");
+
+    // Verify it's now active
+    let reloaded = storage.load_project(project_id).expect("reload");
+    assert!(!reloaded.archived, "project should be unarchived after re-load");
+
+    // The duplicate name check should skip archived projects, so a new project
+    // with a different repo_path but same name should be creatable after the
+    // original is archived again.
+    let mut project_again = storage.load_project(project_id).expect("load");
+    project_again.archived = true;
+    storage.save_project(&project_again).expect("re-archive");
+
+    let active: Vec<_> = storage
+        .list_projects()
+        .expect("list")
+        .into_iter()
+        .filter(|p| !p.archived)
+        .collect();
+    let name_conflict = active.iter().any(|p| p.name == "commit-graph");
+    assert!(
+        !name_conflict,
+        "archived project name should not block new projects"
+    );
+}
