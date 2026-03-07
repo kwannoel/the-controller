@@ -1078,6 +1078,89 @@ fn discover_branch_commits(worktree_path: &str) -> Result<Vec<CommitInfo>, Strin
     Ok(commits)
 }
 
+pub(crate) fn validate_maintainer_interval(minutes: u64) -> Result<(), String> {
+    if minutes < 5 {
+        return Err("Interval must be at least 5 minutes".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn configure_maintainer(
+    state: State<'_, AppState>,
+    project_id: String,
+    enabled: bool,
+    interval_minutes: u64,
+) -> Result<(), String> {
+    validate_maintainer_interval(interval_minutes)?;
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+    project.maintainer.enabled = enabled;
+    project.maintainer.interval_minutes = interval_minutes;
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_maintainer_status(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Option<crate::models::MaintainerReport>, String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    storage
+        .latest_maintainer_report(project_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_maintainer_history(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::MaintainerReport>, String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    storage
+        .maintainer_report_history(project_id, 20)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn trigger_maintainer_check(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+) -> Result<crate::models::MaintainerReport, String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+
+    let repo_path = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+        project.repo_path.clone()
+    };
+
+    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "running");
+
+    let report = crate::maintainer::run_health_check(&repo_path, project_id)?;
+
+    {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        storage
+            .save_maintainer_report(&report)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let status_str = match report.status {
+        crate::models::ReportStatus::Passing => "passing",
+        crate::models::ReportStatus::Warnings => "warnings",
+        crate::models::ReportStatus::Failing => "failing",
+    };
+    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), status_str);
+
+    Ok(report)
+}
+
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     for name in &["refs/heads/master", "refs/heads/main"] {
         if let Ok(reference) = repo.find_reference(name) {
@@ -1320,5 +1403,16 @@ mod tests {
     #[test]
     fn test_project_name_single_char() {
         assert!(validate_project_name("a").is_ok());
+    }
+
+    // --- validate_maintainer_interval tests ---
+
+    #[test]
+    fn test_validate_interval_minutes() {
+        assert!(validate_maintainer_interval(5).is_ok());
+        assert!(validate_maintainer_interval(60).is_ok());
+        assert!(validate_maintainer_interval(1440).is_ok());
+        assert!(validate_maintainer_interval(0).is_err());
+        assert!(validate_maintainer_interval(4).is_err());
     }
 }

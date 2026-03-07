@@ -63,6 +63,10 @@ pub fn run() {
             commands::copy_image_file_to_clipboard,
             commands::capture_app_screenshot,
             commands::get_session_commits,
+            commands::configure_maintainer,
+            commands::get_maintainer_status,
+            commands::get_maintainer_history,
+            commands::trigger_maintainer_check,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
