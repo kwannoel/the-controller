@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
@@ -191,17 +192,27 @@
       // Open in Preview so user can verify the capture (fire-and-forget)
       import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
 
-      // 2. Create a new session with initial prompt referencing the screenshot file.
-      // Claude Code can read image files directly via its Read tool — no need for
-      // clipboard tricks or idle-hook timing.
+      // 2. Create a new session without initial prompt — we'll paste into
+      // the input once Claude is ready so the user can add context first.
       const sessionId: string = await invoke("create_session", {
         projectId,
         kind: "claude",
-        initialPrompt: `I just took a screenshot of the app. The screenshot is saved at: ${screenshotPath}\nPlease read the screenshot image and help me with what you see.`,
       });
 
       await activateNewSession(sessionId, projectId);
       focusTerminalSoon();
+
+      // 3. Wait for Claude to become idle (ready for input), then paste
+      // the screenshot reference. The user can type what they expected
+      // before pressing Enter.
+      const prompt = `I just took a screenshot of the app. The screenshot is saved at: ${screenshotPath}\nPlease read the screenshot image and help me with what you see.\n\n`;
+      const unlisten = await listen<string>(`session-status-hook:${sessionId}`, (event) => {
+        if (event.payload === "idle") {
+          unlisten();
+          // Bracket-paste so it lands as a single chunk in Claude's input
+          invoke("write_to_pty", { sessionId, data: `\x1b[200~${prompt}\x1b[201~` });
+        }
+      });
     } catch (e) {
       showToast(String(e), "error");
     }
