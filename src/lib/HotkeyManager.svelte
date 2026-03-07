@@ -334,6 +334,9 @@
       case "b":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
+      case "p":
+        dispatchAction({ type: "toggle-triage-panel" });
+        return true;
       case "S":
         dispatchAction({ type: "screenshot-to-session" });
         return true;

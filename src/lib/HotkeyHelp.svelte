@@ -28,6 +28,7 @@
     { key: "S", description: "Screenshot app → new session with image" },
     { key: "b", description: "Toggle background agent panel" },
     { key: "o", description: "Toggle maintainer on/off (when panel open)" },
+    { key: "p", description: "Triage issues (swipe high/low priority)" },
     { key: "Esc", description: "Move focus up (terminal → session → project)" },
     { key: "?", description: "Toggle this help" },
   ];

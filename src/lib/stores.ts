@@ -90,6 +90,7 @@ export type HotkeyAction =
   | { type: "screenshot-to-session" }
   | { type: "toggle-maintainer-panel" }
   | { type: "toggle-maintainer-enabled" }
+  | { type: "toggle-triage-panel" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);

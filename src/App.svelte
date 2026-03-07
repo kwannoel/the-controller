@@ -14,12 +14,14 @@
   import MaintainerPanel from "./lib/MaintainerPanel.svelte";
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
+  import TriagePanel from "./lib/TriagePanel.svelte";
   import { showToast } from "./lib/toast";
   import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, taskPanelVisible, maintainerPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus } from "./lib/stores";
 
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
+  let triagePanelOpen = $state(false);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
@@ -44,6 +46,8 @@
         maintainerPanelVisible.update(v => !v);
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
+      } else if (action?.type === "toggle-triage-panel") {
+        triagePanelOpen = !triagePanelOpen;
       }
     });
     return unsub;
@@ -267,6 +271,9 @@
         onSkip={handleIssuePickerSkip}
         onClose={() => { issuePickerTarget = null; }}
       />
+    {/if}
+    {#if triagePanelOpen}
+      <TriagePanel onClose={() => { triagePanelOpen = false; }} />
     {/if}
   {/if}
 {/if}
