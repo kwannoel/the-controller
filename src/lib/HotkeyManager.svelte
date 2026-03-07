@@ -293,11 +293,18 @@
         if (activeId) {
           const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
           const sess = proj?.sessions.find((s) => s.id === activeId);
-          const eol = "\r";
-          const prompt = sess?.kind === "codex"
+          const isCodex = sess?.kind === "codex";
+          const prompt = isCodex
             ? `$finishing-a-development-branch`
             : `/finishing-a-development-branch`;
-          invoke("write_to_pty", { sessionId: activeId, data: `${prompt}${eol}` });
+          if (isCodex) {
+            // Codex TUI needs Enter sent as a separate write to register as a keypress
+            invoke("write_to_pty", { sessionId: activeId, data: prompt }).then(() => {
+              invoke("write_to_pty", { sessionId: activeId, data: "\r" });
+            });
+          } else {
+            invoke("write_to_pty", { sessionId: activeId, data: `${prompt}\r` });
+          }
         }
         return true;
       case "s":
