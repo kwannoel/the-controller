@@ -2,7 +2,6 @@
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
@@ -185,45 +184,23 @@
     }
 
     try {
-      // 1. Capture screenshot of the app window → clipboard
+      // 1. Capture screenshot of the app window
       showToast("Capturing screenshot...", "info");
       const screenshotPath: string = await invoke("capture_app_screenshot");
 
       // Open in Preview so user can verify the capture (fire-and-forget)
       import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
 
-      // 2. Create a new session
+      // 2. Create a new session with initial prompt referencing the screenshot file.
+      // Claude Code can read image files directly via its Read tool — no need for
+      // clipboard tricks or idle-hook timing.
       const sessionId: string = await invoke("create_session", {
         projectId,
         kind: "claude",
+        initialPrompt: `I just took a screenshot of the app. The screenshot is saved at: ${screenshotPath}\nPlease read the screenshot image and help me with what you see.`,
       });
-
-      // 3. Register idle listener IMMEDIATELY after session creation.
-      // create_session is synchronous (blocks main thread) while Claude Code
-      // starts in tmux — if worktree creation is slow, Claude may already be
-      // idle by the time JS resumes. Registering the listener before any other
-      // async work ensures we catch events queued during the blocked period.
-      let done = false;
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      const unlisten = await listen<string>(`session-status-hook:${sessionId}`, (event) => {
-        if (event.payload !== "idle" || done) return;
-        done = true;
-        if (timeoutId) clearTimeout(timeoutId);
-        unlisten();
-        // Send bracket paste to trigger Claude Code's clipboard image reader
-        showToast(`Idle hook fired for ${sessionId}, sending bracket paste`, "info");
-        invoke("write_to_pty", { sessionId, data: "\x1b[200~\x1b[201~" });
-      });
-
-      timeoutId = setTimeout(() => {
-        if (done) return;
-        done = true;
-        unlisten();
-      }, 30000);
 
       await activateNewSession(sessionId, projectId);
-
-      // 4. Focus the terminal
       focusTerminalSoon();
     } catch (e) {
       showToast(String(e), "error");

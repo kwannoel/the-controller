@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, waitFor } from "@testing-library/svelte";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import {
   activeSessionId,
   appConfig,
@@ -19,7 +18,6 @@ import {
 const mocks = vi.hoisted(() => ({
   openPath: vi.fn(),
   setTitle: vi.fn(),
-  unlisten: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -78,15 +76,7 @@ describe("App screenshot flow", () => {
     expandedProjects.set(new Set());
   });
 
-  it("listens for direct idle hook for newly created screenshot session and pastes on idle", async () => {
-    let idleHookCallback: ((event: { payload: string }) => void) | null = null;
-    vi.mocked(listen).mockImplementation(async (eventName: string, callback: unknown) => {
-      if (eventName === "session-status-hook:sess-new") {
-        idleHookCallback = callback as (event: { payload: string }) => void;
-      }
-      return mocks.unlisten;
-    });
-
+  it("creates session with initial prompt referencing screenshot file", async () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
@@ -119,22 +109,11 @@ describe("App screenshot flow", () => {
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("capture_app_screenshot");
-      expect(invoke).toHaveBeenCalledWith("create_session", { projectId: "proj-1", kind: "claude" });
+      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
+        projectId: "proj-1",
+        kind: "claude",
+        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
+      }));
     });
-
-    await waitFor(() => {
-      expect(listen).toHaveBeenCalledWith("session-status-hook:sess-new", expect.any(Function));
-    });
-
-    expect(idleHookCallback).not.toBeNull();
-    idleHookCallback!({ payload: "idle" });
-
-    await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("write_to_pty", {
-        sessionId: "sess-new",
-        data: "\x1b[200~\x1b[201~",
-      });
-    });
-    expect(mocks.unlisten).toHaveBeenCalledTimes(1);
   });
 });

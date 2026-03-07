@@ -413,6 +413,7 @@ pub fn create_session(
     kind: Option<String>,
     github_issue: Option<crate::models::GithubIssue>,
     background: Option<bool>,
+    initial_prompt: Option<String>,
 ) -> Result<String, String> {
     let kind = kind.unwrap_or_else(|| "claude".to_string());
     let background = background.unwrap_or(false);
@@ -454,9 +455,11 @@ pub fn create_session(
             Err(e) => return Err(e),
         };
 
-    // Build initial prompt from GitHub issue context (if any)
-    let initial_prompt = github_issue.as_ref().map(|issue| {
-        crate::session_args::build_issue_prompt(issue.number, &issue.title, &issue.url, background)
+    // Build initial prompt: explicit prompt takes priority, then GitHub issue context
+    let initial_prompt = initial_prompt.or_else(|| {
+        github_issue.as_ref().map(|issue| {
+            crate::session_args::build_issue_prompt(issue.number, &issue.title, &issue.url, background)
+        })
     });
 
     // Save session config
