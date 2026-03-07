@@ -3,6 +3,8 @@
   import { get } from "svelte/store";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
+  import { WebLinksAddon } from "@xterm/addon-web-links";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { makeCustomKeyHandler } from "./terminal-keys";
@@ -115,6 +117,11 @@
 
     fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon((_event, uri) => {
+      openUrl(uri).catch((err) => {
+        console.error("Failed to open URL:", err);
+      });
+    }));
     term.open(containerEl);
 
     const writeToPty = (data: string) =>
