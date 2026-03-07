@@ -35,7 +35,11 @@ Run the project's test suite. If tests fail, fix them before proceeding.
 7. Close the associated issue with a summary of what was done
 8. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree:
    ```bash
-   echo "cleanup:$THE_CONTROLLER_SESSION_ID" | nc -U -w 2 /tmp/the-controller.sock 2>/dev/null; true
+   if [ -z "$THE_CONTROLLER_SESSION_ID" ]; then
+     echo "ERROR: THE_CONTROLLER_SESSION_ID is not set, cannot signal cleanup"
+   else
+     echo "cleanup:$THE_CONTROLLER_SESSION_ID" | nc -U -w 2 /tmp/the-controller.sock
+   fi
    ```
 
 ## Integration
