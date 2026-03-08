@@ -2,16 +2,18 @@
   import { onMount } from "svelte";
 
   type Priority = "high" | "low";
+  type Complexity = "high" | "low";
 
   interface Props {
-    onSubmit: (title: string, priority: Priority) => void;
+    onSubmit: (title: string, priority: Priority, complexity: Complexity) => void;
     onClose: () => void;
   }
 
   let { onSubmit, onClose }: Props = $props();
 
   let title = $state("");
-  let stage: "title" | "priority" = $state("title");
+  let stage: "title" | "priority" | "complexity" = $state("title");
+  let selectedPriority: Priority = $state("low");
   let titleInput: HTMLInputElement | undefined = $state();
   let overlayEl: HTMLDivElement | undefined = $state();
 
@@ -23,7 +25,10 @@
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      if (stage === "priority") {
+      if (stage === "complexity") {
+        stage = "priority";
+        requestAnimationFrame(() => overlayEl?.focus());
+      } else if (stage === "priority") {
         stage = "title";
         requestAnimationFrame(() => titleInput?.focus());
       } else {
@@ -43,10 +48,25 @@
     if (stage === "priority") {
       if (e.key === "j") {
         e.preventDefault();
-        onSubmit(title.trim(), "low");
+        selectedPriority = "low";
+        stage = "complexity";
+        requestAnimationFrame(() => overlayEl?.focus());
       } else if (e.key === "k") {
         e.preventDefault();
-        onSubmit(title.trim(), "high");
+        selectedPriority = "high";
+        stage = "complexity";
+        requestAnimationFrame(() => overlayEl?.focus());
+      }
+      return;
+    }
+
+    if (stage === "complexity") {
+      if (e.key === "j") {
+        e.preventDefault();
+        onSubmit(title.trim(), selectedPriority, "low");
+      } else if (e.key === "k") {
+        e.preventDefault();
+        onSubmit(title.trim(), selectedPriority, "high");
       }
     }
   }
@@ -65,11 +85,19 @@
         class="input"
       />
       <div class="hint">Press Enter to continue</div>
-    {:else}
+    {:else if stage === "priority"}
       <div class="title-preview">{title}</div>
       <div class="priority-prompt">
         <span class="priority-key low">j</span> Low Priority
         <span class="priority-key high">k</span> High Priority
+      </div>
+      <div class="hint">Press Esc to go back</div>
+    {:else}
+      <div class="title-preview">{title}</div>
+      <div class="selected-badge {selectedPriority}">{selectedPriority} priority</div>
+      <div class="priority-prompt">
+        <span class="priority-key simple">j</span> Low Complexity
+        <span class="priority-key complex">k</span> High Complexity
       </div>
       <div class="hint">Press Esc to go back</div>
     {/if}
@@ -158,5 +186,28 @@
   .priority-key.low {
     color: #a6e3a1;
     border-color: #a6e3a1;
+  }
+  .priority-key.simple {
+    color: #89dceb;
+    border-color: #89dceb;
+  }
+  .priority-key.complex {
+    color: #fab387;
+    border-color: #fab387;
+  }
+  .selected-badge {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    text-align: center;
+    text-transform: capitalize;
+  }
+  .selected-badge.high {
+    color: #f38ba8;
+    background: rgba(243, 139, 168, 0.1);
+  }
+  .selected-badge.low {
+    color: #a6e3a1;
+    background: rgba(166, 227, 161, 0.1);
   }
 </style>
