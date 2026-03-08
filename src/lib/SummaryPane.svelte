@@ -107,16 +107,12 @@
     flex-direction: column;
     gap: 6px;
     padding: 12px 18px;
-    background: transparent;
+    background: #181825;
+    border-bottom: 1px solid #313244;
     font-size: 18px;
-    position: absolute;
-    bottom: 8px;
-    left: 8px;
-    max-width: 60%;
-    max-height: 50%;
+    flex-shrink: 0;
+    max-height: 540px;
     overflow-y: auto;
-    z-index: 10;
-    pointer-events: none;
   }
 
   .summary-row {
