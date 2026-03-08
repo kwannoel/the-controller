@@ -9,6 +9,9 @@
   const activeSessionIdState = fromStore(activeSessionId);
   let activeSession: string | null = $derived(activeSessionIdState.current);
   let terminalComponents: Record<string, Terminal> = $state({});
+  let allSessionIds: Set<string> = $derived(
+    new Set(projectList.flatMap((p) => p.sessions.map((s) => s.id))),
+  );
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
@@ -53,7 +56,14 @@
     </div>
   {/each}
 
-  {#if !activeSession}
+  {#if focusedSessionId && !allSessionIds.has(focusedSessionId)}
+    <div class="archived-summary visible">
+      <SummaryPane sessionId={focusedSessionId} />
+      <div class="archived-notice">Session archived</div>
+    </div>
+  {/if}
+
+  {#if !activeSession && !(focusedSessionId && !allSessionIds.has(focusedSessionId))}
     <div class="empty-state">
       <div class="empty-content">
         <div class="empty-title">No active session</div>
@@ -90,6 +100,27 @@
     flex: 1;
     min-height: 0;
     overflow: hidden;
+  }
+
+  .archived-summary {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    background: #1e1e2e;
+  }
+
+  .archived-summary.visible {
+    display: flex;
+  }
+
+  .archived-notice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    color: #6c7086;
+    font-size: 14px;
   }
 
   .empty-state {
