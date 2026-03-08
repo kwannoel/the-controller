@@ -20,6 +20,7 @@
     type HotkeyAction,
     type FocusTarget,
   } from "./stores";
+  import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
 
   let lastEscapeTime = 0;
 
@@ -366,6 +367,15 @@
         preview: e.shiftKey,
         cropped: e.key === "d",
       });
+      pushKeystroke("⌘" + e.key.toUpperCase());
+      return;
+    }
+
+    // Cmd+K: toggle keystroke visualizer
+    if (e.metaKey && e.key === "k") {
+      e.stopPropagation();
+      e.preventDefault();
+      toggleKeystrokeVisualizer();
       return;
     }
 
@@ -374,6 +384,7 @@
       e.stopPropagation();
       e.preventDefault();
       handleJumpKey(e.key);
+      pushKeystroke(e.key);
       return;
     }
 
@@ -393,6 +404,7 @@
           e.preventDefault();
           lastEscapeTime = now;
           focusActiveSession();
+          pushKeystroke("Esc");
         }
       }
       // All other keys pass through to terminal
@@ -420,6 +432,7 @@
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
         e.preventDefault();
+        pushKeystroke("Esc");
       }
       return;
     }
@@ -428,6 +441,7 @@
     if (handleHotkey(e.key)) {
       e.stopPropagation();
       e.preventDefault();
+      pushKeystroke(e.key);
     }
     // Unrecognized keys pass through normally
   }

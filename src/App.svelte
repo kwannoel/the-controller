@@ -14,6 +14,7 @@
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
+  import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import { showToast } from "./lib/toast";
   import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, maintainerPanelVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
@@ -269,6 +270,7 @@
     {/if}
   {/if}
 {/if}
+<KeystrokeVisualizer />
 <Toast />
 
 <style>
