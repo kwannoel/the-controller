@@ -86,6 +86,9 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
                         if let Err(e) = app_handle.emit(&event_name, status) {
                             eprintln!("Failed to emit {}: {}", event_name, e);
                         }
+                        if status == "idle" {
+                            crate::auto_worker::notify_session_idle(session_id);
+                        }
                     }
                 }
             }

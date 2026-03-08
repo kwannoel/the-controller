@@ -1,12 +1,25 @@
 use std::collections::HashMap;
 use std::process::Command;
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use once_cell::sync::Lazy;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
 use crate::models::GithubIssue;
 use crate::state::AppState;
+
+static IDLE_CHANNEL: Lazy<(std::sync::Mutex<mpsc::Sender<Uuid>>, std::sync::Mutex<mpsc::Receiver<Uuid>>)> = Lazy::new(|| {
+    let (tx, rx) = mpsc::channel();
+    (std::sync::Mutex::new(tx), std::sync::Mutex::new(rx))
+});
+
+pub fn notify_session_idle(session_id: Uuid) {
+    if let Ok(tx) = IDLE_CHANNEL.0.lock() {
+        let _ = tx.send(session_id);
+    }
+}
 
 const POLL_INTERVAL_SECS: u64 = 30;
 const SESSION_TIMEOUT_SECS: u64 = 30 * 60; // 30 minutes
@@ -34,6 +47,17 @@ impl AutoWorkerScheduler {
 
             loop {
                 std::thread::sleep(Duration::from_secs(POLL_INTERVAL_SECS));
+
+                // Drain idle notifications from status socket
+                if let Ok(rx) = IDLE_CHANNEL.1.lock() {
+                    while let Ok(session_id) = rx.try_recv() {
+                        for session in active_sessions.values_mut() {
+                            if session.session_id == session_id {
+                                session.last_idle_at = Some(Instant::now());
+                            }
+                        }
+                    }
+                }
 
                 let state = match app_handle.try_state::<AppState>() {
                     Some(s) => s,
