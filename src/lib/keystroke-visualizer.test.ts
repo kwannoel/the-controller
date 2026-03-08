@@ -15,6 +15,7 @@ describe("keystroke-visualizer", () => {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
     vi.useRealTimers();
   });
 
