@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { fromStore } from "svelte/store";
   import { getHelpSections } from "./commands";
+  import { workspaceMode } from "./stores";
 
   interface Props {
     onClose: () => void;
@@ -8,7 +10,8 @@
 
   let { onClose }: Props = $props();
 
-  const sections = getHelpSections();
+  const workspaceModeState = fromStore(workspaceMode);
+  const sections = $derived(getHelpSections(workspaceModeState.current));
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
@@ -30,7 +33,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">Keyboard Shortcuts</div>
-    <p class="subtitle">Keys work directly. Press Escape first when terminal is focused.</p>
+    <p class="subtitle">Mode: {workspaceModeState.current === "agents" ? "Agents" : "Development"} — Press Space to switch</p>
     <div class="sections-grid">
       {#each sections as section}
         <div class="section">
