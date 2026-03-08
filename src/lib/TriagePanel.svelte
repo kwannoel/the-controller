@@ -102,19 +102,6 @@
     advanceCard(issue, priority, complexity);
   }
 
-  function skipPriority() {
-    if (!currentIssue) return;
-    pendingPriority = null;
-    step = "complexity";
-  }
-
-  function skipComplexity() {
-    if (!currentIssue) return;
-    const issue = currentIssue;
-    const priority = pendingPriority;
-    advanceCard(issue, priority, null);
-  }
-
   function advanceCard(issue: GithubIssue, priority: "high" | "low" | null, complexity: "simple" | "complex" | null) {
     currentIndex++;
     step = "priority";
@@ -174,10 +161,6 @@
         e.preventDefault();
         e.stopPropagation();
         assignPriority("low");
-      } else if (e.key === "s" || e.key === "ArrowDown") {
-        e.preventDefault();
-        e.stopPropagation();
-        skipPriority();
       }
     } else {
       if (e.key === "ArrowRight" || e.key === "k") {
@@ -188,10 +171,6 @@
         e.preventDefault();
         e.stopPropagation();
         assignComplexity("simple");
-      } else if (e.key === "s" || e.key === "ArrowDown") {
-        e.preventDefault();
-        e.stopPropagation();
-        skipComplexity();
       }
     }
   }
@@ -246,60 +225,36 @@
         </div>
 
         <div class="ranking-panel">
-          <div class="step-indicator">
-            <span class="step-dot" class:active={step === "priority"}></span>
-            <span class="step-dot" class:active={step === "complexity"}></span>
-          </div>
-
           {#if step === "priority"}
-            <div class="current-value">
-              <span class="current-label">current priority:</span>
-              <span class="current-val" class:val-none={currentPriorityLabel === "none"} class:val-low={currentPriorityLabel === "low"} class:val-high={currentPriorityLabel === "high"}>{currentPriorityLabel}</span>
-            </div>
-            <div class="new-label">new priority:</div>
             <div class="ranking-options">
-              <button class="ranking-option skip" onclick={() => skipPriority()}>
-                <span class="ranking-label">Skip</span>
-                <span class="ranking-key">&#8595;</span>
+              <button class="ranking-option" onclick={() => assignPriority("low")}>
+                <span class="ranking-key">j</span>
+                <span class="ranking-label">Low priority</span>
+                {#if currentPriorityLabel === "low"}<span class="current-tag">(current)</span>{/if}
               </button>
-              <button class="ranking-option low" onclick={() => assignPriority("low")}>
-                <span class="ranking-key">&#8592;</span>
-                <span class="ranking-label">Low</span>
-              </button>
-              <button class="ranking-option high" onclick={() => assignPriority("high")}>
-                <span class="ranking-label">High</span>
-                <span class="ranking-key">&#8594;</span>
+              <button class="ranking-option" onclick={() => assignPriority("high")}>
+                <span class="ranking-key">k</span>
+                <span class="ranking-label">High priority</span>
+                {#if currentPriorityLabel === "high"}<span class="current-tag">(current)</span>{/if}
               </button>
             </div>
           {:else}
-            <div class="current-value">
-              <span class="current-label">current complexity:</span>
-              <span class="current-val" class:val-none={currentComplexityLabel === "none"} class:val-simple={currentComplexityLabel === "simple"} class:val-complex={currentComplexityLabel === "complex"}>{currentComplexityLabel}</span>
-            </div>
-            <div class="new-label">new complexity:</div>
             <div class="ranking-options">
-              <button class="ranking-option skip" onclick={() => skipComplexity()}>
-                <span class="ranking-label">Skip</span>
-                <span class="ranking-key">&#8595;</span>
-              </button>
-              <button class="ranking-option simple" onclick={() => assignComplexity("simple")}>
-                <span class="ranking-key">&#8592;</span>
+              <button class="ranking-option" onclick={() => assignComplexity("simple")}>
+                <span class="ranking-key">j</span>
                 <span class="ranking-label">Simple</span>
+                {#if currentComplexityLabel === "simple"}<span class="current-tag">(current)</span>{/if}
               </button>
-              <button class="ranking-option complex" onclick={() => assignComplexity("complex")}>
+              <button class="ranking-option" onclick={() => assignComplexity("complex")}>
+                <span class="ranking-key">k</span>
                 <span class="ranking-label">Complex</span>
-                <span class="ranking-key">&#8594;</span>
+                {#if currentComplexityLabel === "complex"}<span class="current-tag">(current)</span>{/if}
               </button>
             </div>
           {/if}
         </div>
       </div>
 
-      <div class="hotkey-bar">
-        <span class="hotkey-hint"><kbd>j</kbd> / <kbd>&#8592;</kbd></span>
-        <span class="hotkey-hint"><kbd>s</kbd> / <kbd>&#8595;</kbd> skip</span>
-        <span class="hotkey-hint"><kbd>k</kbd> / <kbd>&#8594;</kbd></span>
-      </div>
     {/if}
   </div>
 </div>
@@ -368,66 +323,6 @@
     justify-content: center;
   }
 
-  .step-indicator {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .step-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #45475a;
-  }
-
-  .step-dot.active {
-    background: #89b4fa;
-  }
-
-  .current-value {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .current-label {
-    font-size: 12px;
-    color: #6c7086;
-  }
-
-  .current-val {
-    font-size: 18px;
-    font-weight: 700;
-  }
-
-  .current-val.val-none {
-    color: #585b70;
-  }
-
-  .current-val.val-low {
-    color: #a6e3a1;
-  }
-
-  .current-val.val-high {
-    color: #f38ba8;
-  }
-
-  .current-val.val-simple {
-    color: #89dceb;
-  }
-
-  .current-val.val-complex {
-    color: #fab387;
-  }
-
-  .new-label {
-    font-size: 12px;
-    color: #6c7086;
-    margin-top: 4px;
-  }
-
   .ranking-options {
     display: flex;
     flex-direction: column;
@@ -460,26 +355,13 @@
   .ranking-option .ranking-label {
     font-size: 13px;
     font-weight: 600;
+    color: #cdd6f4;
   }
 
-  .ranking-option.skip .ranking-label {
+  .current-tag {
+    font-size: 11px;
     color: #6c7086;
-  }
-
-  .ranking-option.low .ranking-label {
-    color: #a6e3a1;
-  }
-
-  .ranking-option.high .ranking-label {
-    color: #f38ba8;
-  }
-
-  .ranking-option.simple .ranking-label {
-    color: #89dceb;
-  }
-
-  .ranking-option.complex .ranking-label {
-    color: #fab387;
+    font-weight: 400;
   }
 
   .issue-card {
@@ -548,28 +430,6 @@
     margin-top: 4px;
   }
 
-  .hotkey-bar {
-    display: flex;
-    justify-content: center;
-    gap: 16px;
-    padding: 8px 0 0;
-    border-top: 1px solid #313244;
-  }
-
-  .hotkey-hint {
-    font-size: 12px;
-    color: #585b70;
-  }
-
-  kbd {
-    background: #313244;
-    color: #89b4fa;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-family: monospace;
-    font-size: 13px;
-    font-weight: 500;
-  }
 
   .done-container {
     display: flex;
