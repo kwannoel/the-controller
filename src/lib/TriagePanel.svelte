@@ -39,6 +39,13 @@
     currentIssue?.labels.filter(l => !/^(priority|complexity):\s/.test(l.name)) ?? []
   );
 
+  let currentPriorityLabel = $derived(
+    triageLabels.find(l => l.name.startsWith("priority:"))?.name.replace("priority: ", "") ?? "none"
+  );
+  let currentComplexityLabel = $derived(
+    triageLabels.find(l => l.name.startsWith("complexity:"))?.name.replace("complexity: ", "") ?? "none"
+  );
+
   let project: Project | null = $derived(
     currentFocus?.projectId
       ? projectList.find((p) => p.id === currentFocus!.projectId) ?? null
@@ -239,22 +246,22 @@
         </div>
 
         <div class="ranking-panel">
-          {#if triageLabels.length > 0}
-            <div class="existing-triage-labels">
-              {#each triageLabels as label}
-                <span class="triage-label">{label.name}</span>
-              {/each}
-            </div>
-          {/if}
-
           <div class="step-indicator">
             <span class="step-dot" class:active={step === "priority"}></span>
             <span class="step-dot" class:active={step === "complexity"}></span>
           </div>
 
           {#if step === "priority"}
-            <div class="step-title priority">Priority</div>
+            <div class="current-value">
+              <span class="current-label">current priority:</span>
+              <span class="current-val" class:val-none={currentPriorityLabel === "none"} class:val-low={currentPriorityLabel === "low"} class:val-high={currentPriorityLabel === "high"}>{currentPriorityLabel}</span>
+            </div>
+            <div class="new-label">new priority:</div>
             <div class="ranking-options">
+              <button class="ranking-option skip" onclick={() => skipPriority()}>
+                <span class="ranking-label">Skip</span>
+                <span class="ranking-key">&#8595;</span>
+              </button>
               <button class="ranking-option low" onclick={() => assignPriority("low")}>
                 <span class="ranking-key">&#8592;</span>
                 <span class="ranking-label">Low</span>
@@ -265,8 +272,16 @@
               </button>
             </div>
           {:else}
-            <div class="step-title complexity">Complexity</div>
+            <div class="current-value">
+              <span class="current-label">current complexity:</span>
+              <span class="current-val" class:val-none={currentComplexityLabel === "none"} class:val-simple={currentComplexityLabel === "simple"} class:val-complex={currentComplexityLabel === "complex"}>{currentComplexityLabel}</span>
+            </div>
+            <div class="new-label">new complexity:</div>
             <div class="ranking-options">
+              <button class="ranking-option skip" onclick={() => skipComplexity()}>
+                <span class="ranking-label">Skip</span>
+                <span class="ranking-key">&#8595;</span>
+              </button>
               <button class="ranking-option simple" onclick={() => assignComplexity("simple")}>
                 <span class="ranking-key">&#8592;</span>
                 <span class="ranking-label">Simple</span>
@@ -277,10 +292,6 @@
               </button>
             </div>
           {/if}
-
-          <button class="skip-btn" onclick={() => step === "priority" ? skipPriority() : skipComplexity()}>
-            Skip &#8595;
-          </button>
         </div>
       </div>
 
@@ -351,25 +362,10 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    width: 120px;
+    gap: 10px;
+    width: 160px;
     flex-shrink: 0;
     justify-content: center;
-  }
-
-  .existing-triage-labels {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    align-items: center;
-  }
-
-  .triage-label {
-    font-size: 11px;
-    color: #bac2de;
-    background: #313244;
-    padding: 2px 8px;
-    border-radius: 4px;
   }
 
   .step-indicator {
@@ -389,25 +385,53 @@
     background: #89b4fa;
   }
 
-  .step-title {
-    font-size: 20px;
+  .current-value {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .current-label {
+    font-size: 12px;
+    color: #6c7086;
+  }
+
+  .current-val {
+    font-size: 18px;
     font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
   }
 
-  .step-title.priority {
-    color: #cba6f7;
+  .current-val.val-none {
+    color: #585b70;
   }
 
-  .step-title.complexity {
-    color: #89b4fa;
+  .current-val.val-low {
+    color: #a6e3a1;
+  }
+
+  .current-val.val-high {
+    color: #f38ba8;
+  }
+
+  .current-val.val-simple {
+    color: #89dceb;
+  }
+
+  .current-val.val-complex {
+    color: #fab387;
+  }
+
+  .new-label {
+    font-size: 12px;
+    color: #6c7086;
+    margin-top: 4px;
   }
 
   .ranking-options {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
   }
 
@@ -416,7 +440,7 @@
     align-items: center;
     justify-content: center;
     gap: 6px;
-    padding: 8px 12px;
+    padding: 6px 12px;
     border-radius: 6px;
     border: 1px solid #313244;
     background: #181825;
@@ -429,13 +453,17 @@
   }
 
   .ranking-option .ranking-key {
-    font-size: 14px;
+    font-size: 13px;
     color: #6c7086;
   }
 
   .ranking-option .ranking-label {
     font-size: 13px;
     font-weight: 600;
+  }
+
+  .ranking-option.skip .ranking-label {
+    color: #6c7086;
   }
 
   .ranking-option.low .ranking-label {
@@ -452,19 +480,6 @@
 
   .ranking-option.complex .ranking-label {
     color: #fab387;
-  }
-
-  .skip-btn {
-    font-size: 12px;
-    color: #6c7086;
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 4px 8px;
-  }
-
-  .skip-btn:hover {
-    color: #a6adc8;
   }
 
   .issue-card {
