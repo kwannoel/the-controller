@@ -27,10 +27,10 @@ pub(crate) async fn copy_image_file_to_clipboard(
         .map_err(|e| format!("Failed to write image to clipboard: {e}"))
 }
 
-/// Capture a screenshot and copy it to the system clipboard.
+/// Capture a screenshot and save it to a temporary file.
 /// When `cropped` is false, captures the app window using the window ID.
 /// When `cropped` is true, launches interactive crop selection via `screencapture -i`.
-/// Returns the path to the screenshot file so the caller can preview it.
+/// Returns the path to the screenshot file so the caller can pass it to `initial_prompt`.
 pub(crate) async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<String, String> {
     #[cfg(not(target_os = "macos"))]
     return Err("Screenshot capture is only supported on macOS".into());
@@ -38,7 +38,6 @@ pub(crate) async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Res
     #[cfg(target_os = "macos")]
     {
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-        use tauri_plugin_clipboard_manager::ClipboardExt;
 
         let tmp_path = std::env::temp_dir().join("the-controller-screenshot.png");
         let tmp_str = tmp_path.to_str().ok_or("Invalid temp path")?.to_string();
@@ -89,25 +88,6 @@ pub(crate) async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Res
                 "screencapture failed (screen recording permission may be required)".into(),
             );
         }
-
-        let image_data = tokio::task::spawn_blocking({
-            let tmp_str = tmp_str.clone();
-            move || {
-                let img =
-                    image::open(&tmp_str).map_err(|e| format!("Failed to open screenshot: {e}"))?;
-                let rgba = img.to_rgba8();
-                let (w, h) = rgba.dimensions();
-                Ok::<_, String>((rgba.into_raw(), w, h))
-            }
-        })
-        .await
-        .map_err(|e| format!("Task failed: {e}"))??;
-
-        let (bytes, width, height) = image_data;
-        let img = tauri::image::Image::new_owned(bytes, width, height);
-        app.clipboard()
-            .write_image(&img)
-            .map_err(|e| format!("Failed to write to clipboard: {e}"))?;
 
         Ok(tmp_str)
     }
