@@ -306,10 +306,10 @@
         dispatchCreateIssue();
         return true;
       case "t":
-        dispatchAction({ type: "toggle-triage-panel", category: "low" });
+        dispatchAction({ type: "toggle-triage-panel", category: "untriaged" });
         return true;
       case "T":
-        dispatchAction({ type: "toggle-triage-panel" });
+        dispatchAction({ type: "toggle-triage-panel", category: "triaged" });
         return true;
       case "l":
       case "Enter":

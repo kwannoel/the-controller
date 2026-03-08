@@ -52,15 +52,8 @@
       // Filter based on triage category
       issues = allIssues.filter(issue => {
         if (issue.labels.some(l => l.name === "in-progress")) return false;
-        if (category === "untagged") {
-          return !issue.labels.some(l => l.name.startsWith("priority:"));
-        } else if (category === "high") {
-          return issue.labels.some(l => l.name === "priority: high");
-        } else {
-          // "low" includes both untagged and low-priority issues
-          return !issue.labels.some(l => l.name.startsWith("priority:")) ||
-            issue.labels.some(l => l.name === "priority: low");
-        }
+        const isTriaged = issue.labels.some(l => l.name === "triaged");
+        return category === "triaged" ? isTriaged : !isTriaged;
       });
       currentIndex = 0;
     } catch (e) {
@@ -135,6 +128,15 @@
         color: complexity === "simple" ? "89DCEB" : "FAB387",
       }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));
     }
+
+    // Mark issue as triaged
+    invoke("add_github_label", {
+      repoPath: path,
+      issueNumber: issue.number,
+      label: "triaged",
+      description: "Issue has been triaged",
+      color: "CBA6F7",
+    }).catch((e: unknown) => showToast(`Failed to mark #${issue.number} as triaged: ${e}`, "error"));
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -190,7 +192,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="triage-container" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="triage-header">
-      <h2>Triage: {category === "untagged" ? "Untagged" : category === "high" ? "High Priority" : "Untagged + Low"}</h2>
+      <h2>Triage: {category === "untriaged" ? "Untriaged" : "Triaged"}</h2>
     </div>
 
     {#if loading}

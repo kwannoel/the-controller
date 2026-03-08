@@ -41,8 +41,8 @@
         { key: "a", description: "Archive focused item (session or project)" },
         { key: "A", description: "View archived projects" },
         { key: "i", description: "Create GitHub issue for focused project" },
-        { key: "t", description: "Triage issues (untagged + low priority)" },
-        { key: "T", description: "Triage issues (pick category)" },
+        { key: "t", description: "Triage issues (untriaged)" },
+        { key: "T", description: "View triaged issues" },
       ],
     },
     {

@@ -71,7 +71,7 @@ export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(new Ma
 export const maintainerPanelVisible = writable<boolean>(false);
 
 // Hotkey state
-export type TriageCategory = "untagged" | "high" | "low";
+export type TriageCategory = "untriaged" | "triaged";
 
 export type HotkeyAction =
   | { type: "open-fuzzy-finder" }
