@@ -21,6 +21,7 @@
     type FocusTarget,
   } from "./stores";
   import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
+  import { buildKeyMap, type CommandId } from "./commands";
 
   let lastEscapeTime = 0;
 
@@ -45,6 +46,8 @@
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
   const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   let isMaintainerPanelVisible = $derived(maintainerPanelVisibleState.current);
+
+  const keyMap = buildKeyMap();
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -249,71 +252,72 @@
   }
 
   function handleHotkey(key: string): boolean {
+    const id = keyMap.get(key);
+    if (id === undefined) return false;
 
-    switch (key) {
-      case "g":
-        enterJumpMode();
-        return true;
-      case "j":
+    switch (id) {
+      case "navigate-next":
         navigateItem(1);
         return true;
-      case "k":
+      case "navigate-prev":
         navigateItem(-1);
         return true;
-      case "J":
+      case "navigate-project-next":
         navigateProject(1);
         return true;
-      case "K":
+      case "navigate-project-prev":
         navigateProject(-1);
         return true;
-      case "f":
+      case "jump-mode":
+        enterJumpMode();
+        return true;
+      case "fuzzy-finder":
         dispatchAction({ type: "open-fuzzy-finder" });
         return true;
-      case "n":
+      case "new-project":
         dispatchAction({ type: "open-new-project" });
         return true;
-      case "d":
+      case "delete":
         dispatchDeleteAction();
         return true;
-      case "a":
+      case "archive":
         dispatchArchiveAction();
         return true;
-      case "A":
+      case "toggle-archive-view":
         dispatchAction({ type: "toggle-archive-view" });
         return true;
-      case "c":
+      case "create-session-claude":
         dispatchIssuePicker();
         return true;
-      case "x":
+      case "create-session-codex":
         dispatchIssuePicker({ kind: "codex" });
         return true;
-      case "C":
+      case "background-worker-claude":
         dispatchIssuePicker({ background: true });
         return true;
-      case "X":
+      case "background-worker-codex":
         dispatchIssuePicker({ kind: "codex", background: true });
         return true;
-      case "m":
+      case "finish-branch":
         if (activeId) {
           const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
           const sess = proj?.sessions.find((s) => s.id === activeId);
           dispatchHotkeyAction({ type: "finish-branch", sessionId: activeId, kind: sess?.kind });
         }
         return true;
-      case "s":
+      case "toggle-sidebar":
         sidebarVisible.update(v => !v);
         return true;
-      case "i":
+      case "create-issue":
         dispatchCreateIssue();
         return true;
-      case "t":
+      case "triage-untriaged":
         dispatchAction({ type: "toggle-triage-panel", category: "untriaged" });
         return true;
-      case "T":
+      case "triage-triaged":
         dispatchAction({ type: "toggle-triage-panel", category: "triaged" });
         return true;
-      case "l":
-      case "Enter":
+      case "expand-collapse":
         if (currentFocus?.type === "project") {
           const next = new Set(expandedSet);
           if (next.has(currentFocus.projectId)) {
@@ -329,27 +333,28 @@
           dispatchAction({ type: "focus-terminal" });
         }
         return true;
-      case "o":
+      case "toggle-maintainer":
         if (isMaintainerPanelVisible && getFocusedProject()) {
           dispatchAction({ type: "toggle-maintainer-enabled" });
           return true;
         }
         return false;
-      case "r":
+      case "trigger-maintainer-check":
         if (isMaintainerPanelVisible) {
           dispatchAction({ type: "trigger-maintainer-check" });
           return true;
         }
         return false;
-      case "b":
+      case "toggle-maintainer-panel":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
-      // Cmd+S/D (screenshot) is handled earlier in onKeydown
-      case "?":
+      case "toggle-help":
         dispatchAction({ type: "toggle-help" });
         return true;
-      default:
+      default: {
+        const _exhaustive: never = id;
         return false;
+      }
     }
   }
 
