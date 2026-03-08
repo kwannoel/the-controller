@@ -20,6 +20,26 @@
   // Total items: issues + "No issue" (last)
   let itemCount = $derived(issues.length + 1);
 
+  type IssueGroup = { label: string; items: { issue: GithubIssue; index: number }[] };
+
+  let groups: IssueGroup[] = $derived.by(() => {
+    const high: IssueGroup = { label: "High Priority", items: [] };
+    const low: IssueGroup = { label: "Low Priority", items: [] };
+    const other: IssueGroup = { label: "Unprioritized", items: [] };
+
+    issues.forEach((issue, index) => {
+      if (issue.labels.some(l => l.name === "priority: high")) {
+        high.items.push({ issue, index });
+      } else if (issue.labels.some(l => l.name === "priority: low")) {
+        low.items.push({ issue, index });
+      } else {
+        other.items.push({ issue, index });
+      }
+    });
+
+    return [high, other, low].filter(g => g.items.length > 0);
+  });
+
   onMount(() => {
     window.addEventListener("keydown", handleKeydown, { capture: true });
 
@@ -107,18 +127,16 @@
       <div class="status error">{error}</div>
     {:else}
       <ul class="issue-list">
-        {#each issues as issue, i}
-          <li>
-            <button class="issue-btn" class:selected={selectedIndex === i} onclick={() => onSelect(issue)}>
-              <span
-                class="priority-dot"
-                class:high={issue.labels.some(l => l.name === "priority: high")}
-                class:low={issue.labels.some(l => l.name === "priority: low")}
-              ></span>
-              <span class="issue-number">#{issue.number}</span>
-              <span class="issue-title">{issue.title}</span>
-            </button>
-          </li>
+        {#each groups as group}
+          <li class="group-header">{group.label}</li>
+          {#each group.items as { issue, index }}
+            <li>
+              <button class="issue-btn" class:selected={selectedIndex === index} onclick={() => onSelect(issue)}>
+                <span class="issue-number">#{issue.number}</span>
+                <span class="issue-title">{issue.title}</span>
+              </button>
+            </li>
+          {/each}
         {/each}
         <li>
           <button class="issue-btn no-issue" class:selected={selectedIndex === issues.length} onclick={onSkip}>
@@ -173,6 +191,9 @@
   .issue-list li {
     border-bottom: 1px solid rgba(49, 50, 68, 0.5);
   }
+  .issue-list li.group-header {
+    border-bottom: none;
+  }
   .issue-list li:last-child {
     border-bottom: none;
   }
@@ -195,18 +216,16 @@
     background: #313244;
     border-radius: 4px;
   }
-  .priority-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    background: #585b70;
+  .group-header {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6c7086;
+    padding: 10px 8px 4px;
   }
-  .priority-dot.high {
-    background: #f38ba8;
-  }
-  .priority-dot.low {
-    background: #a6e3a1;
+  .group-header:first-child {
+    padding-top: 4px;
   }
   .issue-number {
     color: #89b4fa;
