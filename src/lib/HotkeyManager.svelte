@@ -10,6 +10,8 @@
     JUMP_KEYS,
     sidebarVisible,
 
+    workspaceMode,
+    workspaceModePickerVisible,
     maintainerPanelVisible,
     archiveView,
     archivedProjects,
@@ -35,6 +37,9 @@
   // Toggle mode state (o prefix)
   let toggleModeActive = $state(false);
 
+  // Workspace mode state (Space prefix)
+  let workspaceModeActive = $state(false);
+
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
   const activeSessionIdState = fromStore(activeSessionId);
@@ -49,7 +54,14 @@
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
   const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   let isMaintainerPanelVisible = $derived(maintainerPanelVisibleState.current);
-  const keyMap = buildKeyMap();
+  const sessionStatusesState = fromStore(sessionStatuses);
+  let statusMap = $derived(sessionStatusesState.current);
+  const thinkingLevelsState = fromStore(sessionThinkingLevels);
+  let thinkingMap = $derived(thinkingLevelsState.current);
+
+  const workspaceModeState = fromStore(workspaceMode);
+  let currentMode = $derived(workspaceModeState.current);
+  let keyMap = $derived(buildKeyMap(currentMode));
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -156,6 +168,20 @@
       return;
     }
     // Any other key (including Escape) cancels toggle mode
+  }
+
+  function handleWorkspaceModeKey(key: string) {
+    workspaceModeActive = false;
+    workspaceModePickerVisible.set(false);
+    if (key === "d") {
+      workspaceMode.set("development");
+      return;
+    }
+    if (key === "a") {
+      workspaceMode.set("agents");
+      return;
+    }
+    // Any other key (including Escape) cancels
   }
 
   type SidebarItem =
@@ -362,15 +388,25 @@
       case "toggle-mode":
         toggleModeActive = true;
         return true;
-      case "trigger-maintainer-check":
+      case "toggle-agent":
+        // Handled in Task 9 (agents mode key handlers)
+        return false;
+      case "trigger-agent-check":
         if (isMaintainerPanelVisible) {
           dispatchAction({ type: "trigger-maintainer-check" });
           return true;
         }
         return false;
-      case "toggle-maintainer-panel":
-        dispatchAction({ type: "toggle-maintainer-panel" });
+      case "thinking-up": {
+        const lvl = cycleThinkingLevel(1);
+        if (lvl) pushKeystroke(`Think: ${lvl}`);
         return true;
+      }
+      case "thinking-down": {
+        const lvl = cycleThinkingLevel(-1);
+        if (lvl) pushKeystroke(`Think: ${lvl}`);
+        return true;
+      }
       case "toggle-help":
         dispatchAction({ type: "toggle-help" });
         return true;
@@ -425,6 +461,15 @@
       return;
     }
 
+    // Workspace mode intercepts all keys
+    if (workspaceModeActive) {
+      e.stopPropagation();
+      e.preventDefault();
+      handleWorkspaceModeKey(e.key);
+      pushKeystroke("␣" + e.key);
+      return;
+    }
+
     const inTerminal = isTerminalFocused();
 
     // --- Terminal focused: Escape moves focus to sidebar session ---
@@ -471,6 +516,16 @@
         e.preventDefault();
         pushKeystroke("Esc");
       }
+      return;
+    }
+
+    // Space: workspace mode picker
+    if (e.key === " ") {
+      e.stopPropagation();
+      e.preventDefault();
+      workspaceModeActive = true;
+      workspaceModePickerVisible.set(true);
+      pushKeystroke("␣");
       return;
     }
 

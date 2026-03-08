@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, maintainerPanelVisible } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, maintainerPanelVisible, sessionThinkingLevels, sessionStatuses, workspaceMode, workspaceModePickerVisible } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 const testProject = {
@@ -63,6 +63,10 @@ describe('HotkeyManager', () => {
     sidebarVisible.set(true);
     maintainerPanelVisible.set(false);
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
+    sessionThinkingLevels.set(new Map());
+    sessionStatuses.set(new Map());
+    workspaceMode.set("development");
+    workspaceModePickerVisible.set(false);
     vi.clearAllMocks();
     render(HotkeyManager);
   });
@@ -696,6 +700,51 @@ describe('HotkeyManager', () => {
       pressKey('c');
       expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
       unsub();
+    });
+  });
+
+  // ── Workspace mode (Space) ──
+
+  describe('workspace mode (Space)', () => {
+    it('Space opens the workspace mode picker', () => {
+      pressKey(' ');
+      expect(get(workspaceModePickerVisible)).toBe(true);
+    });
+
+    it('Space then a switches to agents mode', () => {
+      pressKey(' ');
+      pressKey('a');
+      expect(get(workspaceMode)).toBe('agents');
+      expect(get(workspaceModePickerVisible)).toBe(false);
+    });
+
+    it('Space then d switches to development mode', () => {
+      workspaceMode.set('agents');
+      pressKey(' ');
+      pressKey('d');
+      expect(get(workspaceMode)).toBe('development');
+      expect(get(workspaceModePickerVisible)).toBe(false);
+    });
+
+    it('Space then Escape closes picker without changing mode', () => {
+      pressKey(' ');
+      pressKey('Escape');
+      expect(get(workspaceMode)).toBe('development');
+      expect(get(workspaceModePickerVisible)).toBe(false);
+    });
+
+    it('Space then unknown key closes picker without changing mode', () => {
+      pressKey(' ');
+      pressKey('q');
+      expect(get(workspaceMode)).toBe('development');
+      expect(get(workspaceModePickerVisible)).toBe(false);
+    });
+
+    it('Space is ignored when terminal is focused', () => {
+      const xtermEl = simulateTerminalFocus();
+      pressKey(' ');
+      expect(get(workspaceModePickerVisible)).toBe(false);
+      removeTerminalFocus(xtermEl);
     });
   });
 
