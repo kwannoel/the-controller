@@ -241,6 +241,7 @@ mod tests {
             created_at: "2026-02-28T00:00:00Z".to_string(),
             archived: false,
             maintainer: crate::models::MaintainerConfig::default(),
+            auto_worker: crate::models::AutoWorkerConfig::default(),
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),

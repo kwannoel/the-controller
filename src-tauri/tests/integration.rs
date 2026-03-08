@@ -1,6 +1,6 @@
 use std::fs;
 use tempfile::TempDir;
-use the_controller_lib::models::{MaintainerConfig, Project, SessionConfig};
+use the_controller_lib::models::{AutoWorkerConfig, MaintainerConfig, Project, SessionConfig};
 use the_controller_lib::storage::Storage;
 use the_controller_lib::worktree::WorktreeManager;
 use uuid::Uuid;
@@ -24,6 +24,7 @@ fn test_project_lifecycle() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -75,6 +76,7 @@ fn test_agents_md_lifecycle() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -115,6 +117,7 @@ fn test_sessions_persist_across_restarts() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -185,6 +188,7 @@ fn test_no_duplicate_project_names() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project_a).expect("save first project");
@@ -199,6 +203,7 @@ fn test_no_duplicate_project_names() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project_b).expect("save second project");
@@ -247,6 +252,7 @@ fn test_worktrees_persist_across_restarts() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -287,6 +293,7 @@ fn test_migrate_worktree_paths_renames_uuid_dir() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -333,6 +340,7 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -384,6 +392,7 @@ fn test_migrate_worktree_paths_noop_on_name_collision() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -436,6 +445,7 @@ fn test_archive_project_with_no_sessions() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -496,6 +506,7 @@ fn test_create_session_uses_project_name_in_path() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -613,6 +624,7 @@ fn test_load_archived_project_by_repo_path_unarchives_it() {
         created_at: "2026-03-01T00:00:00Z".to_string(),
         archived: false,
         maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");

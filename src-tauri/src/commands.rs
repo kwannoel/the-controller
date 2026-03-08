@@ -178,6 +178,7 @@ pub fn create_project(
         created_at: chrono::Utc::now().to_rfc3339(),
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
+        auto_worker: crate::models::AutoWorkerConfig::default(),
         sessions: vec![],
     };
 
@@ -240,6 +241,7 @@ pub fn load_project(
         created_at: chrono::Utc::now().to_rfc3339(),
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
+        auto_worker: crate::models::AutoWorkerConfig::default(),
         sessions: vec![],
     };
 
@@ -844,6 +846,7 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         created_at: chrono::Utc::now().to_rfc3339(),
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
+        auto_worker: crate::models::AutoWorkerConfig::default(),
         sessions: vec![],
     };
     storage.save_project(&project).map_err(|e| e.to_string())?;

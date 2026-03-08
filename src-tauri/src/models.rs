@@ -11,6 +11,8 @@ pub struct Project {
     pub sessions: Vec<SessionConfig>,
     #[serde(default)]
     pub maintainer: MaintainerConfig,
+    #[serde(default)]
+    pub auto_worker: AutoWorkerConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,6 +27,17 @@ impl Default for MaintainerConfig {
             enabled: false,
             interval_minutes: 60,
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoWorkerConfig {
+    pub enabled: bool,
+}
+
+impl Default for AutoWorkerConfig {
+    fn default() -> Self {
+        Self { enabled: false }
     }
 }
 
@@ -153,6 +166,7 @@ mod tests {
             created_at: "2026-02-28T00:00:00Z".to_string(),
             archived: false,
             maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),
@@ -207,6 +221,7 @@ mod tests {
             created_at: "2026-02-28T12:00:00Z".to_string(),
             archived: false,
             maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
             sessions: vec![SessionConfig {
                 id: session_id,
                 label: "feature-branch".to_string(),
@@ -372,6 +387,7 @@ mod tests {
                 enabled: true,
                 interval_minutes: 30,
             },
+            auto_worker: AutoWorkerConfig::default(),
             sessions: vec![],
         };
         let json = serde_json::to_string(&project).expect("serialize");
@@ -428,5 +444,36 @@ mod tests {
         let deserialized: MaintainerReport = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(deserialized.findings.len(), 1);
         assert_eq!(deserialized.summary, "One finding detected");
+    }
+
+    #[test]
+    fn test_auto_worker_config_defaults_when_absent() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "test-project",
+            "repo_path": "/tmp/test-repo",
+            "created_at": "2026-02-28T00:00:00Z",
+            "archived": false,
+            "sessions": []
+        }"#;
+        let project: Project = serde_json::from_str(json).expect("deserialize");
+        assert!(!project.auto_worker.enabled);
+    }
+
+    #[test]
+    fn test_auto_worker_config_roundtrip() {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "test".to_string(),
+            repo_path: "/tmp".to_string(),
+            created_at: "2026-03-08T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig { enabled: true },
+            sessions: vec![],
+        };
+        let json = serde_json::to_string(&project).expect("serialize");
+        let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
+        assert!(deserialized.auto_worker.enabled);
     }
 }
