@@ -80,6 +80,7 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
                 if let Some((status, session_id)) = parse_status_message(msg) {
                     if status == "cleanup" {
                         handle_cleanup(app_handle, session_id);
+                        return; // close connection immediately
                     } else {
                         let event_name = format!("session-status-hook:{}", session_id);
                         if let Err(e) = app_handle.emit(&event_name, status) {
@@ -107,12 +108,10 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
         }
     };
 
-    // Close the PTY / kill tmux session
-    if let Ok(mut pty_manager) = state.pty_manager.lock() {
-        let _ = pty_manager.close_session(session_id);
-    }
-
     // Find and remove the session from its project, delete worktree
+    // IMPORTANT: acquire storage lock BEFORE pty_manager to match
+    // the lock ordering used by Tauri commands (storage → pty_manager).
+    // Reversed order causes deadlock.
     if let Ok(storage) = state.storage.lock() {
         if let Ok(mut projects) = storage.list_projects() {
             for project in &mut projects {
@@ -137,6 +136,11 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
                 }
             }
         }
+    }
+
+    // Close the PTY / kill tmux session (after releasing storage lock)
+    if let Ok(mut pty_manager) = state.pty_manager.lock() {
+        let _ = pty_manager.close_session(session_id);
     }
 
     // Tell the frontend to refresh its project list
