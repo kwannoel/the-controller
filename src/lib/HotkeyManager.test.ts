@@ -655,12 +655,13 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('o dispatches toggle-maintainer-enabled when focus is maintainer type', () => {
+    it('o then m dispatches toggle-maintainer-enabled when focus is maintainer type', () => {
       maintainerPanelVisible.set(true);
       focusTarget.set({ type: 'maintainer' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('o');
+      pressKey('m');
       expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
       unsub();
     });
