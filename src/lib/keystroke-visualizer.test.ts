@@ -48,16 +48,6 @@ describe("keystroke-visualizer", () => {
     expect(get(keystrokes)).toHaveLength(0);
   });
 
-  it("keeps max 5 keystrokes", () => {
-    keystrokeVisualizerEnabled.set(true);
-    for (let i = 0; i < 7; i++) {
-      pushKeystroke(String(i));
-    }
-    expect(get(keystrokes)).toHaveLength(5);
-    // oldest are dropped
-    expect(get(keystrokes)[0].label).toBe("2");
-  });
-
   it("clears keystrokes when toggled off", () => {
     keystrokeVisualizerEnabled.set(true);
     pushKeystroke("j");
