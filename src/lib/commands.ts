@@ -36,7 +36,8 @@ export type ExternalCommandId =
   | "screenshot-preview"
   | "keystroke-visualizer"
   | "escape-focus"
-  | "escape-forward";
+  | "escape-forward"
+  | "clear-maintainer-reports";
 
 export interface CommandDef {
   id: CommandId | ExternalCommandId;
@@ -87,6 +88,7 @@ export const commands: CommandDef[] = [
   { id: "toggle-maintainer-panel", key: "b", section: "Panels", description: "Toggle background agent panel" },
   { id: "toggle-maintainer", key: "o", section: "Panels", description: "Toggle maintainer on/off (when panel open)" },
   { id: "trigger-maintainer-check", key: "r", section: "Panels", description: "Run maintainer check now (when panel open)" },
+  { id: "clear-maintainer-reports", key: "c", section: "Panels", description: "Clear maintainer reports (when panel open)", handledExternally: true },
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
   { id: "keystroke-visualizer", key: "⌘K", section: "Panels", description: "Toggle keystroke visualizer", handledExternally: true },
 ];

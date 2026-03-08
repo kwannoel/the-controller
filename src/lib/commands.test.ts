@@ -66,6 +66,6 @@ describe("command registry", () => {
     expect(proj.entries).toHaveLength(7);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(6);
+    expect(panels.entries).toHaveLength(7);
   });
 });

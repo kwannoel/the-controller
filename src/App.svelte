@@ -60,6 +60,8 @@
         toggleMaintainerEnabled();
       } else if (action?.type === "trigger-maintainer-check") {
         triggerMaintainerCheck();
+      } else if (action?.type === "clear-maintainer-reports") {
+        clearMaintainerReports();
       } else if (action?.type === "toggle-triage-panel") {
         if (action.category) {
           triagePanelOpen = triagePanelOpen ? null : action.category;
@@ -97,6 +99,19 @@
     try {
       await invoke<any>("trigger_maintainer_check", { projectId: project.id });
       showToast("Maintainer check complete", "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function clearMaintainerReports() {
+    const focus = focusTargetState.current;
+    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
+    const project = projectsState.current.find((p) => p.id === focus.projectId);
+    if (!project) return;
+    try {
+      await invoke("clear_maintainer_reports", { projectId: project.id });
+      showToast("Maintainer reports cleared", "info");
     } catch (e) {
       showToast(String(e), "error");
     }
