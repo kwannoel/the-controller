@@ -33,12 +33,16 @@ Run the project's test suite. If tests fail, fix them before proceeding.
    fi
    ```
 7. Close the associated issue with a summary of what was done
-8. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree:
+8. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree. Retry up to 3 times if the signal fails:
    ```bash
    if [ -z "$THE_CONTROLLER_SESSION_ID" ]; then
      echo "ERROR: THE_CONTROLLER_SESSION_ID is not set, cannot signal cleanup"
    else
-     echo "cleanup:$THE_CONTROLLER_SESSION_ID" | nc -U -w 2 /tmp/the-controller.sock
+     for i in 1 2 3; do
+       echo "cleanup:$THE_CONTROLLER_SESSION_ID" | nc -U -w 2 /tmp/the-controller.sock && break
+       echo "Cleanup signal failed (attempt $i/3), retrying in 2s..."
+       sleep 2
+     done
    fi
    ```
 
