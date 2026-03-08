@@ -41,8 +41,8 @@
 {:else}
   {#each projects as project, i (project.id)}
     {@const visibleSessions = isArchivedMode()
-      ? project.sessions.filter((s) => s.archived)
-      : project.sessions.filter((s) => !s.archived)}
+      ? project.sessions.filter((s) => s.archived && !s.auto_worker_session)
+      : project.sessions.filter((s) => !s.archived && !s.auto_worker_session)}
     <div class="project-item">
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->

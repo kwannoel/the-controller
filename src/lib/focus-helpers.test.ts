@@ -17,6 +17,7 @@ function makeProject(id: string, sessionIds: string[]): Project {
       archived: false,
       kind: 'claude',
       github_issue: null,
+      auto_worker_session: false,
     })),
   };
 }

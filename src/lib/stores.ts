@@ -22,6 +22,7 @@ export interface SessionConfig {
   kind: string;
   github_issue: GithubIssue | null;
   initial_prompt: string | null;
+  auto_worker_session: boolean;
 }
 
 export interface MaintainerConfig {

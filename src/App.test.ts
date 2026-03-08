@@ -96,6 +96,7 @@ describe("App screenshot flow", () => {
                 kind: "claude",
                 github_issue: null,
                 initial_prompt: null,
+                auto_worker_session: false,
               },
             ],
           },

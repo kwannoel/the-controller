@@ -14,8 +14,8 @@ const testProject = {
   maintainer: { enabled: false, interval_minutes: 60 },
   auto_worker: { enabled: false },
   sessions: [
-    { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
-    { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
+    { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
+    { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
   ],
 };
 
@@ -28,8 +28,8 @@ const testProject2 = {
   maintainer: { enabled: false, interval_minutes: 60 },
   auto_worker: { enabled: false },
   sessions: [
-    { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
-    { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
+    { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
+    { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
   ],
 };
 
@@ -382,7 +382,7 @@ describe('HotkeyManager', () => {
         maintainer: { enabled: false, interval_minutes: 60 },
         auto_worker: { enabled: false },
         sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
+          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
         ],
       }));
       projects.set(manyProjects);
@@ -410,7 +410,7 @@ describe('HotkeyManager', () => {
         maintainer: { enabled: false, interval_minutes: 60 },
         auto_worker: { enabled: false },
         sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
+          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
         ],
       }));
       projects.set(manyProjects);

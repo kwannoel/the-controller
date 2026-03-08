@@ -22,6 +22,7 @@ const baseProjects: Project[] = [
         kind: "claude",
         github_issue: { number: 42, title: "Issue", url: "https://example.com", labels: [] },
         initial_prompt: null,
+        auto_worker_session: false,
       },
       {
         id: "sess-2",
@@ -32,6 +33,7 @@ const baseProjects: Project[] = [
         kind: "claude",
         github_issue: null,
         initial_prompt: null,
+        auto_worker_session: false,
       },
     ],
   },

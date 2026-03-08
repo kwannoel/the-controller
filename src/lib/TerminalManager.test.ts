@@ -40,7 +40,7 @@ describe('TerminalManager', () => {
       created_at: '2026-01-01',
       archived: false,
       sessions: [
-        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
+        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
       ],
     }]);
     activeSessionId.set('sess-1');
@@ -57,7 +57,7 @@ describe('TerminalManager', () => {
       created_at: '2026-01-01',
       archived: false,
       sessions: [
-        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
+        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
       ],
     }]);
     activeSessionId.set('sess-1');

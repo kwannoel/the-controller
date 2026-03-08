@@ -58,6 +58,8 @@ pub struct SessionConfig {
     /// Accumulated commit summaries — persisted so they survive merge/rebase.
     #[serde(default)]
     pub done_commits: Vec<CommitInfo>,
+    #[serde(default)]
+    pub auto_worker_session: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -177,6 +179,7 @@ mod tests {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             }],
         };
 
@@ -232,6 +235,7 @@ mod tests {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             }],
         };
 
@@ -270,6 +274,7 @@ mod tests {
             }),
             initial_prompt: None,
             done_commits: vec![],
+            auto_worker_session: false,
         };
         let json = serde_json::to_string(&session).expect("serialize");
         let deserialized: SessionConfig = serde_json::from_str(&json).expect("deserialize");
@@ -306,6 +311,7 @@ mod tests {
             github_issue: None,
             initial_prompt: Some("fix the bug".to_string()),
             done_commits: vec![],
+            auto_worker_session: false,
         };
         let json = serde_json::to_string(&session).expect("serialize");
         let deserialized: SessionConfig = serde_json::from_str(&json).expect("deserialize");

@@ -284,6 +284,7 @@ fn spawn_auto_worker_session(
             github_issue: Some(issue.clone()),
             initial_prompt: Some(initial_prompt.clone()),
             done_commits: vec![],
+            auto_worker_session: true,
         });
         storage.save_project(&proj).map_err(|e| e.to_string())?;
     }

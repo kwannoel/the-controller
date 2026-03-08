@@ -178,8 +178,8 @@
       result.push({ type: "project", projectId: p.id });
       if (!expandedSet.has(p.id)) continue;
       const sessions = isArchiveView
-        ? p.sessions.filter(s => s.archived)
-        : p.sessions.filter(s => !s.archived);
+        ? p.sessions.filter(s => s.archived && !s.auto_worker_session)
+        : p.sessions.filter(s => !s.archived && !s.auto_worker_session);
       for (const s of sessions) {
         result.push({ type: "session", sessionId: s.id, projectId: p.id });
       }

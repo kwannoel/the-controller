@@ -484,6 +484,7 @@ pub fn create_session(
             github_issue,
             initial_prompt: initial_prompt.clone(),
             done_commits: vec![],
+            auto_worker_session: false,
         };
         project.sessions.push(session_config);
         storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -1298,6 +1299,7 @@ mod tests {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1309,6 +1311,7 @@ mod tests {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
         ];
         let label = next_session_label(&sessions);
@@ -1329,6 +1332,7 @@ mod tests {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1340,6 +1344,7 @@ mod tests {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -1351,6 +1356,7 @@ mod tests {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
         ];
         // Max is session-3, so next is session-4
@@ -1371,6 +1377,7 @@ mod tests {
             github_issue: None,
             initial_prompt: None,
             done_commits: vec![],
+            auto_worker_session: false,
         }];
         let label = next_session_label(&sessions);
         assert!(label.starts_with("session-4-"), "expected session-4-<uuid>, got {}", label);

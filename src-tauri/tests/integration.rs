@@ -43,6 +43,7 @@ fn test_project_lifecycle() {
         github_issue: None,
         initial_prompt: None,
         done_commits: vec![],
+        auto_worker_session: false,
     });
     storage.save_project(&project).expect("save with session");
 
@@ -129,6 +130,7 @@ fn test_sessions_persist_across_restarts() {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -140,6 +142,7 @@ fn test_sessions_persist_across_restarts() {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -151,6 +154,7 @@ fn test_sessions_persist_across_restarts() {
                 github_issue: None,
                 initial_prompt: None,
                 done_commits: vec![],
+                auto_worker_session: false,
             },
         ],
     };
@@ -263,6 +267,7 @@ fn test_worktrees_persist_across_restarts() {
             github_issue: None,
             initial_prompt: None,
             done_commits: vec![],
+            auto_worker_session: false,
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -304,6 +309,7 @@ fn test_migrate_worktree_paths_renames_uuid_dir() {
             github_issue: None,
             initial_prompt: None,
             done_commits: vec![],
+            auto_worker_session: false,
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -351,6 +357,7 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
             github_issue: None,
             initial_prompt: None,
             done_commits: vec![],
+            auto_worker_session: false,
         }],
     };
     storage.save_project(&project).expect("save project");
@@ -403,6 +410,7 @@ fn test_migrate_worktree_paths_noop_on_name_collision() {
             github_issue: None,
             initial_prompt: None,
             done_commits: vec![],
+            auto_worker_session: false,
         }],
     };
     storage.save_project(&project).expect("save project");
