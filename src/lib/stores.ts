@@ -78,8 +78,6 @@ export const sessionStatuses = writable<Map<string, SessionStatus>>(new Map());
 export const appConfig = writable<Config | null>(null);
 export const onboardingComplete = writable<boolean>(false);
 export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(new Map());
-export const maintainerPanelVisible = writable<boolean>(false);
-
 export type AutoWorkerStatus = {
   status: "idle" | "working";
   message?: string;
@@ -109,7 +107,6 @@ export type HotkeyAction =
   | { type: "merge-session"; sessionId: string; projectId: string }
   | { type: "finish-branch"; sessionId: string; kind?: string }
   | { type: "screenshot-to-session"; preview?: boolean; cropped?: boolean }
-  | { type: "toggle-maintainer-panel" }
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-auto-worker-enabled" }
   | { type: "toggle-triage-panel"; category?: TriageCategory }
@@ -139,7 +136,6 @@ export type FocusTarget =
   | { type: "terminal"; projectId: string }
   | { type: "session"; sessionId: string; projectId: string }
   | { type: "project"; projectId: string }
-  | { type: "maintainer" }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
 

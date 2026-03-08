@@ -10,7 +10,6 @@
   import HotkeyManager from "./lib/HotkeyManager.svelte";
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
 
-  import MaintainerPanel from "./lib/MaintainerPanel.svelte";
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
@@ -18,7 +17,7 @@
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, maintainerPanelVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
@@ -27,7 +26,6 @@
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
 
-  const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   const workspaceModePickerVisibleState = fromStore(workspaceModePickerVisible);
   const workspaceModeState = fromStore(workspaceMode);
   const onboardingCompleteState = fromStore(onboardingComplete);
@@ -45,21 +43,6 @@
         issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath, kind: action.kind, background: action.background };
       } else if (action?.type === "screenshot-to-session") {
         screenshotToNewSession(action.preview ?? false, action.cropped ?? false);
-      } else if (action?.type === "toggle-maintainer-panel") {
-        maintainerPanelVisible.update(v => {
-          if (!v) {
-            focusTarget.set({ type: "maintainer" });
-          } else {
-            // Closing panel — restore focus to terminal
-            const proj = focusTargetState.current?.type === "maintainer"
-              ? projectsState.current.find((p) => p.sessions.some((s) => s.id === activeSessionIdState.current))
-              : null;
-            if (proj) {
-              focusTarget.set({ type: "terminal", projectId: proj.id });
-            }
-          }
-          return !v;
-        });
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
       } else if (action?.type === "trigger-maintainer-check") {
@@ -81,10 +64,6 @@
     const focus = focusTargetState.current;
     if (focus?.type === "project" || focus?.type === "session") {
       return projectsState.current.find((p) => p.id === focus.projectId);
-    }
-    if (focus?.type === "maintainer") {
-      const aid = activeSessionIdState.current;
-      if (aid) return projectsState.current.find((p) => p.sessions.some((s) => s.id === aid));
     }
     return undefined;
   }
@@ -313,9 +292,6 @@
         {/if}
       </main>
 
-      {#if maintainerPanelVisibleState.current}
-        <MaintainerPanel />
-      {/if}
     </div>
     <HotkeyManager />
     {#if showKeyHintsState.current}

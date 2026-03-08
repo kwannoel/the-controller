@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, maintainerPanelVisible, sessionThinkingLevels, sessionStatuses, workspaceMode, workspaceModePickerVisible } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, sessionThinkingLevels, sessionStatuses, workspaceMode, workspaceModePickerVisible } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 const testProject = {
@@ -61,7 +61,6 @@ describe('HotkeyManager', () => {
     focusTarget.set(null);
     jumpMode.set(null);
     sidebarVisible.set(true);
-    maintainerPanelVisible.set(false);
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
     sessionThinkingLevels.set(new Map());
     sessionStatuses.set(new Map());
@@ -657,9 +656,8 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('o then m dispatches toggle-maintainer-enabled when focus is maintainer type', () => {
-      maintainerPanelVisible.set(true);
-      focusTarget.set({ type: 'maintainer' });
+    it('o then m dispatches toggle-maintainer-enabled when project focused', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('o');
@@ -739,18 +737,7 @@ describe('HotkeyManager', () => {
   // ── c key in development mode ──
 
   describe('c key in development mode', () => {
-    it('c dispatches pick-issue-for-session when panel visible (no more override)', () => {
-      maintainerPanelVisible.set(true);
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
-      unsub();
-    });
-
-    it('c dispatches pick-issue-for-session when panel hidden', () => {
-      maintainerPanelVisible.set(false);
+    it('c dispatches pick-issue-for-session when project focused', () => {
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });

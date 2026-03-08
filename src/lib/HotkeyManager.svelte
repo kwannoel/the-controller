@@ -12,7 +12,6 @@
 
     workspaceMode,
     workspaceModePickerVisible,
-    maintainerPanelVisible,
     archiveView,
     archivedProjects,
     focusTarget,
@@ -52,8 +51,6 @@
   let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
   const expandedProjectsState = fromStore(expandedProjects);
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
-  const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
-  let isMaintainerPanelVisible = $derived(maintainerPanelVisibleState.current);
   const sessionStatusesState = fromStore(sessionStatuses);
   let statusMap = $derived(sessionStatusesState.current);
   const thinkingLevelsState = fromStore(sessionThinkingLevels);
@@ -241,9 +238,6 @@
   function getFocusedProject(): Project | null {
     if (currentFocus?.type === "project" || currentFocus?.type === "session") {
       return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
-    }
-    if (currentFocus?.type === "maintainer" && activeId) {
-      return projectList.find((p) => p.sessions.some((s) => s.id === activeId)) ?? null;
     }
     return null;
   }
