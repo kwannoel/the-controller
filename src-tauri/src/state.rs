@@ -51,7 +51,9 @@ impl IssueCache {
     pub fn add_label(&mut self, repo_path: &str, issue_number: u64, label: &str) {
         if let Some(entry) = self.entries.get_mut(repo_path) {
             if let Some(issue) = entry.issues.iter_mut().find(|i| i.number == issue_number) {
-                issue.labels.push(GithubLabel { name: label.to_string() });
+                if !issue.labels.iter().any(|l| l.name == label) {
+                    issue.labels.push(GithubLabel { name: label.to_string() });
+                }
             }
         }
     }
@@ -176,6 +178,22 @@ mod tests {
         let entry = cache.get("/repo").unwrap();
         assert_eq!(entry.issues[0].labels.len(), 1);
         assert_eq!(entry.issues[0].labels[0].name, "in-progress");
+    }
+
+    #[test]
+    fn test_issue_cache_add_label_no_duplicates() {
+        let mut cache = IssueCache::new();
+        cache.insert("/repo".to_string(), vec![GithubIssue {
+            number: 1,
+            title: "Test".to_string(),
+            url: "https://github.com/o/r/issues/1".to_string(),
+            body: None,
+            labels: vec![],
+        }]);
+        cache.add_label("/repo", 1, "triaged");
+        cache.add_label("/repo", 1, "triaged");
+        let entry = cache.get("/repo").unwrap();
+        assert_eq!(entry.issues[0].labels.len(), 1);
     }
 
     #[test]
