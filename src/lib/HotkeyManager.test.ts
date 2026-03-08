@@ -652,6 +652,16 @@ describe('HotkeyManager', () => {
       expect(captured).toBeNull();
       unsub();
     });
+
+    it('o dispatches toggle-maintainer-enabled when focus is maintainer type', () => {
+      maintainerPanelVisible.set(true);
+      focusTarget.set({ type: 'maintainer' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('o');
+      expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
+      unsub();
+    });
   });
 
   // ── Thinking level cycle (e/q) ──
@@ -727,6 +737,16 @@ describe('HotkeyManager', () => {
     it('c dispatches clear-maintainer-reports when panel visible', () => {
       maintainerPanelVisible.set(true);
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('c');
+      expect(captured).toEqual({ type: 'clear-maintainer-reports' });
+      unsub();
+    });
+
+    it('c dispatches clear-maintainer-reports when focus is maintainer type', () => {
+      maintainerPanelVisible.set(true);
+      focusTarget.set({ type: 'maintainer' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');

@@ -71,10 +71,20 @@
     return unsub;
   });
 
-  async function toggleMaintainerEnabled() {
+  function getTargetProject(): Project | undefined {
     const focus = focusTargetState.current;
-    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
-    const project = projectsState.current.find((p) => p.id === focus.projectId);
+    if (focus?.type === "project" || focus?.type === "session") {
+      return projectsState.current.find((p) => p.id === focus.projectId);
+    }
+    if (focus?.type === "maintainer") {
+      const aid = activeSessionIdState.current;
+      if (aid) return projectsState.current.find((p) => p.sessions.some((s) => s.id === aid));
+    }
+    return undefined;
+  }
+
+  async function toggleMaintainerEnabled() {
+    const project = getTargetProject();
     if (!project) return;
     const newEnabled = !project.maintainer.enabled;
     try {
@@ -92,9 +102,7 @@
   }
 
   async function triggerMaintainerCheck() {
-    const focus = focusTargetState.current;
-    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
-    const project = projectsState.current.find((p) => p.id === focus.projectId);
+    const project = getTargetProject();
     if (!project) return;
     try {
       await invoke<any>("trigger_maintainer_check", { projectId: project.id });
@@ -105,9 +113,7 @@
   }
 
   async function clearMaintainerReports() {
-    const focus = focusTargetState.current;
-    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
-    const project = projectsState.current.find((p) => p.id === focus.projectId);
+    const project = getTargetProject();
     if (!project) return;
     try {
       await invoke("clear_maintainer_reports", { projectId: project.id });

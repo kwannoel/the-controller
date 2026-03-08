@@ -206,8 +206,13 @@
   }
 
   function getFocusedProject(): Project | null {
-    if (currentFocus?.type !== "project" && currentFocus?.type !== "session") return null;
-    return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
+    if (currentFocus?.type === "project" || currentFocus?.type === "session") {
+      return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
+    }
+    if (currentFocus?.type === "maintainer" && activeId) {
+      return projectList.find((p) => p.sessions.some((s) => s.id === activeId)) ?? null;
+    }
+    return null;
   }
 
   function dispatchDeleteAction() {
