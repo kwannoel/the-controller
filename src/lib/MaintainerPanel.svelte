@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, maintainerStatuses, dispatchHotkeyAction, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, autoWorkerStatuses, dispatchHotkeyAction, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
 
   let report: MaintainerReport | null = $state(null);
@@ -110,6 +110,27 @@
     focusTarget.set({ type: "maintainer" });
   }
 
+  const autoWorkerStatusesState = fromStore(autoWorkerStatuses);
+  let autoWorkerStatusMap: Map<string, AutoWorkerStatus> = $derived(autoWorkerStatusesState.current);
+  let autoWorkerStatus: AutoWorkerStatus | null = $derived(
+    project ? (autoWorkerStatusMap.get(project.id) ?? null) : null
+  );
+
+  async function toggleAutoWorker() {
+    if (!project) return;
+    const newEnabled = !project.auto_worker.enabled;
+    try {
+      await invoke("configure_auto_worker", {
+        projectId: project.id,
+        enabled: newEnabled,
+      });
+      const result: Project[] = await invoke("list_projects");
+      projects.set(result);
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
   function severityColor(severity: string): string {
     switch (severity) {
       case "error": return "#f38ba8";
@@ -187,6 +208,34 @@
         (c) Clear
       </button>
     </div>
+  {/if}
+
+  <div class="panel-divider"></div>
+  <div class="panel-header">
+    <span class="panel-title">Auto-worker</span>
+    {#if autoWorkerStatus?.status === "working"}
+      <span class="maintainer-status running">Working</span>
+    {/if}
+    {#if project}
+      <button class="btn-toggle" class:enabled={project.auto_worker.enabled} onclick={toggleAutoWorker}>
+        {project.auto_worker.enabled ? "ON" : "OFF"}
+      </button>
+    {/if}
+  </div>
+
+  {#if project?.auto_worker.enabled}
+    <div class="auto-worker-info">
+      {#if autoWorkerStatus?.status === "working"}
+        <div class="worker-current">
+          <span class="worker-label">Working on:</span>
+          <span class="worker-issue">#{autoWorkerStatus.issue_number} {autoWorkerStatus.issue_title}</span>
+        </div>
+      {:else}
+        <div class="status">Waiting for eligible issues</div>
+      {/if}
+    </div>
+  {:else if project}
+    <div class="status">Disabled — press o then w to enable</div>
   {/if}
 </aside>
 
@@ -341,4 +390,29 @@
   }
 
   .btn-clear:hover { background: #45475a; }
+
+  .panel-divider {
+    border-top: 2px solid #313244;
+    margin: 8px 0;
+  }
+
+  .auto-worker-info {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+
+  .worker-current {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .worker-label {
+    color: #6c7086;
+    font-size: 11px;
+  }
+
+  .worker-issue {
+    color: #cdd6f4;
+  }
 </style>

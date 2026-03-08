@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -246,6 +246,17 @@
           next.set(project.id, event.payload as MaintainerStatus);
           return next;
         });
+      }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+
+      listen<string>(`auto-worker-status:${project.id}`, (event) => {
+        try {
+          const status = JSON.parse(event.payload);
+          autoWorkerStatuses.update(m => {
+            const next = new Map(m);
+            next.set(project.id, status);
+            return next;
+          });
+        } catch { /* ignore parse errors */ }
       }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
     }
 
