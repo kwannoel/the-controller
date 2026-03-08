@@ -71,6 +71,7 @@ pub fn run() {
             commands::get_maintainer_history,
             commands::trigger_maintainer_check,
             commands::clear_maintainer_reports,
+            commands::configure_auto_worker,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

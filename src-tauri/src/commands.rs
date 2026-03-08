@@ -1136,6 +1136,20 @@ pub async fn configure_maintainer(
 }
 
 #[tauri::command]
+pub async fn configure_auto_worker(
+    state: State<'_, AppState>,
+    project_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+    project.auto_worker.enabled = enabled;
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_maintainer_status(
     state: State<'_, AppState>,
     project_id: String,
