@@ -39,6 +39,9 @@
   // Toggle mode state (o prefix)
   let toggleModeActive = $state(false);
 
+  // Sessions whose thinking level was changed while not idle
+  let pendingThinkingSessions = new Set<string>();
+
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
   const activeSessionIdState = fromStore(activeSessionId);
@@ -59,6 +62,21 @@
   let thinkingMap = $derived(thinkingLevelsState.current);
 
   const keyMap = buildKeyMap();
+
+  // Flush pending thinking level when a session transitions to idle
+  $effect(() => {
+    // Read statusMap unconditionally to always track it as a dependency
+    const currentStatuses = statusMap;
+    for (const sessionId of pendingThinkingSessions) {
+      if (currentStatuses.get(sessionId) === "idle") {
+        const level = thinkingMap.get(sessionId);
+        if (level) {
+          invoke("write_to_pty", { sessionId, data: `/think ${level}\r` });
+        }
+        pendingThinkingSessions.delete(sessionId);
+      }
+    }
+  });
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -272,9 +290,11 @@
     updated.set(activeId, next);
     sessionThinkingLevels.set(updated);
 
-    // Write /think command to PTY if session is idle
+    // Write /think command to PTY if session is idle, otherwise mark pending
     if (statusMap.get(activeId) === "idle") {
-      invoke("write_to_pty", { sessionId: activeId, data: `/think ${next}\n` });
+      invoke("write_to_pty", { sessionId: activeId, data: `/think ${next}\r` });
+    } else {
+      pendingThinkingSessions.add(activeId);
     }
     return next;
   }

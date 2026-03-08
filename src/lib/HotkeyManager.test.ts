@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
+import { flushSync } from 'svelte';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
 import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, maintainerPanelVisible, sessionThinkingLevels, sessionStatuses } from './stores';
@@ -707,7 +708,7 @@ describe('HotkeyManager', () => {
       pressKey('e');
       expect(invoke).toHaveBeenCalledWith('write_to_pty', {
         sessionId: 'sess-1',
-        data: '/think high\n',
+        data: '/think high\r',
       });
     });
 
@@ -716,7 +717,7 @@ describe('HotkeyManager', () => {
       pressKey('q');
       expect(invoke).toHaveBeenCalledWith('write_to_pty', {
         sessionId: 'sess-1',
-        data: '/think low\n',
+        data: '/think low\r',
       });
     });
 
@@ -731,6 +732,36 @@ describe('HotkeyManager', () => {
       pressKey('e');
       expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
       expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it('pending thinking level is sent when session transitions to idle', () => {
+      sessionStatuses.set(new Map([['sess-1', 'working']]));
+      pressKey('e');
+      expect(invoke).not.toHaveBeenCalled();
+
+      // Transition to idle — effect should flush the pending /think command
+      flushSync(() => {
+        sessionStatuses.set(new Map([['sess-1', 'idle']]));
+      });
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: '/think high\r',
+      });
+    });
+
+    it('multiple cycles while working sends only the final level on idle', () => {
+      sessionStatuses.set(new Map([['sess-1', 'working']]));
+      pressKey('e'); // medium → high
+      pressKey('e'); // high → max
+      expect(invoke).not.toHaveBeenCalled();
+
+      flushSync(() => {
+        sessionStatuses.set(new Map([['sess-1', 'idle']]));
+      });
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: '/think max\r',
+      });
     });
   });
 
