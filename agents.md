@@ -38,7 +38,8 @@ git branch -d <feature-branch>
 
 ## Dependencies
 
-After merging a branch that modifies `package.json`, run `npm install` in the project root (not the worktree). The dev server won't auto-install — missing packages cause a white screen.
+- **New worktrees:** Always run `npm install` immediately after creating a worktree. Worktrees don't share `node_modules` — without this, `npx vitest run` and the dev server will fail.
+- **After merging:** Run `npm install` in the project root (not the worktree) if `package.json` was modified. The dev server won't auto-install — missing packages cause a white screen.
 
 ## Dev Commands
 
