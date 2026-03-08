@@ -62,6 +62,8 @@
         triggerMaintainerCheck();
       } else if (action?.type === "clear-maintainer-reports") {
         clearMaintainerReports();
+      } else if (action?.type === "toggle-auto-worker-enabled") {
+        toggleAutoWorkerEnabled();
       } else if (action?.type === "toggle-triage-panel") {
         if (action.category) {
           triagePanelOpen = triagePanelOpen ? null : action.category;
@@ -96,6 +98,25 @@
       const result: Project[] = await invoke("list_projects");
       projects.set(result);
       showToast(`Maintainer ${newEnabled ? "enabled" : "disabled"}`, "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function toggleAutoWorkerEnabled() {
+    const focus = focusTargetState.current;
+    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
+    const project = projectsState.current.find((p) => p.id === focus.projectId);
+    if (!project) return;
+    const newEnabled = !project.auto_worker.enabled;
+    try {
+      await invoke("configure_auto_worker", {
+        projectId: project.id,
+        enabled: newEnabled,
+      });
+      const result: Project[] = await invoke("list_projects");
+      projects.set(result);
+      showToast(`Auto-worker ${newEnabled ? "enabled" : "disabled"}`, "info");
     } catch (e) {
       showToast(String(e), "error");
     }
