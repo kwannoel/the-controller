@@ -229,26 +229,34 @@
             <div class="ranking-options">
               <button class="ranking-option" onclick={() => assignPriority("low")}>
                 <span class="ranking-key">j</span>
-                <span class="ranking-label">Low priority</span>
-                {#if currentPriorityLabel === "low"}<span class="current-tag">(current)</span>{/if}
+                <span class="ranking-label-group">
+                  <span class="ranking-label">Low priority</span>
+                  {#if currentPriorityLabel === "low"}<span class="current-tag">(current)</span>{/if}
+                </span>
               </button>
               <button class="ranking-option" onclick={() => assignPriority("high")}>
                 <span class="ranking-key">k</span>
-                <span class="ranking-label">High priority</span>
-                {#if currentPriorityLabel === "high"}<span class="current-tag">(current)</span>{/if}
+                <span class="ranking-label-group">
+                  <span class="ranking-label">High priority</span>
+                  {#if currentPriorityLabel === "high"}<span class="current-tag">(current)</span>{/if}
+                </span>
               </button>
             </div>
           {:else}
             <div class="ranking-options">
               <button class="ranking-option" onclick={() => assignComplexity("simple")}>
                 <span class="ranking-key">j</span>
-                <span class="ranking-label">Simple</span>
-                {#if currentComplexityLabel === "simple"}<span class="current-tag">(current)</span>{/if}
+                <span class="ranking-label-group">
+                  <span class="ranking-label">Simple</span>
+                  {#if currentComplexityLabel === "simple"}<span class="current-tag">(current)</span>{/if}
+                </span>
               </button>
               <button class="ranking-option" onclick={() => assignComplexity("complex")}>
                 <span class="ranking-key">k</span>
-                <span class="ranking-label">Complex</span>
-                {#if currentComplexityLabel === "complex"}<span class="current-tag">(current)</span>{/if}
+                <span class="ranking-label-group">
+                  <span class="ranking-label">Complex</span>
+                  {#if currentComplexityLabel === "complex"}<span class="current-tag">(current)</span>{/if}
+                </span>
               </button>
             </div>
           {/if}
@@ -350,6 +358,11 @@
   .ranking-option .ranking-key {
     font-size: 13px;
     color: #6c7086;
+  }
+
+  .ranking-label-group {
+    display: flex;
+    flex-direction: column;
   }
 
   .ranking-option .ranking-label {
