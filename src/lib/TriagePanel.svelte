@@ -19,7 +19,6 @@
   let swipeDirection: "left" | "right" | null = $state(null);
   let step: "priority" | "complexity" = $state("priority");
   let pendingPriority: "high" | "low" | null = $state(null);
-  let triageCount = $state({ high: 0, low: 0, simple: 0, complex: 0, prioritySkipped: 0, complexitySkipped: 0 });
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -77,9 +76,6 @@
 
     swipeDirection = priority === "high" ? "right" : "left";
 
-    if (priority === "high") triageCount.high++;
-    else triageCount.low++;
-
     await new Promise(r => setTimeout(r, 300));
     swipeDirection = null;
     pendingPriority = priority;
@@ -93,9 +89,6 @@
     const priority = pendingPriority;
     swipeDirection = complexity === "complex" ? "right" : "left";
 
-    if (complexity === "simple") triageCount.simple++;
-    else triageCount.complex++;
-
     await new Promise(r => setTimeout(r, 300));
     swipeDirection = null;
     advanceCard(issue, priority, complexity);
@@ -103,15 +96,12 @@
 
   function skipPriority() {
     if (!currentIssue) return;
-    triageCount.prioritySkipped++;
     pendingPriority = null;
     step = "complexity";
   }
 
   function skipComplexity() {
     if (!currentIssue) return;
-    triageCount.complexitySkipped++;
-
     const issue = currentIssue;
     const priority = pendingPriority;
     advanceCard(issue, priority, null);
@@ -201,15 +191,6 @@
   <div class="triage-container" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="triage-header">
       <h2>Triage: {category === "untagged" ? "Untagged" : category === "high" ? "High Priority" : "Untagged + Low"}</h2>
-      <div class="triage-stats">
-        <span class="stat high">{triageCount.high} high</span>
-        <span class="stat low">{triageCount.low} low</span>
-        <span class="stat simple">{triageCount.simple} simple</span>
-        <span class="stat complex">{triageCount.complex} complex</span>
-        {#if triageCount.prioritySkipped || triageCount.complexitySkipped}
-          <span class="stat skipped">{triageCount.prioritySkipped + triageCount.complexitySkipped} skipped</span>
-        {/if}
-      </div>
     </div>
 
     {#if loading}
@@ -222,15 +203,6 @@
       <div class="done-container">
         <div class="done-icon">✓</div>
         <div class="done-text">All issues triaged!</div>
-        <div class="done-summary">
-          <span class="stat high">{triageCount.high} high</span>
-          <span class="stat low">{triageCount.low} low</span>
-          <span class="stat simple">{triageCount.simple} simple</span>
-          <span class="stat complex">{triageCount.complex} complex</span>
-          {#if triageCount.prioritySkipped || triageCount.complexitySkipped}
-          <span class="stat skipped">{triageCount.prioritySkipped + triageCount.complexitySkipped} skipped</span>
-        {/if}
-        </div>
         <div class="done-hint">Press <kbd>Esc</kbd> to close</div>
       </div>
     {:else}
@@ -329,32 +301,6 @@
     margin: 0;
   }
 
-  .triage-stats {
-    display: flex;
-    gap: 12px;
-  }
-
-  .stat {
-    font-size: 12px;
-    font-weight: 500;
-    padding: 2px 8px;
-    border-radius: 4px;
-  }
-
-  .stat.high {
-    color: #f38ba8;
-    background: rgba(243, 139, 168, 0.1);
-  }
-
-  .stat.low {
-    color: #a6e3a1;
-    background: rgba(166, 227, 161, 0.1);
-  }
-
-  .stat.skipped {
-    color: #6c7086;
-    background: rgba(108, 112, 134, 0.1);
-  }
 
   .status {
     padding: 32px;
@@ -412,17 +358,7 @@
     color: #fab387;
   }
 
-  .stat.simple {
-    color: #89dceb;
-    background: rgba(137, 220, 235, 0.1);
-  }
-
-  .stat.complex {
-    color: #fab387;
-    background: rgba(250, 179, 135, 0.1);
-  }
-
-  .step-indicator {
+.step-indicator {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -557,11 +493,6 @@
     font-size: 16px;
     font-weight: 600;
     color: #cdd6f4;
-  }
-
-  .done-summary {
-    display: flex;
-    gap: 12px;
   }
 
   .done-hint {
