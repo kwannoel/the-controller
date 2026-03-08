@@ -31,8 +31,10 @@ export type CommandId =
 export type ExternalCommandId =
   | "screenshot"
   | "screenshot-cropped"
+  | "screenshot-preview"
   | "keystroke-visualizer"
-  | "escape-focus";
+  | "escape-focus"
+  | "escape-forward";
 
 export interface CommandDef {
   id: CommandId | ExternalCommandId;
@@ -55,6 +57,7 @@ export const commands: CommandDef[] = [
   { id: "jump-mode", key: "g", section: "Navigation", description: "Go to project / session (jump mode)" },
   { id: "fuzzy-finder", key: "f", section: "Navigation", description: "Find project (fuzzy finder)" },
   { id: "escape-focus", key: "Esc", section: "Navigation", description: "Move focus up (terminal → session → project)", handledExternally: true },
+  { id: "escape-forward", key: "Esc Esc", section: "Navigation", description: "Forward escape to terminal", handledExternally: true },
 
   // ── Sessions ──
   { id: "create-session-claude", key: "c", section: "Sessions", description: "Create Claude session with issue" },
@@ -62,7 +65,9 @@ export const commands: CommandDef[] = [
   { id: "background-worker-claude", key: "C", section: "Sessions", description: "Background worker: Claude (autonomous)" },
   { id: "background-worker-codex", key: "X", section: "Sessions", description: "Background worker: Codex (autonomous)" },
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)" },
-  { id: "screenshot", key: "⌘S", section: "Sessions", description: "Screenshot app → new session with image", handledExternally: true },
+  { id: "screenshot", key: "⌘S", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
+  { id: "screenshot-cropped", key: "⌘D", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
+  { id: "screenshot-preview", key: "⌘⇧S / ⌘⇧D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
 
   // ── Projects ──
   { id: "new-project", key: "n", section: "Projects", description: "New project" },

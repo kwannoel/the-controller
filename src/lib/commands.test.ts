@@ -57,10 +57,10 @@ describe("command registry", () => {
   it("help sections match the original hardcoded sections", () => {
     const sections = getHelpSections();
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(6);
+    expect(nav.entries).toHaveLength(7);
 
     const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(6);
+    expect(sess.entries).toHaveLength(8);
 
     const proj = sections.find(s => s.label === "Projects")!;
     expect(proj.entries).toHaveLength(7);

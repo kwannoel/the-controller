@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { getHelpSections } from "./commands";
 
   interface Props {
     onClose: () => void;
@@ -7,59 +8,7 @@
 
   let { onClose }: Props = $props();
 
-  interface Shortcut { key: string; description: string }
-  interface Section { label: string; shortcuts: Shortcut[] }
-
-  const sections: Section[] = [
-    {
-      label: "Navigation",
-      shortcuts: [
-        { key: "j / k", description: "Next / previous item (project or session)" },
-        { key: "J / K", description: "Next / previous project (skip sessions)" },
-        { key: "l / Enter", description: "Expand/collapse project or focus terminal" },
-        { key: "g", description: "Go to project / session (jump mode)" },
-        { key: "f", description: "Find project (fuzzy finder)" },
-        { key: "Esc", description: "Move focus up (terminal → session → project)" },
-        { key: "Esc Esc", description: "Forward escape to terminal" },
-      ],
-    },
-    {
-      label: "Sessions",
-      shortcuts: [
-        { key: "c", description: "Create Claude session with issue" },
-        { key: "x", description: "Create Codex session with issue" },
-        { key: "C", description: "Background worker: Claude (autonomous)" },
-        { key: "X", description: "Background worker: Codex (autonomous)" },
-        { key: "m", description: "Merge session branch (create PR)" },
-        { key: "⌘S", description: "Screenshot (full) → new session" },
-        { key: "⌘D", description: "Screenshot (cropped) → new session" },
-        { key: "⌘⇧S / ⌘⇧D", description: "Screenshot with preview before sending" },
-      ],
-    },
-    {
-      label: "Projects",
-      shortcuts: [
-        { key: "n", description: "New project" },
-        { key: "d", description: "Delete focused item (session or project)" },
-        { key: "a", description: "Archive focused item (session or project)" },
-        { key: "A", description: "View archived projects" },
-        { key: "i", description: "Create GitHub issue for focused project" },
-        { key: "t", description: "Triage issues (untriaged)" },
-        { key: "T", description: "View triaged issues" },
-      ],
-    },
-    {
-      label: "Panels",
-      shortcuts: [
-        { key: "s", description: "Toggle sidebar" },
-        { key: "b", description: "Toggle background agent panel" },
-        { key: "o", description: "Toggle maintainer on/off (when panel open)" },
-        { key: "r", description: "Run maintainer check now (when panel open)" },
-        { key: "?", description: "Toggle this help" },
-        { key: "⌘K", description: "Toggle keystroke visualizer" },
-      ],
-    },
-  ];
+  const sections = getHelpSections();
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
@@ -88,7 +37,7 @@
           <div class="section-label">{section.label}</div>
           <table class="shortcut-table">
             <tbody>
-              {#each section.shortcuts as { key, description }}
+              {#each section.entries as { key, description }}
                 <tr>
                   <td class="key-cell"><kbd>{key}</kbd></td>
                   <td class="desc-cell">{description}</td>
