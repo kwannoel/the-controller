@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+pub mod auto_worker;
 pub mod commands;
 pub mod config;
 pub mod maintainer;
