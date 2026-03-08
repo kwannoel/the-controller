@@ -147,6 +147,7 @@
       return;
     }
 
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (swipeDirection) return; // animating
 
     if (step === "priority") {
