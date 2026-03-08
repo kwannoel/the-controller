@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -27,6 +27,8 @@
   let finishBranchTarget: { sessionId: string; kind?: string } | null = $state(null);
   const archiveViewState = fromStore(archiveView);
   let isArchiveView = $derived(archiveViewState.current);
+  const workspaceModeState = fromStore(workspaceMode);
+  let currentMode = $derived(workspaceModeState.current);
   const archivedProjectsState = fromStore(archivedProjects);
   let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
 
@@ -466,7 +468,7 @@
 
 <aside class="sidebar" bind:this={sidebarEl}>
   <div class="sidebar-header">
-    <h2>{isArchiveView ? "Archives" : "Projects"}</h2>
+    <h2>{isArchiveView ? "Archives" : currentMode === "agents" ? "Agents" : "Projects"}</h2>
   </div>
 
   <div class="project-list">
