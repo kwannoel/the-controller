@@ -36,6 +36,9 @@
   let jumpBuffer = $state("");
   let jumpLabels: string[] = $state([]);
 
+  // Toggle mode state (o prefix)
+  let toggleModeActive = $state(false);
+
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
   const activeSessionIdState = fromStore(activeSessionId);
@@ -149,6 +152,19 @@
     if (!isPrefix) {
       exitJumpMode();
     }
+  }
+
+  function handleToggleKey(key: string) {
+    toggleModeActive = false;
+    if (key === "m") {
+      dispatchAction({ type: "toggle-maintainer-enabled" });
+      return;
+    }
+    if (key === "w") {
+      dispatchAction({ type: "toggle-auto-worker-enabled" });
+      return;
+    }
+    // Any other key (including Escape) cancels toggle mode
   }
 
   type SidebarItem =
@@ -369,12 +385,9 @@
           dispatchAction({ type: "focus-terminal" });
         }
         return true;
-      case "toggle-maintainer":
-        if (isMaintainerPanelVisible && getFocusedProject()) {
-          dispatchAction({ type: "toggle-maintainer-enabled" });
-          return true;
-        }
-        return false;
+      case "toggle-mode":
+        toggleModeActive = true;
+        return true;
       case "trigger-maintainer-check":
         if (isMaintainerPanelVisible) {
           dispatchAction({ type: "trigger-maintainer-check" });
@@ -436,6 +449,15 @@
       e.preventDefault();
       handleJumpKey(e.key);
       pushKeystroke(e.key);
+      return;
+    }
+
+    // Toggle mode intercepts all keys
+    if (toggleModeActive) {
+      e.stopPropagation();
+      e.preventDefault();
+      handleToggleKey(e.key);
+      pushKeystroke("o" + e.key);
       return;
     }
 

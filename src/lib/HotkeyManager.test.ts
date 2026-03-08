@@ -12,6 +12,7 @@ const testProject = {
   created_at: '2026-01-01',
   archived: false,
   maintainer: { enabled: false, interval_minutes: 60 },
+  auto_worker: { enabled: false },
   sessions: [
     { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
     { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
@@ -25,6 +26,7 @@ const testProject2 = {
   created_at: '2026-01-01',
   archived: false,
   maintainer: { enabled: false, interval_minutes: 60 },
+  auto_worker: { enabled: false },
   sessions: [
     { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
     { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
@@ -377,6 +379,8 @@ describe('HotkeyManager', () => {
         repo_path: `/tmp/p${i}`,
         created_at: '2026-01-01',
         archived: false,
+        maintainer: { enabled: false, interval_minutes: 60 },
+        auto_worker: { enabled: false },
         sessions: [
           { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
         ],
@@ -403,6 +407,8 @@ describe('HotkeyManager', () => {
         repo_path: `/tmp/p${i}`,
         created_at: '2026-01-01',
         archived: false,
+        maintainer: { enabled: false, interval_minutes: 60 },
+        auto_worker: { enabled: false },
         sessions: [
           { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null },
         ],
@@ -610,45 +616,41 @@ describe('HotkeyManager', () => {
     });
   });
 
-  // ── Maintainer toggle (o) ──
+  // ── Toggle mode (o) ──
 
-  describe('maintainer toggle (o)', () => {
-    it('o dispatches toggle-maintainer-enabled when panel visible and project focused', () => {
-      maintainerPanelVisible.set(true);
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+  describe('toggle mode (o)', () => {
+    it('o then m dispatches toggle-maintainer-enabled', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('o');
+      pressKey('m');
       expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
       unsub();
     });
 
-    it('o dispatches toggle-maintainer-enabled when panel visible and session focused', () => {
-      maintainerPanelVisible.set(true);
-      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
+    it('o then w dispatches toggle-auto-worker-enabled', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('o');
-      expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
+      pressKey('w');
+      expect(captured).toEqual({ type: 'toggle-auto-worker-enabled' });
       unsub();
     });
 
-    it('o does nothing when panel is hidden', () => {
-      maintainerPanelVisible.set(false);
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+    it('o then Escape cancels toggle mode', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('o');
+      pressKey('Escape');
       expect(captured).toBeNull();
       unsub();
     });
 
-    it('o does nothing when no project focused', () => {
-      maintainerPanelVisible.set(true);
-      focusTarget.set(null);
+    it('o then unrecognized key cancels toggle mode', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('o');
+      pressKey('q');
       expect(captured).toBeNull();
       unsub();
     });

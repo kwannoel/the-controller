@@ -22,7 +22,7 @@ export type CommandId =
   | "triage-untriaged"
   | "triage-triaged"
   | "expand-collapse"
-  | "toggle-maintainer"
+  | "toggle-mode"
   | "trigger-maintainer-check"
   | "toggle-maintainer-panel"
   | "thinking-up"
@@ -86,7 +86,7 @@ export const commands: CommandDef[] = [
   // ── Panels ──
   { id: "toggle-sidebar", key: "s", section: "Panels", description: "Toggle sidebar" },
   { id: "toggle-maintainer-panel", key: "b", section: "Panels", description: "Toggle background agent panel" },
-  { id: "toggle-maintainer", key: "o", section: "Panels", description: "Toggle maintainer on/off (when panel open)" },
+  { id: "toggle-mode", key: "o", section: "Panels", description: "Toggle: (m)aintainer / (w)orker" },
   { id: "trigger-maintainer-check", key: "r", section: "Panels", description: "Run maintainer check now (when panel open)" },
   { id: "clear-maintainer-reports", key: "c", section: "Panels", description: "Clear maintainer reports (when panel open)", handledExternally: true },
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
