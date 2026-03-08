@@ -29,7 +29,8 @@ export type CommandId =
   | "trigger-agent-check"
   | "thinking-up"
   | "thinking-down"
-  | "toggle-help";
+  | "toggle-help"
+  | "clear-agent-reports";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -38,8 +39,7 @@ export type ExternalCommandId =
   | "screenshot-preview"
   | "keystroke-visualizer"
   | "escape-focus"
-  | "escape-forward"
-  | "clear-agent-reports";
+  | "escape-forward";
 
 export interface CommandDef {
   id: CommandId | ExternalCommandId;

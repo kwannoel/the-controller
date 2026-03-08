@@ -669,26 +669,83 @@ describe('HotkeyManager', () => {
     });
   });
 
-  // ── Clear maintainer reports (c) ──
+  // ── Thinking level cycle (e/q) ──
 
-  describe('clear maintainer reports (c)', () => {
-    it('c dispatches clear-maintainer-reports when panel visible', () => {
+  describe('thinking level cycle', () => {
+    it('e increases thinking level from default (medium) to high', () => {
+      pressKey('e');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+    });
+
+    it('q decreases thinking level from default (medium) to low', () => {
+      pressKey('q');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('low');
+    });
+
+    it('e cycles up through all levels and wraps: medium → high → max → low → medium', () => {
+      pressKey('e'); // medium → high
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      pressKey('e'); // high → max
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('max');
+      pressKey('e'); // max → low (wrap)
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('low');
+      pressKey('e'); // low → medium
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('medium');
+    });
+
+    it('q cycles down through all levels and wraps: medium → low → max → high → medium', () => {
+      pressKey('q'); // medium → low
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('low');
+      pressKey('q'); // low → max (wrap)
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('max');
+      pressKey('q'); // max → high
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      pressKey('q'); // high → medium
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('medium');
+    });
+
+    it('e writes /think command to PTY when session is idle', () => {
+      sessionStatuses.set(new Map([['sess-1', 'idle']]));
+      pressKey('e');
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: '/think high\n',
+      });
+    });
+
+    it('q writes /think command to PTY when session is idle', () => {
+      sessionStatuses.set(new Map([['sess-1', 'idle']]));
+      pressKey('q');
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: '/think low\n',
+      });
+    });
+
+    it('e does not write to PTY when session is working', () => {
+      sessionStatuses.set(new Map([['sess-1', 'working']]));
+      pressKey('e');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it('e does not write to PTY when session has no status', () => {
+      pressKey('e');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      expect(invoke).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── c key in development mode ──
+
+  describe('c key in development mode', () => {
+    it('c dispatches pick-issue-for-session when panel visible (no more override)', () => {
       maintainerPanelVisible.set(true);
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'clear-maintainer-reports' });
-      unsub();
-    });
-
-    it('c dispatches clear-maintainer-reports when focus is maintainer type', () => {
-      maintainerPanelVisible.set(true);
-      focusTarget.set({ type: 'maintainer' });
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('c');
-      expect(captured).toEqual({ type: 'clear-maintainer-reports' });
+      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
       unsub();
     });
 
@@ -700,6 +757,56 @@ describe('HotkeyManager', () => {
       pressKey('c');
       expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
       unsub();
+    });
+  });
+
+  // ── Agents mode keys ──
+
+  describe('agents mode keys', () => {
+    beforeEach(() => {
+      workspaceMode.set('agents');
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+    });
+
+    afterEach(() => {
+      workspaceMode.set('development');
+    });
+
+    it('o in agents mode dispatches toggle-auto-worker-enabled', () => {
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('o');
+      expect(captured).toEqual({ type: 'toggle-auto-worker-enabled' });
+      unsub();
+    });
+
+    it('r in agents mode dispatches trigger-maintainer-check', () => {
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('r');
+      expect(captured).toEqual({ type: 'trigger-maintainer-check' });
+      unsub();
+    });
+
+    it('c in agents mode dispatches clear-maintainer-reports', () => {
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('c');
+      expect(captured).toEqual({ type: 'clear-maintainer-reports' });
+      unsub();
+    });
+
+    it('dev-only keys like n do not fire in agents mode', () => {
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('n');
+      expect(captured).toBeNull();
+      unsub();
+    });
+
+    it('global keys like j still work in agents mode', () => {
+      pressKey('j');
+      expect(get(focusTarget)).not.toBeNull();
     });
   });
 

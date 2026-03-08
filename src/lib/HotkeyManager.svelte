@@ -298,12 +298,6 @@
   }
 
   function handleHotkey(key: string): boolean {
-    // Context-sensitive override: c clears reports when maintainer panel is open
-    if (key === "c" && isMaintainerPanelVisible) {
-      dispatchAction({ type: "clear-maintainer-reports" });
-      return true;
-    }
-
     const id = keyMap.get(key);
     if (id === undefined) return false;
 
@@ -389,14 +383,11 @@
         toggleModeActive = true;
         return true;
       case "toggle-agent":
-        // Handled in Task 9 (agents mode key handlers)
-        return false;
+        dispatchAction({ type: "toggle-auto-worker-enabled" });
+        return true;
       case "trigger-agent-check":
-        if (isMaintainerPanelVisible) {
-          dispatchAction({ type: "trigger-maintainer-check" });
-          return true;
-        }
-        return false;
+        dispatchAction({ type: "trigger-maintainer-check" });
+        return true;
       case "thinking-up": {
         const lvl = cycleThinkingLevel(1);
         if (lvl) pushKeystroke(`Think: ${lvl}`);
@@ -409,6 +400,9 @@
       }
       case "toggle-help":
         dispatchAction({ type: "toggle-help" });
+        return true;
+      case "clear-agent-reports":
+        dispatchAction({ type: "clear-maintainer-reports" });
         return true;
       default: {
         const _exhaustive: never = id;
