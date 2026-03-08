@@ -53,6 +53,7 @@
         { key: "o", description: "Toggle maintainer on/off (when panel open)" },
         { key: "r", description: "Run maintainer check now (when panel open)" },
         { key: "?", description: "Toggle this help" },
+        { key: "⌘K", description: "Toggle keystroke visualizer" },
       ],
     },
   ];
