@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, maintainerPanelVisible } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, maintainerPanelVisible, sessionThinkingLevels, sessionStatuses } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 const testProject = {
@@ -61,6 +61,8 @@ describe('HotkeyManager', () => {
     sidebarVisible.set(true);
     maintainerPanelVisible.set(false);
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
+    sessionThinkingLevels.set(new Map());
+    sessionStatuses.set(new Map());
     vi.clearAllMocks();
     render(HotkeyManager);
   });
@@ -205,9 +207,8 @@ describe('HotkeyManager', () => {
 
     it('unrecognized keys do not change state', () => {
       const initial = get(activeSessionId);
-      pressKey('q');
       pressKey('w');
-      pressKey('e');
+      pressKey('y');
       expect(get(activeSessionId)).toBe(initial);
       expect(get(hotkeyAction)).toBeNull();
     });
@@ -650,6 +651,73 @@ describe('HotkeyManager', () => {
       pressKey('o');
       expect(captured).toBeNull();
       unsub();
+    });
+  });
+
+  // ── Thinking level cycle (e/q) ──
+
+  describe('thinking level cycle', () => {
+    it('e increases thinking level from default (medium) to high', () => {
+      pressKey('e');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+    });
+
+    it('q decreases thinking level from default (medium) to low', () => {
+      pressKey('q');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('low');
+    });
+
+    it('e cycles up through all levels and wraps: medium → high → max → low → medium', () => {
+      pressKey('e'); // medium → high
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      pressKey('e'); // high → max
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('max');
+      pressKey('e'); // max → low (wrap)
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('low');
+      pressKey('e'); // low → medium
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('medium');
+    });
+
+    it('q cycles down through all levels and wraps: medium → low → max → high → medium', () => {
+      pressKey('q'); // medium → low
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('low');
+      pressKey('q'); // low → max (wrap)
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('max');
+      pressKey('q'); // max → high
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      pressKey('q'); // high → medium
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('medium');
+    });
+
+    it('e writes /think command to PTY when session is idle', () => {
+      sessionStatuses.set(new Map([['sess-1', 'idle']]));
+      pressKey('e');
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: '/think high\n',
+      });
+    });
+
+    it('q writes /think command to PTY when session is idle', () => {
+      sessionStatuses.set(new Map([['sess-1', 'idle']]));
+      pressKey('q');
+      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+        sessionId: 'sess-1',
+        data: '/think low\n',
+      });
+    });
+
+    it('e does not write to PTY when session is working', () => {
+      sessionStatuses.set(new Map([['sess-1', 'working']]));
+      pressKey('e');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      expect(invoke).not.toHaveBeenCalled();
+    });
+
+    it('e does not write to PTY when session has no status', () => {
+      pressKey('e');
+      expect(get(sessionThinkingLevels).get('sess-1')).toBe('high');
+      expect(invoke).not.toHaveBeenCalled();
     });
   });
 

@@ -9,6 +9,9 @@
     generateJumpLabels,
     JUMP_KEYS,
     sidebarVisible,
+    sessionStatuses,
+    sessionThinkingLevels,
+    THINKING_LEVELS,
 
     maintainerPanelVisible,
     archiveView,
@@ -19,6 +22,7 @@
     type Project,
     type HotkeyAction,
     type FocusTarget,
+    type ThinkingLevel,
   } from "./stores";
   import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
   import { buildKeyMap, type CommandId } from "./commands";
@@ -46,6 +50,10 @@
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
   const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   let isMaintainerPanelVisible = $derived(maintainerPanelVisibleState.current);
+  const sessionStatusesState = fromStore(sessionStatuses);
+  let statusMap = $derived(sessionStatusesState.current);
+  const thinkingLevelsState = fromStore(sessionThinkingLevels);
+  let thinkingMap = $derived(thinkingLevelsState.current);
 
   const keyMap = buildKeyMap();
 
@@ -233,6 +241,23 @@
     }
   }
 
+  function cycleThinkingLevel(direction: 1 | -1): string | null {
+    if (!activeId) return null;
+    const current = thinkingMap.get(activeId) ?? "medium";
+    const idx = THINKING_LEVELS.indexOf(current);
+    const len = THINKING_LEVELS.length;
+    const next = THINKING_LEVELS[((idx + direction) % len + len) % len];
+    const updated = new Map(thinkingMap);
+    updated.set(activeId, next);
+    sessionThinkingLevels.set(updated);
+
+    // Write /think command to PTY if session is idle
+    if (statusMap.get(activeId) === "idle") {
+      invoke("write_to_pty", { sessionId: activeId, data: `/think ${next}\n` });
+    }
+    return next;
+  }
+
   function dispatchIssuePicker(opts?: { kind?: string; background?: boolean }) {
     const project = getFocusedProject();
     if (!project) return;
@@ -348,6 +373,16 @@
       case "toggle-maintainer-panel":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
+      case "thinking-up": {
+        const lvl = cycleThinkingLevel(1);
+        if (lvl) pushKeystroke(`Think: ${lvl}`);
+        return true;
+      }
+      case "thinking-down": {
+        const lvl = cycleThinkingLevel(-1);
+        if (lvl) pushKeystroke(`Think: ${lvl}`);
+        return true;
+      }
       case "toggle-help":
         dispatchAction({ type: "toggle-help" });
         return true;

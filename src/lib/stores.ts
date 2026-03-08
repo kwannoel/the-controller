@@ -103,6 +103,11 @@ export const archiveView = writable<boolean>(false);
 export const archivedProjects = writable<Project[]>([]);
 export const sidebarVisible = writable<boolean>(true);
 
+// Thinking level per session
+export type ThinkingLevel = "low" | "medium" | "high" | "max";
+export const THINKING_LEVELS: ThinkingLevel[] = ["low", "medium", "high", "max"];
+export const sessionThinkingLevels = writable<Map<string, ThinkingLevel>>(new Map());
+
 export const expandedProjects = writable<Set<string>>(new Set());
 
 export function dispatchHotkeyAction(action: NonNullable<HotkeyAction>) {
