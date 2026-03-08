@@ -44,12 +44,12 @@
   {#each allSessions as session (session.id)}
     {@const sessionId = session.id}
     <div class="terminal-wrapper" class:visible={activeSession === sessionId}>
-      <div class="terminal-inner">
-        <Terminal {sessionId} kind={session.kind} bind:this={terminalComponents[sessionId]} />
-      </div>
       {#if focusedSessionId === sessionId}
         <SummaryPane {sessionId} />
       {/if}
+      <div class="terminal-inner">
+        <Terminal {sessionId} kind={session.kind} bind:this={terminalComponents[sessionId]} />
+      </div>
     </div>
   {/each}
 
