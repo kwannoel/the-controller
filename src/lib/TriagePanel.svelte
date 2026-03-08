@@ -209,20 +209,7 @@
         <div class="done-hint">Press <kbd>Esc</kbd> to close</div>
       </div>
     {:else}
-      <div class="step-indicator">
-        <span class="step-dot" class:active={step === "priority"}></span>
-        <span class="step-dot" class:active={step === "complexity"}></span>
-        <span class="step-label">{step === "priority" ? "Step 1: Priority" : "Step 2: Complexity"}</span>
-      </div>
-
       <div class="card-area">
-        <div class="label-hint left">
-          <span class="label-arrow">&#8592;</span>
-          <span class="label-text" class:low={step === "priority"} class:simple={step === "complexity"}>
-            {step === "priority" ? "Low" : "Simple"}
-          </span>
-        </div>
-
         <div
           class="issue-card"
           class:swipe-left={swipeDirection === "left"}
@@ -243,27 +230,48 @@
           <div class="card-counter">{remaining} remaining</div>
         </div>
 
-        <div class="label-hint right">
-          <span class="label-text" class:high={step === "priority"} class:complex={step === "complexity"}>
-            {step === "priority" ? "High" : "Complex"}
-          </span>
-          <span class="label-arrow">&#8594;</span>
+        <div class="ranking-panel">
+          <div class="step-indicator">
+            <span class="step-dot" class:active={step === "priority"}></span>
+            <span class="step-dot" class:active={step === "complexity"}></span>
+          </div>
+
+          {#if step === "priority"}
+            <div class="step-title priority">Priority</div>
+            <div class="ranking-options">
+              <button class="ranking-option low" onclick={() => assignPriority("low")}>
+                <span class="ranking-key">&#8592;</span>
+                <span class="ranking-label">Low</span>
+              </button>
+              <button class="ranking-option high" onclick={() => assignPriority("high")}>
+                <span class="ranking-label">High</span>
+                <span class="ranking-key">&#8594;</span>
+              </button>
+            </div>
+          {:else}
+            <div class="step-title complexity">Complexity</div>
+            <div class="ranking-options">
+              <button class="ranking-option simple" onclick={() => assignComplexity("simple")}>
+                <span class="ranking-key">&#8592;</span>
+                <span class="ranking-label">Simple</span>
+              </button>
+              <button class="ranking-option complex" onclick={() => assignComplexity("complex")}>
+                <span class="ranking-label">Complex</span>
+                <span class="ranking-key">&#8594;</span>
+              </button>
+            </div>
+          {/if}
+
+          <button class="skip-btn" onclick={() => step === "priority" ? skipPriority() : skipComplexity()}>
+            Skip &#8595;
+          </button>
         </div>
       </div>
 
       <div class="hotkey-bar">
-        <div class="hotkey-group">
-          <kbd>&#8592;</kbd> / <kbd>j</kbd>
-          <span class="hotkey-desc">{step === "priority" ? "Low priority" : "Simple"}</span>
-        </div>
-        <div class="hotkey-group">
-          <kbd>&#8595;</kbd> / <kbd>s</kbd>
-          <span class="hotkey-desc">Skip</span>
-        </div>
-        <div class="hotkey-group">
-          <kbd>&#8594;</kbd> / <kbd>k</kbd>
-          <span class="hotkey-desc">{step === "priority" ? "High priority" : "Complex"}</span>
-        </div>
+        <span class="hotkey-hint"><kbd>j</kbd> / <kbd>&#8592;</kbd></span>
+        <span class="hotkey-hint"><kbd>s</kbd> / <kbd>&#8595;</kbd> skip</span>
+        <span class="hotkey-hint"><kbd>k</kbd> / <kbd>&#8594;</kbd></span>
       </div>
     {/if}
   </div>
@@ -284,7 +292,7 @@
     background: #1e1e2e;
     border: 1px solid #313244;
     border-radius: 12px;
-    width: 520px;
+    width: 580px;
     padding: 32px;
     display: flex;
     flex-direction: column;
@@ -318,53 +326,25 @@
 
   .card-area {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 16px;
     min-height: 180px;
   }
 
-  .label-hint {
+  .ranking-panel {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    width: 48px;
+    gap: 12px;
+    width: 120px;
     flex-shrink: 0;
-    opacity: 0.5;
+    justify-content: center;
   }
 
-  .label-arrow {
-    font-size: 20px;
-    color: #6c7086;
-  }
-
-  .label-text {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .label-text.high {
-    color: #f38ba8;
-  }
-
-  .label-text.low {
-    color: #a6e3a1;
-  }
-
-  .label-text.simple {
-    color: #89dceb;
-  }
-
-  .label-text.complex {
-    color: #fab387;
-  }
-
-.step-indicator {
+  .step-indicator {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
   }
 
   .step-dot {
@@ -378,10 +358,82 @@
     background: #89b4fa;
   }
 
-  .step-label {
+  .step-title {
+    font-size: 20px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .step-title.priority {
+    color: #cba6f7;
+  }
+
+  .step-title.complexity {
+    color: #89b4fa;
+  }
+
+  .ranking-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .ranking-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #313244;
+    background: #181825;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .ranking-option:hover {
+    background: #313244;
+  }
+
+  .ranking-option .ranking-key {
+    font-size: 14px;
+    color: #6c7086;
+  }
+
+  .ranking-option .ranking-label {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .ranking-option.low .ranking-label {
+    color: #a6e3a1;
+  }
+
+  .ranking-option.high .ranking-label {
+    color: #f38ba8;
+  }
+
+  .ranking-option.simple .ranking-label {
+    color: #89dceb;
+  }
+
+  .ranking-option.complex .ranking-label {
+    color: #fab387;
+  }
+
+  .skip-btn {
     font-size: 12px;
     color: #6c7086;
-    margin-left: 4px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .skip-btn:hover {
+    color: #a6adc8;
   }
 
   .issue-card {
@@ -452,21 +504,15 @@
 
   .hotkey-bar {
     display: flex;
-    justify-content: space-between;
-    padding: 12px 0 0;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 0 0;
     border-top: 1px solid #313244;
   }
 
-  .hotkey-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: #6c7086;
-  }
-
-  .hotkey-desc {
+  .hotkey-hint {
     font-size: 12px;
+    color: #585b70;
   }
 
   kbd {
