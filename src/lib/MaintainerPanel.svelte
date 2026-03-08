@@ -104,6 +104,12 @@
     project ? (maintainerStatusMap.get(project.id) ?? null) : null
   );
 
+  let isFocused = $derived(focusTargetState.current?.type === "maintainer");
+
+  function handleFocusIn() {
+    focusTarget.set({ type: "maintainer" });
+  }
+
   function severityColor(severity: string): string {
     switch (severity) {
       case "error": return "#f38ba8";
@@ -120,7 +126,8 @@
   }
 </script>
 
-<aside class="maintainer-panel">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<aside class="maintainer-panel" class:focused={isFocused} onfocusin={handleFocusIn}>
   <div class="panel-header">
     <span class="panel-title">Maintainer</span>
     {#if maintainerStatus && maintainerStatus !== "idle"}
@@ -190,6 +197,11 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+
+  .maintainer-panel.focused {
+    outline: 2px solid #89b4fa;
+    outline-offset: -2px;
   }
 
   .panel-header {
