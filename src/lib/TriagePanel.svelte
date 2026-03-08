@@ -86,6 +86,11 @@
     step = "complexity";
   }
 
+  function goBackToPriority() {
+    step = "priority";
+    pendingPriority = null;
+  }
+
   async function assignComplexity(complexity: "low" | "high") {
     if (!currentIssue || !repoPath) return;
 
@@ -159,7 +164,11 @@
         assignPriority("low");
       }
     } else {
-      if (e.key === "ArrowRight" || e.key === "k") {
+      if (e.key === "h") {
+        e.preventDefault();
+        e.stopPropagation();
+        goBackToPriority();
+      } else if (e.key === "ArrowRight" || e.key === "k") {
         e.preventDefault();
         e.stopPropagation();
         assignComplexity("high");
@@ -253,6 +262,10 @@
                   <span class="ranking-label">High complexity</span>
                   {#if currentComplexityLabel === "high"}<span class="current-tag">(current)</span>{/if}
                 </span>
+              </button>
+              <button class="ranking-option back-option" onclick={() => goBackToPriority()}>
+                <span class="ranking-key">h</span>
+                <span class="ranking-label">Back</span>
               </button>
             </div>
           {/if}
@@ -365,6 +378,17 @@
     font-size: 13px;
     font-weight: 600;
     color: #cdd6f4;
+  }
+
+  .back-option {
+    margin-top: 4px;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .back-option .ranking-label {
+    color: #6c7086;
+    font-weight: 400;
   }
 
   .current-tag {
