@@ -15,6 +15,8 @@ import {
   sidebarVisible,
   generateJumpLabels,
   JUMP_KEYS,
+  workspaceMode,
+  workspaceModePickerVisible,
 } from './stores';
 
 describe('stores', () => {
@@ -96,6 +98,22 @@ describe('stores', () => {
       const statuses = get(maintainerStatuses);
       expect(statuses).toBeInstanceOf(Map);
       expect(statuses.size).toBe(0);
+    });
+  });
+
+  describe('workspace mode store', () => {
+    it('defaults to development', () => {
+      expect(get(workspaceMode)).toBe('development');
+    });
+
+    it('can switch to agents', () => {
+      workspaceMode.set('agents');
+      expect(get(workspaceMode)).toBe('agents');
+      workspaceMode.set('development'); // reset
+    });
+
+    it('picker starts hidden', () => {
+      expect(get(workspaceModePickerVisible)).toBe(false);
     });
   });
 

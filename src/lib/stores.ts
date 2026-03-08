@@ -67,6 +67,10 @@ export interface Config {
   projects_root: string;
 }
 
+export type WorkspaceMode = "development" | "agents";
+export const workspaceMode = writable<WorkspaceMode>("development");
+export const workspaceModePickerVisible = writable<boolean>(false);
+
 export const projects = writable<Project[]>([]);
 export const activeSessionId = writable<string | null>(null);
 export type SessionStatus = "working" | "idle" | "exited";
