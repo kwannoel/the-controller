@@ -24,6 +24,7 @@ pub fn run() {
             skills::sync_skills();
             status_socket::start_listener(app.handle().clone());
             maintainer::MaintainerScheduler::start(app.handle().clone());
+            auto_worker::AutoWorkerScheduler::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
