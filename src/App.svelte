@@ -16,8 +16,9 @@
   import TriagePanel from "./lib/TriagePanel.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
+  import AgentDashboard from "./lib/AgentDashboard.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, maintainerPanelVisible, workspaceModePickerVisible, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, maintainerPanelVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
@@ -28,6 +29,7 @@
 
   const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   const workspaceModePickerVisibleState = fromStore(workspaceModePickerVisible);
+  const workspaceModeState = fromStore(workspaceMode);
   const onboardingCompleteState = fromStore(onboardingComplete);
   const projectsState = fromStore(projects);
   const activeSessionIdState = fromStore(activeSessionId);
@@ -304,7 +306,11 @@
         <Sidebar />
       {/if}
       <main class="terminal-area">
-        <TerminalManager />
+        {#if workspaceModeState.current === "agents"}
+          <AgentDashboard />
+        {:else}
+          <TerminalManager />
+        {/if}
       </main>
 
       {#if maintainerPanelVisibleState.current}

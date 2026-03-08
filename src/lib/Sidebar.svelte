@@ -11,6 +11,7 @@
   import ConfirmModal from "./ConfirmModal.svelte";
   import DeleteSessionModal from "./DeleteSessionModal.svelte";
   import ProjectTree from "./sidebar/ProjectTree.svelte";
+  import AgentTree from "./sidebar/AgentTree.svelte";
 
   let sidebarEl: HTMLElement | undefined = $state();
   const showKeyHintsState = fromStore(showKeyHints);
@@ -472,40 +473,54 @@
   </div>
 
   <div class="project-list">
-    <ProjectTree
-      projects={isArchiveView ? archivedProjectList : projectList}
-      mode={isArchiveView ? "archived" : "active"}
-      {expandedProjectSet}
-      {activeSession}
-      {currentFocus}
-      jumpState={jumpState}
-      {projectJumpLabels}
-      {getSessionStatus}
-      onToggleProject={toggleProject}
-      onProjectFocus={(projectId) => {
-        focusTarget.set({ type: "project", projectId });
-      }}
-      onSessionFocus={(sessionId, projectId) => {
-        focusTarget.set({ type: "session", sessionId, projectId });
-      }}
-      onSessionSelect={(sessionId, projectId) => {
-        selectSession(sessionId);
-        focusTarget.set({ type: "session", sessionId, projectId });
-      }}
-    />
+    {#if currentMode === "agents"}
+      <AgentTree
+        projects={projectList}
+        {currentFocus}
+        onProjectFocus={(projectId) => {
+          focusTarget.set({ type: "project", projectId });
+        }}
+      />
+    {:else}
+      <ProjectTree
+        projects={isArchiveView ? archivedProjectList : projectList}
+        mode={isArchiveView ? "archived" : "active"}
+        {expandedProjectSet}
+        {activeSession}
+        {currentFocus}
+        jumpState={jumpState}
+        {projectJumpLabels}
+        {getSessionStatus}
+        onToggleProject={toggleProject}
+        onProjectFocus={(projectId) => {
+          focusTarget.set({ type: "project", projectId });
+        }}
+        onSessionFocus={(sessionId, projectId) => {
+          focusTarget.set({ type: "session", sessionId, projectId });
+        }}
+        onSessionSelect={(sessionId, projectId) => {
+          selectSession(sessionId);
+          focusTarget.set({ type: "session", sessionId, projectId });
+        }}
+      />
+    {/if}
   </div>
 
   <div class="sidebar-footer">
-    <button
-      class="footer-tab"
-      class:active={!isArchiveView}
-      onclick={() => archiveView.set(false)}
-    >Active</button>
-    <button
-      class="footer-tab"
-      class:active={isArchiveView}
-      onclick={() => archiveView.set(true)}
-    >Archives</button>
+    {#if currentMode !== "agents"}
+      <button
+        class="footer-tab"
+        class:active={!isArchiveView}
+        onclick={() => archiveView.set(false)}
+      >Active</button>
+      <button
+        class="footer-tab"
+        class:active={isArchiveView}
+        onclick={() => archiveView.set(true)}
+      >Archives</button>
+    {:else}
+      <div class="footer-spacer"></div>
+    {/if}
     <button
       class="btn-help"
       class:active={showKeyHintsState.current}
@@ -695,6 +710,8 @@
     border-top: 1px solid #313244;
     padding: 0;
   }
+
+  .footer-spacer { flex: 1; }
 
   .footer-tab {
     flex: 1;
