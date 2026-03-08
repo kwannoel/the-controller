@@ -299,6 +299,8 @@
 
         // Force full repaint — canvas content may be stale after display:none
         term.refresh(0, term.rows - 1);
+        // Scroll to bottom so the user sees the latest output / input area
+        term.scrollToBottom();
         // Notify PTY of dimensions so the program gets SIGWINCH and redraws its TUI
         invoke("resize_pty", {
           sessionId,
