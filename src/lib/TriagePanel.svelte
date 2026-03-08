@@ -79,30 +79,26 @@
     }
   }
 
-  async function assignPriority(priority: "high" | "low") {
+  function assignPriority(priority: "high" | "low") {
     if (!currentIssue || !repoPath) return;
 
-    swipeDirection = priority === "high" ? "right" : "left";
-
-    await new Promise(r => setTimeout(r, 300));
-    swipeDirection = null;
     pendingPriority = priority;
     step = "complexity";
   }
 
-  async function assignComplexity(complexity: "simple" | "complex") {
+  async function assignComplexity(complexity: "low" | "high") {
     if (!currentIssue || !repoPath) return;
 
     const issue = currentIssue;
     const priority = pendingPriority;
-    swipeDirection = complexity === "complex" ? "right" : "left";
+    swipeDirection = complexity === "high" ? "right" : "left";
 
     await new Promise(r => setTimeout(r, 300));
     swipeDirection = null;
     advanceCard(issue, priority, complexity);
   }
 
-  function advanceCard(issue: GithubIssue, priority: "high" | "low" | null, complexity: "simple" | "complex" | null) {
+  function advanceCard(issue: GithubIssue, priority: "high" | "low" | null, complexity: "low" | "high" | null) {
     currentIndex++;
     step = "priority";
     pendingPriority = null;
@@ -126,8 +122,8 @@
         repoPath: path,
         issueNumber: issue.number,
         label: `complexity: ${complexity}`,
-        description: complexity === "simple" ? "Quick task, suitable for simple agents" : "Multi-step task, needs capable agents",
-        color: complexity === "simple" ? "89DCEB" : "FAB387",
+        description: complexity === "low" ? "Quick task, suitable for simple agents" : "Multi-step task, needs capable agents",
+        color: complexity === "low" ? "89DCEB" : "FAB387",
       }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));
     }
 
@@ -166,11 +162,11 @@
       if (e.key === "ArrowRight" || e.key === "k") {
         e.preventDefault();
         e.stopPropagation();
-        assignComplexity("complex");
+        assignComplexity("high");
       } else if (e.key === "ArrowLeft" || e.key === "j") {
         e.preventDefault();
         e.stopPropagation();
-        assignComplexity("simple");
+        assignComplexity("low");
       }
     }
   }
@@ -244,18 +240,18 @@
             </div>
           {:else}
             <div class="ranking-options">
-              <button class="ranking-option" onclick={() => assignComplexity("simple")}>
+              <button class="ranking-option" onclick={() => assignComplexity("low")}>
                 <span class="ranking-key">j</span>
                 <span class="ranking-label-group">
-                  <span class="ranking-label">Simple</span>
-                  {#if currentComplexityLabel === "simple"}<span class="current-tag">(current)</span>{/if}
+                  <span class="ranking-label">Low complexity</span>
+                  {#if currentComplexityLabel === "low"}<span class="current-tag">(current)</span>{/if}
                 </span>
               </button>
-              <button class="ranking-option" onclick={() => assignComplexity("complex")}>
+              <button class="ranking-option" onclick={() => assignComplexity("high")}>
                 <span class="ranking-key">k</span>
                 <span class="ranking-label-group">
-                  <span class="ranking-label">Complex</span>
-                  {#if currentComplexityLabel === "complex"}<span class="current-tag">(current)</span>{/if}
+                  <span class="ranking-label">High complexity</span>
+                  {#if currentComplexityLabel === "high"}<span class="current-tag">(current)</span>{/if}
                 </span>
               </button>
             </div>
