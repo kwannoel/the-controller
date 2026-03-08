@@ -4156,6 +4156,7 @@ dependencies = [
  "dirs 5.0.1",
  "git2",
  "image",
+ "once_cell",
  "portable-pty",
  "raw-window-handle",
  "serde",
