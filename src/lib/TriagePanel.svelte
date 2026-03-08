@@ -31,6 +31,14 @@
 
   let remaining = $derived(issues.length - currentIndex);
 
+  // Separate triage-related labels from other labels
+  let triageLabels = $derived(
+    currentIssue?.labels.filter(l => /^(priority|complexity):\s/.test(l.name)) ?? []
+  );
+  let otherLabels = $derived(
+    currentIssue?.labels.filter(l => !/^(priority|complexity):\s/.test(l.name)) ?? []
+  );
+
   let project: Project | null = $derived(
     currentFocus?.projectId
       ? projectList.find((p) => p.id === currentFocus!.projectId) ?? null
@@ -220,9 +228,9 @@
           {#if currentIssue.body}
             <div class="card-body">{currentIssue.body}</div>
           {/if}
-          {#if currentIssue.labels.length > 0}
+          {#if otherLabels.length > 0}
             <div class="card-labels">
-              {#each currentIssue.labels as label}
+              {#each otherLabels as label}
                 <span class="card-label">{label.name}</span>
               {/each}
             </div>
@@ -231,6 +239,14 @@
         </div>
 
         <div class="ranking-panel">
+          {#if triageLabels.length > 0}
+            <div class="existing-triage-labels">
+              {#each triageLabels as label}
+                <span class="triage-label">{label.name}</span>
+              {/each}
+            </div>
+          {/if}
+
           <div class="step-indicator">
             <span class="step-dot" class:active={step === "priority"}></span>
             <span class="step-dot" class:active={step === "complexity"}></span>
@@ -339,6 +355,21 @@
     width: 120px;
     flex-shrink: 0;
     justify-content: center;
+  }
+
+  .existing-triage-labels {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .triage-label {
+    font-size: 11px;
+    color: #bac2de;
+    background: #313244;
+    padding: 2px 8px;
+    border-radius: 4px;
   }
 
   .step-indicator {
