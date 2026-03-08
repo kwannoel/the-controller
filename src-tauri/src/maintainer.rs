@@ -232,6 +232,7 @@ pub fn run_health_check(repo_path: &str, project_id: Uuid) -> Result<MaintainerR
         .arg("--print")
         .arg(&prompt)
         .current_dir(repo_path)
+        .env_remove("CLAUDECODE")
         .output()
         .map_err(|e| format!("Failed to run claude --print: {}", e))?;
 

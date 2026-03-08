@@ -59,6 +59,7 @@ Affected locations:
 - `src-tauri/src/tmux.rs` — `create_session` (removes CLAUDECODE for tmux-backed sessions)
 - `src-tauri/src/pty_manager.rs` — `spawn_command` (removes CLAUDECODE for direct commands)
 - `src-tauri/src/config.rs` — `check_claude_cli_status`, `generate_names_via_cli`
+- `src-tauri/src/maintainer.rs` — `run_health_check` (removes CLAUDECODE for health check subprocess)
 
 ## Session Status Detection via Hooks
 
