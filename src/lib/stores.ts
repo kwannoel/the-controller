@@ -119,6 +119,7 @@ export type FocusTarget =
   | { type: "terminal"; projectId: string }
   | { type: "session"; sessionId: string; projectId: string }
   | { type: "project"; projectId: string }
+  | { type: "maintainer" }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
 

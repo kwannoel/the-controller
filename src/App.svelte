@@ -42,7 +42,20 @@
       } else if (action?.type === "screenshot-to-session") {
         screenshotToNewSession(action.preview ?? false, action.cropped ?? false);
       } else if (action?.type === "toggle-maintainer-panel") {
-        maintainerPanelVisible.update(v => !v);
+        maintainerPanelVisible.update(v => {
+          if (!v) {
+            focusTarget.set({ type: "maintainer" });
+          } else {
+            // Closing panel — restore focus to terminal
+            const proj = focusTargetState.current?.type === "maintainer"
+              ? projectsState.current.find((p) => p.sessions.some((s) => s.id === activeSessionIdState.current))
+              : null;
+            if (proj) {
+              focusTarget.set({ type: "terminal", projectId: proj.id });
+            }
+          }
+          return !v;
+        });
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
       } else if (action?.type === "trigger-maintainer-check") {
