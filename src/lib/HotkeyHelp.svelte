@@ -113,13 +113,13 @@
     width: 80px;
   }
   kbd {
-    background: #313244;
-    color: #89b4fa;
+    background: #ffffff;
+    color: #1e1e2e;
     padding: 2px 8px;
     border-radius: 4px;
     font-family: monospace;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     white-space: nowrap;
   }
   .desc-cell {

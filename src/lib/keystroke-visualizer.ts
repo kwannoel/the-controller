@@ -9,7 +9,7 @@ export const keystrokeVisualizerEnabled = writable<boolean>(false);
 export const keystrokes = writable<Keystroke[]>([]);
 
 let counter = 0;
-const FADE_MS = 2000;
+export const FADE_MS = 3500;
 
 export function toggleKeystrokeVisualizer() {
   keystrokeVisualizerEnabled.update((v) => {

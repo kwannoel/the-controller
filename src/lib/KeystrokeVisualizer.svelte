@@ -1,7 +1,7 @@
 <!-- src/lib/KeystrokeVisualizer.svelte -->
 <script lang="ts">
   import { fromStore } from "svelte/store";
-  import { keystrokeVisualizerEnabled, keystrokes } from "./keystroke-visualizer";
+  import { keystrokeVisualizerEnabled, keystrokes, FADE_MS } from "./keystroke-visualizer";
 
   const enabledState = fromStore(keystrokeVisualizerEnabled);
   const keystrokesState = fromStore(keystrokes);
@@ -12,7 +12,7 @@
 {#if enabled && list.length > 0}
   <div class="keystroke-container">
     {#each list as ks (ks.id)}
-      <span class="keystroke-pill">{ks.label}</span>
+      <span class="keystroke-pill" style="animation-duration: {FADE_MS}ms">{ks.label}</span>
     {/each}
   </div>
 {/if}
@@ -20,7 +20,7 @@
 <style>
   .keystroke-container {
     position: fixed;
-    top: 12px;
+    bottom: 12px;
     right: 12px;
     z-index: 1000;
     display: flex;
@@ -38,7 +38,7 @@
     font-size: 15px;
     font-family: "JetBrains Mono", "Fira Code", monospace;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-    animation: pill-fade 2s ease-out forwards;
+    animation: pill-fade ease-out forwards;
   }
 
   @keyframes pill-fade {

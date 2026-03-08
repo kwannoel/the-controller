@@ -5,6 +5,7 @@ import {
   keystrokes,
   toggleKeystrokeVisualizer,
   pushKeystroke,
+  FADE_MS,
 } from "./keystroke-visualizer";
 
 describe("keystroke-visualizer", () => {
@@ -40,11 +41,11 @@ describe("keystroke-visualizer", () => {
     expect(get(keystrokes)).toHaveLength(0);
   });
 
-  it("auto-removes keystroke after 2 seconds", () => {
+  it("auto-removes keystroke after FADE_MS", () => {
     keystrokeVisualizerEnabled.set(true);
     pushKeystroke("k");
     expect(get(keystrokes)).toHaveLength(1);
-    vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(FADE_MS);
     expect(get(keystrokes)).toHaveLength(0);
   });
 
