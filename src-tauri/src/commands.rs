@@ -1191,6 +1191,21 @@ pub async fn trigger_maintainer_check(
     Ok(report)
 }
 
+#[tauri::command]
+pub async fn clear_maintainer_reports(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    storage
+        .clear_maintainer_reports(project_id)
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "idle");
+    Ok(())
+}
+
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     for name in &["refs/heads/master", "refs/heads/main"] {
         if let Ok(reference) = repo.find_reference(name) {

@@ -721,6 +721,30 @@ describe('HotkeyManager', () => {
     });
   });
 
+  // ── Clear maintainer reports (c) ──
+
+  describe('clear maintainer reports (c)', () => {
+    it('c dispatches clear-maintainer-reports when panel visible', () => {
+      maintainerPanelVisible.set(true);
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('c');
+      expect(captured).toEqual({ type: 'clear-maintainer-reports' });
+      unsub();
+    });
+
+    it('c dispatches pick-issue-for-session when panel hidden', () => {
+      maintainerPanelVisible.set(false);
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('c');
+      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
+      unsub();
+    });
+  });
+
   // ── Input field passthrough ──
 
   describe('input field passthrough', () => {

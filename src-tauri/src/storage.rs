@@ -193,6 +193,15 @@ impl Storage {
         Ok(reports)
     }
 
+    /// Delete all maintainer reports for a project.
+    pub fn clear_maintainer_reports(&self, project_id: Uuid) -> std::io::Result<()> {
+        let dir = self.maintainer_reports_dir(project_id);
+        if dir.exists() {
+            fs::remove_dir_all(&dir)?;
+        }
+        Ok(())
+    }
+
     fn load_maintainer_reports_from_dir(&self, dir: &std::path::Path) -> std::io::Result<Vec<MaintainerReport>> {
         let mut reports = Vec::new();
         for entry in fs::read_dir(dir)? {
@@ -442,6 +451,35 @@ mod tests {
 
         let latest = storage.latest_maintainer_report(project_id).expect("load");
         assert!(latest.is_none());
+    }
+
+    #[test]
+    fn test_clear_maintainer_reports() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+
+        let r1 = make_report(project_id, "2026-03-07T01:00:00Z");
+        let r2 = make_report(project_id, "2026-03-07T02:00:00Z");
+        storage.save_maintainer_report(&r1).expect("save r1");
+        storage.save_maintainer_report(&r2).expect("save r2");
+
+        assert!(storage.latest_maintainer_report(project_id).unwrap().is_some());
+
+        storage.clear_maintainer_reports(project_id).expect("clear");
+
+        assert!(storage.latest_maintainer_report(project_id).unwrap().is_none());
+        assert!(storage.maintainer_report_history(project_id, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_clear_maintainer_reports_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+
+        // Clearing when no reports exist should succeed
+        assert!(storage.clear_maintainer_reports(project_id).is_ok());
     }
 
     #[test]

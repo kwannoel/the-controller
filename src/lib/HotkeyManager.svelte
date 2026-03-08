@@ -277,6 +277,12 @@
   }
 
   function handleHotkey(key: string): boolean {
+    // Context-sensitive override: c clears reports when maintainer panel is open
+    if (key === "c" && isMaintainerPanelVisible) {
+      dispatchAction({ type: "clear-maintainer-reports" });
+      return true;
+    }
+
     const id = keyMap.get(key);
     if (id === undefined) return false;
 

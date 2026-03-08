@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, maintainerStatuses, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, dispatchHotkeyAction, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus } from "./stores";
   import { showToast } from "./toast";
 
   let report: MaintainerReport | null = $state(null);
@@ -183,6 +183,9 @@
       <button class="btn-run" onclick={triggerCheck} disabled={triggerLoading}>
         {triggerLoading ? "Running..." : "(r) Run again"}
       </button>
+      <button class="btn-clear" onclick={() => dispatchHotkeyAction({ type: "clear-maintainer-reports" })}>
+        (c) Clear
+      </button>
     </div>
   {/if}
 </aside>
@@ -322,5 +325,20 @@
   .panel-actions {
     padding: 12px 16px;
     border-top: 1px solid #313244;
+    display: flex;
+    gap: 8px;
   }
+
+  .btn-clear {
+    background: #313244;
+    border: none;
+    color: #cdd6f4;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: none;
+  }
+
+  .btn-clear:hover { background: #45475a; }
 </style>

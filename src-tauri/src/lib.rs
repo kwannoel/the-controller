@@ -69,6 +69,7 @@ pub fn run() {
             commands::get_maintainer_status,
             commands::get_maintainer_history,
             commands::trigger_maintainer_check,
+            commands::clear_maintainer_reports,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
