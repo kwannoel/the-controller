@@ -359,6 +359,7 @@
   }
 
   .current-tag {
+    display: block;
     font-size: 11px;
     color: #6c7086;
     font-weight: 400;
