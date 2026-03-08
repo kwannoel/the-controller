@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-const BACKGROUND_WORKFLOW_SUFFIX: &str = "\n\nYou are an autonomous background worker. Complete the following workflow end-to-end without waiting for user input:\n1. **Design** — Analyze the issue and plan the approach\n2. **Implement** — Write the code changes\n3. **Review** — Self-review the changes for correctness and quality\n4. **Push PR** — Create and push a pull request\n5. **Merge** — Merge the PR once checks pass\n6. **Sync local master** — Pull merged changes to local master";
+const BACKGROUND_WORKFLOW_SUFFIX: &str = "\n\nYou are an autonomous background worker. Complete the following workflow end-to-end without waiting for user input:\n1. **Design** — Analyze the issue and plan the approach\n2. **Implement** — Write the code changes\n3. **Review** — Self-review the changes for correctness and quality\n4. **Push PR** — Create and push a pull request\n5. **Merge** — Merge the PR once checks pass\n6. **Sync local master** — Pull merged changes to local master\n\nCRITICAL: Never ask questions. Never wait for confirmation or user input. If you are uncertain about anything, make your best judgment and proceed. You must complete the entire workflow autonomously.";
 
 /// Build the initial prompt injected into a session from a GitHub issue.
 /// When `background` is true, appends the autonomous workflow instructions.
@@ -156,6 +156,7 @@ mod tests {
         assert!(prompt.contains("Push PR"));
         assert!(prompt.contains("Merge"));
         assert!(prompt.contains("Sync local master"));
+        assert!(prompt.contains("Never ask questions"));
     }
 
     #[test]
