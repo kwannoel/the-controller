@@ -20,6 +20,7 @@
         { key: "g", description: "Go to project / session (jump mode)" },
         { key: "f", description: "Find project (fuzzy finder)" },
         { key: "Esc", description: "Move focus up (terminal → session → project)" },
+        { key: "Esc Esc", description: "Forward escape to terminal" },
       ],
     },
     {
@@ -30,7 +31,9 @@
         { key: "C", description: "Background worker: Claude (autonomous)" },
         { key: "X", description: "Background worker: Codex (autonomous)" },
         { key: "m", description: "Merge session branch (create PR)" },
-        { key: "⌘S", description: "Screenshot app → new session with image" },
+        { key: "⌘S", description: "Screenshot (full) → new session" },
+        { key: "⌘D", description: "Screenshot (cropped) → new session" },
+        { key: "⌘⇧S / ⌘⇧D", description: "Screenshot with preview before sending" },
       ],
     },
     {
