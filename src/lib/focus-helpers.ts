@@ -1,4 +1,4 @@
-import type { Project, FocusTarget } from "./stores";
+import type { Project, FocusTarget, WorkspaceMode } from "./stores";
 
 /**
  * Compute the focus target after deleting a session.
@@ -47,4 +47,41 @@ export function focusAfterProjectDelete(
     }
   }
   return { type: "project", projectId: prevProject.id };
+}
+
+/**
+ * Translate focus target when switching workspace modes.
+ * Keeps the same project context but changes focus type to match the new mode.
+ *
+ * - Switching to development: agent/agent-panel → active session (if in same project) or project
+ * - Switching to agents: session → project
+ */
+export function focusForModeSwitch(
+  current: FocusTarget,
+  newMode: WorkspaceMode,
+  activeSessionId: string | null,
+  projectList: Project[],
+): FocusTarget {
+  if (!current) return null;
+
+  if (newMode === "development") {
+    if (current.type === "agent" || current.type === "agent-panel") {
+      // Try to focus the active session if it belongs to the same project
+      if (activeSessionId) {
+        const project = projectList.find(p => p.id === current.projectId);
+        if (project?.sessions.some(s => s.id === activeSessionId && !s.archived)) {
+          return { type: "session", sessionId: activeSessionId, projectId: current.projectId };
+        }
+      }
+      return { type: "project", projectId: current.projectId };
+    }
+  }
+
+  if (newMode === "agents") {
+    if (current.type === "session") {
+      return { type: "project", projectId: current.projectId };
+    }
+  }
+
+  return current;
 }

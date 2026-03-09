@@ -23,6 +23,7 @@
   } from "./stores";
   import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
   import { buildKeyMap, type CommandId } from "./commands";
+  import { focusForModeSwitch } from "./focus-helpers";
 
   let lastEscapeTime = 0;
 
@@ -167,10 +168,14 @@
     workspaceModePickerVisible.set(false);
     if (key === "d") {
       workspaceMode.set("development");
+      const newFocus = focusForModeSwitch(currentFocus, "development", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
     if (key === "a") {
       workspaceMode.set("agents");
+      const newFocus = focusForModeSwitch(currentFocus, "agents", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
     // Any other key (including Escape) cancels
