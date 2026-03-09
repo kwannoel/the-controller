@@ -10,6 +10,7 @@ use crate::worktree::WorktreeManager;
 
 mod github;
 mod media;
+mod notes;
 
 /// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
 /// if `agents.md` exists and `CLAUDE.md` does not.
@@ -940,6 +941,61 @@ pub async fn copy_image_file_to_clipboard(app: AppHandle, path: String) -> Resul
 #[tauri::command]
 pub async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<String, String> {
     media::capture_app_screenshot(app, cropped).await
+}
+
+#[tauri::command]
+pub fn list_notes(
+    state: State<'_, AppState>,
+    project_name: String,
+) -> Result<Vec<crate::notes::NoteEntry>, String> {
+    notes::list_notes(state, project_name)
+}
+
+#[tauri::command]
+pub fn read_note(
+    state: State<'_, AppState>,
+    project_name: String,
+    filename: String,
+) -> Result<String, String> {
+    notes::read_note(state, project_name, filename)
+}
+
+#[tauri::command]
+pub fn write_note(
+    state: State<'_, AppState>,
+    project_name: String,
+    filename: String,
+    content: String,
+) -> Result<(), String> {
+    notes::write_note(state, project_name, filename, content)
+}
+
+#[tauri::command]
+pub fn create_note(
+    state: State<'_, AppState>,
+    project_name: String,
+    title: String,
+) -> Result<String, String> {
+    notes::create_note(state, project_name, title)
+}
+
+#[tauri::command]
+pub fn rename_note(
+    state: State<'_, AppState>,
+    project_name: String,
+    old_name: String,
+    new_name: String,
+) -> Result<String, String> {
+    notes::rename_note(state, project_name, old_name, new_name)
+}
+
+#[tauri::command]
+pub fn delete_note(
+    state: State<'_, AppState>,
+    project_name: String,
+    filename: String,
+) -> Result<(), String> {
+    notes::delete_note(state, project_name, filename)
 }
 
 const MAX_MERGE_RETRIES: u32 = 5;

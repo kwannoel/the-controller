@@ -75,6 +75,12 @@ pub fn run() {
             commands::trigger_maintainer_check,
             commands::clear_maintainer_reports,
             commands::configure_auto_worker,
+            commands::list_notes,
+            commands::read_note,
+            commands::write_note,
+            commands::create_note,
+            commands::rename_note,
+            commands::delete_note,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
