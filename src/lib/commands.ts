@@ -33,7 +33,9 @@ export type CommandId =
   | "create-note"
   | "delete-note"
   | "rename-note"
-  | "toggle-note-preview";
+  | "toggle-note-preview"
+  | "save-prompt"
+  | "load-prompt";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -74,6 +76,8 @@ export const commands: CommandDef[] = [
   { id: "background-worker-claude", key: "C", section: "Sessions", description: "Background worker: Claude (autonomous)", mode: "development" },
   { id: "background-worker-codex", key: "X", section: "Sessions", description: "Background worker: Codex (autonomous)", mode: "development" },
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)", mode: "development" },
+  { id: "save-prompt", key: "P", section: "Sessions", description: "Save focused session's prompt", mode: "development" },
+  { id: "load-prompt", key: "p", section: "Sessions", description: "Load saved prompt into new session", mode: "development" },
   { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
   { id: "screenshot-preview", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
