@@ -280,7 +280,7 @@ fn spawn_auto_worker_session(
             worktree_path: wt_path,
             worktree_branch: wt_branch,
             archived: false,
-            kind: "claude".to_string(),
+            kind: "codex".to_string(),
             github_issue: Some(issue.clone()),
             initial_prompt: Some(initial_prompt.clone()),
             done_commits: vec![],
@@ -293,7 +293,7 @@ fn spawn_auto_worker_session(
     pty_manager.spawn_session(
         session_id,
         &session_dir,
-        "claude",
+        "codex",
         app_handle.clone(),
         false,
         Some(&initial_prompt),
