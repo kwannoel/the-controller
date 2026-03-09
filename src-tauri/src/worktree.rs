@@ -250,6 +250,29 @@ impl WorktreeManager {
         Ok(merge_base == branch_commit && main_commit != branch_commit)
     }
 
+    /// Rebase the worktree's current branch onto `main_branch`.
+    /// Returns `Ok(true)` if rebase succeeded, `Ok(false)` if there were conflicts
+    /// (rebase left in progress for Claude to resolve).
+    pub fn rebase_onto(worktree_path: &str, main_branch: &str) -> Result<bool, String> {
+        let output = Command::new("git")
+            .args(["rebase", main_branch])
+            .current_dir(worktree_path)
+            .output()
+            .map_err(|e| format!("failed to run git rebase: {}", e))?;
+
+        if output.status.success() {
+            Ok(true)
+        } else {
+            // Check if rebase is in progress (conflicts) vs outright failure
+            if Self::is_rebase_in_progress(worktree_path) {
+                Ok(false)
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                Err(format!("git rebase failed: {}", stderr.trim()))
+            }
+        }
+    }
+
     /// Check if a worktree has a clean working tree (no uncommitted or untracked changes).
     pub fn is_worktree_clean(worktree_path: &str) -> Result<bool, String> {
         let repo = Repository::open(worktree_path)
@@ -706,6 +729,53 @@ mod tests {
 
         let main = WorktreeManager::detect_main_branch(&repo_path).unwrap();
         assert!(WorktreeManager::is_branch_behind(&repo_path, "behind-test2", &main).unwrap());
+    }
+
+    #[test]
+    fn test_rebase_onto_succeeds_when_no_conflicts() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("rebase-test");
+
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "rebase-test", &worktree_dir)
+            .expect("create worktree");
+
+        // Add a commit to main
+        let repo = Repository::open(&repo_path).unwrap();
+        let sig = repo.signature().unwrap_or_else(|_| {
+            git2::Signature::now("Test", "test@example.com").unwrap()
+        });
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let mut index = repo.index().unwrap();
+        std::fs::write(Path::new(&repo_path).join("main-file.txt"), "from main").unwrap();
+        index.add_path(Path::new("main-file.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "main commit", &tree, &[&head]).unwrap();
+
+        // Add a non-conflicting commit to worktree
+        let wt_repo = Repository::open(&wt_path).unwrap();
+        let wt_sig = wt_repo.signature().unwrap_or_else(|_| {
+            git2::Signature::now("Test", "test@example.com").unwrap()
+        });
+        let wt_head = wt_repo.head().unwrap().peel_to_commit().unwrap();
+        std::fs::write(wt_path.join("wt-file.txt"), "from worktree").unwrap();
+        let mut wt_index = wt_repo.index().unwrap();
+        wt_index.add_path(Path::new("wt-file.txt")).unwrap();
+        wt_index.write().unwrap();
+        let wt_tree_id = wt_index.write_tree().unwrap();
+        let wt_tree = wt_repo.find_tree(wt_tree_id).unwrap();
+        wt_repo.commit(Some("HEAD"), &wt_sig, &wt_sig, "wt commit", &wt_tree, &[&wt_head]).unwrap();
+
+        let main = WorktreeManager::detect_main_branch(&repo_path).unwrap();
+        let result = WorktreeManager::rebase_onto(wt_path.to_str().unwrap(), &main);
+        assert!(result.is_ok(), "rebase should succeed: {:?}", result);
+        assert!(result.unwrap(), "rebase should return true (success)");
+
+        // Verify worktree has both files after rebase
+        assert!(wt_path.join("main-file.txt").exists());
+        assert!(wt_path.join("wt-file.txt").exists());
     }
 
     #[test]
