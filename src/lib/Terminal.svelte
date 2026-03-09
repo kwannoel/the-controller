@@ -260,6 +260,7 @@
         }
 
         fitAddon.fit();
+        term.scrollToBottom();
 
         // Guard against bogus dimensions from bad cell measurements
         if (term.cols < 10) return;
