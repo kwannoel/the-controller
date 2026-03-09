@@ -611,6 +611,47 @@ pub fn stage_session_inplace(
         .as_deref()
         .ok_or("Session has no worktree branch")?;
 
+    let worktree_path = session
+        .worktree_path
+        .as_deref()
+        .ok_or("Session has no worktree path")?;
+
+    // 1. Check worktree is clean
+    if !WorktreeManager::is_worktree_clean(worktree_path)? {
+        // Send prompt to Claude to commit changes
+        let prompt = "You have uncommitted changes. Please commit all your work now.\r";
+        {
+            let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+            let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
+        }
+        return Err("Worktree has uncommitted changes — asked Claude to commit. Retry staging after.".to_string());
+    }
+
+    // 2. Check if branch is behind main and rebase if needed
+    let main_branch = WorktreeManager::detect_main_branch(&project.repo_path)?;
+
+    // Sync main first so we rebase onto latest
+    let _ = WorktreeManager::sync_main(&project.repo_path);
+
+    if WorktreeManager::is_branch_behind(&project.repo_path, branch, &main_branch)? {
+        match WorktreeManager::rebase_onto(worktree_path, &main_branch) {
+            Ok(true) => {
+                // Rebase succeeded, continue to staging
+            }
+            Ok(false) => {
+                // Conflicts — ask Claude to resolve, block staging
+                let prompt = "There are rebase conflicts. Please resolve all conflicts, then run `git rebase --continue`.\r";
+                {
+                    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+                    let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
+                }
+                return Err("Rebase conflicts — asked Claude to resolve. Retry staging after.".to_string());
+            }
+            Err(e) => return Err(format!("Rebase failed: {}", e)),
+        }
+    }
+
+    // 3. Proceed with staging
     let original_branch =
         WorktreeManager::stage_inplace(&project.repo_path, branch)?;
 
