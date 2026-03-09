@@ -13,6 +13,8 @@ pub struct Project {
     pub maintainer: MaintainerConfig,
     #[serde(default)]
     pub auto_worker: AutoWorkerConfig,
+    #[serde(default)]
+    pub prompts: Vec<SavedPrompt>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +126,15 @@ pub struct AssignedIssue {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedPrompt {
+    pub id: Uuid,
+    pub name: String,
+    pub text: String,
+    pub created_at: String,
+    pub source_session_label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum MergeResponse {
     #[serde(rename = "pr_created")]
@@ -173,6 +184,7 @@ mod tests {
             archived: false,
             maintainer: MaintainerConfig::default(),
             auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),
@@ -229,6 +241,7 @@ mod tests {
             archived: false,
             maintainer: MaintainerConfig::default(),
             auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
             sessions: vec![SessionConfig {
                 id: session_id,
                 label: "feature-branch".to_string(),
@@ -399,6 +412,7 @@ mod tests {
                 github_repo: None,
             },
             auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
             sessions: vec![],
         };
         let json = serde_json::to_string(&project).expect("serialize");
@@ -500,6 +514,7 @@ mod tests {
             archived: false,
             maintainer: MaintainerConfig::default(),
             auto_worker: AutoWorkerConfig { enabled: true },
+            prompts: vec![],
             sessions: vec![],
         };
         let json = serde_json::to_string(&project).expect("serialize");

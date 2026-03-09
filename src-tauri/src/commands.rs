@@ -186,6 +186,7 @@ pub fn create_project(
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
         auto_worker: crate::models::AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
 
@@ -252,6 +253,7 @@ pub fn load_project(
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
         auto_worker: crate::models::AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
 
@@ -865,6 +867,7 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
         auto_worker: crate::models::AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).map_err(|e| e.to_string())?;
