@@ -372,6 +372,9 @@
       case "triage-triaged":
         dispatchAction({ type: "toggle-triage-panel", category: "triaged" });
         return true;
+      case "assigned-issues":
+        dispatchAction({ type: "toggle-assigned-issues-panel" });
+        return true;
       case "expand-collapse":
         if (currentFocus?.type === "project") {
           const next = new Set(expandedSet);

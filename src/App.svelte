@@ -13,6 +13,7 @@
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
+  import AssignedIssuesPanel from "./lib/AssignedIssuesPanel.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
@@ -22,6 +23,7 @@
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
   let triagePanelOpen: TriageCategory | null = $state(null);
+  let assignedIssuesPanelOpen = $state(false);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
@@ -51,6 +53,8 @@
         if (action.category) {
           triagePanelOpen = triagePanelOpen ? null : action.category;
         }
+      } else if (action?.type === "toggle-assigned-issues-panel") {
+        assignedIssuesPanelOpen = !assignedIssuesPanelOpen;
       }
     });
     return unsub;
@@ -283,6 +287,9 @@
     {/if}
     {#if triagePanelOpen}
       <TriagePanel category={triagePanelOpen} onClose={() => { triagePanelOpen = null; }} />
+    {/if}
+    {#if assignedIssuesPanelOpen}
+      <AssignedIssuesPanel onClose={() => { assignedIssuesPanelOpen = false; }} />
     {/if}
     {#if workspaceModePickerVisibleState.current}
       <WorkspaceModePicker />
