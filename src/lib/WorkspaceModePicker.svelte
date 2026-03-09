@@ -8,6 +8,7 @@
   const modes: { key: string; id: WorkspaceMode; label: string }[] = [
     { key: "d", id: "development", label: "Development" },
     { key: "a", id: "agents", label: "Agents" },
+    { key: "n", id: "notes", label: "Notes" },
   ];
 </script>
 

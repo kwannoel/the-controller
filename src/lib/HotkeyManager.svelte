@@ -178,6 +178,12 @@
       if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
+    if (key === "n") {
+      workspaceMode.set("notes");
+      const newFocus = focusForModeSwitch(currentFocus, "notes", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      return;
+    }
     // Any other key (including Escape) cancels
   }
 
