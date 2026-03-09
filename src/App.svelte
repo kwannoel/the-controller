@@ -62,7 +62,7 @@
 
   function getTargetProject(): Project | undefined {
     const focus = focusTargetState.current;
-    if (focus?.type === "project" || focus?.type === "session") {
+    if (focus?.type === "project" || focus?.type === "session" || focus?.type === "agent") {
       return projectsState.current.find((p) => p.id === focus.projectId);
     }
     return undefined;
@@ -88,7 +88,7 @@
 
   async function toggleAutoWorkerEnabled() {
     const focus = focusTargetState.current;
-    if (!focus || (focus.type !== "project" && focus.type !== "session")) return;
+    if (!focus || (focus.type !== "project" && focus.type !== "session" && focus.type !== "agent")) return;
     const project = projectsState.current.find((p) => p.id === focus.projectId);
     if (!project) return;
     const newEnabled = !project.auto_worker.enabled;

@@ -387,7 +387,11 @@
         toggleModeActive = true;
         return true;
       case "toggle-agent":
-        dispatchAction({ type: "toggle-auto-worker-enabled" });
+        if (currentFocus?.type === "agent" && currentFocus.agentKind === "maintainer") {
+          dispatchAction({ type: "toggle-maintainer-enabled" });
+        } else {
+          dispatchAction({ type: "toggle-auto-worker-enabled" });
+        }
         return true;
       case "trigger-agent-check":
         dispatchAction({ type: "trigger-maintainer-check" });
