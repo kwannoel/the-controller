@@ -149,6 +149,26 @@
       ),
     );
 
+    // Prevent xterm.js scrollback scrolling when in normal mode.
+    // This app runs TUI apps (Claude Code / Codex) that use alternate screen.
+    // If the alternate-screen escape was missed (race condition), xterm.js
+    // stays in normal mode and wheel events scroll through stale shell output
+    // instead of being forwarded to the TUI. This handler catches that case
+    // by converting wheel events to arrow keys when the buffer has scrollback.
+    // When in alternate screen mode, xterm.js already handles this correctly.
+    term.attachCustomWheelEventHandler((ev: WheelEvent) => {
+      if (term!.buffer.active.type === 'alternate') {
+        return true; // xterm.js converts to arrow keys — correct behavior
+      }
+      // Normal mode: prevent scrollback scrolling, send arrow keys to PTY
+      ev.preventDefault();
+      if (ev.deltaY !== 0) {
+        const direction = ev.deltaY < 0 ? '\x1b[A' : '\x1b[B';
+        writeToPty(direction);
+      }
+      return false;
+    });
+
     // Connect user input to PTY (gated until initialization settles)
     term.onData((data: string) => {
       if (!inputReady) return;
