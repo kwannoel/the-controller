@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -12,6 +12,9 @@
   import DeleteSessionModal from "./DeleteSessionModal.svelte";
   import ProjectTree from "./sidebar/ProjectTree.svelte";
   import AgentTree from "./sidebar/AgentTree.svelte";
+  import NotesTree from "./sidebar/NotesTree.svelte";
+  import NewNoteModal from "./NewNoteModal.svelte";
+  import RenameNoteModal from "./RenameNoteModal.svelte";
 
   let sidebarEl: HTMLElement | undefined = $state();
   const showKeyHintsState = fromStore(showKeyHints);
@@ -32,6 +35,11 @@
   let currentMode = $derived(workspaceModeState.current);
   const archivedProjectsState = fromStore(archivedProjects);
   let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
+  let deleteNoteTarget: { projectId: string; filename: string } | null = $state(null);
+  let renameNoteTarget: { projectId: string; filename: string } | null = $state(null);
+  let showNewNoteModal = $state(false);
+  let newNoteProjectId = $state("");
+  const activeNoteState = fromStore(activeNote);
 
   // Load archived projects when entering archive view
   $effect(() => {
@@ -91,6 +99,18 @@
       // Blur sidebar element so visual focus moves to the panel
       if (document.activeElement instanceof HTMLElement && sidebarEl?.contains(document.activeElement)) {
         document.activeElement.blur();
+      }
+    } else if (currentFocus?.type === "note") {
+      if (!expandedProjectSet.has(currentFocus.projectId)) {
+        const next = new Set(expandedProjectSet);
+        next.add(currentFocus.projectId);
+        expandedProjects.set(next);
+      }
+      if (sidebarEl) {
+        requestAnimationFrame(() => {
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-note-id="${currentFocus.projectId}:${currentFocus.filename}"]`);
+          if (el) el.focus();
+        });
       }
     }
   });
@@ -198,6 +218,25 @@
         }
         case "finish-branch": {
           finishBranchTarget = { sessionId: action.sessionId, kind: action.kind };
+          break;
+        }
+        case "create-note": {
+          const focus = focusTargetState.current;
+          const project = (focus?.type === "project" || focus?.type === "note")
+            ? projectList.find(p => p.id === focus.projectId)
+            : projectList[0];
+          if (project) {
+            newNoteProjectId = project.id;
+            showNewNoteModal = true;
+          }
+          break;
+        }
+        case "delete-note": {
+          deleteNoteTarget = { projectId: action.projectId, filename: action.filename };
+          break;
+        }
+        case "rename-note": {
+          renameNoteTarget = { projectId: action.projectId, filename: action.filename };
           break;
         }
       }
@@ -497,12 +536,66 @@
     return statuses.get(sessionId) ?? "idle";
   }
 
+  async function handleCreateNote(title: string) {
+    const project = projectList.find(p => p.id === newNoteProjectId);
+    if (!project) return;
+    showNewNoteModal = false;
+    try {
+      const filename: string = await invoke("create_note", { projectName: project.name, title });
+      // Refresh notes list
+      const notes = await invoke<NoteEntry[]>("list_notes", { projectName: project.name });
+      noteEntries.update(m => { const next = new Map(m); next.set(project.id, notes); return next; });
+      // Expand project and open note
+      expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
+      activeNote.set({ projectId: project.id, filename });
+      focusTarget.set({ type: "notes-editor", projectId: project.id });
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function handleDeleteNote(projectId: string, filename: string) {
+    const project = projectList.find(p => p.id === projectId);
+    if (!project) return;
+    try {
+      await invoke("delete_note", { projectName: project.name, filename });
+      const notes = await invoke<NoteEntry[]>("list_notes", { projectName: project.name });
+      noteEntries.update(m => { const next = new Map(m); next.set(project.id, notes); return next; });
+      const an = activeNoteState.current;
+      if (an?.projectId === projectId && an?.filename === filename) {
+        activeNote.set(null);
+      }
+      focusTarget.set({ type: "project", projectId });
+      showToast("Note deleted", "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function handleRenameNote(projectId: string, oldName: string, newName: string) {
+    const project = projectList.find(p => p.id === projectId);
+    if (!project) return;
+    try {
+      const newFilename: string = await invoke("rename_note", { projectName: project.name, oldName, newName });
+      const notes = await invoke<NoteEntry[]>("list_notes", { projectName: project.name });
+      noteEntries.update(m => { const next = new Map(m); next.set(project.id, notes); return next; });
+      const an = activeNoteState.current;
+      if (an?.projectId === projectId && an?.filename === oldName) {
+        activeNote.set({ projectId, filename: newFilename });
+      }
+      focusTarget.set({ type: "note", filename: newFilename, projectId });
+      showToast("Note renamed", "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
 
 </script>
 
 <aside class="sidebar" bind:this={sidebarEl}>
   <div class="sidebar-header">
-    <h2>{isArchiveView ? "Archives" : currentMode === "agents" ? "Agents" : "Development"}</h2>
+    <h2>{isArchiveView ? "Archives" : currentMode === "agents" ? "Agents" : currentMode === "notes" ? "Notes" : "Development"}</h2>
   </div>
 
   <div class="project-list">
@@ -517,6 +610,23 @@
         }}
         onAgentFocus={(agentKind, projectId) => {
           focusTarget.set({ type: "agent", agentKind, projectId });
+        }}
+      />
+    {:else if currentMode === "notes"}
+      <NotesTree
+        projects={projectList}
+        {expandedProjectSet}
+        {currentFocus}
+        onToggleProject={toggleProject}
+        onProjectFocus={(projectId) => {
+          focusTarget.set({ type: "project", projectId });
+        }}
+        onNoteFocus={(filename, projectId) => {
+          focusTarget.set({ type: "note", filename, projectId });
+        }}
+        onNoteSelect={(filename, projectId) => {
+          activeNote.set({ projectId, filename });
+          focusTarget.set({ type: "notes-editor", projectId });
         }}
       />
     {:else}
@@ -545,7 +655,7 @@
   </div>
 
   <div class="sidebar-footer">
-    {#if currentMode !== "agents"}
+    {#if currentMode !== "agents" && currentMode !== "notes"}
       <button
         class="footer-tab"
         class:active={!isArchiveView}
@@ -704,6 +814,37 @@
         focusTarget.set(nextFocus);
       }}
       onClose={() => (deleteTarget = null)}
+    />
+  {/if}
+
+  {#if showNewNoteModal}
+    <NewNoteModal
+      onSubmit={handleCreateNote}
+      onClose={() => { showNewNoteModal = false; }}
+    />
+  {/if}
+
+  {#if deleteNoteTarget}
+    <ConfirmModal
+      title="Delete Note"
+      message={`Delete "${deleteNoteTarget.filename}"?`}
+      confirmLabel="Delete"
+      onConfirm={() => {
+        if (deleteNoteTarget) handleDeleteNote(deleteNoteTarget.projectId, deleteNoteTarget.filename);
+        deleteNoteTarget = null;
+      }}
+      onClose={() => (deleteNoteTarget = null)}
+    />
+  {/if}
+
+  {#if renameNoteTarget}
+    <RenameNoteModal
+      currentName={renameNoteTarget.filename}
+      onSubmit={(newName) => {
+        if (renameNoteTarget) handleRenameNote(renameNoteTarget.projectId, renameNoteTarget.filename, newName);
+        renameNoteTarget = null;
+      }}
+      onClose={() => { renameNoteTarget = null; }}
     />
   {/if}
 </aside>
