@@ -257,8 +257,7 @@ pub fn run_maintainer_check(
     let prompt = build_issue_filing_prompt(repo_path, github_repo);
     let output = std::process::Command::new("claude")
         .arg("--print")
-        .arg("--allowedTools")
-        .arg("Bash")
+        .arg("--allowedTools=Bash")
         .arg(&prompt)
         .current_dir(repo_path)
         .env_remove("CLAUDECODE")
