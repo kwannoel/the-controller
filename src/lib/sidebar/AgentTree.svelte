@@ -85,7 +85,7 @@
           tabindex="0"
           onfocusin={() => onAgentFocus("maintainer", project.id)}
         >
-          <span class="status-dot" class:working={mStatusValue(project.id) === "running"} class:idle={project.maintainer.enabled && mStatusValue(project.id) !== "running"} class:disabled={!project.maintainer.enabled}></span>
+          <span class="status-dot" class:working={mStatusValue(project.id) === "running"} class:error={mStatusValue(project.id) === "error"} class:idle={project.maintainer.enabled && mStatusValue(project.id) !== "running" && mStatusValue(project.id) !== "error"} class:disabled={!project.maintainer.enabled}></span>
           <span class="agent-label">Maintainer</span>
           <span class="agent-badge" class:enabled={project.maintainer.enabled}>
             {project.maintainer.enabled ? "ON" : "OFF"}
@@ -183,6 +183,7 @@
 
   .status-dot.working { background: #f9e2af; }
   .status-dot.idle { background: #a6e3a1; }
+  .status-dot.error { background: #f38ba8; }
   .status-dot.disabled { background: #6c7086; }
 
   .agent-label {
