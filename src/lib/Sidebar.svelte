@@ -481,7 +481,7 @@
 
 <aside class="sidebar" bind:this={sidebarEl}>
   <div class="sidebar-header">
-    <h2>{isArchiveView ? "Archives" : currentMode === "agents" ? "Agents" : "Projects"}</h2>
+    <h2>{isArchiveView ? "Archives" : currentMode === "agents" ? "Agents" : "Development"}</h2>
   </div>
 
   <div class="project-list">
