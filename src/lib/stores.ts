@@ -8,6 +8,15 @@ export interface GithubIssue {
   labels: { name: string }[];
 }
 
+export interface AssignedIssue {
+  number: number;
+  title: string;
+  url: string;
+  assignees: { login: string }[];
+  updatedAt: string;
+  labels: { name: string }[];
+}
+
 export interface DirEntry {
   name: string;
   path: string;
@@ -113,6 +122,7 @@ export type HotkeyAction =
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-auto-worker-enabled" }
   | { type: "toggle-triage-panel"; category?: TriageCategory }
+  | { type: "toggle-assigned-issues-panel" }
   | { type: "trigger-maintainer-check" }
   | { type: "clear-maintainer-reports" }
   | { type: "agent-panel-navigate"; direction: 1 | -1 }

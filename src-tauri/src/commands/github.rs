@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::models::GithubIssue;
+use crate::models::{AssignedIssue, GithubIssue};
 use crate::state::AppState;
 
 /// Parse a GitHub remote URL into an "owner/repo" string.
@@ -307,6 +307,41 @@ pub(crate) async fn remove_github_label(
     }
 
     Ok(())
+}
+
+pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue>, String> {
+    let nwo = extract_github_repo_async(repo_path).await?;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "list",
+            "--repo",
+            &nwo,
+            "--json",
+            "number,title,url,assignees,updatedAt,labels",
+            "--limit",
+            "100",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue list failed: {}", stderr));
+    }
+
+    let all_issues: Vec<AssignedIssue> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+
+    // Filter to only issues that have at least one assignee
+    let assigned = all_issues
+        .into_iter()
+        .filter(|issue| !issue.assignees.is_empty())
+        .collect();
+
+    Ok(assigned)
 }
 
 #[cfg(test)]

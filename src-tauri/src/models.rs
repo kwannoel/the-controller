@@ -107,6 +107,23 @@ pub struct GithubLabel {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubAssignee {
+    pub login: String,
+}
+
+/// An open issue that has at least one assignee.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssignedIssue {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    pub assignees: Vec<GithubAssignee>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: String,
+    pub labels: Vec<GithubLabel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum MergeResponse {
     #[serde(rename = "pr_created")]
@@ -488,5 +505,65 @@ mod tests {
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
         assert!(deserialized.auto_worker.enabled);
+    }
+
+    #[test]
+    fn test_assigned_issue_serialization_roundtrip() {
+        let issue = AssignedIssue {
+            number: 42,
+            title: "Fix the bug".to_string(),
+            url: "https://github.com/owner/repo/issues/42".to_string(),
+            assignees: vec![GithubAssignee {
+                login: "alice".to_string(),
+            }],
+            updated_at: "2026-03-01T12:00:00Z".to_string(),
+            labels: vec![GithubLabel {
+                name: "bug".to_string(),
+            }],
+        };
+        let json = serde_json::to_string(&issue).expect("serialize");
+        let deserialized: AssignedIssue = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.number, 42);
+        assert_eq!(deserialized.title, "Fix the bug");
+        assert_eq!(deserialized.assignees.len(), 1);
+        assert_eq!(deserialized.assignees[0].login, "alice");
+        assert_eq!(deserialized.updated_at, "2026-03-01T12:00:00Z");
+        assert_eq!(deserialized.labels.len(), 1);
+    }
+
+    #[test]
+    fn test_assigned_issue_deserialization_from_gh_json() {
+        let json = r#"{
+            "number": 10,
+            "title": "Stale issue",
+            "url": "https://github.com/owner/repo/issues/10",
+            "assignees": [
+                {"login": "bob"},
+                {"login": "carol"}
+            ],
+            "updatedAt": "2026-01-15T08:30:00Z",
+            "labels": []
+        }"#;
+        let issue: AssignedIssue = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(issue.number, 10);
+        assert_eq!(issue.assignees.len(), 2);
+        assert_eq!(issue.assignees[0].login, "bob");
+        assert_eq!(issue.assignees[1].login, "carol");
+        assert_eq!(issue.updated_at, "2026-01-15T08:30:00Z");
+    }
+
+    #[test]
+    fn test_assigned_issue_empty_assignees() {
+        let issue = AssignedIssue {
+            number: 1,
+            title: "Unassigned".to_string(),
+            url: "https://github.com/owner/repo/issues/1".to_string(),
+            assignees: vec![],
+            updated_at: "2026-03-09T00:00:00Z".to_string(),
+            labels: vec![],
+        };
+        let json = serde_json::to_string(&issue).expect("serialize");
+        let deserialized: AssignedIssue = serde_json::from_str(&json).expect("deserialize");
+        assert!(deserialized.assignees.is_empty());
     }
 }

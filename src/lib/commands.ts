@@ -23,6 +23,7 @@ export type CommandId =
   | "create-issue"
   | "triage-untriaged"
   | "triage-triaged"
+  | "assigned-issues"
   | "expand-collapse"
   | "toggle-mode"
   | "toggle-agent"
@@ -81,6 +82,7 @@ export const commands: CommandDef[] = [
   { id: "create-issue", key: "i", section: "Projects", description: "Create GitHub issue for focused project", mode: "development" },
   { id: "triage-untriaged", key: "t", section: "Projects", description: "Triage issues (untriaged)", mode: "development" },
   { id: "triage-triaged", key: "T", section: "Projects", description: "View triaged issues", mode: "development" },
+  { id: "assigned-issues", key: "e", section: "Projects", description: "View assigned but uncompleted issues", mode: "development" },
 
   // ── Panels ──
   { id: "toggle-sidebar", key: "s", section: "Panels", description: "Toggle sidebar" },

@@ -880,6 +880,13 @@ pub async fn list_github_issues(
 }
 
 #[tauri::command]
+pub async fn list_assigned_issues(
+    repo_path: String,
+) -> Result<Vec<crate::models::AssignedIssue>, String> {
+    github::list_assigned_issues(repo_path).await
+}
+
+#[tauri::command]
 pub async fn generate_issue_body(title: String) -> Result<String, String> {
     github::generate_issue_body(title).await
 }
