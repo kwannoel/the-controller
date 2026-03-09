@@ -553,12 +553,18 @@ fn test_scaffold_project_creates_template_files() {
     // Write template files (replicating scaffold_project logic)
     let agents_content = the_controller_lib::commands::render_agents_md(name);
     fs::write(repo_path.join("agents.md"), &agents_content).unwrap();
+    the_controller_lib::commands::ensure_claude_md_symlink(&repo_path).unwrap();
     fs::create_dir_all(repo_path.join("docs").join("plans")).unwrap();
     fs::write(repo_path.join("docs").join("plans").join(".gitkeep"), "").unwrap();
 
     // Verify files exist on disk
     assert!(repo_path.join("agents.md").exists());
+    assert!(repo_path.join("CLAUDE.md").exists());
     assert!(repo_path.join("docs/plans/.gitkeep").exists());
+
+    // Verify CLAUDE.md is a symlink to agents.md
+    assert!(repo_path.join("CLAUDE.md").symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(fs::read_link(repo_path.join("CLAUDE.md")).unwrap().to_str().unwrap(), "agents.md");
 
     // Verify agents.md contains the project name
     let content = fs::read_to_string(repo_path.join("agents.md")).unwrap();
@@ -583,12 +589,14 @@ fn test_scaffold_initial_commit_contains_template_files() {
     // Write files
     let agents_content = the_controller_lib::commands::render_agents_md(name);
     fs::write(repo_path.join("agents.md"), &agents_content).unwrap();
+    the_controller_lib::commands::ensure_claude_md_symlink(&repo_path).unwrap();
     fs::create_dir_all(repo_path.join("docs").join("plans")).unwrap();
     fs::write(repo_path.join("docs").join("plans").join(".gitkeep"), "").unwrap();
 
     // Add to index and commit
     let mut index = repo.index().unwrap();
     index.add_path(std::path::Path::new("agents.md")).unwrap();
+    index.add_path(std::path::Path::new("CLAUDE.md")).unwrap();
     index.add_path(std::path::Path::new("docs/plans/.gitkeep")).unwrap();
     index.write().unwrap();
     let tree_id = index.write_tree().unwrap();
@@ -599,8 +607,9 @@ fn test_scaffold_initial_commit_contains_template_files() {
     let head = repo.head().unwrap().peel_to_commit().unwrap();
     let commit_tree = head.tree().unwrap();
 
-    // agents.md should be at root
+    // agents.md and CLAUDE.md should be at root
     assert!(commit_tree.get_name("agents.md").is_some(), "agents.md missing from commit tree");
+    assert!(commit_tree.get_name("CLAUDE.md").is_some(), "CLAUDE.md missing from commit tree");
 
     // docs/plans/.gitkeep should be nested
     let docs_entry = commit_tree.get_name("docs").expect("docs/ missing from commit tree");
@@ -618,6 +627,49 @@ fn test_scaffold_initial_commit_contains_template_files() {
 
 /// Loading a project by repo_path when an archived project with the same path
 /// exists should unarchive it rather than creating a duplicate or rejecting it.
+/// ensure_claude_md_symlink creates CLAUDE.md -> agents.md when agents.md
+/// exists but CLAUDE.md does not.
+#[test]
+fn test_ensure_claude_md_symlink_creates_when_missing() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
+    fs::write(dir.join("agents.md"), "# Test").unwrap();
+
+    the_controller_lib::commands::ensure_claude_md_symlink(dir).unwrap();
+
+    assert!(dir.join("CLAUDE.md").exists());
+    assert!(dir.join("CLAUDE.md").symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(fs::read_link(dir.join("CLAUDE.md")).unwrap().to_str().unwrap(), "agents.md");
+    // Content should match
+    assert_eq!(fs::read_to_string(dir.join("CLAUDE.md")).unwrap(), "# Test");
+}
+
+/// ensure_claude_md_symlink does not overwrite an existing CLAUDE.md.
+#[test]
+fn test_ensure_claude_md_symlink_skips_when_exists() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
+    fs::write(dir.join("agents.md"), "# Agents").unwrap();
+    fs::write(dir.join("CLAUDE.md"), "# Custom").unwrap();
+
+    the_controller_lib::commands::ensure_claude_md_symlink(dir).unwrap();
+
+    // Should not have been replaced
+    assert!(!dir.join("CLAUDE.md").symlink_metadata().unwrap().file_type().is_symlink());
+    assert_eq!(fs::read_to_string(dir.join("CLAUDE.md")).unwrap(), "# Custom");
+}
+
+/// ensure_claude_md_symlink does nothing when agents.md is missing.
+#[test]
+fn test_ensure_claude_md_symlink_noop_without_agents() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
+
+    the_controller_lib::commands::ensure_claude_md_symlink(dir).unwrap();
+
+    assert!(!dir.join("CLAUDE.md").exists());
+}
+
 #[test]
 fn test_load_archived_project_by_repo_path_unarchives_it() {
     let tmp = TempDir::new().unwrap();

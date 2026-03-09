@@ -11,6 +11,22 @@ use crate::worktree::WorktreeManager;
 mod github;
 mod media;
 
+/// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
+/// if `agents.md` exists and `CLAUDE.md` does not.
+pub fn ensure_claude_md_symlink(dir: &Path) -> Result<(), String> {
+    let claude_md = dir.join("CLAUDE.md");
+    let agents_md = dir.join("agents.md");
+    if agents_md.exists() && !claude_md.exists() {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("agents.md", &claude_md)
+            .map_err(|e| format!("failed to create CLAUDE.md symlink: {}", e))?;
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file("agents.md", &claude_md)
+            .map_err(|e| format!("failed to create CLAUDE.md symlink: {}", e))?;
+    }
+    Ok(())
+}
+
 /// Validate a project name. Rejects empty names, names containing `/` or `\`,
 /// and names starting with `.`.
 pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
@@ -192,6 +208,9 @@ pub fn create_project(
             .map_err(|e| e.to_string())?;
     }
 
+    // If repo has agents.md but no CLAUDE.md, create symlink
+    ensure_claude_md_symlink(path)?;
+
     Ok(project)
 }
 
@@ -254,6 +273,9 @@ pub fn load_project(
             .save_agents_md(project.id, &render_agents_md(&project.name))
             .map_err(|e| e.to_string())?;
     }
+
+    // If repo has agents.md but no CLAUDE.md, create symlink
+    ensure_claude_md_symlink(path)?;
 
     Ok(project)
 }
@@ -799,6 +821,7 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     let agents_content = render_agents_md(&name);
     std::fs::write(repo_path.join("agents.md"), &agents_content)
         .map_err(|e| format!("failed to write agents.md: {}", e))?;
+    ensure_claude_md_symlink(&repo_path)?;
     let plans_dir = repo_path.join("docs").join("plans");
     std::fs::create_dir_all(&plans_dir)
         .map_err(|e| format!("failed to create docs/plans: {}", e))?;
@@ -812,6 +835,9 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     index
         .add_path(std::path::Path::new("agents.md"))
         .map_err(|e| format!("failed to add agents.md to index: {}", e))?;
+    index
+        .add_path(std::path::Path::new("CLAUDE.md"))
+        .map_err(|e| format!("failed to add CLAUDE.md to index: {}", e))?;
     index
         .add_path(std::path::Path::new("docs/plans/.gitkeep"))
         .map_err(|e| format!("failed to add .gitkeep to index: {}", e))?;
