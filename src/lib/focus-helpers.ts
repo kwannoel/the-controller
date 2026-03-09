@@ -65,7 +65,7 @@ export function focusForModeSwitch(
   if (!current) return null;
 
   if (newMode === "development") {
-    if (current.type === "agent" || current.type === "agent-panel") {
+    if (current.type === "agent" || current.type === "agent-panel" || current.type === "note" || current.type === "notes-editor") {
       // Try to focus the active session if it belongs to the same project
       if (activeSessionId) {
         const project = projectList.find(p => p.id === current.projectId);
@@ -78,7 +78,13 @@ export function focusForModeSwitch(
   }
 
   if (newMode === "agents") {
-    if (current.type === "session") {
+    if (current.type === "session" || current.type === "note" || current.type === "notes-editor") {
+      return { type: "project", projectId: current.projectId };
+    }
+  }
+
+  if (newMode === "notes") {
+    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel") {
       return { type: "project", projectId: current.projectId };
     }
   }

@@ -79,9 +79,18 @@ export interface Config {
   projects_root: string;
 }
 
-export type WorkspaceMode = "development" | "agents";
+export interface NoteEntry {
+  filename: string;
+  modified_at: string;
+}
+
+export type WorkspaceMode = "development" | "agents" | "notes";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
+
+export const activeNote = writable<{ projectId: string; filename: string } | null>(null);
+export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
+export const notePreviewMode = writable<boolean>(false);
 
 export const projects = writable<Project[]>([]);
 export const activeSessionId = writable<string | null>(null);
@@ -129,6 +138,10 @@ export type HotkeyAction =
   | { type: "agent-panel-navigate"; direction: 1 | -1 }
   | { type: "agent-panel-select" }
   | { type: "agent-panel-escape" }
+  | { type: "create-note" }
+  | { type: "delete-note"; projectId: string; filename: string }
+  | { type: "rename-note"; projectId: string; filename: string }
+  | { type: "toggle-note-preview" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
@@ -157,6 +170,8 @@ export type FocusTarget =
   | { type: "project"; projectId: string }
   | { type: "agent"; agentKind: AgentKind; projectId: string }
   | { type: "agent-panel"; agentKind: AgentKind; projectId: string }
+  | { type: "note"; filename: string; projectId: string }
+  | { type: "notes-editor"; projectId: string }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
 
