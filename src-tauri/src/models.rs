@@ -19,6 +19,8 @@ pub struct Project {
 pub struct MaintainerConfig {
     pub enabled: bool,
     pub interval_minutes: u64,
+    #[serde(default)]
+    pub github_repo: Option<String>,
 }
 
 impl Default for MaintainerConfig {
@@ -26,6 +28,7 @@ impl Default for MaintainerConfig {
         Self {
             enabled: false,
             interval_minutes: 60,
+            github_repo: None,
         }
     }
 }
@@ -114,44 +117,28 @@ pub enum MergeResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum FindingSeverity {
-    Info,
-    Warning,
-    Error,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum FindingAction {
-    Reported,
-    Fixed,
-    PrCreated { url: String },
+pub enum IssueAction {
+    Filed,
+    Updated,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaintainerFinding {
-    pub severity: FindingSeverity,
-    pub category: String,
-    pub description: String,
-    pub action_taken: FindingAction,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ReportStatus {
-    Passing,
-    Warnings,
-    Failing,
+pub struct IssueSummary {
+    pub issue_number: u32,
+    pub title: String,
+    pub url: String,
+    pub labels: Vec<String>,
+    pub action: IssueAction,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaintainerReport {
+pub struct MaintainerRunLog {
     pub id: Uuid,
     pub project_id: Uuid,
-    /// ISO 8601 UTC timestamp (e.g. "2026-03-07T12:00:00Z"). Lexicographic order must equal chronological order.
     pub timestamp: String,
-    pub status: ReportStatus,
-    pub findings: Vec<MaintainerFinding>,
+    pub issues_filed: Vec<IssueSummary>,
+    pub issues_updated: Vec<IssueSummary>,
+    pub issues_unchanged: u32,
     pub summary: String,
 }
 
@@ -392,6 +379,7 @@ mod tests {
             maintainer: MaintainerConfig {
                 enabled: true,
                 interval_minutes: 30,
+                github_repo: None,
             },
             auto_worker: AutoWorkerConfig::default(),
             sessions: vec![],
@@ -419,37 +407,56 @@ mod tests {
     }
 
     #[test]
-    fn test_maintainer_finding_serialization() {
-        let finding = MaintainerFinding {
-            severity: FindingSeverity::Warning,
-            category: "dependencies".to_string(),
-            description: "Outdated dependency found".to_string(),
-            action_taken: FindingAction::Reported,
-        };
-        let json = serde_json::to_string(&finding).expect("serialize");
-        let deserialized: MaintainerFinding = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(deserialized.category, "dependencies");
+    fn test_maintainer_config_github_repo_defaults_to_none() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "test-project",
+            "repo_path": "/tmp/test-repo",
+            "created_at": "2026-02-28T00:00:00Z",
+            "archived": false,
+            "sessions": []
+        }"#;
+        let project: Project = serde_json::from_str(json).expect("deserialize");
+        assert!(project.maintainer.github_repo.is_none());
     }
 
     #[test]
-    fn test_maintainer_report_serialization() {
-        let report = MaintainerReport {
+    fn test_maintainer_run_log_serialization() {
+        let run_log = MaintainerRunLog {
             id: Uuid::new_v4(),
             project_id: Uuid::new_v4(),
-            timestamp: "2026-03-07T00:00:00Z".to_string(),
-            status: ReportStatus::Warnings,
-            findings: vec![MaintainerFinding {
-                severity: FindingSeverity::Info,
-                category: "ci".to_string(),
-                description: "CI pipeline healthy".to_string(),
-                action_taken: FindingAction::Fixed,
+            timestamp: "2026-03-09T00:00:00Z".to_string(),
+            issues_filed: vec![IssueSummary {
+                issue_number: 42,
+                title: "Fix the bug".to_string(),
+                url: "https://github.com/owner/repo/issues/42".to_string(),
+                labels: vec!["bug".to_string(), "priority".to_string()],
+                action: IssueAction::Filed,
             }],
-            summary: "One finding detected".to_string(),
+            issues_updated: vec![],
+            issues_unchanged: 3,
+            summary: "Filed 1 issue, 3 unchanged".to_string(),
         };
-        let json = serde_json::to_string(&report).expect("serialize");
-        let deserialized: MaintainerReport = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(deserialized.findings.len(), 1);
-        assert_eq!(deserialized.summary, "One finding detected");
+        let json = serde_json::to_string(&run_log).expect("serialize");
+        let deserialized: MaintainerRunLog = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.issues_filed.len(), 1);
+        assert_eq!(deserialized.issues_filed[0].issue_number, 42);
+        assert_eq!(deserialized.issues_filed[0].title, "Fix the bug");
+        assert_eq!(deserialized.issues_filed[0].labels.len(), 2);
+        assert_eq!(deserialized.issues_filed[0].action, IssueAction::Filed);
+        assert_eq!(deserialized.issues_updated.len(), 0);
+        assert_eq!(deserialized.issues_unchanged, 3);
+        assert_eq!(deserialized.summary, "Filed 1 issue, 3 unchanged");
+    }
+
+    #[test]
+    fn test_issue_action_serialization() {
+        let filed = IssueAction::Filed;
+        let updated = IssueAction::Updated;
+        let filed_json = serde_json::to_string(&filed).unwrap();
+        let updated_json = serde_json::to_string(&updated).unwrap();
+        assert_eq!(filed_json, "\"filed\"");
+        assert_eq!(updated_json, "\"updated\"");
     }
 
     #[test]

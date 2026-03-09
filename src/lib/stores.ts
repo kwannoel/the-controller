@@ -28,29 +28,32 @@ export interface SessionConfig {
 export interface MaintainerConfig {
   enabled: boolean;
   interval_minutes: number;
+  github_repo?: string | null;
 }
 
 export interface AutoWorkerConfig {
   enabled: boolean;
 }
 
-export interface MaintainerFinding {
-  severity: "info" | "warning" | "error";
-  category: string;
-  description: string;
-  action_taken: { type: "reported" } | { type: "fixed" } | { type: "pr_created"; url: string };
+export interface IssueSummary {
+  issue_number: number;
+  title: string;
+  url: string;
+  labels: string[];
+  action: "filed" | "updated";
 }
 
-export interface MaintainerReport {
+export interface MaintainerRunLog {
   id: string;
   project_id: string;
   timestamp: string;
-  status: "passing" | "warnings" | "failing";
-  findings: MaintainerFinding[];
+  issues_filed: IssueSummary[];
+  issues_updated: IssueSummary[];
+  issues_unchanged: number;
   summary: string;
 }
 
-export type MaintainerStatus = "idle" | "running" | "passing" | "warnings" | "failing" | "error";
+export type MaintainerStatus = "idle" | "running" | "error";
 
 export interface Project {
   id: string;

@@ -1,16 +1,16 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, maintainerStatuses, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
 
-  let reports: MaintainerReport[] = $state([]);
+  let runLogs: MaintainerRunLog[] = $state([]);
   let loading = $state(false);
   let triggerLoading = $state(false);
 
   // Panel navigation state
   let selectedIndex = $state(0);
-  let openReportIndex: number | null = $state(null);
+  let openLogIndex: number | null = $state(null);
   let detailBlockIndex = $state(0);
 
   const projectsState = fromStore(projects);
@@ -32,8 +32,13 @@
       : null
   );
 
-  let openReport = $derived(
-    openReportIndex !== null ? reports[openReportIndex] ?? null : null
+  let openLog = $derived(
+    openLogIndex !== null ? runLogs[openLogIndex] ?? null : null
+  );
+
+  // All issues in the open log (for detail navigation)
+  let openLogIssues = $derived(
+    openLog ? [...openLog.issues_filed, ...openLog.issues_updated] : []
   );
 
   // Fetch history and reset panel state when switching agents
@@ -43,7 +48,7 @@
     if (key !== prevAgentKey) {
       prevAgentKey = key;
       selectedIndex = 0;
-      openReportIndex = null;
+      openLogIndex = null;
       detailBlockIndex = 0;
       reports = [];
 
@@ -67,7 +72,7 @@
       } else if (action.type === "trigger-maintainer-check") {
         triggerCheck();
       } else if (action.type === "clear-maintainer-reports") {
-        clearReports();
+        clearRunLogs();
       }
     });
     return unsub;
@@ -76,32 +81,30 @@
   function handleNavigate(direction: 1 | -1) {
     if (focusedAgent?.agentKind !== "maintainer") return;
 
-    if (openReportIndex !== null) {
-      // Detail view: scroll through blocks
-      const report = reports[openReportIndex];
-      if (!report) return;
-      const maxBlock = report.findings.length; // 0 = summary, 1..N = findings
+    if (openLogIndex !== null) {
+      // Detail view: scroll through issue blocks
+      const maxBlock = openLogIssues.length; // 0 = summary, 1..N = issues
       detailBlockIndex = Math.max(0, Math.min(maxBlock, detailBlockIndex + direction));
       scrollBlockIntoView();
     } else {
       // List view: move selection
-      if (reports.length === 0) return;
-      selectedIndex = Math.max(0, Math.min(reports.length - 1, selectedIndex + direction));
+      if (runLogs.length === 0) return;
+      selectedIndex = Math.max(0, Math.min(runLogs.length - 1, selectedIndex + direction));
       scrollReportIntoView();
     }
   }
 
   function handleSelect() {
     if (focusedAgent?.agentKind !== "maintainer") return;
-    if (openReportIndex !== null) return;
-    if (reports.length === 0) return;
-    openReportIndex = selectedIndex;
+    if (openLogIndex !== null) return;
+    if (runLogs.length === 0) return;
+    openLogIndex = selectedIndex;
     detailBlockIndex = 0;
   }
 
   function handleEscape() {
-    if (openReportIndex !== null) {
-      openReportIndex = null;
+    if (openLogIndex !== null) {
+      openLogIndex = null;
       detailBlockIndex = 0;
     } else if (focusedAgent) {
       focusTarget.set({ type: "agent", agentKind: focusedAgent.agentKind, projectId: focusedAgent.projectId });
@@ -125,13 +128,13 @@
   async function fetchHistory(projectId: string) {
     loading = true;
     try {
-      const result = await invoke<MaintainerReport[]>("get_maintainer_history", { projectId });
+      const result = await invoke<MaintainerRunLog[]>("get_maintainer_history", { projectId });
       if (prevAgentKey === `${projectId}:maintainer`) {
-        reports = result;
+        runLogs = result;
       }
     } catch {
       if (prevAgentKey === `${projectId}:maintainer`) {
-        reports = [];
+        runLogs = [];
       }
     } finally {
       if (prevAgentKey === `${projectId}:maintainer`) {
@@ -144,8 +147,8 @@
     if (!project) return;
     triggerLoading = true;
     try {
-      await invoke<MaintainerReport>("trigger_maintainer_check", { projectId: project.id });
-      reports = await invoke<MaintainerReport[]>("get_maintainer_history", { projectId: project.id });
+      await invoke<MaintainerRunLog>("trigger_maintainer_check", { projectId: project.id });
+      runLogs = await invoke<MaintainerRunLog[]>("get_maintainer_history", { projectId: project.id });
       showToast("Maintainer check complete", "info");
     } catch (e) {
       showToast(String(e), "error");
@@ -154,14 +157,14 @@
     }
   }
 
-  async function clearReports() {
+  async function clearRunLogs() {
     if (!project) return;
     try {
       await invoke("clear_maintainer_reports", { projectId: project.id });
-      reports = [];
-      openReportIndex = null;
+      runLogs = [];
+      openLogIndex = null;
       selectedIndex = 0;
-      showToast("Maintainer reports cleared", "info");
+      showToast("Maintainer logs cleared", "info");
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -171,8 +174,8 @@
 
   function computeNextRunText(): string {
     if (!project?.maintainer.enabled) return "--";
-    if (reports.length === 0) return "--";
-    const lastRun = new Date(reports[0].timestamp).getTime();
+    if (runLogs.length === 0) return "--";
+    const lastRun = new Date(runLogs[0].timestamp).getTime();
     const intervalMs = project.maintainer.interval_minutes * 60 * 1000;
     const nextRun = lastRun + intervalMs;
     const diffMs = nextRun - Date.now();
@@ -206,32 +209,12 @@
     project ? (autoWorkerStatusesState.current.get(project.id) ?? null) : null
   );
 
-  function severityColor(severity: string): string {
-    switch (severity) {
-      case "error": return "#f38ba8";
-      case "warning": return "#f9e2af";
-      default: return "#89b4fa";
-    }
-  }
-
-  function actionLabel(action: MaintainerReport["findings"][0]["action_taken"]): string {
-    if (action.type === "fixed") return "Auto-fixed";
-    if (action.type === "reported") return "Reported";
-    if (action.type === "pr_created") return "PR created";
-    return "Unknown";
-  }
-
-  function statusColor(status: string): string {
-    switch (status) {
-      case "passing": return "#a6e3a1";
-      case "warnings": return "#f9e2af";
-      case "failing": return "#f38ba8";
-      default: return "#6c7086";
-    }
-  }
-
   function formatTimestamp(ts: string): string {
     return new Date(ts).toLocaleString();
+  }
+
+  function actionColor(action: string): string {
+    return action === "filed" ? "#a6e3a1" : "#89b4fa";
   }
 </script>
 
@@ -280,10 +263,10 @@
         <span class="badge" class:enabled={project.maintainer.enabled}>
           {project.maintainer.enabled ? "ON" : "OFF"}
         </span>
-        {#if maintainerStatus && maintainerStatus !== "idle"}
-          <span class="maintainer-status" class:passing={maintainerStatus === "passing"} class:warnings={maintainerStatus === "warnings"} class:failing={maintainerStatus === "failing"} class:running={maintainerStatus === "running"}>
-            {maintainerStatus}
-          </span>
+        {#if maintainerStatus === "running"}
+          <span class="maintainer-status running">running</span>
+        {:else if maintainerStatus === "error"}
+          <span class="maintainer-status error">error</span>
         {/if}
       </div>
 
@@ -299,12 +282,12 @@
         <div class="section-body">
           <p class="muted">Loading...</p>
         </div>
-      {:else if openReport}
+      {:else if openLog}
         <div class="detail-view">
           <div class="detail-header">
-            <span class="detail-back">Reports</span>
-            <span class="detail-timestamp">{formatTimestamp(openReport.timestamp)}</span>
-            <span class="detail-status" style="color: {statusColor(openReport.status)}">{openReport.status}</span>
+            <span class="detail-back">Run logs</span>
+            <span class="detail-timestamp">{formatTimestamp(openLog.timestamp)}</span>
+            <span class="detail-summary">{openLog.summary}</span>
           </div>
           <div class="detail-blocks">
             <div
@@ -312,21 +295,27 @@
               class:block-focused={panelFocused && detailBlockIndex === 0}
               data-block-index="0"
             >
-              <div class="report-summary" class:passing={openReport.status === "passing"} class:warnings={openReport.status === "warnings"} class:failing={openReport.status === "failing"}>
-                <span class="summary-text">{openReport.summary}</span>
+              <div class="run-summary">
+                <span class="summary-stat">{openLog.issues_filed.length} filed</span>
+                <span class="summary-stat">{openLog.issues_updated.length} updated</span>
+                <span class="summary-stat">{openLog.issues_unchanged} unchanged</span>
               </div>
             </div>
-            {#each openReport.findings as finding, i}
+            {#each openLogIssues as issue, i}
               <div
                 class="detail-block"
                 class:block-focused={panelFocused && detailBlockIndex === i + 1}
                 data-block-index={i + 1}
               >
-                <div class="finding">
-                  <span class="finding-severity" style="color: {severityColor(finding.severity)}">{finding.severity}</span>
-                  <span class="finding-category">{finding.category}</span>
-                  <span class="finding-desc">{finding.description}</span>
-                  <span class="finding-action">{actionLabel(finding.action_taken)}</span>
+                <div class="issue-item">
+                  <span class="issue-action" style="color: {actionColor(issue.action)}">{issue.action}</span>
+                  <span class="issue-number">#{issue.issue_number}</span>
+                  <span class="issue-title">{issue.title}</span>
+                  <div class="issue-labels">
+                    {#each issue.labels.filter(l => l !== "filed-by-maintainer") as label}
+                      <span class="issue-label">{label}</span>
+                    {/each}
+                  </div>
                 </div>
               </div>
             {/each}
@@ -334,9 +323,9 @@
         </div>
       {:else}
         <div class="report-list">
-          {#if reports.length === 0}
+          {#if runLogs.length === 0}
             <div class="section-body">
-              <p class="muted">No reports yet</p>
+              <p class="muted">No run logs yet</p>
               {#if project.maintainer.enabled}
                 <button class="btn" onclick={triggerCheck} disabled={triggerLoading}>
                   {triggerLoading ? "Running..." : "(r) Run check now"}
@@ -344,18 +333,18 @@
               {/if}
             </div>
           {:else}
-            {#each reports as report, i}
+            {#each runLogs as log, i}
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div
                 class="report-item"
                 class:selected={panelFocused && selectedIndex === i}
                 data-report-index={i}
-                onclick={() => { selectedIndex = i; openReportIndex = i; detailBlockIndex = 0; }}
+                onclick={() => { selectedIndex = i; openLogIndex = i; detailBlockIndex = 0; }}
               >
-                <span class="report-status-dot" style="background: {statusColor(report.status)}"></span>
-                <span class="report-timestamp">{formatTimestamp(report.timestamp)}</span>
-                <span class="report-summary-preview">{report.summary}</span>
+                <span class="log-dot"></span>
+                <span class="report-timestamp">{formatTimestamp(log.timestamp)}</span>
+                <span class="report-summary-preview">{log.summary}</span>
               </div>
             {/each}
           {/if}
@@ -365,7 +354,7 @@
 
     {#if !panelFocused}
       <div class="panel-hint">
-        <span class="muted">Press <kbd>l</kbd> to browse reports</span>
+        <span class="muted">Press <kbd>l</kbd> to browse run logs</span>
       </div>
     {/if}
   {/if}
@@ -393,15 +382,13 @@
   .worker-label { color: #6c7086; font-size: 11px; }
   .worker-issue { font-size: 13px; }
   .maintainer-status { font-size: 11px; font-weight: 500; text-transform: capitalize; }
-  .maintainer-status.passing { color: #a6e3a1; }
-  .maintainer-status.warnings { color: #f9e2af; }
-  .maintainer-status.failing { color: #f38ba8; }
   .maintainer-status.running { color: #89b4fa; }
+  .maintainer-status.error { color: #f38ba8; }
   .btn { background: #313244; border: none; color: #cdd6f4; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; box-shadow: none; margin-top: 8px; }
   .btn:hover { background: #45475a; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* Report list */
+  /* Run log list */
   .report-section { border-bottom: none; flex: 1; }
   .report-list { display: flex; flex-direction: column; }
   .report-item {
@@ -419,7 +406,7 @@
     outline: 1px solid rgba(137, 180, 250, 0.4);
     outline-offset: -1px;
   }
-  .report-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .log-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: #89b4fa; }
   .report-timestamp { color: #6c7086; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
   .report-summary-preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #bac2de; }
 
@@ -435,22 +422,20 @@
   }
   .detail-back { color: #6c7086; }
   .detail-timestamp { color: #6c7086; font-size: 11px; }
-  .detail-status { font-size: 11px; font-weight: 500; text-transform: capitalize; margin-left: auto; }
+  .detail-summary { font-size: 11px; color: #bac2de; margin-left: auto; }
   .detail-blocks { padding: 12px 24px; display: flex; flex-direction: column; gap: 8px; }
   .detail-block { border-radius: 6px; transition: outline-color 0.15s; outline: 2px solid transparent; outline-offset: 2px; }
   .detail-block.block-focused { outline-color: rgba(137, 180, 250, 0.5); }
 
-  .report-summary { padding: 12px; border-radius: 6px; background: rgba(49, 50, 68, 0.3); display: flex; flex-direction: column; gap: 4px; }
-  .report-summary.passing { border-left: 3px solid #a6e3a1; }
-  .report-summary.warnings { border-left: 3px solid #f9e2af; }
-  .report-summary.failing { border-left: 3px solid #f38ba8; }
-  .summary-text { font-size: 13px; }
+  .run-summary { padding: 12px; border-radius: 6px; background: rgba(49, 50, 68, 0.3); display: flex; gap: 16px; border-left: 3px solid #89b4fa; }
+  .summary-stat { font-size: 13px; color: #cdd6f4; }
 
-  .finding { padding: 8px 12px; background: rgba(49, 50, 68, 0.2); border-radius: 4px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
-  .finding-severity { font-weight: 600; font-size: 11px; text-transform: uppercase; }
-  .finding-category { color: #89b4fa; font-size: 11px; }
-  .finding-desc { color: #cdd6f4; }
-  .finding-action { color: #6c7086; font-size: 11px; font-style: italic; }
+  .issue-item { padding: 8px 12px; background: rgba(49, 50, 68, 0.2); border-radius: 4px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+  .issue-action { font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .issue-number { color: #6c7086; font-size: 11px; }
+  .issue-title { color: #cdd6f4; }
+  .issue-labels { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+  .issue-label { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #313244; color: #6c7086; }
 
   .panel-hint { padding: 12px 24px; }
 </style>
