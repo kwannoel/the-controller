@@ -32,19 +32,22 @@
   let remaining = $derived(issues.length - currentIndex);
 
   // Separate triage-related labels from other labels
+  const triageLabelRe = /^(priority|complexity):\s?/;
   let triageLabels = $derived(
-    currentIssue?.labels.filter(l => /^(priority|complexity):\s/.test(l.name)) ?? []
+    currentIssue?.labels.filter(l => triageLabelRe.test(l.name)) ?? []
   );
   let otherLabels = $derived(
-    currentIssue?.labels.filter(l => !/^(priority|complexity):\s/.test(l.name)) ?? []
+    currentIssue?.labels.filter(l => !triageLabelRe.test(l.name)) ?? []
   );
 
   let currentPriorityLabel = $derived(
-    triageLabels.find(l => l.name.startsWith("priority:"))?.name.replace("priority: ", "") ?? "none"
+    triageLabels.find(l => l.name.startsWith("priority:"))?.name.replace(/^priority:\s?/, "") ?? "none"
   );
-  let currentComplexityLabel = $derived(
-    triageLabels.find(l => l.name.startsWith("complexity:"))?.name.replace("complexity: ", "") ?? "none"
-  );
+  let currentComplexityLabel = $derived.by(() => {
+    const raw = triageLabels.find(l => l.name.startsWith("complexity:"))?.name.replace(/^complexity:\s?/, "") ?? "none";
+    // Maintainer uses "simple", triage panel uses "low" — normalize
+    return raw === "simple" ? "low" : raw;
+  });
 
   let project: Project | null = $derived(
     currentFocus?.projectId
