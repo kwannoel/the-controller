@@ -14,10 +14,14 @@
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
 
+  let focusedAgent = $derived(
+    currentFocus?.type === "agent" ? currentFocus : null
+  );
+
   let project = $derived(
-    currentFocus?.type === "project"
-      ? projectList.find((p) => p.id === currentFocus!.projectId)
-      : projectList[0] ?? null
+    focusedAgent
+      ? projectList.find((p) => p.id === focusedAgent!.projectId) ?? null
+      : null
   );
 
   $effect(() => {
@@ -101,16 +105,16 @@
 </script>
 
 <div class="dashboard">
-  {#if !project}
+  {#if !focusedAgent || !project}
     <div class="empty-state">
-      <div class="empty-title">No project selected</div>
-      <div class="empty-hint">Navigate to a project with <kbd>j</kbd> / <kbd>k</kbd></div>
+      <div class="empty-title">No agent selected</div>
+      <div class="empty-hint">Navigate to an agent with <kbd>j</kbd> / <kbd>k</kbd> and press <kbd>l</kbd></div>
     </div>
-  {:else}
+  {:else if focusedAgent.agentKind === "auto-worker"}
     <div class="dashboard-header">
       <h2>{project.name}</h2>
+      <span class="header-subtitle">Auto-worker</span>
     </div>
-
     <section class="section">
       <div class="section-header">
         <span class="section-title">Auto-worker</span>
@@ -134,7 +138,11 @@
         {/if}
       </div>
     </section>
-
+  {:else if focusedAgent.agentKind === "maintainer"}
+    <div class="dashboard-header">
+      <h2>{project.name}</h2>
+      <span class="header-subtitle">Maintainer</span>
+    </div>
     <section class="section">
       <div class="section-header">
         <span class="section-title">Maintainer</span>
@@ -201,8 +209,9 @@
   .empty-title { font-size: 16px; font-weight: 500; }
   .empty-hint { color: #6c7086; font-size: 13px; }
   .empty-hint kbd { background: #313244; color: #89b4fa; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 12px; }
-  .dashboard-header { padding: 16px 24px; border-bottom: 1px solid #313244; }
+  .dashboard-header { padding: 16px 24px; border-bottom: 1px solid #313244; display: flex; align-items: baseline; }
   .dashboard-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
+  .header-subtitle { font-size: 12px; color: #6c7086; margin-left: 8px; }
   .section { border-bottom: 1px solid #313244; }
   .section-header { padding: 12px 24px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(49, 50, 68, 0.5); }
   .section-title { font-size: 13px; font-weight: 600; flex: 1; }
