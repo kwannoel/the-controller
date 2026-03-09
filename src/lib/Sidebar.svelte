@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -86,6 +86,11 @@
           const el = sidebarEl?.querySelector<HTMLElement>(`[data-agent-id="${currentFocus.projectId}:${currentFocus.agentKind}"]`);
           if (el) el.focus();
         });
+      }
+    } else if (currentFocus?.type === "agent-panel") {
+      // Blur sidebar element so visual focus moves to the panel
+      if (document.activeElement instanceof HTMLElement && sidebarEl?.contains(document.activeElement)) {
+        document.activeElement.blur();
       }
     }
   });
@@ -259,6 +264,22 @@
         maintainerStatuses.update(m => {
           const next = new Map(m);
           next.set(project.id, event.payload as MaintainerStatus);
+          return next;
+        });
+        // Clear error when status changes to non-error
+        if (event.payload !== "error") {
+          maintainerErrors.update(m => {
+            const next = new Map(m);
+            next.delete(project.id);
+            return next;
+          });
+        }
+      }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+
+      listen<string>(`maintainer-error:${project.id}`, (event) => {
+        maintainerErrors.update(m => {
+          const next = new Map(m);
+          next.set(project.id, event.payload);
           return next;
         });
       }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });

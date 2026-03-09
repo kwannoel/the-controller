@@ -90,6 +90,7 @@ export const sessionStatuses = writable<Map<string, SessionStatus>>(new Map());
 export const appConfig = writable<Config | null>(null);
 export const onboardingComplete = writable<boolean>(false);
 export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(new Map());
+export const maintainerErrors = writable<Map<string, string>>(new Map());
 export type AutoWorkerStatus = {
   status: "idle" | "working";
   message?: string;

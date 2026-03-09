@@ -85,6 +85,10 @@ impl MaintainerScheduler {
                                 &format!("maintainer-status:{}", project.id),
                                 "error",
                             );
+                            let _ = app_handle.emit(
+                                &format!("maintainer-error:{}", project.id),
+                                e.to_string(),
+                            );
                         }
                     }
                 }

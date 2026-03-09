@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, maintainerStatuses, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
 
   let runLogs: MaintainerRunLog[] = $state([]);
@@ -200,9 +200,15 @@
     project ? (maintainerStatusesState.current.get(project.id) ?? null) : null
   );
 
+  const maintainerErrorsState = fromStore(maintainerErrors);
+  let maintainerError: string | null = $derived(
+    project ? (maintainerErrorsState.current.get(project.id) ?? null) : null
+  );
+
   let maintainerStatusText = $derived(
     !project?.maintainer.enabled ? "off"
       : maintainerStatus === "running" ? "running"
+      : maintainerStatus === "error" ? "error"
       : "pending"
   );
 
@@ -220,7 +226,7 @@
   }
 </script>
 
-<div class="dashboard">
+<div class="dashboard" class:panel-focused={panelFocused}>
   {#if !focusedAgent || !project}
     <div class="empty-state">
       <div class="empty-title">No agent selected</div>
@@ -277,6 +283,13 @@
         <span>Timer: {nextRunText}</span>
         <span>Status: {maintainerStatusText}</span>
       </div>
+
+      {#if maintainerError}
+        <div class="error-banner">
+          <span class="error-label">Error</span>
+          <span class="error-message">{maintainerError}</span>
+        </div>
+      {/if}
     </section>
 
     <section class="section report-section">
@@ -363,7 +376,8 @@
 </div>
 
 <style>
-  .dashboard { width: 100%; height: 100%; overflow-y: auto; background: #11111b; color: #cdd6f4; }
+  .dashboard { width: 100%; height: 100%; overflow-y: auto; background: #11111b; color: #cdd6f4; outline: 2px solid transparent; outline-offset: -2px; transition: outline-color 0.15s; }
+  .dashboard.panel-focused { outline-color: rgba(137, 180, 250, 0.4); border-radius: 4px; }
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; }
   .empty-title { font-size: 16px; font-weight: 500; }
   .empty-hint { color: #6c7086; font-size: 13px; }
@@ -438,6 +452,10 @@
   .issue-title { color: #cdd6f4; }
   .issue-labels { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
   .issue-label { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #313244; color: #6c7086; }
+
+  .error-banner { padding: 8px 24px; background: rgba(243, 139, 168, 0.1); border-bottom: 1px solid rgba(243, 139, 168, 0.2); display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+  .error-label { color: #f38ba8; font-weight: 600; font-size: 11px; text-transform: uppercase; flex-shrink: 0; }
+  .error-message { color: #bac2de; word-break: break-word; }
 
   .panel-hint { padding: 12px 24px; }
 </style>

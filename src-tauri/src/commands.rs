@@ -1215,11 +1215,18 @@ pub async fn trigger_maintainer_check(
 
     let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "running");
 
-    let log = crate::maintainer::run_maintainer_check(
+    let log = match crate::maintainer::run_maintainer_check(
         &repo_path,
         project_id,
         github_repo.as_deref(),
-    )?;
+    ) {
+        Ok(log) => log,
+        Err(e) => {
+            let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "error");
+            let _ = app_handle.emit(&format!("maintainer-error:{}", project_id), e.to_string());
+            return Err(e);
+        }
+    };
 
     {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;

@@ -25,8 +25,12 @@
 
   function isAgentFocused(projectId: string, kind: AgentKind): boolean {
     if (!currentFocus) return false;
-    if ((currentFocus.type === "agent" || currentFocus.type === "agent-panel") && currentFocus.projectId === projectId && currentFocus.agentKind === kind) return true;
-    return false;
+    return currentFocus.type === "agent" && currentFocus.projectId === projectId && currentFocus.agentKind === kind;
+  }
+
+  function isAgentActive(projectId: string, kind: AgentKind): boolean {
+    if (!currentFocus) return false;
+    return currentFocus.type === "agent-panel" && currentFocus.projectId === projectId && currentFocus.agentKind === kind;
   }
 
   function awIsWorking(projectId: string): boolean {
@@ -65,6 +69,7 @@
         <div
           class="agent-item"
           class:focus-target={isAgentFocused(project.id, "auto-worker")}
+          class:active={isAgentActive(project.id, "auto-worker")}
           data-agent-id="{project.id}:auto-worker"
           tabindex="0"
           onfocusin={() => onAgentFocus("auto-worker", project.id)}
@@ -81,6 +86,7 @@
         <div
           class="agent-item"
           class:focus-target={isAgentFocused(project.id, "maintainer")}
+          class:active={isAgentActive(project.id, "maintainer")}
           data-agent-id="{project.id}:maintainer"
           tabindex="0"
           onfocusin={() => onAgentFocus("maintainer", project.id)}
@@ -171,6 +177,10 @@
     outline: 2px solid #89b4fa;
     outline-offset: -2px;
     border-radius: 4px;
+  }
+
+  .agent-item.active {
+    background: rgba(137, 180, 250, 0.1);
   }
 
   .status-dot {
