@@ -235,7 +235,7 @@
   function navigateProject(direction: 1 | -1) {
     const list = isArchiveView ? archivedProjectList : projectList;
     if (list.length === 0) return;
-    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent"
+    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel"
       ? currentFocus.projectId
       : null;
     let idx = -1;
@@ -246,7 +246,7 @@
   }
 
   function getFocusedProject(): Project | null {
-    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent") {
+    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel") {
       return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
     }
     return null;
@@ -381,14 +381,22 @@
             activeSessionId.set(currentFocus.sessionId);
           }
           dispatchAction({ type: "focus-terminal" });
+        } else if (currentFocus?.type === "agent") {
+          focusTarget.set({ type: "agent-panel", agentKind: currentFocus.agentKind, projectId: currentFocus.projectId });
         }
         return true;
       case "toggle-mode":
         toggleModeActive = true;
         return true;
-      case "toggle-agent":
-        dispatchAction({ type: "toggle-auto-worker-enabled" });
+      case "toggle-agent": {
+        const agentFocus = currentFocus?.type === "agent" ? currentFocus : currentFocus?.type === "agent-panel" ? currentFocus : null;
+        if (agentFocus?.agentKind === "maintainer") {
+          dispatchAction({ type: "toggle-maintainer-enabled" });
+        } else {
+          dispatchAction({ type: "toggle-auto-worker-enabled" });
+        }
         return true;
+      }
       case "trigger-agent-check":
         dispatchAction({ type: "trigger-maintainer-check" });
         return true;
@@ -503,6 +511,11 @@
         e.stopPropagation();
         e.preventDefault();
         pushKeystroke("Esc");
+      } else if (currentFocus?.type === "agent-panel") {
+        dispatchAction({ type: "agent-panel-escape" });
+        e.stopPropagation();
+        e.preventDefault();
+        pushKeystroke("Esc");
       } else if (currentFocus?.type === "agent") {
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
@@ -520,6 +533,24 @@
       workspaceModePickerVisible.set(true);
       pushKeystroke("␣");
       return;
+    }
+
+    // Agent panel focused: intercept navigation keys
+    if (currentFocus?.type === "agent-panel") {
+      if (e.key === "j" || e.key === "k") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "agent-panel-navigate", direction: e.key === "j" ? 1 : -1 });
+        pushKeystroke(e.key);
+        return;
+      }
+      if (e.key === "l" || e.key === "Enter") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "agent-panel-select" });
+        pushKeystroke(e.key);
+        return;
+      }
     }
 
     // Try to handle as hotkey

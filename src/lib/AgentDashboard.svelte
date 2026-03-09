@@ -1,13 +1,18 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, maintainerStatuses, autoWorkerStatuses, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerReport, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
 
-  let report: MaintainerReport | null = $state(null);
+  let reports: MaintainerReport[] = $state([]);
   let loading = $state(false);
   let triggerLoading = $state(false);
   let currentProjectId: string | null = $state(null);
+
+  // Panel navigation state
+  let selectedIndex = $state(0);
+  let openReportIndex: number | null = $state(null);
+  let detailBlockIndex = $state(0);
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -15,8 +20,12 @@
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
 
   let focusedAgent = $derived(
-    currentFocus?.type === "agent" ? currentFocus : null
+    currentFocus?.type === "agent" || currentFocus?.type === "agent-panel"
+      ? currentFocus
+      : null
   );
+
+  let panelFocused = $derived(currentFocus?.type === "agent-panel");
 
   let project = $derived(
     focusedAgent
@@ -24,20 +33,103 @@
       : null
   );
 
+  let openReport = $derived(
+    openReportIndex !== null ? reports[openReportIndex] ?? null : null
+  );
+
+  // Fetch history when project changes
   $effect(() => {
     const pid = project?.id ?? null;
     if (pid && pid !== currentProjectId) {
       currentProjectId = pid;
-      fetchStatus(pid);
+      if (focusedAgent?.agentKind === "maintainer") {
+        fetchHistory(pid);
+      }
     }
   });
 
-  async function fetchStatus(projectId: string) {
+  // Reset panel state when switching agents
+  let prevAgentKey: string | null = $state(null);
+  $effect(() => {
+    const key = focusedAgent ? `${focusedAgent.projectId}:${focusedAgent.agentKind}` : null;
+    if (key !== prevAgentKey) {
+      prevAgentKey = key;
+      selectedIndex = 0;
+      openReportIndex = null;
+      detailBlockIndex = 0;
+    }
+  });
+
+  // Handle panel navigation actions
+  $effect(() => {
+    const unsub = hotkeyAction.subscribe((action) => {
+      if (!action) return;
+      if (action.type === "agent-panel-navigate") {
+        handleNavigate(action.direction);
+      } else if (action.type === "agent-panel-select") {
+        handleSelect();
+      } else if (action.type === "agent-panel-escape") {
+        handleEscape();
+      }
+    });
+    return unsub;
+  });
+
+  function handleNavigate(direction: 1 | -1) {
+    if (focusedAgent?.agentKind !== "maintainer") return;
+
+    if (openReportIndex !== null) {
+      // Detail view: scroll through blocks
+      const report = reports[openReportIndex];
+      if (!report) return;
+      const maxBlock = report.findings.length; // 0 = summary, 1..N = findings
+      detailBlockIndex = Math.max(0, Math.min(maxBlock, detailBlockIndex + direction));
+      scrollBlockIntoView();
+    } else {
+      // List view: move selection
+      if (reports.length === 0) return;
+      selectedIndex = Math.max(0, Math.min(reports.length - 1, selectedIndex + direction));
+      scrollReportIntoView();
+    }
+  }
+
+  function handleSelect() {
+    if (focusedAgent?.agentKind !== "maintainer") return;
+    if (openReportIndex !== null) return;
+    if (reports.length === 0) return;
+    openReportIndex = selectedIndex;
+    detailBlockIndex = 0;
+  }
+
+  function handleEscape() {
+    if (openReportIndex !== null) {
+      openReportIndex = null;
+      detailBlockIndex = 0;
+    } else if (focusedAgent) {
+      focusTarget.set({ type: "agent", agentKind: focusedAgent.agentKind, projectId: focusedAgent.projectId });
+    }
+  }
+
+  function scrollBlockIntoView() {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-block-index="${detailBlockIndex}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  function scrollReportIntoView() {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-report-index="${selectedIndex}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  async function fetchHistory(projectId: string) {
     loading = true;
     try {
-      report = await invoke<MaintainerReport | null>("get_maintainer_status", { projectId });
+      reports = await invoke<MaintainerReport[]>("get_maintainer_history", { projectId });
     } catch {
-      report = null;
+      reports = [];
     } finally {
       loading = false;
     }
@@ -47,7 +139,8 @@
     if (!project) return;
     triggerLoading = true;
     try {
-      report = await invoke<MaintainerReport>("trigger_maintainer_check", { projectId: project.id });
+      await invoke<MaintainerReport>("trigger_maintainer_check", { projectId: project.id });
+      reports = await invoke<MaintainerReport[]>("get_maintainer_history", { projectId: project.id });
       showToast("Maintainer check complete", "info");
     } catch (e) {
       showToast(String(e), "error");
@@ -60,8 +153,8 @@
 
   function computeNextRunText(): string {
     if (!project?.maintainer.enabled) return "Disabled";
-    if (!report) return "Pending";
-    const lastRun = new Date(report.timestamp).getTime();
+    if (reports.length === 0) return "Pending";
+    const lastRun = new Date(reports[0].timestamp).getTime();
     const intervalMs = project.maintainer.interval_minutes * 60 * 1000;
     const nextRun = lastRun + intervalMs;
     const diffMs = nextRun - Date.now();
@@ -101,6 +194,19 @@
     if (action.type === "reported") return "Reported";
     if (action.type === "pr_created") return "PR created";
     return "Unknown";
+  }
+
+  function statusColor(status: string): string {
+    switch (status) {
+      case "passing": return "#a6e3a1";
+      case "warnings": return "#f9e2af";
+      case "failing": return "#f38ba8";
+      default: return "#6c7086";
+    }
+  }
+
+  function formatTimestamp(ts: string): string {
+    return new Date(ts).toLocaleString();
   }
 </script>
 
@@ -162,44 +268,82 @@
           <span>Next: {nextRunText}</span>
         </div>
       {/if}
+    </section>
 
-      <div class="section-body">
-        {#if loading}
+    <section class="section report-section">
+      {#if loading}
+        <div class="section-body">
           <p class="muted">Loading...</p>
-        {:else if !report}
-          <p class="muted">No reports yet</p>
-          {#if project.maintainer.enabled}
-            <button class="btn" onclick={triggerCheck} disabled={triggerLoading}>
-              {triggerLoading ? "Running..." : "(r) Run check now"}
-            </button>
-          {/if}
-        {:else}
-          <div class="report-summary" class:passing={report.status === "passing"} class:warnings={report.status === "warnings"} class:failing={report.status === "failing"}>
-            <span class="summary-text">{report.summary}</span>
-            <span class="timestamp">{new Date(report.timestamp).toLocaleString()}</span>
+        </div>
+      {:else if openReport}
+        <div class="detail-view">
+          <div class="detail-header">
+            <span class="detail-back">Reports</span>
+            <span class="detail-timestamp">{formatTimestamp(openReport.timestamp)}</span>
+            <span class="detail-status" style="color: {statusColor(openReport.status)}">{openReport.status}</span>
           </div>
-
-          {#if report.findings.length > 0}
-            <div class="findings">
-              {#each report.findings as finding}
+          <div class="detail-blocks">
+            <div
+              class="detail-block"
+              class:block-focused={panelFocused && detailBlockIndex === 0}
+              data-block-index="0"
+            >
+              <div class="report-summary" class:passing={openReport.status === "passing"} class:warnings={openReport.status === "warnings"} class:failing={openReport.status === "failing"}>
+                <span class="summary-text">{openReport.summary}</span>
+              </div>
+            </div>
+            {#each openReport.findings as finding, i}
+              <div
+                class="detail-block"
+                class:block-focused={panelFocused && detailBlockIndex === i + 1}
+                data-block-index={i + 1}
+              >
                 <div class="finding">
                   <span class="finding-severity" style="color: {severityColor(finding.severity)}">{finding.severity}</span>
                   <span class="finding-category">{finding.category}</span>
                   <span class="finding-desc">{finding.description}</span>
                   <span class="finding-action">{actionLabel(finding.action_taken)}</span>
                 </div>
-              {/each}
-            </div>
-          {/if}
-
-          <div class="report-actions">
-            <button class="btn" onclick={triggerCheck} disabled={triggerLoading}>
-              {triggerLoading ? "Running..." : "(r) Run again"}
-            </button>
+              </div>
+            {/each}
           </div>
-        {/if}
-      </div>
+        </div>
+      {:else}
+        <div class="report-list">
+          {#if reports.length === 0}
+            <div class="section-body">
+              <p class="muted">No reports yet</p>
+              {#if project.maintainer.enabled}
+                <button class="btn" onclick={triggerCheck} disabled={triggerLoading}>
+                  {triggerLoading ? "Running..." : "(r) Run check now"}
+                </button>
+              {/if}
+            </div>
+          {:else}
+            {#each reports as report, i}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div
+                class="report-item"
+                class:selected={panelFocused && selectedIndex === i}
+                data-report-index={i}
+                onclick={() => { selectedIndex = i; openReportIndex = i; detailBlockIndex = 0; }}
+              >
+                <span class="report-status-dot" style="background: {statusColor(report.status)}"></span>
+                <span class="report-timestamp">{formatTimestamp(report.timestamp)}</span>
+                <span class="report-summary-preview">{report.summary}</span>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      {/if}
     </section>
+
+    {#if !panelFocused}
+      <div class="panel-hint">
+        <span class="muted">Press <kbd>l</kbd> to browse reports</span>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -208,7 +352,7 @@
   .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; }
   .empty-title { font-size: 16px; font-weight: 500; }
   .empty-hint { color: #6c7086; font-size: 13px; }
-  .empty-hint kbd { background: #313244; color: #89b4fa; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 12px; }
+  .empty-hint kbd, .muted kbd, .panel-hint kbd { background: #313244; color: #89b4fa; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 12px; }
   .dashboard-header { padding: 16px 24px; border-bottom: 1px solid #313244; display: flex; align-items: baseline; }
   .dashboard-header h2 { font-size: 16px; font-weight: 600; margin: 0; }
   .header-subtitle { font-size: 12px; color: #6c7086; margin-left: 8px; }
@@ -221,29 +365,68 @@
   .schedule-row { padding: 8px 24px; display: flex; justify-content: space-between; font-size: 11px; color: #6c7086; border-bottom: 1px solid rgba(49, 50, 68, 0.5); }
   .section-body { padding: 16px 24px; }
   .muted { color: #6c7086; font-size: 13px; margin: 0; }
-  .muted kbd { background: #313244; color: #89b4fa; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 12px; }
   .worker-info { display: flex; flex-direction: column; gap: 4px; }
   .worker-label { color: #6c7086; font-size: 11px; }
   .worker-issue { font-size: 13px; }
-  .report-summary { padding: 12px; border-radius: 6px; background: rgba(49, 50, 68, 0.3); margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px; }
-  .report-summary.passing { border-left: 3px solid #a6e3a1; }
-  .report-summary.warnings { border-left: 3px solid #f9e2af; }
-  .report-summary.failing { border-left: 3px solid #f38ba8; }
-  .summary-text { font-size: 13px; }
-  .timestamp { color: #6c7086; font-size: 11px; }
-  .findings { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-  .finding { padding: 8px 12px; background: rgba(49, 50, 68, 0.2); border-radius: 4px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
-  .finding-severity { font-weight: 600; font-size: 11px; text-transform: uppercase; }
-  .finding-category { color: #89b4fa; font-size: 11px; }
-  .finding-desc { color: #cdd6f4; }
-  .finding-action { color: #6c7086; font-size: 11px; font-style: italic; }
   .maintainer-status { font-size: 11px; font-weight: 500; text-transform: capitalize; }
   .maintainer-status.passing { color: #a6e3a1; }
   .maintainer-status.warnings { color: #f9e2af; }
   .maintainer-status.failing { color: #f38ba8; }
   .maintainer-status.running { color: #89b4fa; }
-  .report-actions { display: flex; gap: 8px; }
-  .btn { background: #313244; border: none; color: #cdd6f4; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; box-shadow: none; }
+  .btn { background: #313244; border: none; color: #cdd6f4; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; box-shadow: none; margin-top: 8px; }
   .btn:hover { background: #45475a; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Report list */
+  .report-section { border-bottom: none; flex: 1; }
+  .report-list { display: flex; flex-direction: column; }
+  .report-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 24px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(49, 50, 68, 0.3);
+  }
+  .report-item:hover { background: rgba(49, 50, 68, 0.3); }
+  .report-item.selected {
+    background: rgba(137, 180, 250, 0.1);
+    outline: 1px solid rgba(137, 180, 250, 0.4);
+    outline-offset: -1px;
+  }
+  .report-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .report-timestamp { color: #6c7086; font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+  .report-summary-preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #bac2de; }
+
+  /* Detail view */
+  .detail-view { display: flex; flex-direction: column; }
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 24px;
+    border-bottom: 1px solid rgba(49, 50, 68, 0.5);
+    font-size: 12px;
+  }
+  .detail-back { color: #6c7086; }
+  .detail-timestamp { color: #6c7086; font-size: 11px; }
+  .detail-status { font-size: 11px; font-weight: 500; text-transform: capitalize; margin-left: auto; }
+  .detail-blocks { padding: 12px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .detail-block { border-radius: 6px; transition: outline-color 0.15s; outline: 2px solid transparent; outline-offset: 2px; }
+  .detail-block.block-focused { outline-color: rgba(137, 180, 250, 0.5); }
+
+  .report-summary { padding: 12px; border-radius: 6px; background: rgba(49, 50, 68, 0.3); display: flex; flex-direction: column; gap: 4px; }
+  .report-summary.passing { border-left: 3px solid #a6e3a1; }
+  .report-summary.warnings { border-left: 3px solid #f9e2af; }
+  .report-summary.failing { border-left: 3px solid #f38ba8; }
+  .summary-text { font-size: 13px; }
+
+  .finding { padding: 8px 12px; background: rgba(49, 50, 68, 0.2); border-radius: 4px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+  .finding-severity { font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .finding-category { color: #89b4fa; font-size: 11px; }
+  .finding-desc { color: #cdd6f4; }
+  .finding-action { color: #6c7086; font-size: 11px; font-style: italic; }
+
+  .panel-hint { padding: 12px 24px; }
 </style>

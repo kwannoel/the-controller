@@ -24,7 +24,9 @@
   }
 
   function isAgentFocused(projectId: string, kind: AgentKind): boolean {
-    return currentFocus?.type === "agent" && currentFocus.projectId === projectId && currentFocus.agentKind === kind;
+    if (!currentFocus) return false;
+    if ((currentFocus.type === "agent" || currentFocus.type === "agent-panel") && currentFocus.projectId === projectId && currentFocus.agentKind === kind) return true;
+    return false;
   }
 
   function awIsWorking(projectId: string): boolean {
