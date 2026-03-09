@@ -51,11 +51,6 @@
   let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
   const expandedProjectsState = fromStore(expandedProjects);
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
-  const sessionStatusesState = fromStore(sessionStatuses);
-  let statusMap = $derived(sessionStatusesState.current);
-  const thinkingLevelsState = fromStore(sessionThinkingLevels);
-  let thinkingMap = $derived(thinkingLevelsState.current);
-
   const workspaceModeState = fromStore(workspaceMode);
   let currentMode = $derived(workspaceModeState.current);
   let keyMap = $derived(buildKeyMap(currentMode));
@@ -382,16 +377,6 @@
       case "trigger-agent-check":
         dispatchAction({ type: "trigger-maintainer-check" });
         return true;
-      case "thinking-up": {
-        const lvl = cycleThinkingLevel(1);
-        if (lvl) pushKeystroke(`Think: ${lvl}`);
-        return true;
-      }
-      case "thinking-down": {
-        const lvl = cycleThinkingLevel(-1);
-        if (lvl) pushKeystroke(`Think: ${lvl}`);
-        return true;
-      }
       case "toggle-help":
         dispatchAction({ type: "toggle-help" });
         return true;

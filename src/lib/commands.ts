@@ -27,8 +27,6 @@ export type CommandId =
   | "toggle-mode"
   | "toggle-agent"
   | "trigger-agent-check"
-  | "thinking-up"
-  | "thinking-down"
   | "toggle-help"
   | "clear-agent-reports";
 
@@ -71,8 +69,6 @@ export const commands: CommandDef[] = [
   { id: "background-worker-claude", key: "C", section: "Sessions", description: "Background worker: Claude (autonomous)", mode: "development" },
   { id: "background-worker-codex", key: "X", section: "Sessions", description: "Background worker: Codex (autonomous)", mode: "development" },
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)", mode: "development" },
-  { id: "thinking-up", key: "e", section: "Sessions", description: "Thinking level up / down", helpKey: "e / q", mode: "development" },
-  { id: "thinking-down", key: "q", section: "Sessions", description: "Thinking level down", hidden: true, mode: "development" },
   { id: "screenshot", key: "⌘S", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘D", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
   { id: "screenshot-preview", key: "⌘⇧S / ⌘⇧D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
