@@ -264,10 +264,29 @@
     }
   }
 
-  onMount(async () => {
+  function updateWindowTitle(branch: string, commit: string) {
     getCurrentWindow().setTitle(
-      `The Controller (${__BUILD_COMMIT__}, ${__BUILD_BRANCH__}, localhost:${__DEV_PORT__})`,
+      `The Controller (${commit}, ${branch}, localhost:${__DEV_PORT__})`,
     );
+  }
+
+  // Reactively update title when staging state changes
+  $effect(() => {
+    const stagedProject = projectsState.current.find((p) => p.staged_session);
+    if (stagedProject) {
+      invoke<[string, string]>("get_repo_head", { repoPath: stagedProject.repo_path })
+        .then(([branch, commit]) => updateWindowTitle(branch, commit))
+        .catch(() => {
+          // Fallback to staged_session info
+          updateWindowTitle(stagedProject.staged_session!.staging_branch, "");
+        });
+    } else {
+      updateWindowTitle(__BUILD_BRANCH__, __BUILD_COMMIT__);
+    }
+  });
+
+  onMount(async () => {
+    updateWindowTitle(__BUILD_BRANCH__, __BUILD_COMMIT__);
 
     try {
       // Re-spawn PTY sessions for persisted active sessions

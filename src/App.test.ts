@@ -157,3 +157,122 @@ describe("App screenshot flow", () => {
     });
   });
 });
+
+describe("Window title updates on staging", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_COMMIT__ = "test-commit";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_BRANCH__ = "test-branch";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__DEV_PORT__ = "1420";
+
+    projects.set([{ ...baseProject, staged_session: null, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [] }]);
+    activeSessionId.set(null);
+    focusTarget.set(null);
+    hotkeyAction.set(null);
+    showKeyHints.set(false);
+    sidebarVisible.set(true);
+    onboardingComplete.set(true);
+    appConfig.set({ projects_root: "/tmp/projects" });
+    sessionStatuses.set(new Map());
+    expandedProjects.set(new Set());
+  });
+
+  it("shows build-time info in title when no session is staged", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      return;
+    });
+
+    render(App);
+
+    await waitFor(() => {
+      expect(mocks.setTitle).toHaveBeenCalledWith(
+        "The Controller (test-commit, test-branch, localhost:1420)",
+      );
+    });
+  });
+
+  it("updates title with repo HEAD when a session is staged", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "get_repo_head") return ["staging/fix-foo", "abc1234"];
+      return;
+    });
+
+    render(App);
+
+    // Stage a session by updating the projects store
+    projects.set([{
+      ...baseProject,
+      staged_session: {
+        session_id: "sess-1",
+        original_branch: "master",
+        staging_branch: "staging/fix-foo",
+      },
+      maintainer: { enabled: false, interval_minutes: 60 },
+      auto_worker: { enabled: false },
+      prompts: [],
+      sessions: [],
+    }]);
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("get_repo_head", { repoPath: "/tmp/the-controller" });
+      expect(mocks.setTitle).toHaveBeenCalledWith(
+        "The Controller (abc1234, staging/fix-foo, localhost:1420)",
+      );
+    });
+  });
+
+  it("reverts title when session is unstaged", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "get_repo_head") return ["staging/fix-foo", "abc1234"];
+      return;
+    });
+
+    render(App);
+
+    // Stage
+    projects.set([{
+      ...baseProject,
+      staged_session: {
+        session_id: "sess-1",
+        original_branch: "master",
+        staging_branch: "staging/fix-foo",
+      },
+      maintainer: { enabled: false, interval_minutes: 60 },
+      auto_worker: { enabled: false },
+      prompts: [],
+      sessions: [],
+    }]);
+
+    await waitFor(() => {
+      expect(mocks.setTitle).toHaveBeenCalledWith(
+        "The Controller (abc1234, staging/fix-foo, localhost:1420)",
+      );
+    });
+
+    // Unstage
+    mocks.setTitle.mockClear();
+    projects.set([{
+      ...baseProject,
+      staged_session: null,
+      maintainer: { enabled: false, interval_minutes: 60 },
+      auto_worker: { enabled: false },
+      prompts: [],
+      sessions: [],
+    }]);
+
+    await waitFor(() => {
+      expect(mocks.setTitle).toHaveBeenCalledWith(
+        "The Controller (test-commit, test-branch, localhost:1420)",
+      );
+    });
+  });
+});

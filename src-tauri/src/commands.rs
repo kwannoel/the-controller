@@ -697,6 +697,25 @@ pub fn unstage_session_inplace(
 }
 
 #[tauri::command]
+pub fn get_repo_head(repo_path: String) -> Result<(String, String), String> {
+    let repo = git2::Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repo: {}", e))?;
+
+    let head = repo.head().map_err(|e| format!("Failed to get HEAD: {}", e))?;
+    let branch = head
+        .shorthand()
+        .unwrap_or("HEAD")
+        .to_string();
+
+    let commit = head
+        .peel_to_commit()
+        .map_err(|e| format!("Failed to peel to commit: {}", e))?;
+    let short_hash = commit.id().to_string()[..7].to_string();
+
+    Ok((branch, short_hash))
+}
+
+#[tauri::command]
 pub fn save_session_prompt(
     state: State<AppState>,
     project_id: String,

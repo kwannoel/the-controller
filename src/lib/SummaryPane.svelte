@@ -113,8 +113,8 @@
     border-bottom: 1px solid #313244;
     font-size: 18px;
     flex-shrink: 0;
-    max-height: 540px;
-    overflow-y: auto;
+    max-height: 200px;
+    overflow: hidden;
   }
 
   .summary-row {
