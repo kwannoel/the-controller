@@ -255,18 +255,19 @@ pub fn run_maintainer_check(
     github_repo: Option<&str>,
 ) -> Result<MaintainerRunLog, String> {
     let prompt = build_issue_filing_prompt(repo_path, github_repo);
-    let output = std::process::Command::new("claude")
-        .arg("--print")
-        .arg("--allowedTools=Bash")
+    let output = std::process::Command::new("codex")
+        .arg("exec")
+        .arg("--sandbox")
+        .arg("danger-full-access")
         .arg(&prompt)
         .current_dir(repo_path)
         .env_remove("CLAUDECODE")
         .output()
-        .map_err(|e| format!("Failed to run claude --print: {}", e))?;
+        .map_err(|e| format!("Failed to run codex exec: {}", e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("claude --print failed: {}", stderr));
+        return Err(format!("codex exec failed: {}", stderr));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
