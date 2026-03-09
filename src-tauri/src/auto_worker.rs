@@ -74,8 +74,9 @@ impl AutoWorkerScheduler {
                 for project_id in timed_out {
                     if let Some(session) = active_sessions.remove(&project_id) {
                         eprintln!("Auto-worker: session timed out for #{}", session.issue_number);
+                        let (issue_number, issue_title) = session_issue_context(&session);
                         kill_session(&state, &session);
-                        emit_status(&app_handle, project_id, "idle", Some("Session timed out"), None, None);
+                        emit_status(&app_handle, project_id, "idle", Some("Session timed out"), issue_number, issue_title);
                     }
                 }
 
@@ -94,8 +95,9 @@ impl AutoWorkerScheduler {
                         if session.nudge_count >= MAX_NUDGES {
                             let session = active_sessions.remove(&project_id).unwrap();
                             eprintln!("Auto-worker: killed after {} nudges for #{}", MAX_NUDGES, session.issue_number);
+                            let (issue_number, issue_title) = session_issue_context(&session);
                             kill_session(&state, &session);
-                            emit_status(&app_handle, project_id, "idle", Some("Killed after max nudges"), None, None);
+                            emit_status(&app_handle, project_id, "idle", Some("Killed after max nudges"), issue_number, issue_title);
                         } else {
                             nudge_session(&state, session);
                         }
@@ -118,9 +120,17 @@ impl AutoWorkerScheduler {
                 for project_id in exited {
                     if let Some(session) = active_sessions.remove(&project_id) {
                         eprintln!("Auto-worker: session completed for #{}", session.issue_number);
+                        let (issue_number, issue_title) = session_issue_context(&session);
                         mark_issue_finished(&session);
                         cleanup_session(&state, &session);
-                        emit_status(&app_handle, project_id, "idle", Some(&format!("Completed #{}", session.issue_number)), None, None);
+                        emit_status(
+                            &app_handle,
+                            project_id,
+                            "idle",
+                            Some(&format!("Completed #{}", session.issue_number)),
+                            issue_number,
+                            issue_title,
+                        );
                     }
                 }
 
@@ -191,6 +201,10 @@ fn emit_status(app_handle: &AppHandle, project_id: Uuid, status: &str, message: 
         "issue_title": issue_title.unwrap_or(""),
     });
     let _ = app_handle.emit(&format!("auto-worker-status:{}", project_id), payload.to_string());
+}
+
+fn session_issue_context(session: &ActiveSession) -> (Option<u64>, Option<&str>) {
+    (Some(session.issue_number), Some(session.issue_title.as_str()))
 }
 
 fn fetch_issues_sync(repo_path: &str) -> Result<Vec<GithubIssue>, String> {
@@ -428,5 +442,25 @@ mod tests {
             make_issue(&["in-progress", "priority: high", "complexity: low", "triaged"]),
         ];
         assert!(pick_eligible_issue(&issues).is_none());
+    }
+
+    #[test]
+    fn session_issue_context_includes_issue_number_and_title() {
+        let session = ActiveSession {
+            session_id: Uuid::new_v4(),
+            project_id: Uuid::new_v4(),
+            issue_number: 289,
+            issue_title: "Dead issue_title field".to_string(),
+            repo_path: "/tmp/repo".to_string(),
+            spawned_at: Instant::now(),
+            nudge_count: 0,
+            last_idle_at: None,
+            last_nudge_at: None,
+        };
+
+        let (issue_number, issue_title) = session_issue_context(&session);
+
+        assert_eq!(issue_number, Some(289));
+        assert_eq!(issue_title, Some("Dead issue_title field"));
     }
 }
