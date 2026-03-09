@@ -1,6 +1,6 @@
 import type { WorkspaceMode } from "./stores";
 
-export type CommandSection = "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents";
+export type CommandSection = "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Notes";
 
 // IDs for commands handled in handleHotkey's switch
 export type CommandId =
@@ -29,7 +29,11 @@ export type CommandId =
   | "toggle-agent"
   | "trigger-agent-check"
   | "toggle-help"
-  | "clear-agent-reports";
+  | "clear-agent-reports"
+  | "create-note"
+  | "delete-note"
+  | "rename-note"
+  | "toggle-note-preview";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -94,10 +98,16 @@ export const commands: CommandDef[] = [
   { id: "toggle-agent", key: "o", section: "Agents", description: "Toggle focused agent on/off", mode: "agents" },
   { id: "trigger-agent-check", key: "r", section: "Agents", description: "Run maintainer check for focused project", mode: "agents" },
   { id: "clear-agent-reports", key: "c", section: "Agents", description: "Clear maintainer reports for focused project", mode: "agents" },
+
+  // ── Notes ──
+  { id: "create-note", key: "n", section: "Notes", description: "Create new note", mode: "notes" },
+  { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note", mode: "notes" },
+  { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note", mode: "notes" },
+  { id: "toggle-note-preview", key: "p", section: "Notes", description: "Toggle edit/preview", mode: "notes" },
 ];
 
 // Section order for help display
-const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents"];
+const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes"];
 
 export interface HelpEntry {
   key: string;

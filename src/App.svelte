@@ -17,6 +17,7 @@
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
+  import NotesEditor from "./lib/NotesEditor.svelte";
   import { showToast } from "./lib/toast";
   import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
@@ -261,6 +262,8 @@
       <main class="terminal-area">
         {#if workspaceModeState.current === "agents"}
           <AgentDashboard />
+        {:else if workspaceModeState.current === "notes"}
+          <NotesEditor />
         {:else}
           <TerminalManager />
         {/if}
