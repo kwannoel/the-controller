@@ -42,6 +42,7 @@
   let allSessions: { id: string; kind: string }[] = $derived(
     projectList.flatMap((p) => p.sessions.map((s) => ({ id: s.id, kind: s.kind }))),
   );
+
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->

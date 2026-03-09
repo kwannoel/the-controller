@@ -83,8 +83,7 @@
           tabindex="0"
           onfocusin={() => onAgentFocus("maintainer", project.id)}
         >
-          {@const mStatus = mStatusValue(project.id)}
-          <span class="status-dot" class:working={mStatus === "running"} class:idle={project.maintainer.enabled && mStatus !== "running"} class:disabled={!project.maintainer.enabled}></span>
+          <span class="status-dot" class:working={mStatusValue(project.id) === "running"} class:idle={project.maintainer.enabled && mStatusValue(project.id) !== "running"} class:disabled={!project.maintainer.enabled}></span>
           <span class="agent-label">Maintainer</span>
           <span class="agent-badge" class:enabled={project.maintainer.enabled}>
             {project.maintainer.enabled ? "ON" : "OFF"}
