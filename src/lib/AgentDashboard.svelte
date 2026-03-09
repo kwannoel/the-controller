@@ -7,7 +7,6 @@
   let reports: MaintainerReport[] = $state([]);
   let loading = $state(false);
   let triggerLoading = $state(false);
-  let currentProjectId: string | null = $state(null);
 
   // Panel navigation state
   let selectedIndex = $state(0);
@@ -37,18 +36,7 @@
     openReportIndex !== null ? reports[openReportIndex] ?? null : null
   );
 
-  // Fetch history when project changes
-  $effect(() => {
-    const pid = project?.id ?? null;
-    if (pid && pid !== currentProjectId) {
-      currentProjectId = pid;
-      if (focusedAgent?.agentKind === "maintainer") {
-        fetchHistory(pid);
-      }
-    }
-  });
-
-  // Reset panel state when switching agents
+  // Fetch history and reset panel state when switching agents
   let prevAgentKey: string | null = $state(null);
   $effect(() => {
     const key = focusedAgent ? `${focusedAgent.projectId}:${focusedAgent.agentKind}` : null;
@@ -57,6 +45,12 @@
       selectedIndex = 0;
       openReportIndex = null;
       detailBlockIndex = 0;
+      reports = [];
+
+      const pid = project?.id ?? null;
+      if (pid && focusedAgent?.agentKind === "maintainer") {
+        fetchHistory(pid);
+      }
     }
   });
 
@@ -131,11 +125,18 @@
   async function fetchHistory(projectId: string) {
     loading = true;
     try {
-      reports = await invoke<MaintainerReport[]>("get_maintainer_history", { projectId });
+      const result = await invoke<MaintainerReport[]>("get_maintainer_history", { projectId });
+      if (prevAgentKey === `${projectId}:maintainer`) {
+        reports = result;
+      }
     } catch {
-      reports = [];
+      if (prevAgentKey === `${projectId}:maintainer`) {
+        reports = [];
+      }
     } finally {
-      loading = false;
+      if (prevAgentKey === `${projectId}:maintainer`) {
+        loading = false;
+      }
     }
   }
 
