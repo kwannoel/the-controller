@@ -217,6 +217,20 @@ impl WorktreeManager {
         git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
     }
 
+    /// Check if a worktree has a clean working tree (no uncommitted or untracked changes).
+    pub fn is_worktree_clean(worktree_path: &str) -> Result<bool, String> {
+        let repo = Repository::open(worktree_path)
+            .map_err(|e| format!("failed to open worktree repo: {}", e))?;
+        let statuses = repo
+            .statuses(Some(
+                git2::StatusOptions::new()
+                    .include_untracked(true)
+                    .recurse_untracked_dirs(false),
+            ))
+            .map_err(|e| format!("failed to check worktree status: {}", e))?;
+        Ok(statuses.is_empty())
+    }
+
     /// Stage a worktree branch in-place in the main repo.
     ///
     /// Creates a temporary `staging/<branch>` branch at the same commit as the
@@ -598,6 +612,31 @@ mod tests {
                 .is_err(),
             "staging branch should be deleted"
         );
+    }
+
+    #[test]
+    fn test_is_worktree_clean_on_clean_worktree() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("clean-wt");
+
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "clean-wt", &worktree_dir)
+            .expect("create worktree");
+
+        assert!(WorktreeManager::is_worktree_clean(wt_path.to_str().unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_is_worktree_clean_with_uncommitted_changes() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("dirty-wt");
+
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "dirty-wt", &worktree_dir)
+            .expect("create worktree");
+
+        std::fs::write(wt_path.join("dirty.txt"), "uncommitted").unwrap();
+        assert!(!WorktreeManager::is_worktree_clean(wt_path.to_str().unwrap()).unwrap());
     }
 
     #[test]
