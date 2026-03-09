@@ -75,6 +75,18 @@
           if (el) el.focus();
         });
       }
+    } else if (currentFocus?.type === "agent") {
+      if (!expandedProjectSet.has(currentFocus.projectId)) {
+        const next = new Set(expandedProjectSet);
+        next.add(currentFocus.projectId);
+        expandedProjects.set(next);
+      }
+      if (sidebarEl) {
+        requestAnimationFrame(() => {
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-agent-id="${currentFocus.projectId}:${currentFocus.agentKind}"]`);
+          if (el) el.focus();
+        });
+      }
     }
   });
 
@@ -476,9 +488,14 @@
     {#if currentMode === "agents"}
       <AgentTree
         projects={projectList}
+        {expandedProjectSet}
         {currentFocus}
+        onToggleProject={toggleProject}
         onProjectFocus={(projectId) => {
           focusTarget.set({ type: "project", projectId });
+        }}
+        onAgentFocus={(agentKind, projectId) => {
+          focusTarget.set({ type: "agent", agentKind, projectId });
         }}
       />
     {:else}
