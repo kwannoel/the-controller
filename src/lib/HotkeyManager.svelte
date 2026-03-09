@@ -404,6 +404,19 @@
         }
         return true;
       }
+      case "stage-inplace": {
+        // If any project has a staged session, unstage it; otherwise stage the active session
+        const stageProj = projectList.find((p) => p.staged_session !== null);
+        if (stageProj) {
+          dispatchHotkeyAction({ type: "unstage-session-inplace", projectId: stageProj.id });
+        } else if (activeId) {
+          const proj2 = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
+          if (proj2) {
+            dispatchHotkeyAction({ type: "stage-session-inplace", sessionId: activeId, projectId: proj2.id });
+          }
+        }
+        return true;
+      }
       case "toggle-sidebar":
         sidebarVisible.update(v => !v);
         return true;

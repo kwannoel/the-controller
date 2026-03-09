@@ -188,6 +188,7 @@ pub fn create_project(
         auto_worker: crate::models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
+        staged_session: None,
     };
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -255,6 +256,7 @@ pub fn load_project(
         auto_worker: crate::models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
+        staged_session: None,
     };
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -577,6 +579,75 @@ pub fn set_initial_prompt(
         }
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stage_session_inplace(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    use crate::models::StagedSession;
+
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
+    if project.staged_session.is_some() {
+        return Err("A session is already staged — unstage it first".to_string());
+    }
+
+    let session = project
+        .sessions
+        .iter()
+        .find(|s| s.id == session_uuid)
+        .ok_or("Session not found")?;
+
+    let branch = session
+        .worktree_branch
+        .as_deref()
+        .ok_or("Session has no worktree branch")?;
+
+    let original_branch =
+        WorktreeManager::stage_inplace(&project.repo_path, branch)?;
+
+    let staging_branch = format!("staging/{}", branch);
+    project.staged_session = Some(StagedSession {
+        session_id: session_uuid,
+        original_branch,
+        staging_branch,
+    });
+
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn unstage_session_inplace(
+    state: State<AppState>,
+    project_id: String,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
+    let staged = project
+        .staged_session
+        .take()
+        .ok_or("No session is currently staged")?;
+
+    WorktreeManager::unstage_inplace(
+        &project.repo_path,
+        &staged.original_branch,
+        &staged.staging_branch,
+    )?;
+
+    storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -942,6 +1013,7 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         auto_worker: crate::models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
+        staged_session: None,
     };
     storage.save_project(&project).map_err(|e| e.to_string())?;
 

@@ -15,6 +15,18 @@ pub struct Project {
     pub auto_worker: AutoWorkerConfig,
     #[serde(default)]
     pub prompts: Vec<SavedPrompt>,
+    /// When a session's branch is staged in-place in the main repo.
+    #[serde(default)]
+    pub staged_session: Option<StagedSession>,
+}
+
+/// Tracks in-place staging state: which session branch is checked out
+/// in the main repo and what branch to restore when unstaging.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StagedSession {
+    pub session_id: Uuid,
+    pub original_branch: String,
+    pub staging_branch: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +209,7 @@ mod tests {
                 done_commits: vec![],
                 auto_worker_session: false,
             }],
+            staged_session: None,
         };
 
         let json = serde_json::to_string(&project).expect("serialize");
@@ -254,6 +267,7 @@ mod tests {
                 done_commits: vec![],
                 auto_worker_session: false,
             }],
+            staged_session: None,
         };
 
         let json = serde_json::to_string(&project).expect("serialize");
@@ -414,6 +428,7 @@ mod tests {
             auto_worker: AutoWorkerConfig::default(),
             prompts: vec![],
             sessions: vec![],
+            staged_session: None,
         };
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
@@ -516,6 +531,7 @@ mod tests {
             auto_worker: AutoWorkerConfig { enabled: true },
             prompts: vec![],
             sessions: vec![],
+            staged_session: None,
         };
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
@@ -580,5 +596,44 @@ mod tests {
         let json = serde_json::to_string(&issue).expect("serialize");
         let deserialized: AssignedIssue = serde_json::from_str(&json).expect("deserialize");
         assert!(deserialized.assignees.is_empty());
+    }
+
+    #[test]
+    fn test_staged_session_defaults_to_none() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "test-project",
+            "repo_path": "/tmp/test-repo",
+            "created_at": "2026-02-28T00:00:00Z",
+            "archived": false,
+            "sessions": []
+        }"#;
+        let project: Project = serde_json::from_str(json).expect("deserialize");
+        assert!(project.staged_session.is_none());
+    }
+
+    #[test]
+    fn test_staged_session_roundtrip() {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "test".to_string(),
+            repo_path: "/tmp".to_string(),
+            created_at: "2026-03-09T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
+            sessions: vec![],
+            staged_session: Some(StagedSession {
+                session_id: Uuid::new_v4(),
+                original_branch: "master".to_string(),
+                staging_branch: "staging/session-1-abc123".to_string(),
+            }),
+        };
+        let json = serde_json::to_string(&project).expect("serialize");
+        let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
+        let staged = deserialized.staged_session.unwrap();
+        assert_eq!(staged.original_branch, "master");
+        assert_eq!(staged.staging_branch, "staging/session-1-abc123");
     }
 }

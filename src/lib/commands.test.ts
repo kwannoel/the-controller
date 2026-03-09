@@ -121,7 +121,7 @@ describe("command registry", () => {
     expect(nav.entries).toHaveLength(7);
 
     const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(10);
+    expect(sess.entries).toHaveLength(11);
 
     const proj = sections.find(s => s.label === "Projects")!;
     expect(proj.entries).toHaveLength(8);

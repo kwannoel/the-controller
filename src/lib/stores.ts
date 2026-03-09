@@ -72,6 +72,12 @@ export interface MaintainerRunLog {
 
 export type MaintainerStatus = "idle" | "running" | "error";
 
+export interface StagedSession {
+  session_id: string;
+  original_branch: string;
+  staging_branch: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -82,6 +88,7 @@ export interface Project {
   maintainer: MaintainerConfig;
   auto_worker: AutoWorkerConfig;
   prompts: SavedPrompt[];
+  staged_session: StagedSession | null;
 }
 
 export interface Config {
@@ -153,6 +160,8 @@ export type HotkeyAction =
   | { type: "toggle-note-preview" }
   | { type: "save-session-prompt"; sessionId: string; projectId: string }
   | { type: "pick-prompt-for-session"; projectId: string }
+  | { type: "stage-session-inplace"; sessionId: string; projectId: string }
+  | { type: "unstage-session-inplace"; projectId: string }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);

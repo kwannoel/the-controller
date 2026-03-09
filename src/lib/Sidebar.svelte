@@ -220,6 +220,14 @@
           finishBranchTarget = { sessionId: action.sessionId, kind: action.kind };
           break;
         }
+        case "stage-session-inplace": {
+          stageSessionInplace(action.projectId, action.sessionId);
+          break;
+        }
+        case "unstage-session-inplace": {
+          unstageSessionInplace(action.projectId);
+          break;
+        }
         case "create-note": {
           const focus = focusTargetState.current;
           const project = (focus?.type === "project" || focus?.type === "note" || focus?.type === "notes-editor")
@@ -501,6 +509,29 @@
         return current;
       });
       await loadProjects();
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function stageSessionInplace(projectId: string, sessionId: string) {
+    try {
+      await invoke("stage_session_inplace", { projectId, sessionId });
+      await loadProjects();
+      const session = projectList
+        .find((p) => p.id === projectId)
+        ?.sessions.find((s) => s.id === sessionId);
+      showToast(`Staged ${session?.label ?? "session"} in main repo`, "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function unstageSessionInplace(projectId: string) {
+    try {
+      await invoke("unstage_session_inplace", { projectId });
+      await loadProjects();
+      showToast("Unstaged — restored original branch", "info");
     } catch (e) {
       showToast(String(e), "error");
     }

@@ -35,7 +35,8 @@ export type CommandId =
   | "rename-note"
   | "toggle-note-preview"
   | "save-prompt"
-  | "load-prompt";
+  | "load-prompt"
+  | "stage-inplace";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -78,6 +79,7 @@ export const commands: CommandDef[] = [
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)", mode: "development" },
   { id: "save-prompt", key: "P", section: "Sessions", description: "Save focused session's prompt", mode: "development" },
   { id: "load-prompt", key: "p", section: "Sessions", description: "Load saved prompt into new session", mode: "development" },
+  { id: "stage-inplace", key: "v", section: "Sessions", description: "Stage/unstage session branch in main repo", mode: "development" },
   { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
   { id: "screenshot-preview", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
