@@ -170,17 +170,18 @@
   let nextRunText = $state("");
 
   function computeNextRunText(): string {
-    if (!project?.maintainer.enabled) return "Disabled";
-    if (reports.length === 0) return "Pending";
+    if (!project?.maintainer.enabled) return "--";
+    if (reports.length === 0) return "--";
     const lastRun = new Date(reports[0].timestamp).getTime();
     const intervalMs = project.maintainer.interval_minutes * 60 * 1000;
     const nextRun = lastRun + intervalMs;
     const diffMs = nextRun - Date.now();
-    if (diffMs <= 0) return "Due now";
+    if (diffMs <= 0) return "0:00";
     const totalSecs = Math.floor(diffMs / 1000);
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
-    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+    const secsStr = secs.toString().padStart(2, "0");
+    return mins > 0 ? `${mins}:${secsStr}` : `0:${secsStr}`;
   }
 
   $effect(() => {
@@ -192,6 +193,12 @@
   const maintainerStatusesState = fromStore(maintainerStatuses);
   let maintainerStatus: MaintainerStatus | null = $derived(
     project ? (maintainerStatusesState.current.get(project.id) ?? null) : null
+  );
+
+  let maintainerStatusText = $derived(
+    !project?.maintainer.enabled ? "off"
+      : maintainerStatus === "running" ? "running"
+      : "pending"
   );
 
   const autoWorkerStatusesState = fromStore(autoWorkerStatuses);
@@ -280,12 +287,11 @@
         {/if}
       </div>
 
-      {#if project.maintainer.enabled}
-        <div class="schedule-row">
-          <span>Interval: {project.maintainer.interval_minutes}m</span>
-          <span>Next: {nextRunText}</span>
-        </div>
-      {/if}
+      <div class="schedule-row">
+        <span>Interval: {project.maintainer.interval_minutes}m</span>
+        <span>Timer: {nextRunText}</span>
+        <span>Status: {maintainerStatusText}</span>
+      </div>
     </section>
 
     <section class="section report-section">
