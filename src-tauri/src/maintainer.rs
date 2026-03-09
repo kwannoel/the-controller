@@ -113,10 +113,10 @@ For each issue you find, you must either file a new GitHub issue or update an ex
 Run these commands to create labels if they don't already exist (ignore errors if they already exist):
 
 gh label create "filed-by-maintainer" --description "Issue filed by maintainer agent" --color "6c7086" --force{repo_flag}
-gh label create "priority:low" --description "Low priority" --color "a6e3a1" --force{repo_flag}
-gh label create "priority:high" --description "High priority" --color "f38ba8" --force{repo_flag}
-gh label create "complexity:simple" --description "Simple fix" --color "89b4fa" --force{repo_flag}
-gh label create "complexity:high" --description "Significant effort" --color "f9e2af" --force{repo_flag}
+gh label create "priority: low" --description "Low priority" --color "a6e3a1" --force{repo_flag}
+gh label create "priority: high" --description "High priority" --color "f38ba8" --force{repo_flag}
+gh label create "complexity: low" --description "Simple fix" --color "89b4fa" --force{repo_flag}
+gh label create "complexity: high" --description "Significant effort" --color "f9e2af" --force{repo_flag}
 
 ## Step 2: Check existing issues
 
@@ -131,8 +131,8 @@ For each finding:
 
 Each issue should be specific and actionable (one issue per finding, not grouped).
 
-Assign priority:low or priority:high based on impact.
-Assign complexity:simple or complexity:high based on effort.
+Assign priority: low or priority: high based on impact.
+Assign complexity: low or complexity: high based on effort.
 
 ## Step 4: Return summary
 
@@ -301,7 +301,7 @@ mod tests {
       "issue_number": 42,
       "title": "Fix flaky test in utils",
       "url": "https://github.com/owner/repo/issues/42",
-      "labels": ["filed-by-maintainer", "priority:high", "complexity:simple"]
+      "labels": ["filed-by-maintainer", "priority: high", "complexity: low"]
     }
   ],
   "issues_updated": [
@@ -309,7 +309,7 @@ mod tests {
       "issue_number": 10,
       "title": "Improve error handling",
       "url": "https://github.com/owner/repo/issues/10",
-      "labels": ["filed-by-maintainer", "priority:low"]
+      "labels": ["filed-by-maintainer", "priority: low"]
     }
   ],
   "issues_unchanged": 2,
