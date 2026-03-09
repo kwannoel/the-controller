@@ -222,7 +222,7 @@
         }
         case "create-note": {
           const focus = focusTargetState.current;
-          const project = (focus?.type === "project" || focus?.type === "note")
+          const project = (focus?.type === "project" || focus?.type === "note" || focus?.type === "notes-editor")
             ? projectList.find(p => p.id === focus.projectId)
             : projectList[0];
           if (project) {
@@ -827,7 +827,7 @@
   {#if deleteNoteTarget}
     <ConfirmModal
       title="Delete Note"
-      message={`Delete "${deleteNoteTarget.filename}"?`}
+      message={`Delete "${deleteNoteTarget.filename.replace(/\.md$/, "")}"?`}
       confirmLabel="Delete"
       onConfirm={() => {
         if (deleteNoteTarget) handleDeleteNote(deleteNoteTarget.projectId, deleteNoteTarget.filename);

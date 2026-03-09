@@ -47,11 +47,23 @@
     const key = currentNote ? `${currentNote.projectId}:${currentNote.filename}` : null;
     const prev = untrack(() => prevNoteKey);
     if (key !== prev) {
-      prevNoteKey = key;
-      // Cancel pending save from previous note
+      // Flush unsaved content for the previous note before switching
       const timer = untrack(() => saveTimer);
-      if (timer) clearTimeout(timer);
-      saveTimer = null;
+      if (timer) {
+        clearTimeout(timer);
+        saveTimer = null;
+        const prevContent = untrack(() => content);
+        const prevSaved = untrack(() => savedContent);
+        if (prevContent !== prevSaved && prev) {
+          const [prevProjectId, ...rest] = prev.split(":");
+          const prevFilename = rest.join(":");
+          const prevProjectName = untrack(() => projectList.find(p => p.id === prevProjectId)?.name);
+          if (prevProjectName && prevFilename) {
+            invoke("write_note", { projectName: prevProjectName, filename: prevFilename, content: prevContent }).catch(() => {});
+          }
+        }
+      }
+      prevNoteKey = key;
 
       if (currentNote && projectName) {
         loadNote(projectName, currentNote.filename);
