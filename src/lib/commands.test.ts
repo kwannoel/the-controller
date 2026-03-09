@@ -23,7 +23,7 @@ describe("command registry", () => {
     }
   });
 
-  it("getHelpSections returns all five sections in order for development mode", () => {
+  it("getHelpSections returns four sections in order for development mode", () => {
     const sections = getHelpSections("development");
     expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Projects", "Panels"]);
   });
