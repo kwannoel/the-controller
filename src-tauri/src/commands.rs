@@ -170,9 +170,9 @@ pub fn create_project(
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
-    // Reject duplicate project names
+    // Reject duplicate project names (skip archived projects)
     if let Ok(existing) = storage.list_projects() {
-        if existing.iter().any(|p| p.name == name) {
+        if existing.iter().any(|p| p.name == name && !p.archived) {
             return Err(format!("A project named '{}' already exists", name));
         }
     }
@@ -783,9 +783,9 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
-    // Reject duplicate project names
+    // Reject duplicate project names (skip archived projects)
     if let Ok(existing) = storage.list_projects() {
-        if existing.iter().any(|p| p.name == name) {
+        if existing.iter().any(|p| p.name == name && !p.archived) {
             return Err(format!("A project named '{}' already exists", name));
         }
     }

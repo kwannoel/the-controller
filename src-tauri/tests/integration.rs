@@ -223,6 +223,47 @@ fn test_no_duplicate_project_names() {
     );
 }
 
+/// Verify that an archived project's name can be reused for a new project.
+/// This mirrors the command-layer duplicate check: `p.name == name && !p.archived`.
+#[test]
+fn test_archived_project_name_can_be_reused() {
+    let tmp = TempDir::new().unwrap();
+    let storage = make_storage(&tmp);
+
+    // Create and archive a project
+    let mut project = Project {
+        id: Uuid::new_v4(),
+        name: "reusable-name".to_string(),
+        repo_path: "/tmp/repo-old".to_string(),
+        created_at: "2026-03-01T00:00:00Z".to_string(),
+        archived: true,
+        maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
+        sessions: vec![],
+    };
+    storage.save_project(&project).expect("save archived project");
+
+    // Simulate the command-layer duplicate check (same as create_project/scaffold_project)
+    let existing = storage.list_projects().expect("list projects");
+    let has_active_duplicate = existing.iter().any(|p| p.name == "reusable-name" && !p.archived);
+    assert!(
+        !has_active_duplicate,
+        "archived project should not block reuse of its name"
+    );
+
+    // Verify that a non-archived project DOES block reuse
+    project.archived = false;
+    project.id = Uuid::new_v4();
+    storage.save_project(&project).expect("save active project");
+
+    let existing = storage.list_projects().expect("list projects");
+    let has_active_duplicate = existing.iter().any(|p| p.name == "reusable-name" && !p.archived);
+    assert!(
+        has_active_duplicate,
+        "active project should block reuse of its name"
+    );
+}
+
 /// Verify that worktrees persist across app restarts (not cleaned up).
 #[test]
 fn test_worktrees_persist_across_restarts() {
