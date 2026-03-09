@@ -54,7 +54,7 @@ describe('FuzzyFinder', () => {
     expect(screen.getByText('No matching directories')).toBeInTheDocument();
   });
 
-  it('calls onClose on Escape', async () => {
+  it('calls onClose on Escape in search mode', async () => {
     const user = userEvent.setup();
     render(FuzzyFinder, { props: { onSelect, onClose } });
     await screen.findByText('alpha-project');
@@ -66,7 +66,7 @@ describe('FuzzyFinder', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('calls onSelect on Enter', async () => {
+  it('Enter enters navigate mode instead of selecting', async () => {
     const user = userEvent.setup();
     render(FuzzyFinder, { props: { onSelect, onClose } });
     await screen.findByText('alpha-project');
@@ -75,7 +75,72 @@ describe('FuzzyFinder', () => {
     await user.click(input);
     await user.keyboard('{Enter}');
 
-    expect(onSelect).toHaveBeenCalledWith(mockEntries[0]);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(input).toHaveAttribute('readonly');
+  });
+
+  it('j/k navigate and l selects in navigate mode', async () => {
+    const user = userEvent.setup();
+    render(FuzzyFinder, { props: { onSelect, onClose } });
+    await screen.findByText('alpha-project');
+
+    const input = screen.getByPlaceholderText('Search projects...');
+    await user.click(input);
+    // Enter nav mode
+    await user.keyboard('{Enter}');
+    // j moves down to beta-app
+    await user.keyboard('j');
+    // l selects it
+    await user.keyboard('l');
+
+    expect(onSelect).toHaveBeenCalledWith(mockEntries[1]);
+  });
+
+  it('k moves up in navigate mode', async () => {
+    const user = userEvent.setup();
+    render(FuzzyFinder, { props: { onSelect, onClose } });
+    await screen.findByText('alpha-project');
+
+    const input = screen.getByPlaceholderText('Search projects...');
+    await user.click(input);
+    // Enter nav mode, move down twice, then up once
+    await user.keyboard('{Enter}');
+    await user.keyboard('j');
+    await user.keyboard('j');
+    await user.keyboard('k');
+    await user.keyboard('l');
+
+    expect(onSelect).toHaveBeenCalledWith(mockEntries[1]);
+  });
+
+  it('Escape in navigate mode returns to search mode', async () => {
+    const user = userEvent.setup();
+    render(FuzzyFinder, { props: { onSelect, onClose } });
+    await screen.findByText('alpha-project');
+
+    const input = screen.getByPlaceholderText('Search projects...');
+    await user.click(input);
+    await user.keyboard('{Enter}');
+    expect(input).toHaveAttribute('readonly');
+
+    await user.keyboard('{Escape}');
+    expect(input).not.toHaveAttribute('readonly');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('typing in navigate mode returns to search mode', async () => {
+    const user = userEvent.setup();
+    render(FuzzyFinder, { props: { onSelect, onClose } });
+    await screen.findByText('alpha-project');
+
+    const input = screen.getByPlaceholderText('Search projects...');
+    await user.click(input);
+    await user.keyboard('{Enter}');
+    expect(input).toHaveAttribute('readonly');
+
+    // Typing a non-nav character returns to search mode
+    await user.keyboard('a');
+    expect(input).not.toHaveAttribute('readonly');
   });
 
   it('invokes list_root_directories on mount', async () => {
