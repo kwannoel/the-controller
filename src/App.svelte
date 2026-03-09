@@ -45,10 +45,6 @@
         screenshotToNewSession(action.preview ?? false, action.cropped ?? false);
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
-      } else if (action?.type === "trigger-maintainer-check") {
-        triggerMaintainerCheck();
-      } else if (action?.type === "clear-maintainer-reports") {
-        clearMaintainerReports();
       } else if (action?.type === "toggle-auto-worker-enabled") {
         toggleAutoWorkerEnabled();
       } else if (action?.type === "toggle-triage-panel") {
@@ -98,28 +94,6 @@
       const result: Project[] = await invoke("list_projects");
       projects.set(result);
       showToast(`Auto-worker ${newEnabled ? "enabled" : "disabled"}`, "info");
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function triggerMaintainerCheck() {
-    const project = getTargetProject();
-    if (!project) return;
-    try {
-      await invoke<any>("trigger_maintainer_check", { projectId: project.id });
-      showToast("Maintainer check complete", "info");
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function clearMaintainerReports() {
-    const project = getTargetProject();
-    if (!project) return;
-    try {
-      await invoke("clear_maintainer_reports", { projectId: project.id });
-      showToast("Maintainer reports cleared", "info");
     } catch (e) {
       showToast(String(e), "error");
     }

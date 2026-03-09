@@ -70,6 +70,10 @@
         handleSelect();
       } else if (action.type === "agent-panel-escape") {
         handleEscape();
+      } else if (action.type === "trigger-maintainer-check") {
+        triggerCheck();
+      } else if (action.type === "clear-maintainer-reports") {
+        clearReports();
       }
     });
     return unsub;
@@ -146,6 +150,19 @@
       showToast(String(e), "error");
     } finally {
       triggerLoading = false;
+    }
+  }
+
+  async function clearReports() {
+    if (!project) return;
+    try {
+      await invoke("clear_maintainer_reports", { projectId: project.id });
+      reports = [];
+      openReportIndex = null;
+      selectedIndex = 0;
+      showToast("Maintainer reports cleared", "info");
+    } catch (e) {
+      showToast(String(e), "error");
     }
   }
 

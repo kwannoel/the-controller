@@ -726,6 +726,24 @@ describe('HotkeyManager', () => {
       pressKey('j');
       expect(get(focusTarget)).not.toBeNull();
     });
+
+    it('r dispatches trigger-maintainer-check when focus is agent-panel', () => {
+      focusTarget.set({ type: 'agent-panel', agentKind: 'maintainer', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('r');
+      expect(captured).toEqual({ type: 'trigger-maintainer-check' });
+      unsub();
+    });
+
+    it('c dispatches clear-maintainer-reports when focus is agent-panel', () => {
+      focusTarget.set({ type: 'agent-panel', agentKind: 'maintainer', projectId: 'proj-1' });
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('c');
+      expect(captured).toEqual({ type: 'clear-maintainer-reports' });
+      unsub();
+    });
   });
 
   // ── Workspace mode (Space) ──
