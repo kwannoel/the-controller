@@ -623,11 +623,6 @@ pub fn stage_session_inplace(
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
 
-    // Open a terminal at the repo so the user can build/test the staged code
-    let _ = std::process::Command::new("open")
-        .args(["-a", "Terminal", &project.repo_path])
-        .spawn();
-
     Ok(())
 }
 

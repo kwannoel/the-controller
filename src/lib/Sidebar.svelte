@@ -521,7 +521,7 @@
       const session = projectList
         .find((p) => p.id === projectId)
         ?.sessions.find((s) => s.id === sessionId);
-      showToast(`Staged ${session?.label ?? "session"} — terminal opened at repo`, "info");
+      showToast(`Staged ${session?.label ?? "session"} in main repo`, "info");
     } catch (e) {
       showToast(String(e), "error");
     }
