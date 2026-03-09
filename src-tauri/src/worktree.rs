@@ -217,6 +217,39 @@ impl WorktreeManager {
         git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
     }
 
+    /// Check if `branch` is behind `main_branch` (i.e. main has commits not in branch).
+    pub fn is_branch_behind(repo_path: &str, branch: &str, main_branch: &str) -> Result<bool, String> {
+        let repo = Repository::open(repo_path)
+            .map_err(|e| format!("failed to open repo: {}", e))?;
+
+        let branch_commit = repo
+            .find_branch(branch, git2::BranchType::Local)
+            .map_err(|e| format!("branch '{}' not found: {}", branch, e))?
+            .get()
+            .peel_to_commit()
+            .map_err(|e| format!("failed to resolve branch commit: {}", e))?
+            .id();
+
+        let main_commit = repo
+            .find_branch(main_branch, git2::BranchType::Local)
+            .map_err(|e| format!("branch '{}' not found: {}", main_branch, e))?
+            .get()
+            .peel_to_commit()
+            .map_err(|e| format!("failed to resolve main commit: {}", e))?
+            .id();
+
+        if branch_commit == main_commit {
+            return Ok(false);
+        }
+
+        let merge_base = repo
+            .merge_base(branch_commit, main_commit)
+            .map_err(|e| format!("failed to find merge base: {}", e))?;
+
+        // Branch is behind if its tip equals the merge base but main is ahead
+        Ok(merge_base == branch_commit && main_commit != branch_commit)
+    }
+
     /// Check if a worktree has a clean working tree (no uncommitted or untracked changes).
     pub fn is_worktree_clean(worktree_path: &str) -> Result<bool, String> {
         let repo = Repository::open(worktree_path)
@@ -637,6 +670,42 @@ mod tests {
 
         std::fs::write(wt_path.join("dirty.txt"), "uncommitted").unwrap();
         assert!(!WorktreeManager::is_worktree_clean(wt_path.to_str().unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_is_branch_behind_when_at_same_commit() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("behind-test");
+
+        WorktreeManager::create_worktree(&repo_path, "behind-test", &worktree_dir)
+            .expect("create worktree");
+
+        let main = WorktreeManager::detect_main_branch(&repo_path).unwrap();
+        assert!(!WorktreeManager::is_branch_behind(&repo_path, "behind-test", &main).unwrap());
+    }
+
+    #[test]
+    fn test_is_branch_behind_when_main_has_new_commits() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("behind-test2");
+
+        WorktreeManager::create_worktree(&repo_path, "behind-test2", &worktree_dir)
+            .expect("create worktree");
+
+        // Add a commit to main so the worktree branch is behind
+        let repo = Repository::open(&repo_path).unwrap();
+        let sig = repo.signature().unwrap_or_else(|_| {
+            git2::Signature::now("Test", "test@example.com").unwrap()
+        });
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        let tree = head.tree().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "new commit on main", &tree, &[&head])
+            .unwrap();
+
+        let main = WorktreeManager::detect_main_branch(&repo_path).unwrap();
+        assert!(WorktreeManager::is_branch_behind(&repo_path, "behind-test2", &main).unwrap());
     }
 
     #[test]
