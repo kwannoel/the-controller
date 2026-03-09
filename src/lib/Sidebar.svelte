@@ -266,8 +266,8 @@
     return () => {
       cancelled = true;
       unlisteners.forEach(fn => fn());
-      for (const timer of idleTimers.values()) clearTimeout(timer);
-      idleTimers.clear();
+      // Don't clear idle timers here — pending idle transitions must complete.
+      // Individual session timers are cleaned up by clearSessionTracking().
     };
   });
 
