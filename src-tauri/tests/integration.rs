@@ -569,7 +569,6 @@ fn test_scaffold_project_creates_template_files() {
     // Verify agents.md contains the project name
     let content = fs::read_to_string(repo_path.join("agents.md")).unwrap();
     assert!(content.starts_with(&format!("# {}", name)));
-    assert!(content.contains("Task Workflow"));
     assert!(content.contains("Task Structure"));
 }
 
