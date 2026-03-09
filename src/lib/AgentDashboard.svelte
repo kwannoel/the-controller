@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
+  import { untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { focusTarget, projects, maintainerStatuses, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
@@ -45,14 +46,15 @@
   let prevAgentKey: string | null = $state(null);
   $effect(() => {
     const key = focusedAgent ? `${focusedAgent.projectId}:${focusedAgent.agentKind}` : null;
-    if (key !== prevAgentKey) {
+    const prev = untrack(() => prevAgentKey);
+    if (key !== prev) {
       prevAgentKey = key;
       selectedIndex = 0;
       openLogIndex = null;
       detailBlockIndex = 0;
-      reports = [];
+      runLogs = [];
 
-      const pid = project?.id ?? null;
+      const pid = untrack(() => project?.id ?? null);
       if (pid && focusedAgent?.agentKind === "maintainer") {
         fetchHistory(pid);
       }
