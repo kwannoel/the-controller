@@ -178,9 +178,20 @@
 
   type SidebarItem =
     | { type: "project"; projectId: string }
-    | { type: "session"; sessionId: string; projectId: string };
+    | { type: "session"; sessionId: string; projectId: string }
+    | { type: "agent"; agentKind: "auto-worker" | "maintainer"; projectId: string };
 
   function getVisibleItems(): SidebarItem[] {
+    if (currentMode === "agents") {
+      const result: SidebarItem[] = [];
+      for (const p of projectList) {
+        result.push({ type: "project", projectId: p.id });
+        if (!expandedSet.has(p.id)) continue;
+        result.push({ type: "agent", agentKind: "auto-worker", projectId: p.id });
+        result.push({ type: "agent", agentKind: "maintainer", projectId: p.id });
+      }
+      return result;
+    }
     const list = isArchiveView ? archivedProjectList : projectList;
     const result: SidebarItem[] = [];
     for (const p of list) {
@@ -202,6 +213,8 @@
     let idx = -1;
     if (currentFocus?.type === "session") {
       idx = items.findIndex(it => it.type === "session" && it.sessionId === currentFocus.sessionId);
+    } else if (currentFocus?.type === "agent") {
+      idx = items.findIndex(it => it.type === "agent" && it.projectId === currentFocus.projectId && it.agentKind === currentFocus.agentKind);
     } else if (currentFocus?.type === "project") {
       idx = items.findIndex(it => it.type === "project" && it.projectId === currentFocus.projectId);
     }
@@ -212,6 +225,8 @@
         activeSessionId.set(next.sessionId);
       }
       focusTarget.set({ type: "session", sessionId: next.sessionId, projectId: next.projectId });
+    } else if (next.type === "agent") {
+      focusTarget.set({ type: "agent", agentKind: next.agentKind, projectId: next.projectId });
     } else {
       focusTarget.set({ type: "project", projectId: next.projectId });
     }
@@ -220,7 +235,7 @@
   function navigateProject(direction: 1 | -1) {
     const list = isArchiveView ? archivedProjectList : projectList;
     if (list.length === 0) return;
-    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session"
+    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent"
       ? currentFocus.projectId
       : null;
     let idx = -1;
@@ -231,7 +246,7 @@
   }
 
   function getFocusedProject(): Project | null {
-    if (currentFocus?.type === "project" || currentFocus?.type === "session") {
+    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent") {
       return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
     }
     return null;
@@ -484,6 +499,11 @@
         e.stopPropagation();
         e.preventDefault();
       } else if (currentFocus?.type === "session") {
+        focusTarget.set({ type: "project", projectId: currentFocus.projectId });
+        e.stopPropagation();
+        e.preventDefault();
+        pushKeystroke("Esc");
+      } else if (currentFocus?.type === "agent") {
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
         e.preventDefault();
