@@ -217,7 +217,7 @@ impl WorktreeManager {
         git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
     }
 
-    /// Check if `branch` is behind `main_branch` (i.e. main has commits not in branch).
+    /// Check if `branch` needs rebasing onto `main_branch` (behind or diverged).
     pub fn is_branch_behind(repo_path: &str, branch: &str, main_branch: &str) -> Result<bool, String> {
         let repo = Repository::open(repo_path)
             .map_err(|e| format!("failed to open repo: {}", e))?;
@@ -246,8 +246,8 @@ impl WorktreeManager {
             .merge_base(branch_commit, main_commit)
             .map_err(|e| format!("failed to find merge base: {}", e))?;
 
-        // Branch is behind if its tip equals the merge base but main is ahead
-        Ok(merge_base == branch_commit && main_commit != branch_commit)
+        // Branch needs rebase if main has commits not in branch (behind or diverged)
+        Ok(merge_base != main_commit)
     }
 
     /// Rebase the worktree's current branch onto `main_branch`.

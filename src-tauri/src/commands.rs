@@ -593,67 +593,71 @@ pub fn stage_session_inplace(
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+    // Extract data under a short-lived storage lock to avoid deadlock with pty_manager
+    let (repo_path, branch, worktree_path) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
 
-    if project.staged_session.is_some() {
-        return Err("A session is already staged — unstage it first".to_string());
-    }
+        if project.staged_session.is_some() {
+            return Err("A session is already staged — unstage it first".to_string());
+        }
 
-    let session = project
-        .sessions
-        .iter()
-        .find(|s| s.id == session_uuid)
-        .ok_or("Session not found")?;
+        let session = project
+            .sessions
+            .iter()
+            .find(|s| s.id == session_uuid)
+            .ok_or("Session not found")?;
 
-    let branch = session
-        .worktree_branch
-        .as_deref()
-        .ok_or("Session has no worktree branch")?;
+        let branch = session
+            .worktree_branch
+            .as_deref()
+            .ok_or("Session has no worktree branch")?
+            .to_string();
 
-    let worktree_path = session
-        .worktree_path
-        .as_deref()
-        .ok_or("Session has no worktree path")?;
+        let worktree_path = session
+            .worktree_path
+            .as_deref()
+            .ok_or("Session has no worktree path")?
+            .to_string();
+
+        (project.repo_path.clone(), branch, worktree_path)
+    };
 
     // 1. Check worktree is clean
-    if !WorktreeManager::is_worktree_clean(worktree_path)? {
-        // Send prompt to Claude to commit changes
-        let prompt = "You have uncommitted changes. Please commit all your work now.\r";
-        {
-            let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-            let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
-        }
+    if !WorktreeManager::is_worktree_clean(&worktree_path)? {
+        let prompt = "\nYou have uncommitted changes. Please commit all your work now.\r";
+        let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+        let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
         return Err("Worktree has uncommitted changes — asked Claude to commit. Retry staging after.".to_string());
     }
 
     // 2. Check if branch is behind main and rebase if needed
-    let main_branch = WorktreeManager::detect_main_branch(&project.repo_path)?;
+    let main_branch = WorktreeManager::detect_main_branch(&repo_path)?;
 
     // Sync main first so we rebase onto latest
-    let _ = WorktreeManager::sync_main(&project.repo_path);
+    let _ = WorktreeManager::sync_main(&repo_path);
 
-    if WorktreeManager::is_branch_behind(&project.repo_path, branch, &main_branch)? {
-        match WorktreeManager::rebase_onto(worktree_path, &main_branch) {
+    if WorktreeManager::is_branch_behind(&repo_path, &branch, &main_branch)? {
+        match WorktreeManager::rebase_onto(&worktree_path, &main_branch) {
             Ok(true) => {
                 // Rebase succeeded, continue to staging
             }
             Ok(false) => {
-                // Conflicts — ask Claude to resolve, block staging
-                let prompt = "There are rebase conflicts. Please resolve all conflicts, then run `git rebase --continue`.\r";
-                {
-                    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-                    let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
-                }
+                let prompt = "\nThere are rebase conflicts. Please resolve all conflicts, then run `git rebase --continue`.\r";
+                let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+                let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
                 return Err("Rebase conflicts — asked Claude to resolve. Retry staging after.".to_string());
             }
             Err(e) => return Err(format!("Rebase failed: {}", e)),
         }
     }
 
-    // 3. Proceed with staging
+    // 3. Proceed with staging — re-acquire storage lock
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+
     let original_branch =
-        WorktreeManager::stage_inplace(&project.repo_path, branch)?;
+        WorktreeManager::stage_inplace(&repo_path, &branch)?;
 
     let staging_branch = format!("staging/{}", branch);
     project.staged_session = Some(StagedSession {
