@@ -2,12 +2,14 @@
   import { fromStore } from "svelte/store";
   import Terminal from "./Terminal.svelte";
   import SummaryPane from "./SummaryPane.svelte";
-  import { projects, activeSessionId, hotkeyAction, focusTarget, type Project } from "./stores";
+  import { projects, activeSessionId, hotkeyAction, focusTarget, archiveView, type Project } from "./stores";
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
   const activeSessionIdState = fromStore(activeSessionId);
   let activeSession: string | null = $derived(activeSessionIdState.current);
+  const archiveViewState = fromStore(archiveView);
+  let isArchiveView: boolean = $derived(archiveViewState.current);
   let terminalComponents: Record<string, Terminal> = $state({});
   let allSessionIds: Set<string> = $derived(
     new Set(projectList.flatMap((p) => p.sessions.map((s) => s.id))),
@@ -46,7 +48,7 @@
 <div class="terminal-manager" class:focused={isFocused} onfocusin={handleFocusIn}>
   {#each allSessions as session (session.id)}
     {@const sessionId = session.id}
-    <div class="terminal-wrapper" class:visible={activeSession === sessionId}>
+    <div class="terminal-wrapper" class:visible={!isArchiveView && activeSession === sessionId}>
       {#if focusedSessionId === sessionId}
         <SummaryPane {sessionId} />
       {/if}
@@ -56,14 +58,14 @@
     </div>
   {/each}
 
-  {#if focusedSessionId && !allSessionIds.has(focusedSessionId)}
+  {#if focusedSessionId && (isArchiveView || !allSessionIds.has(focusedSessionId))}
     <div class="archived-summary visible">
       <SummaryPane sessionId={focusedSessionId} />
       <div class="archived-notice">Session archived</div>
     </div>
   {/if}
 
-  {#if !activeSession && !(focusedSessionId && !allSessionIds.has(focusedSessionId))}
+  {#if !activeSession && !(focusedSessionId && (isArchiveView || !allSessionIds.has(focusedSessionId)))}
     <div class="empty-state">
       <div class="empty-content">
         <div class="empty-title">No active session</div>
