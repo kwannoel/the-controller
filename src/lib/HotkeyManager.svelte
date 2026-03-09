@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fromStore } from "svelte/store";
+  import { fromStore, get } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import {
     projects,
@@ -17,6 +17,8 @@
     focusTarget,
     expandedProjects,
     dispatchHotkeyAction,
+    noteEntries,
+    activeNote,
     type Project,
     type HotkeyAction,
     type FocusTarget,
@@ -55,6 +57,8 @@
   const workspaceModeState = fromStore(workspaceMode);
   let currentMode = $derived(workspaceModeState.current);
   let keyMap = $derived(buildKeyMap(currentMode));
+  const noteEntriesState = fromStore(noteEntries);
+  let noteEntriesMap = $derived(noteEntriesState.current);
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -190,7 +194,8 @@
   type SidebarItem =
     | { type: "project"; projectId: string }
     | { type: "session"; sessionId: string; projectId: string }
-    | { type: "agent"; agentKind: "auto-worker" | "maintainer"; projectId: string };
+    | { type: "agent"; agentKind: "auto-worker" | "maintainer"; projectId: string }
+    | { type: "note"; filename: string; projectId: string };
 
   function getVisibleItems(): SidebarItem[] {
     if (currentMode === "agents") {
@@ -200,6 +205,18 @@
         if (!expandedSet.has(p.id)) continue;
         result.push({ type: "agent", agentKind: "auto-worker", projectId: p.id });
         result.push({ type: "agent", agentKind: "maintainer", projectId: p.id });
+      }
+      return result;
+    }
+    if (currentMode === "notes") {
+      const result: SidebarItem[] = [];
+      for (const p of projectList) {
+        result.push({ type: "project", projectId: p.id });
+        if (!expandedSet.has(p.id)) continue;
+        const notes = noteEntriesMap.get(p.id) ?? [];
+        for (const n of notes) {
+          result.push({ type: "note", filename: n.filename, projectId: p.id });
+        }
       }
       return result;
     }
@@ -226,6 +243,8 @@
       idx = items.findIndex(it => it.type === "session" && it.sessionId === currentFocus.sessionId);
     } else if (currentFocus?.type === "agent") {
       idx = items.findIndex(it => it.type === "agent" && it.projectId === currentFocus.projectId && it.agentKind === currentFocus.agentKind);
+    } else if (currentFocus?.type === "note") {
+      idx = items.findIndex(it => it.type === "note" && it.projectId === currentFocus.projectId && it.filename === currentFocus.filename);
     } else if (currentFocus?.type === "project") {
       idx = items.findIndex(it => it.type === "project" && it.projectId === currentFocus.projectId);
     }
@@ -238,6 +257,8 @@
       focusTarget.set({ type: "session", sessionId: next.sessionId, projectId: next.projectId });
     } else if (next.type === "agent") {
       focusTarget.set({ type: "agent", agentKind: next.agentKind, projectId: next.projectId });
+    } else if (next.type === "note") {
+      focusTarget.set({ type: "note", filename: next.filename, projectId: next.projectId });
     } else {
       focusTarget.set({ type: "project", projectId: next.projectId });
     }
@@ -246,7 +267,7 @@
   function navigateProject(direction: 1 | -1) {
     const list = isArchiveView ? archivedProjectList : projectList;
     if (list.length === 0) return;
-    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel"
+    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel" || currentFocus?.type === "note" || currentFocus?.type === "notes-editor"
       ? currentFocus.projectId
       : null;
     let idx = -1;
@@ -257,7 +278,7 @@
   }
 
   function getFocusedProject(): Project | null {
-    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel") {
+    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel" || currentFocus?.type === "note" || currentFocus?.type === "notes-editor") {
       return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
     }
     return null;
@@ -397,6 +418,9 @@
           dispatchAction({ type: "focus-terminal" });
         } else if (currentFocus?.type === "agent") {
           focusTarget.set({ type: "agent-panel", agentKind: currentFocus.agentKind, projectId: currentFocus.projectId });
+        } else if (currentFocus?.type === "note") {
+          activeNote.set({ projectId: currentFocus.projectId, filename: currentFocus.filename });
+          focusTarget.set({ type: "notes-editor", projectId: currentFocus.projectId });
         }
         return true;
       case "toggle-mode":
@@ -419,6 +443,22 @@
         return true;
       case "clear-agent-reports":
         dispatchAction({ type: "clear-maintainer-reports" });
+        return true;
+      case "create-note":
+        dispatchAction({ type: "create-note" });
+        return true;
+      case "delete-note":
+        if (currentFocus?.type === "note") {
+          dispatchAction({ type: "delete-note", projectId: currentFocus.projectId, filename: currentFocus.filename });
+        }
+        return true;
+      case "rename-note":
+        if (currentFocus?.type === "note") {
+          dispatchAction({ type: "rename-note", projectId: currentFocus.projectId, filename: currentFocus.filename });
+        }
+        return true;
+      case "toggle-note-preview":
+        dispatchAction({ type: "toggle-note-preview" });
         return true;
       default: {
         const _exhaustive: never = id;
@@ -520,6 +560,22 @@
         dispatchAction({ type: "focus-terminal" });
         e.stopPropagation();
         e.preventDefault();
+      } else if (currentFocus?.type === "notes-editor") {
+        // Get current active note to return focus to
+        const currentNote = get(activeNote);
+        if (currentNote) {
+          focusTarget.set({ type: "note", filename: currentNote.filename, projectId: currentNote.projectId });
+        } else {
+          focusTarget.set({ type: "project", projectId: currentFocus.projectId });
+        }
+        e.stopPropagation();
+        e.preventDefault();
+        pushKeystroke("Esc");
+      } else if (currentFocus?.type === "note") {
+        focusTarget.set({ type: "project", projectId: currentFocus.projectId });
+        e.stopPropagation();
+        e.preventDefault();
+        pushKeystroke("Esc");
       } else if (currentFocus?.type === "session") {
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
