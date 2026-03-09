@@ -112,6 +112,9 @@ export type HotkeyAction =
   | { type: "toggle-triage-panel"; category?: TriageCategory }
   | { type: "trigger-maintainer-check" }
   | { type: "clear-maintainer-reports" }
+  | { type: "agent-panel-navigate"; direction: 1 | -1 }
+  | { type: "agent-panel-select" }
+  | { type: "agent-panel-escape" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
@@ -139,6 +142,7 @@ export type FocusTarget =
   | { type: "session"; sessionId: string; projectId: string }
   | { type: "project"; projectId: string }
   | { type: "agent"; agentKind: AgentKind; projectId: string }
+  | { type: "agent-panel"; agentKind: AgentKind; projectId: string }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
 
