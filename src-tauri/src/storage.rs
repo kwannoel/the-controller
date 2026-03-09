@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
-use crate::models::{MaintainerReport, Project};
+use crate::models::{MaintainerRunLog, Project};
 
 pub struct Storage {
     base_dir: PathBuf,
@@ -155,66 +155,68 @@ impl Storage {
         fs::write(dir.join("agents.md"), content)
     }
 
-    /// Return the path to a project's maintainer reports directory.
-    pub fn maintainer_reports_dir(&self, project_id: Uuid) -> PathBuf {
+    /// Return the path to a project's maintainer run logs directory.
+    pub fn maintainer_run_logs_dir(&self, project_id: Uuid) -> PathBuf {
         self.project_dir(project_id).join("maintainer-reports")
     }
 
-    /// Save a maintainer report to disk.
-    pub fn save_maintainer_report(&self, report: &MaintainerReport) -> std::io::Result<()> {
-        let dir = self.maintainer_reports_dir(report.project_id);
+    /// Save a maintainer run log to disk.
+    pub fn save_maintainer_run_log(&self, log: &MaintainerRunLog) -> std::io::Result<()> {
+        let dir = self.maintainer_run_logs_dir(log.project_id);
         fs::create_dir_all(&dir)?;
-        let filename = format!("{}.json", report.id);
-        let json = serde_json::to_string_pretty(report)
+        let filename = format!("{}.json", log.id);
+        let json = serde_json::to_string_pretty(log)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         fs::write(dir.join(filename), json)
     }
 
-    /// Load the most recent maintainer report for a project.
-    pub fn latest_maintainer_report(&self, project_id: Uuid) -> std::io::Result<Option<MaintainerReport>> {
-        let dir = self.maintainer_reports_dir(project_id);
+    /// Load the most recent maintainer run log for a project.
+    pub fn latest_maintainer_run_log(&self, project_id: Uuid) -> std::io::Result<Option<MaintainerRunLog>> {
+        let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(None);
         }
-        let mut reports = self.load_maintainer_reports_from_dir(&dir)?;
-        reports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-        Ok(reports.into_iter().next())
+        let mut logs = self.load_run_logs_from_dir(&dir)?;
+        logs.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        Ok(logs.into_iter().next())
     }
 
-    /// Load maintainer report history for a project, most recent first.
-    pub fn maintainer_report_history(&self, project_id: Uuid, limit: usize) -> std::io::Result<Vec<MaintainerReport>> {
-        let dir = self.maintainer_reports_dir(project_id);
+    /// Load maintainer run log history for a project, most recent first.
+    pub fn maintainer_run_log_history(&self, project_id: Uuid, limit: usize) -> std::io::Result<Vec<MaintainerRunLog>> {
+        let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(vec![]);
         }
-        let mut reports = self.load_maintainer_reports_from_dir(&dir)?;
-        reports.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-        reports.truncate(limit);
-        Ok(reports)
+        let mut logs = self.load_run_logs_from_dir(&dir)?;
+        logs.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        logs.truncate(limit);
+        Ok(logs)
     }
 
-    /// Delete all maintainer reports for a project.
-    pub fn clear_maintainer_reports(&self, project_id: Uuid) -> std::io::Result<()> {
-        let dir = self.maintainer_reports_dir(project_id);
+    /// Delete all maintainer run logs for a project.
+    /// Also deletes any old-format MaintainerReport files in the same directory.
+    pub fn clear_maintainer_run_logs(&self, project_id: Uuid) -> std::io::Result<()> {
+        let dir = self.maintainer_run_logs_dir(project_id);
         if dir.exists() {
             fs::remove_dir_all(&dir)?;
         }
         Ok(())
     }
 
-    fn load_maintainer_reports_from_dir(&self, dir: &std::path::Path) -> std::io::Result<Vec<MaintainerReport>> {
-        let mut reports = Vec::new();
+    fn load_run_logs_from_dir(&self, dir: &std::path::Path) -> std::io::Result<Vec<MaintainerRunLog>> {
+        let mut logs = Vec::new();
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
             let path = entry.path();
             if path.extension().map_or(false, |e| e == "json") {
                 let json = fs::read_to_string(&path)?;
-                if let Ok(report) = serde_json::from_str::<MaintainerReport>(&json) {
-                    reports.push(report);
+                // Skip old-format files that fail to deserialize
+                if let Ok(log) = serde_json::from_str::<MaintainerRunLog>(&json) {
+                    logs.push(log);
                 }
             }
         }
-        Ok(reports)
+        Ok(logs)
     }
 }
 
@@ -222,8 +224,7 @@ impl Storage {
 mod tests {
     use super::*;
     use crate::models::{
-        FindingAction, FindingSeverity, MaintainerFinding, MaintainerReport, ReportStatus,
-        SessionConfig,
+        IssueAction, IssueSummary, MaintainerRunLog, SessionConfig,
     };
     use tempfile::TempDir;
 
@@ -413,96 +414,88 @@ mod tests {
         assert_eq!(loaded.name, "updated-name");
     }
 
-    fn make_report(project_id: Uuid, timestamp: &str) -> MaintainerReport {
-        MaintainerReport {
+    fn make_run_log(project_id: Uuid, timestamp: &str) -> MaintainerRunLog {
+        MaintainerRunLog {
             id: Uuid::new_v4(),
             project_id,
             timestamp: timestamp.to_string(),
-            status: ReportStatus::Passing,
-            findings: vec![MaintainerFinding {
-                severity: FindingSeverity::Info,
-                category: "ci".to_string(),
-                description: "All checks pass".to_string(),
-                action_taken: FindingAction::Reported,
+            issues_filed: vec![IssueSummary {
+                issue_number: 1,
+                title: "Test issue".to_string(),
+                url: "https://github.com/owner/repo/issues/1".to_string(),
+                labels: vec!["filed-by-maintainer".to_string()],
+                action: IssueAction::Filed,
             }],
-            summary: "All good".to_string(),
+            issues_updated: vec![],
+            issues_unchanged: 0,
+            summary: "Filed 1 issue".to_string(),
         }
     }
 
     #[test]
-    fn test_save_and_load_maintainer_report() {
+    fn test_save_and_load_run_log() {
         let tmp = TempDir::new().unwrap();
         let storage = make_storage(&tmp);
         let project_id = Uuid::new_v4();
-        let report = make_report(project_id, "2026-03-07T00:00:00Z");
-        let report_id = report.id;
+        let log = make_run_log(project_id, "2026-03-09T00:00:00Z");
+        let log_id = log.id;
 
-        storage.save_maintainer_report(&report).expect("save");
-        let latest = storage.latest_maintainer_report(project_id).expect("load");
+        storage.save_maintainer_run_log(&log).expect("save");
+        let latest = storage.latest_maintainer_run_log(project_id).expect("load");
         assert!(latest.is_some());
         let latest = latest.unwrap();
-        assert_eq!(latest.id, report_id);
-        assert_eq!(latest.summary, "All good");
+        assert_eq!(latest.id, log_id);
+        assert_eq!(latest.summary, "Filed 1 issue");
     }
 
     #[test]
-    fn test_latest_maintainer_report_returns_none_when_empty() {
+    fn test_latest_run_log_returns_none_when_empty() {
         let tmp = TempDir::new().unwrap();
         let storage = make_storage(&tmp);
         let project_id = Uuid::new_v4();
-
-        let latest = storage.latest_maintainer_report(project_id).expect("load");
+        let latest = storage.latest_maintainer_run_log(project_id).expect("load");
         assert!(latest.is_none());
     }
 
     #[test]
-    fn test_clear_maintainer_reports() {
+    fn test_run_log_history() {
         let tmp = TempDir::new().unwrap();
         let storage = make_storage(&tmp);
         let project_id = Uuid::new_v4();
 
-        let r1 = make_report(project_id, "2026-03-07T01:00:00Z");
-        let r2 = make_report(project_id, "2026-03-07T02:00:00Z");
-        storage.save_maintainer_report(&r1).expect("save r1");
-        storage.save_maintainer_report(&r2).expect("save r2");
+        let r1 = make_run_log(project_id, "2026-03-09T01:00:00Z");
+        let r2 = make_run_log(project_id, "2026-03-09T02:00:00Z");
+        let r3 = make_run_log(project_id, "2026-03-09T03:00:00Z");
 
-        assert!(storage.latest_maintainer_report(project_id).unwrap().is_some());
+        storage.save_maintainer_run_log(&r1).expect("save r1");
+        storage.save_maintainer_run_log(&r2).expect("save r2");
+        storage.save_maintainer_run_log(&r3).expect("save r3");
 
-        storage.clear_maintainer_reports(project_id).expect("clear");
-
-        assert!(storage.latest_maintainer_report(project_id).unwrap().is_none());
-        assert!(storage.maintainer_report_history(project_id, 10).unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_clear_maintainer_reports_idempotent() {
-        let tmp = TempDir::new().unwrap();
-        let storage = make_storage(&tmp);
-        let project_id = Uuid::new_v4();
-
-        // Clearing when no reports exist should succeed
-        assert!(storage.clear_maintainer_reports(project_id).is_ok());
-    }
-
-    #[test]
-    fn test_maintainer_report_history() {
-        let tmp = TempDir::new().unwrap();
-        let storage = make_storage(&tmp);
-        let project_id = Uuid::new_v4();
-
-        let r1 = make_report(project_id, "2026-03-07T01:00:00Z");
-        let r2 = make_report(project_id, "2026-03-07T02:00:00Z");
-        let r3 = make_report(project_id, "2026-03-07T03:00:00Z");
-
-        storage.save_maintainer_report(&r1).expect("save r1");
-        storage.save_maintainer_report(&r2).expect("save r2");
-        storage.save_maintainer_report(&r3).expect("save r3");
-
-        let history = storage.maintainer_report_history(project_id, 10).expect("history");
+        let history = storage.maintainer_run_log_history(project_id, 10).expect("history");
         assert_eq!(history.len(), 3);
-        // Most recent first
-        assert_eq!(history[0].timestamp, "2026-03-07T03:00:00Z");
-        assert_eq!(history[1].timestamp, "2026-03-07T02:00:00Z");
-        assert_eq!(history[2].timestamp, "2026-03-07T01:00:00Z");
+        assert_eq!(history[0].timestamp, "2026-03-09T03:00:00Z");
+        assert_eq!(history[2].timestamp, "2026-03-09T01:00:00Z");
+    }
+
+    #[test]
+    fn test_clear_maintainer_run_logs() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+
+        let r1 = make_run_log(project_id, "2026-03-09T01:00:00Z");
+        storage.save_maintainer_run_log(&r1).expect("save");
+        assert!(storage.latest_maintainer_run_log(project_id).unwrap().is_some());
+
+        storage.clear_maintainer_run_logs(project_id).expect("clear");
+        assert!(storage.latest_maintainer_run_log(project_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_clear_maintainer_run_logs_idempotent() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+        assert!(storage.clear_maintainer_run_logs(project_id).is_ok());
     }
 }
