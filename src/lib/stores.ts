@@ -44,6 +44,14 @@ export interface AutoWorkerConfig {
   enabled: boolean;
 }
 
+export interface SavedPrompt {
+  id: string;
+  name: string;
+  text: string;
+  created_at: string;
+  source_session_label: string;
+}
+
 export interface IssueSummary {
   issue_number: number;
   title: string;
@@ -73,6 +81,7 @@ export interface Project {
   sessions: SessionConfig[];
   maintainer: MaintainerConfig;
   auto_worker: AutoWorkerConfig;
+  prompts: SavedPrompt[];
 }
 
 export interface Config {
@@ -142,6 +151,8 @@ export type HotkeyAction =
   | { type: "delete-note"; projectId: string; filename: string }
   | { type: "rename-note"; projectId: string; filename: string }
   | { type: "toggle-note-preview" }
+  | { type: "save-session-prompt"; sessionId: string; projectId: string }
+  | { type: "pick-prompt-for-session"; projectId: string }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
