@@ -1,59 +1,95 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
-  import { autoWorkerStatuses, type Project, type FocusTarget, type AutoWorkerStatus } from "../stores";
+  import { autoWorkerStatuses, maintainerStatuses, type AgentKind, type Project, type FocusTarget, type AutoWorkerStatus, type MaintainerStatus } from "../stores";
 
   interface Props {
     projects: Project[];
+    expandedProjectSet: Set<string>;
     currentFocus: FocusTarget;
+    onToggleProject: (projectId: string) => void;
     onProjectFocus: (projectId: string) => void;
+    onAgentFocus: (agentKind: AgentKind, projectId: string) => void;
   }
 
-  let { projects, currentFocus, onProjectFocus }: Props = $props();
+  let { projects, expandedProjectSet, currentFocus, onToggleProject, onProjectFocus, onAgentFocus }: Props = $props();
 
   const autoWorkerStatusesState = fromStore(autoWorkerStatuses);
-  let statusMap: Map<string, AutoWorkerStatus> = $derived(autoWorkerStatusesState.current);
+  let awStatusMap: Map<string, AutoWorkerStatus> = $derived(autoWorkerStatusesState.current);
 
-  function getAgentStatus(projectId: string): AutoWorkerStatus | null {
-    return statusMap.get(projectId) ?? null;
-  }
+  const maintainerStatusesState = fromStore(maintainerStatuses);
+  let mStatusMap: Map<string, MaintainerStatus> = $derived(maintainerStatusesState.current);
 
   function isProjectFocused(projectId: string): boolean {
     return currentFocus?.type === "project" && currentFocus.projectId === projectId;
   }
+
+  function isAgentFocused(projectId: string, kind: AgentKind): boolean {
+    return currentFocus?.type === "agent" && currentFocus.projectId === projectId && currentFocus.agentKind === kind;
+  }
+
+  function awIsWorking(projectId: string): boolean {
+    return awStatusMap.get(projectId)?.status === "working";
+  }
+
+  function mStatusValue(projectId: string): MaintainerStatus | null {
+    return mStatusMap.get(projectId) ?? null;
+  }
 </script>
 
 {#each projects as project (project.id)}
-  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-  <div
-    class="agent-project"
-    class:focused={isProjectFocused(project.id)}
-    data-project-id={project.id}
-    tabindex="0"
-    onfocus={() => onProjectFocus(project.id)}
-  >
-    <div class="project-header">
+  <div class="project-item">
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="project-header"
+      class:focus-target={isProjectFocused(project.id)}
+      tabindex="0"
+      data-project-id={project.id}
+      onfocusin={(e: FocusEvent) => {
+        if (e.target === e.currentTarget) onProjectFocus(project.id);
+      }}
+    >
+      <button class="btn-expand" onclick={() => onToggleProject(project.id)}>
+        {expandedProjectSet.has(project.id) ? "\u25BC" : "\u25B6"}
+      </button>
       <span class="project-name">{project.name}</span>
-      <span class="agent-badge" class:enabled={project.auto_worker.enabled}>
-        {project.auto_worker.enabled ? "ON" : "OFF"}
-      </span>
+      <span class="agent-count">2</span>
     </div>
-    <div class="agent-status">
-      {#if !project.auto_worker.enabled}
-        <span class="status-text muted">Agent disabled</span>
-      {:else}
-        {@const status = getAgentStatus(project.id)}
-        {#if status?.status === "working"}
-          <span class="status-dot working"></span>
-          <span class="status-text">#{status.issue_number} {status.issue_title}</span>
-        {:else}
-          <span class="status-dot idle"></span>
-          <span class="status-text muted">Waiting for issues</span>
-        {/if}
-      {/if}
-    </div>
-    {#if project.maintainer.enabled}
-      <div class="maintainer-badge">
-        <span class="maintainer-label">Maintainer ON</span>
+
+    {#if expandedProjectSet.has(project.id)}
+      <div class="agent-list">
+        <!-- Auto-worker -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div
+          class="agent-item"
+          class:focus-target={isAgentFocused(project.id, "auto-worker")}
+          data-agent-id="{project.id}:auto-worker"
+          tabindex="0"
+          onfocusin={() => onAgentFocus("auto-worker", project.id)}
+        >
+          <span class="status-dot" class:working={awIsWorking(project.id)} class:idle={project.auto_worker.enabled && !awIsWorking(project.id)} class:disabled={!project.auto_worker.enabled}></span>
+          <span class="agent-label">Auto-worker</span>
+          <span class="agent-badge" class:enabled={project.auto_worker.enabled}>
+            {project.auto_worker.enabled ? "ON" : "OFF"}
+          </span>
+        </div>
+
+        <!-- Maintainer -->
+        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+        <div
+          class="agent-item"
+          class:focus-target={isAgentFocused(project.id, "maintainer")}
+          data-agent-id="{project.id}:maintainer"
+          tabindex="0"
+          onfocusin={() => onAgentFocus("maintainer", project.id)}
+        >
+          {@const mStatus = mStatusValue(project.id)}
+          <span class="status-dot" class:working={mStatus === "running"} class:idle={project.maintainer.enabled && mStatus !== "running"} class:disabled={!project.maintainer.enabled}></span>
+          <span class="agent-label">Maintainer</span>
+          <span class="agent-badge" class:enabled={project.maintainer.enabled}>
+            {project.maintainer.enabled ? "ON" : "OFF"}
+          </span>
+        </div>
       </div>
     {/if}
   </div>
@@ -64,36 +100,108 @@
 {/if}
 
 <style>
-  .agent-project {
-    padding: 10px 16px;
+  .project-item {
     border-bottom: 1px solid #313244;
-    cursor: pointer;
-    outline: none;
   }
-  .agent-project:hover { background: rgba(49, 50, 68, 0.5); }
-  .agent-project.focused { background: #313244; }
+
   .project-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 4px;
+    padding: 8px 16px;
+    gap: 8px;
   }
-  .project-name { font-size: 13px; font-weight: 500; color: #cdd6f4; }
+
+  .project-header:hover {
+    background: #313244;
+  }
+
+  .project-header.focus-target {
+    outline: 2px solid #89b4fa;
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
+
+  .btn-expand {
+    background: none;
+    border: none;
+    color: #6c7086;
+    cursor: pointer;
+    padding: 0;
+    font-size: 10px;
+    width: 16px;
+    text-align: center;
+    box-shadow: none;
+  }
+
+  .project-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 500;
+    word-break: break-word;
+  }
+
+  .agent-count {
+    font-size: 11px;
+    color: #6c7086;
+    background: #313244;
+    padding: 1px 6px;
+    border-radius: 8px;
+  }
+
+  .agent-list {
+    padding: 0;
+  }
+
+  .agent-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px 6px 40px;
+    cursor: pointer;
+    font-size: 12px;
+    outline: none;
+  }
+
+  .agent-item:hover {
+    background: #313244;
+  }
+
+  .agent-item.focus-target {
+    outline: 2px solid #89b4fa;
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: #6c7086;
+  }
+
+  .status-dot.working { background: #f9e2af; }
+  .status-dot.idle { background: #a6e3a1; }
+  .status-dot.disabled { background: #6c7086; }
+
+  .agent-label {
+    flex: 1;
+    color: #cdd6f4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .agent-badge {
     font-size: 10px;
     padding: 1px 6px;
     border-radius: 3px;
     background: #313244;
     color: #6c7086;
+    flex-shrink: 0;
   }
+
   .agent-badge.enabled { background: rgba(166, 227, 161, 0.2); color: #a6e3a1; }
-  .agent-status { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-  .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-  .status-dot.working { background: #f9e2af; }
-  .status-dot.idle { background: #a6e3a1; }
-  .status-text { color: #cdd6f4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .status-text.muted { color: #6c7086; }
-  .maintainer-badge { margin-top: 4px; }
-  .maintainer-label { font-size: 10px; color: #89b4fa; }
+
   .empty { padding: 16px; color: #6c7086; font-size: 13px; text-align: center; }
 </style>
