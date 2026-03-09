@@ -1141,6 +1141,7 @@ pub async fn configure_maintainer(
     project_id: String,
     enabled: bool,
     interval_minutes: u64,
+    github_repo: Option<String>,
 ) -> Result<(), String> {
     validate_maintainer_interval(interval_minutes)?;
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1148,6 +1149,7 @@ pub async fn configure_maintainer(
     let mut project = storage.load_project(project_id).map_err(|e| e.to_string())?;
     project.maintainer.enabled = enabled;
     project.maintainer.interval_minutes = interval_minutes;
+    project.maintainer.github_repo = github_repo;
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -1170,11 +1172,11 @@ pub async fn configure_auto_worker(
 pub async fn get_maintainer_status(
     state: State<'_, AppState>,
     project_id: String,
-) -> Result<Option<crate::models::MaintainerReport>, String> {
+) -> Result<Option<crate::models::MaintainerRunLog>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     storage
-        .latest_maintainer_report(project_id)
+        .latest_maintainer_run_log(project_id)
         .map_err(|e| e.to_string())
 }
 
@@ -1182,11 +1184,11 @@ pub async fn get_maintainer_status(
 pub async fn get_maintainer_history(
     state: State<'_, AppState>,
     project_id: String,
-) -> Result<Vec<crate::models::MaintainerReport>, String> {
+) -> Result<Vec<crate::models::MaintainerRunLog>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     storage
-        .maintainer_report_history(project_id, 20)
+        .maintainer_run_log_history(project_id, 20)
         .map_err(|e| e.to_string())
 }
 
@@ -1195,34 +1197,33 @@ pub async fn trigger_maintainer_check(
     state: State<'_, AppState>,
     app_handle: AppHandle,
     project_id: String,
-) -> Result<crate::models::MaintainerReport, String> {
+) -> Result<crate::models::MaintainerRunLog, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
 
-    let repo_path = {
+    let (repo_path, github_repo) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let project = storage.load_project(project_id).map_err(|e| e.to_string())?;
-        project.repo_path.clone()
+        (project.repo_path.clone(), project.maintainer.github_repo.clone())
     };
 
     let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "running");
 
-    let report = crate::maintainer::run_health_check(&repo_path, project_id)?;
+    let log = crate::maintainer::run_maintainer_check(
+        &repo_path,
+        project_id,
+        github_repo.as_deref(),
+    )?;
 
     {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         storage
-            .save_maintainer_report(&report)
+            .save_maintainer_run_log(&log)
             .map_err(|e| e.to_string())?;
     }
 
-    let status_str = match report.status {
-        crate::models::ReportStatus::Passing => "passing",
-        crate::models::ReportStatus::Warnings => "warnings",
-        crate::models::ReportStatus::Failing => "failing",
-    };
-    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), status_str);
+    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "idle");
 
-    Ok(report)
+    Ok(log)
 }
 
 #[tauri::command]
@@ -1234,7 +1235,7 @@ pub async fn clear_maintainer_reports(
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     storage
-        .clear_maintainer_reports(project_id)
+        .clear_maintainer_run_logs(project_id)
         .map_err(|e| e.to_string())?;
     let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "idle");
     Ok(())
