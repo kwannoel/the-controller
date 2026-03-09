@@ -498,4 +498,33 @@ mod tests {
         let project_id = Uuid::new_v4();
         assert!(storage.clear_maintainer_run_logs(project_id).is_ok());
     }
+
+    #[test]
+    fn test_old_format_reports_are_silently_skipped() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+
+        // Write an old-format MaintainerReport file
+        let dir = storage.maintainer_run_logs_dir(project_id);
+        std::fs::create_dir_all(&dir).unwrap();
+        let old_report = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "project_id": "550e8400-e29b-41d4-a716-446655440001",
+            "timestamp": "2026-03-07T00:00:00Z",
+            "status": "passing",
+            "findings": [],
+            "summary": "old format"
+        }"#;
+        std::fs::write(dir.join("old-report.json"), old_report).unwrap();
+
+        // Write a new-format run log
+        let log = make_run_log(project_id, "2026-03-09T00:00:00Z");
+        storage.save_maintainer_run_log(&log).expect("save");
+
+        // History should only contain the new-format log
+        let history = storage.maintainer_run_log_history(project_id, 10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].summary, "Filed 1 issue");
+    }
 }
