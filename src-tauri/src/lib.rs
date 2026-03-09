@@ -83,6 +83,8 @@ pub fn run() {
             commands::delete_note,
             commands::save_session_prompt,
             commands::list_project_prompts,
+            commands::stage_session_inplace,
+            commands::unstage_session_inplace,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

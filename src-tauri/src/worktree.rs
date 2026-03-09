@@ -217,6 +217,100 @@ impl WorktreeManager {
         git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
     }
 
+    /// Stage a worktree branch in-place in the main repo.
+    ///
+    /// Creates a temporary `staging/<branch>` branch at the same commit as the
+    /// worktree branch (since git won't let you checkout a branch already checked
+    /// out in a worktree), then checks it out in the main repo.
+    ///
+    /// Returns the name of the branch that was checked out before (so it can be
+    /// restored later).
+    pub fn stage_inplace(repo_path: &str, worktree_branch: &str) -> Result<String, String> {
+        let repo =
+            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+
+        // Record current branch so we can restore it later
+        let head = repo
+            .head()
+            .map_err(|e| format!("failed to get HEAD: {}", e))?;
+        let original_branch = head
+            .shorthand()
+            .ok_or("HEAD is not on a branch")?
+            .to_string();
+
+        // Refuse if working tree is dirty
+        let statuses = repo
+            .statuses(Some(
+                git2::StatusOptions::new()
+                    .include_untracked(true)
+                    .recurse_untracked_dirs(false),
+            ))
+            .map_err(|e| format!("failed to check repo status: {}", e))?;
+        if !statuses.is_empty() {
+            return Err("Main repo has uncommitted changes — commit or stash first".to_string());
+        }
+
+        // Find the worktree branch's tip commit
+        let wt_branch = repo
+            .find_branch(worktree_branch, git2::BranchType::Local)
+            .map_err(|e| format!("worktree branch '{}' not found: {}", worktree_branch, e))?;
+        let commit = wt_branch
+            .get()
+            .peel_to_commit()
+            .map_err(|e| format!("failed to resolve branch commit: {}", e))?;
+
+        // Create staging branch
+        let staging_name = format!("staging/{}", worktree_branch);
+
+        // Delete stale staging branch if one exists
+        if let Ok(mut existing) = repo.find_branch(&staging_name, git2::BranchType::Local) {
+            let _ = existing.delete();
+        }
+
+        repo.branch(&staging_name, &commit, false)
+            .map_err(|e| format!("failed to create staging branch: {}", e))?;
+
+        // Checkout the staging branch
+        let refname = format!("refs/heads/{}", staging_name);
+        let obj = repo
+            .revparse_single(&refname)
+            .map_err(|e| format!("failed to find staging ref: {}", e))?;
+        repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().force()))
+            .map_err(|e| format!("failed to checkout staging branch: {}", e))?;
+        repo.set_head(&refname)
+            .map_err(|e| format!("failed to set HEAD: {}", e))?;
+
+        Ok(original_branch)
+    }
+
+    /// Unstage: restore the original branch in the main repo and clean up
+    /// the temporary staging branch.
+    pub fn unstage_inplace(
+        repo_path: &str,
+        original_branch: &str,
+        staging_branch: &str,
+    ) -> Result<(), String> {
+        let repo =
+            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+
+        // Checkout the original branch
+        let refname = format!("refs/heads/{}", original_branch);
+        let obj = repo
+            .revparse_single(&refname)
+            .map_err(|e| format!("failed to find original branch '{}': {}", original_branch, e))?;
+        repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().force()))
+            .map_err(|e| format!("failed to checkout original branch: {}", e))?;
+        repo.set_head(&refname)
+            .map_err(|e| format!("failed to set HEAD: {}", e))?;
+
+        // Clean up staging branch
+        if let Ok(mut branch) = repo.find_branch(staging_branch, git2::BranchType::Local) {
+            let _ = branch.delete();
+        }
+
+        Ok(())
+    }
+
     /// Remove a worktree by deleting its directory and pruning the worktree reference.
     ///
     /// `worktree_path` is the actual directory on disk. `repo_path` is the main
@@ -437,5 +531,89 @@ mod tests {
         // No commits = unborn HEAD, detect_main_branch should error
         let result = WorktreeManager::detect_main_branch(&repo_path);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_stage_inplace_and_unstage() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("staging-test");
+
+        // Create a worktree with a commit
+        let wt_path =
+            WorktreeManager::create_worktree(&repo_path, "staging-test", &worktree_dir)
+                .expect("create worktree");
+
+        // Add a file in the worktree so we can verify checkout works
+        let test_file = wt_path.join("staged-file.txt");
+        std::fs::write(&test_file, "hello from worktree").unwrap();
+        let wt_repo = Repository::open(&wt_path).unwrap();
+        let mut index = wt_repo.index().unwrap();
+        index.add_path(Path::new("staged-file.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = wt_repo.find_tree(tree_id).unwrap();
+        let sig = wt_repo
+            .signature()
+            .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
+        let parent = wt_repo.head().unwrap().peel_to_commit().unwrap();
+        wt_repo
+            .commit(Some("HEAD"), &sig, &sig, "add staged file", &tree, &[&parent])
+            .unwrap();
+
+        // Stage inplace
+        let original_branch =
+            WorktreeManager::stage_inplace(&repo_path, "staging-test").expect("stage inplace");
+
+        // Verify the staging branch is checked out in main repo
+        let repo = Repository::open(&repo_path).unwrap();
+        let head = repo.head().unwrap();
+        assert_eq!(head.shorthand().unwrap(), "staging/staging-test");
+
+        // Verify the file exists in main repo
+        assert!(
+            Path::new(&repo_path).join("staged-file.txt").exists(),
+            "staged file should exist in main repo"
+        );
+
+        // Unstage
+        WorktreeManager::unstage_inplace(&repo_path, &original_branch, "staging/staging-test")
+            .expect("unstage");
+
+        // Verify original branch is restored
+        let repo2 = Repository::open(&repo_path).unwrap();
+        let head2 = repo2.head().unwrap();
+        assert_eq!(head2.shorthand().unwrap(), original_branch);
+
+        // Verify staged file is gone
+        assert!(
+            !Path::new(&repo_path).join("staged-file.txt").exists(),
+            "staged file should be removed after unstage"
+        );
+
+        // Verify staging branch is cleaned up
+        assert!(
+            repo2
+                .find_branch("staging/staging-test", git2::BranchType::Local)
+                .is_err(),
+            "staging branch should be deleted"
+        );
+    }
+
+    #[test]
+    fn test_stage_inplace_dirty_repo_fails() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("dirty-stage-test");
+
+        WorktreeManager::create_worktree(&repo_path, "dirty-stage-test", &worktree_dir)
+            .expect("create worktree");
+
+        // Make the main repo dirty
+        std::fs::write(Path::new(&repo_path).join("dirty-file.txt"), "uncommitted").unwrap();
+
+        let result = WorktreeManager::stage_inplace(&repo_path, "dirty-stage-test");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("uncommitted changes"));
     }
 }

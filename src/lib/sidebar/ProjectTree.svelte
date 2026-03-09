@@ -109,6 +109,9 @@
                   {getSessionStatus(session.id) === "exited" ? "\u25CB" : "\u25CF"}
                 </span>
                 <span class="session-label">{session.label}</span>
+                {#if project.staged_session?.session_id === session.id}
+                  <span class="staged-badge">staged</span>
+                {/if}
                 {#if session.github_issue}
                   <span class="issue-badge">#{session.github_issue.number}</span>
                 {/if}
@@ -229,6 +232,19 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+  }
+
+  .staged-badge {
+    font-size: 9px;
+    color: #f38ba8;
+    background: rgba(243, 139, 168, 0.15);
+    padding: 0 4px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
   }
 
   .issue-badge {
