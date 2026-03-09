@@ -85,6 +85,7 @@ pub fn run() {
             commands::list_project_prompts,
             commands::stage_session_inplace,
             commands::unstage_session_inplace,
+            commands::get_repo_head,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
