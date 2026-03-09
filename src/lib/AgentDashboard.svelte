@@ -260,6 +260,28 @@
         {/if}
       </div>
     </section>
+    <section class="section">
+      <div class="section-header">
+        <span class="section-title">Work policy</span>
+      </div>
+      <div class="policy-body">
+        <div class="policy-row">
+          <span class="policy-label">Required</span>
+          <div class="policy-labels">
+            <span class="policy-tag required">priority: high</span>
+            <span class="policy-tag required">complexity: low</span>
+            <span class="policy-tag required">triaged</span>
+          </div>
+        </div>
+        <div class="policy-row">
+          <span class="policy-label">Excluded</span>
+          <div class="policy-labels">
+            <span class="policy-tag excluded">in-progress</span>
+            <span class="policy-tag excluded">finished-by-worker</span>
+          </div>
+        </div>
+      </div>
+    </section>
   {:else if focusedAgent.agentKind === "maintainer"}
     <div class="dashboard-header">
       <h2>{project.name}</h2>
@@ -452,6 +474,14 @@
   .issue-title { color: #cdd6f4; }
   .issue-labels { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
   .issue-label { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: #313244; color: #6c7086; }
+
+  .policy-body { padding: 12px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .policy-row { display: flex; align-items: baseline; gap: 10px; }
+  .policy-label { font-size: 11px; color: #6c7086; width: 60px; flex-shrink: 0; }
+  .policy-labels { display: flex; gap: 4px; flex-wrap: wrap; }
+  .policy-tag { font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+  .policy-tag.required { background: rgba(166, 227, 161, 0.15); color: #a6e3a1; }
+  .policy-tag.excluded { background: rgba(243, 139, 168, 0.15); color: #f38ba8; }
 
   .error-banner { padding: 8px 24px; background: rgba(243, 139, 168, 0.1); border-bottom: 1px solid rgba(243, 139, 168, 0.2); display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
   .error-label { color: #f38ba8; font-weight: 600; font-size: 11px; text-transform: uppercase; flex-shrink: 0; }
