@@ -641,6 +641,19 @@ pub fn save_session_prompt(
 }
 
 #[tauri::command]
+pub fn list_project_prompts(
+    state: State<AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::SavedPrompt>, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
+    Ok(project.prompts)
+}
+
+#[tauri::command]
 pub fn archive_session(
     state: State<AppState>,
     project_id: String,
