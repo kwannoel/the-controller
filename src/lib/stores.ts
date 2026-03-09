@@ -132,10 +132,13 @@ export function focusTerminalSoon(delayMs = 50) {
 }
 
 // Focus tracking — granular: which element is focused
+export type AgentKind = "auto-worker" | "maintainer";
+
 export type FocusTarget =
   | { type: "terminal"; projectId: string }
   | { type: "session"; sessionId: string; projectId: string }
   | { type: "project"; projectId: string }
+  | { type: "agent"; agentKind: AgentKind; projectId: string }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
 
