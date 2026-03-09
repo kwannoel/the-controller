@@ -9,6 +9,17 @@ pub struct NoteEntry {
     pub modified_at: DateTime<Utc>,
 }
 
+/// Validates that a filename does not escape the notes directory.
+fn validate_filename(filename: &str) -> std::io::Result<()> {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") || filename.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid note filename: {}", filename),
+        ));
+    }
+    Ok(())
+}
+
 /// Returns the notes directory for a project under the default base path.
 /// `~/.the-controller/notes/{project_name}/`
 pub fn notes_dir(project_name: &str) -> PathBuf {
@@ -41,11 +52,10 @@ pub fn list_notes(
             let metadata = fs::metadata(&path)?;
             let modified = metadata.modified()?;
             let modified_at: DateTime<Utc> = modified.into();
-            let filename = path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
+            let Some(name) = path.file_name() else {
+                continue;
+            };
+            let filename = name.to_string_lossy().to_string();
             entries.push(NoteEntry {
                 filename,
                 modified_at,
@@ -63,6 +73,7 @@ pub fn read_note(
     project_name: &str,
     filename: &str,
 ) -> std::io::Result<String> {
+    validate_filename(filename)?;
     let path = notes_dir_with_base(base, project_name).join(filename);
     fs::read_to_string(path)
 }
@@ -74,6 +85,7 @@ pub fn write_note(
     filename: &str,
     content: &str,
 ) -> std::io::Result<()> {
+    validate_filename(filename)?;
     let dir = notes_dir_with_base(base, project_name);
     fs::create_dir_all(&dir)?;
     fs::write(dir.join(filename), content)
@@ -92,6 +104,7 @@ pub fn create_note(
     } else {
         format!("{}.md", title)
     };
+    validate_filename(&filename)?;
 
     let dir = notes_dir_with_base(base, project_name);
     fs::create_dir_all(&dir)?;
@@ -121,15 +134,24 @@ pub fn rename_note(
     old_name: &str,
     new_name: &str,
 ) -> std::io::Result<String> {
+    validate_filename(old_name)?;
     let new_filename = if new_name.ends_with(".md") {
         new_name.to_string()
     } else {
         format!("{}.md", new_name)
     };
+    validate_filename(&new_filename)?;
 
     let dir = notes_dir_with_base(base, project_name);
     let old_path = dir.join(old_name);
     let new_path = dir.join(&new_filename);
+
+    if !old_path.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("note '{}' not found", old_name),
+        ));
+    }
 
     if new_path.exists() {
         return Err(std::io::Error::new(
@@ -148,6 +170,7 @@ pub fn delete_note(
     project_name: &str,
     filename: &str,
 ) -> std::io::Result<()> {
+    validate_filename(filename)?;
     let path = notes_dir_with_base(base, project_name).join(filename);
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -288,5 +311,33 @@ mod tests {
         write_note(tmp.path(), "project-a", "shared-name.md", "content A").unwrap();
         let content_b = read_note(tmp.path(), "project-b", "shared-name.md").unwrap();
         assert_eq!(content_b, "# shared-name\n");
+    }
+
+    #[test]
+    fn test_path_traversal_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let malicious = "../../../etc/passwd";
+
+        let read_result = read_note(tmp.path(), "proj", malicious);
+        assert!(read_result.is_err());
+        assert_eq!(read_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+        let write_result = write_note(tmp.path(), "proj", malicious, "pwned");
+        assert!(write_result.is_err());
+        assert_eq!(write_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+        let delete_result = delete_note(tmp.path(), "proj", malicious);
+        assert!(delete_result.is_err());
+        assert_eq!(delete_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn test_rename_nonexistent_source_fails() {
+        let tmp = TempDir::new().unwrap();
+        // Create the project directory so the error is about the source, not the dir
+        create_note(tmp.path(), "proj", "existing").unwrap();
+        let result = rename_note(tmp.path(), "proj", "no-such-note.md", "new-name");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
 }
