@@ -12,6 +12,7 @@
 
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
+  import PromptPickerModal from "./lib/PromptPickerModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
   import AssignedIssuesPanel from "./lib/AssignedIssuesPanel.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
@@ -19,12 +20,13 @@
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import NotesEditor from "./lib/NotesEditor.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
   let triagePanelOpen: TriageCategory | null = $state(null);
   let assignedIssuesPanelOpen = $state(false);
+  let promptPickerTarget: { projectId: string } | null = $state(null);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
@@ -56,6 +58,10 @@
         }
       } else if (action?.type === "toggle-assigned-issues-panel") {
         assignedIssuesPanelOpen = !assignedIssuesPanelOpen;
+      } else if (action?.type === "save-session-prompt") {
+        saveSessionPrompt(action.projectId, action.sessionId);
+      } else if (action?.type === "pick-prompt-for-session") {
+        promptPickerTarget = { projectId: action.projectId };
       }
     });
     return unsub;
@@ -99,6 +105,15 @@
       const result: Project[] = await invoke("list_projects");
       projects.set(result);
       showToast(`Auto-worker ${newEnabled ? "enabled" : "disabled"}`, "info");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function saveSessionPrompt(projectId: string, sessionId: string) {
+    try {
+      await invoke("save_session_prompt", { projectId, sessionId });
+      showToast("Prompt saved", "info");
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -151,6 +166,25 @@
     const target = issuePickerTarget!;
     issuePickerTarget = null;
     dispatchHotkeyAction({ type: "create-session", projectId: target.projectId, kind: target.kind });
+  }
+
+  async function handlePromptPicked(prompt: SavedPrompt) {
+    const target = promptPickerTarget!;
+    promptPickerTarget = null;
+
+    const wrappedPrompt = `You are a prompt engineer, here is a prompt, your goal is to collaborate with me to make it better:\n\n<prompt>\n${prompt.text}\n</prompt>`;
+
+    try {
+      const sessionId: string = await invoke("create_session", {
+        projectId: target.projectId,
+        kind: "claude",
+        initialPrompt: wrappedPrompt,
+      });
+      await activateNewSession(sessionId, target.projectId);
+      focusTerminalSoon();
+    } catch (e) {
+      showToast(String(e), "error");
+    }
   }
 
   async function activateNewSession(sessionId: string, projectId: string) {
@@ -286,6 +320,13 @@
         onSelect={handleIssuePicked}
         onSkip={handleIssuePickerSkip}
         onClose={() => { issuePickerTarget = null; }}
+      />
+    {/if}
+    {#if promptPickerTarget}
+      <PromptPickerModal
+        projectId={promptPickerTarget.projectId}
+        onSelect={handlePromptPicked}
+        onClose={() => { promptPickerTarget = null; }}
       />
     {/if}
     {#if triagePanelOpen}

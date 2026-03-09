@@ -387,6 +387,23 @@
           dispatchHotkeyAction({ type: "finish-branch", sessionId: activeId, kind: sess?.kind });
         }
         return true;
+      case "save-prompt": {
+        if (currentFocus?.type === "session") {
+          dispatchAction({
+            type: "save-session-prompt",
+            sessionId: currentFocus.sessionId,
+            projectId: currentFocus.projectId,
+          });
+        }
+        return true;
+      }
+      case "load-prompt": {
+        const project = getFocusedProject();
+        if (project) {
+          dispatchAction({ type: "pick-prompt-for-session", projectId: project.id });
+        }
+        return true;
+      }
       case "toggle-sidebar":
         sidebarVisible.update(v => !v);
         return true;

@@ -243,6 +243,7 @@ mod tests {
             archived: false,
             maintainer: crate::models::MaintainerConfig::default(),
             auto_worker: crate::models::AutoWorkerConfig::default(),
+            prompts: vec![],
             sessions: vec![SessionConfig {
                 id: Uuid::new_v4(),
                 label: "main".to_string(),

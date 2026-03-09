@@ -25,6 +25,7 @@ fn test_project_lifecycle() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -78,6 +79,7 @@ fn test_agents_md_lifecycle() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -119,6 +121,7 @@ fn test_sessions_persist_across_restarts() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![
             SessionConfig {
                 id: Uuid::new_v4(),
@@ -193,6 +196,7 @@ fn test_no_duplicate_project_names() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project_a).expect("save first project");
@@ -208,6 +212,7 @@ fn test_no_duplicate_project_names() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project_b).expect("save second project");
@@ -239,6 +244,7 @@ fn test_archived_project_name_can_be_reused() {
         archived: true,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).expect("save archived project");
@@ -298,6 +304,7 @@ fn test_worktrees_persist_across_restarts() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -340,6 +347,7 @@ fn test_migrate_worktree_paths_renames_uuid_dir() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -388,6 +396,7 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -441,6 +450,7 @@ fn test_migrate_worktree_paths_noop_on_name_collision() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![SessionConfig {
             id: Uuid::new_v4(),
             label: "session-1".to_string(),
@@ -495,6 +505,7 @@ fn test_archive_project_with_no_sessions() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -556,6 +567,7 @@ fn test_create_session_uses_project_name_in_path() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
@@ -725,6 +737,7 @@ fn test_load_archived_project_by_repo_path_unarchives_it() {
         archived: false,
         maintainer: MaintainerConfig::default(),
         auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).expect("save project");

@@ -186,6 +186,7 @@ pub fn create_project(
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
         auto_worker: crate::models::AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
 
@@ -252,6 +253,7 @@ pub fn load_project(
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
         auto_worker: crate::models::AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
 
@@ -579,6 +581,79 @@ pub fn set_initial_prompt(
 }
 
 #[tauri::command]
+pub fn save_session_prompt(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
+
+    let session = project
+        .sessions
+        .iter()
+        .find(|s| s.id == session_uuid)
+        .ok_or_else(|| "Session not found".to_string())?;
+
+    // Build prompt text: use initial_prompt, or derive from github_issue
+    let prompt_text = session
+        .initial_prompt
+        .clone()
+        .or_else(|| {
+            session.github_issue.as_ref().map(|issue| {
+                crate::session_args::build_issue_prompt(
+                    issue.number,
+                    &issue.title,
+                    &issue.url,
+                    false,
+                )
+            })
+        })
+        .ok_or_else(|| "Session has no prompt to save".to_string())?;
+
+    // Auto-generate name: first ~60 chars (safe for multi-byte UTF-8)
+    let name = {
+        let truncated: String = prompt_text.chars().take(60).collect();
+        if truncated.len() < prompt_text.len() {
+            format!("{}...", truncated)
+        } else {
+            truncated
+        }
+    };
+
+    let saved = crate::models::SavedPrompt {
+        id: Uuid::new_v4(),
+        name,
+        text: prompt_text,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        source_session_label: session.label.clone(),
+    };
+
+    project.prompts.push(saved);
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_project_prompts(
+    state: State<AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::SavedPrompt>, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
+    Ok(project.prompts)
+}
+
+#[tauri::command]
 pub fn archive_session(
     state: State<AppState>,
     project_id: String,
@@ -865,6 +940,7 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
         archived: false,
         maintainer: crate::models::MaintainerConfig::default(),
         auto_worker: crate::models::AutoWorkerConfig::default(),
+        prompts: vec![],
         sessions: vec![],
     };
     storage.save_project(&project).map_err(|e| e.to_string())?;
