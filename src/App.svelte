@@ -220,13 +220,11 @@
   }
 
   async function screenshotToNewSession(preview: boolean, cropped: boolean) {
-    // Determine project from current focus or active session
-    const projectId = focusTargetState.current?.projectId
-      ?? projectsState.current.find((p) => p.sessions.some((s) => s.id === activeSessionIdState.current))?.id
-      ?? projectsState.current[0]?.id;
+    // Screenshot sessions always spawn in "the-controller" project
+    const projectId = projectsState.current.find((p) => p.name === "the-controller")?.id;
 
     if (!projectId) {
-      showToast("No project to create session in", "error");
+      showToast("\"the-controller\" project not found", "error");
       return;
     }
 

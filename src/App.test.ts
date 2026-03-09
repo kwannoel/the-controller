@@ -46,8 +46,8 @@ import App from "./App.svelte";
 
 const baseProject = {
   id: "proj-1",
-  name: "project-one",
-  repo_path: "/tmp/project-one",
+  name: "the-controller",
+  repo_path: "/tmp/the-controller",
   created_at: "2026-01-01",
   archived: false,
   sessions: [],
