@@ -9,9 +9,6 @@
     generateJumpLabels,
     JUMP_KEYS,
     sidebarVisible,
-    sessionStatuses,
-    sessionThinkingLevels,
-    THINKING_LEVELS,
 
     maintainerPanelVisible,
     archiveView,
@@ -22,7 +19,6 @@
     type Project,
     type HotkeyAction,
     type FocusTarget,
-    type ThinkingLevel,
   } from "./stores";
   import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
   import { buildKeyMap, type CommandId } from "./commands";
@@ -39,9 +35,6 @@
   // Toggle mode state (o prefix)
   let toggleModeActive = $state(false);
 
-  // Sessions whose thinking level was changed while not idle
-  let pendingThinkingSessions = new Set<string>();
-
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
   const activeSessionIdState = fromStore(activeSessionId);
@@ -56,27 +49,7 @@
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
   const maintainerPanelVisibleState = fromStore(maintainerPanelVisible);
   let isMaintainerPanelVisible = $derived(maintainerPanelVisibleState.current);
-  const sessionStatusesState = fromStore(sessionStatuses);
-  let statusMap = $derived(sessionStatusesState.current);
-  const thinkingLevelsState = fromStore(sessionThinkingLevels);
-  let thinkingMap = $derived(thinkingLevelsState.current);
-
   const keyMap = buildKeyMap();
-
-  // Flush pending thinking level when a session transitions to idle
-  $effect(() => {
-    // Read statusMap unconditionally to always track it as a dependency
-    const currentStatuses = statusMap;
-    for (const sessionId of pendingThinkingSessions) {
-      if (currentStatuses.get(sessionId) === "idle") {
-        const level = thinkingMap.get(sessionId);
-        if (level) {
-          invoke("write_to_pty", { sessionId, data: `/think ${level}\r` });
-        }
-        pendingThinkingSessions.delete(sessionId);
-      }
-    }
-  });
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -280,25 +253,6 @@
     }
   }
 
-  function cycleThinkingLevel(direction: 1 | -1): string | null {
-    if (!activeId) return null;
-    const current = thinkingMap.get(activeId) ?? "medium";
-    const idx = THINKING_LEVELS.indexOf(current);
-    const len = THINKING_LEVELS.length;
-    const next = THINKING_LEVELS[((idx + direction) % len + len) % len];
-    const updated = new Map(thinkingMap);
-    updated.set(activeId, next);
-    sessionThinkingLevels.set(updated);
-
-    // Write /think command to PTY if session is idle, otherwise mark pending
-    if (statusMap.get(activeId) === "idle") {
-      invoke("write_to_pty", { sessionId: activeId, data: `/think ${next}\r` });
-    } else {
-      pendingThinkingSessions.add(activeId);
-    }
-    return next;
-  }
-
   function dispatchIssuePicker(opts?: { kind?: string; background?: boolean }) {
     const project = getFocusedProject();
     if (!project) return;
@@ -417,16 +371,6 @@
       case "toggle-maintainer-panel":
         dispatchAction({ type: "toggle-maintainer-panel" });
         return true;
-      case "thinking-up": {
-        const lvl = cycleThinkingLevel(1);
-        if (lvl) pushKeystroke(`Think: ${lvl}`);
-        return true;
-      }
-      case "thinking-down": {
-        const lvl = cycleThinkingLevel(-1);
-        if (lvl) pushKeystroke(`Think: ${lvl}`);
-        return true;
-      }
       case "toggle-help":
         dispatchAction({ type: "toggle-help" });
         return true;

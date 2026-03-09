@@ -25,8 +25,6 @@ export type CommandId =
   | "toggle-mode"
   | "trigger-maintainer-check"
   | "toggle-maintainer-panel"
-  | "thinking-up"
-  | "thinking-down"
   | "toggle-help";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
@@ -68,8 +66,6 @@ export const commands: CommandDef[] = [
   { id: "background-worker-claude", key: "C", section: "Sessions", description: "Background worker: Claude (autonomous)" },
   { id: "background-worker-codex", key: "X", section: "Sessions", description: "Background worker: Codex (autonomous)" },
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)" },
-  { id: "thinking-up", key: "e", section: "Sessions", description: "Thinking level up / down", helpKey: "e / q" },
-  { id: "thinking-down", key: "q", section: "Sessions", description: "Thinking level down", hidden: true },
   { id: "screenshot", key: "⌘S", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘D", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
   { id: "screenshot-preview", key: "⌘⇧S / ⌘⇧D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
