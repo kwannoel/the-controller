@@ -69,9 +69,9 @@ export const commands: CommandDef[] = [
   { id: "background-worker-claude", key: "C", section: "Sessions", description: "Background worker: Claude (autonomous)", mode: "development" },
   { id: "background-worker-codex", key: "X", section: "Sessions", description: "Background worker: Codex (autonomous)", mode: "development" },
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)", mode: "development" },
-  { id: "screenshot", key: "⌘S", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
-  { id: "screenshot-cropped", key: "⌘D", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
-  { id: "screenshot-preview", key: "⌘⇧S / ⌘⇧D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
+  { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
+  { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
+  { id: "screenshot-preview", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
 
   // ── Projects ──
   { id: "new-project", key: "n", section: "Projects", description: "New project", mode: "development" },
@@ -86,7 +86,7 @@ export const commands: CommandDef[] = [
   { id: "toggle-sidebar", key: "s", section: "Panels", description: "Toggle sidebar" },
   { id: "toggle-mode", key: "o", section: "Panels", description: "Toggle: (m)aintainer / (w)orker", mode: "development" },
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
-  { id: "keystroke-visualizer", key: "⌘K", section: "Panels", description: "Toggle keystroke visualizer", handledExternally: true },
+  { id: "keystroke-visualizer", key: "⌘k", section: "Panels", description: "Toggle keystroke visualizer", handledExternally: true },
 
   // ── Agents ──
   { id: "toggle-agent", key: "o", section: "Agents", description: "Toggle focused agent on/off", mode: "agents" },

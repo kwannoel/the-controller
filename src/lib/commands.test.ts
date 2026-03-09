@@ -52,15 +52,15 @@ describe("command registry", () => {
     const sections = getHelpSections();
     const allKeys = sections.flatMap(s => s.entries.map(e => e.key));
     expect(allKeys).toContain("Esc");
-    expect(allKeys).toContain("⌘S");
-    expect(allKeys).toContain("⌘K");
+    expect(allKeys).toContain("⌘s");
+    expect(allKeys).toContain("⌘k");
   });
 
   it("buildKeyMap excludes external commands", () => {
     const map = buildKeyMap();
     expect(map.has("Esc")).toBe(false);
-    expect(map.has("⌘S")).toBe(false);
-    expect(map.has("⌘K")).toBe(false);
+    expect(map.has("⌘s")).toBe(false);
+    expect(map.has("⌘k")).toBe(false);
   });
 
   it("buildKeyMap includes all internal command keys", () => {
