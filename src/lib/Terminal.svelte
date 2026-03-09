@@ -155,21 +155,27 @@
 
       // Capture the first prompt: buffer keystrokes until Enter
       if (!promptCaptured) {
-        for (const ch of data) {
-          if (ch === "\r" || ch === "\n") {
-            const trimmed = promptBuffer.trim();
-            if (trimmed.length > 0) {
-              promptCaptured = true;
-              saveInitialPrompt(trimmed);
+        // Skip escape sequences (arrow keys, function keys, etc.)
+        // They arrive as multi-char strings like \x1b[A — not typed text
+        if (data.startsWith("\x1b")) {
+          // Still forward to PTY below, just don't buffer
+        } else {
+          for (const ch of data) {
+            if (ch === "\r" || ch === "\n") {
+              const trimmed = promptBuffer.trim();
+              if (trimmed.length > 0) {
+                promptCaptured = true;
+                saveInitialPrompt(trimmed);
+              }
+              promptBuffer = "";
+              break;
+            } else if (ch === "\x7f" || ch === "\b") {
+              // Backspace
+              promptBuffer = promptBuffer.slice(0, -1);
+            } else if (ch >= " ") {
+              // Printable character
+              promptBuffer += ch;
             }
-            promptBuffer = "";
-            break;
-          } else if (ch === "\x7f" || ch === "\b") {
-            // Backspace
-            promptBuffer = promptBuffer.slice(0, -1);
-          } else if (ch >= " ") {
-            // Printable character
-            promptBuffer += ch;
           }
         }
       }
