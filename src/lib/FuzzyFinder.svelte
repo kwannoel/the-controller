@@ -22,7 +22,6 @@
   );
   let selectedIndex = $state(0);
   let inputEl: HTMLInputElement | undefined = $state();
-  let mode = $state<"search" | "navigate">("search");
 
   onMount(async () => {
     try {
@@ -34,28 +33,6 @@
   });
 
   function handleKeydown(e: KeyboardEvent) {
-    if (mode === "navigate") {
-      if (e.key === "j" || e.key === "ArrowDown") {
-        e.preventDefault();
-        selectedIndex = Math.min(selectedIndex + 1, filtered.length - 1);
-      } else if (e.key === "k" || e.key === "ArrowUp") {
-        e.preventDefault();
-        selectedIndex = Math.max(selectedIndex - 1, 0);
-      } else if (e.key === "l" || e.key === "Enter") {
-        e.preventDefault();
-        if (filtered.length > 0) onSelect(filtered[selectedIndex]);
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        mode = "search";
-        inputEl?.focus();
-      } else if (e.key.length === 1) {
-        // Printable character — switch back to search mode and let it type
-        mode = "search";
-      }
-      return;
-    }
-
-    // Search mode
     if (e.key === "ArrowDown") {
       e.preventDefault();
       selectedIndex = Math.min(selectedIndex + 1, filtered.length - 1);
@@ -64,7 +41,7 @@
       selectedIndex = Math.max(selectedIndex - 1, 0);
     } else if (e.key === "Enter" && filtered.length > 0) {
       e.preventDefault();
-      mode = "navigate";
+      onSelect(filtered[selectedIndex]);
     } else if (e.key === "Escape") {
       e.preventDefault();
       onClose();
@@ -86,8 +63,6 @@
       bind:value={query}
       placeholder="Search projects..."
       class="search-input"
-      class:nav-mode={mode === "navigate"}
-      readonly={mode === "navigate"}
       onkeydown={handleKeydown}
     />
     <div class="results">
@@ -139,10 +114,6 @@
     padding: 14px 16px;
     font-size: 15px;
     outline: none;
-  }
-  .search-input.nav-mode {
-    color: #6c7086;
-    border-bottom-color: #cba6f7;
   }
   .results {
     overflow-y: auto;
