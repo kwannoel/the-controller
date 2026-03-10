@@ -6,3 +6,7 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# e2e test artifacts
+wdio-logs/
+e2e/screenshots/
