@@ -68,16 +68,19 @@ pub struct ControllerAgentTurnOutput {
 impl ControllerChatSession {
     pub fn update_focus(&mut self, update: ControllerFocusUpdate) {
         let has_project_scope = update.project_id.is_some();
+        let has_session_scope = update.session_id.is_some();
+        let has_note_scope = update.note_filename.is_some();
+        let project_focus_update = has_project_scope && !has_session_scope && !has_note_scope;
         let project_changed = update
             .project_id
             .is_some_and(|project_id| self.focus.project_id != Some(project_id));
 
-        if project_changed || (has_project_scope && update.session_id.is_none()) {
+        if project_changed || project_focus_update {
             self.focus.session_id = None;
         }
         if project_changed
-            || (has_project_scope && update.note_filename.is_none())
-            || (update.session_id.is_some() && update.note_filename.is_none())
+            || project_focus_update
+            || (has_session_scope && !has_note_scope)
         {
             self.focus.note_filename = None;
         }
@@ -571,6 +574,33 @@ mod tests {
         assert_eq!(session.focus.project_id, Some(project_id));
         assert_eq!(session.focus.session_id, Some(new_session_id));
         assert!(session.focus.note_filename.is_none());
+    }
+
+    #[test]
+    fn test_controller_focus_preserves_session_on_same_project_note_focus_update() {
+        let mut session = ControllerChatSession::default();
+        let project_id = Uuid::from_u128(30);
+        let session_id = Uuid::from_u128(31);
+
+        session.update_focus(ControllerFocusUpdate {
+            project_id: Some(project_id),
+            project_name: Some("proj".to_string()),
+            session_id: Some(session_id),
+            note_filename: Some("old.md".to_string()),
+            workspace_mode: Some("notes".to_string()),
+        });
+
+        session.update_focus(ControllerFocusUpdate {
+            project_id: Some(project_id),
+            project_name: Some("proj".to_string()),
+            session_id: None,
+            note_filename: Some("a.md".to_string()),
+            workspace_mode: None,
+        });
+
+        assert_eq!(session.focus.project_id, Some(project_id));
+        assert_eq!(session.focus.session_id, Some(session_id));
+        assert_eq!(session.focus.note_filename.as_deref(), Some("a.md"));
     }
 
     #[test]
