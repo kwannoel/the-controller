@@ -11,6 +11,7 @@ use axum::{
 use serde_json::Value;
 use std::sync::Arc;
 use the_controller_lib::{
+    controller_chat::{self, ControllerFocusUpdate},
     config,
     emitter::WsBroadcastEmitter,
     state::AppState,
@@ -45,6 +46,9 @@ async fn main() {
         .route("/api/close_session", post(close_session))
         .route("/api/create_session", post(create_session))
         .route("/api/merge_session_branch", post(merge_session_branch))
+        .route("/api/get_controller_chat_session", post(get_controller_chat_session))
+        .route("/api/update_controller_chat_focus", post(update_controller_chat_focus))
+        .route("/api/send_controller_chat_message", post(send_controller_chat_message))
         .route("/ws", get(ws_upgrade))
         .fallback(post(fallback_handler))
         .layer(CorsLayer::permissive())
@@ -379,6 +383,57 @@ async fn merge_session_branch(
         StatusCode::INTERNAL_SERVER_ERROR,
         format!("Merge failed after {} attempts due to recurring conflicts", MAX_RETRIES),
     ))
+}
+
+async fn get_controller_chat_session(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let session = controller_chat::get_controller_chat_session(&state.app)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(session).unwrap()))
+}
+
+async fn update_controller_chat_focus(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .map(|id| uuid::Uuid::parse_str(id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string())))
+        .transpose()?;
+    let session_id = args["sessionId"]
+        .as_str()
+        .map(|id| uuid::Uuid::parse_str(id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string())))
+        .transpose()?;
+
+    let session = controller_chat::update_focus_snapshot(
+        &state.app,
+        ControllerFocusUpdate {
+            project_id,
+            project_name: args["projectName"].as_str().map(str::to_string),
+            session_id,
+            note_filename: args["noteFilename"].as_str().map(str::to_string),
+            workspace_mode: args["workspaceMode"].as_str().map(str::to_string),
+        },
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Ok(Json(serde_json::to_value(session).unwrap()))
+}
+
+async fn send_controller_chat_message(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let message = args["message"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing message".to_string()))?
+        .to_string();
+
+    let session = controller_chat::send_message(&state.app, message)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(session).unwrap()))
 }
 
 // --- WebSocket ---
