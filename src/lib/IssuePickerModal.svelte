@@ -28,9 +28,9 @@
     const other: IssueGroup = { label: "Unprioritized", items: [] };
 
     issues.forEach((issue, index) => {
-      if (issue.labels.some(l => l.name === "priority: high")) {
+      if (issue.labels.some(l => l.name === "priority:high")) {
         high.items.push({ issue, index });
-      } else if (issue.labels.some(l => l.name === "priority: low")) {
+      } else if (issue.labels.some(l => l.name === "priority:low")) {
         low.items.push({ issue, index });
       } else {
         other.items.push({ issue, index });
@@ -50,8 +50,8 @@
           .filter(issue => !issue.labels.some(l => l.name === "in-progress"))
           .sort((a, b) => {
             const priorityOf = (issue: GithubIssue) => {
-              if (issue.labels.some(l => l.name === "priority: high")) return 0;
-              if (issue.labels.some(l => l.name === "priority: low")) return 2;
+              if (issue.labels.some(l => l.name === "priority:high")) return 0;
+              if (issue.labels.some(l => l.name === "priority:low")) return 2;
               return 1; // unprioritized in the middle
             };
             return priorityOf(a) - priorityOf(b);

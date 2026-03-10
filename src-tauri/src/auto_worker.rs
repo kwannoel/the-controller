@@ -25,6 +25,28 @@ const POLL_INTERVAL_SECS: u64 = 30;
 const SESSION_TIMEOUT_SECS: u64 = 30 * 60; // 30 minutes
 const MAX_NUDGES: u32 = 3;
 const NUDGE_COOLDOWN_SECS: u64 = 60;
+const LABEL_PRIORITY_HIGH_OLD: &str = "priority: high";
+const LABEL_PRIORITY_LOW_OLD: &str = "priority: low";
+const LABEL_PRIORITY_HIGH: &str = "priority:high";
+const LABEL_PRIORITY_LOW: &str = "priority:low";
+const LABEL_COMPLEXITY_LOW_OLD: &str = "complexity: low";
+const LABEL_COMPLEXITY_HIGH_OLD: &str = "complexity: high";
+const LABEL_COMPLEXITY_SIMPLE: &str = "complexity:simple";
+const LABEL_COMPLEXITY_HIGH: &str = "complexity:high";
+const LABEL_IN_PROGRESS: &str = "in-progress";
+const LABEL_FINISHED_BY_WORKER: &str = "finished-by-worker";
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct LabelMigration {
+    add: Vec<String>,
+    remove: Vec<String>,
+}
+
+impl LabelMigration {
+    fn is_empty(&self) -> bool {
+        self.add.is_empty() && self.remove.is_empty()
+    }
+}
 
 struct ActiveSession {
     session_id: Uuid,
@@ -66,15 +88,18 @@ impl AutoWorkerScheduler {
             if !project.auto_worker.enabled || project.archived {
                 continue;
             }
-            let issues = match fetch_issues_sync(&project.repo_path) {
+            let mut issues = match fetch_issues_sync(&project.repo_path) {
                 Ok(issues) => issues,
                 Err(_) => continue,
             };
+            if migrate_issues_sync(&project.repo_path, &mut issues).is_err() {
+                continue;
+            }
             for issue in &issues {
                 let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
-                if labels.contains(&"in-progress") {
+                if labels.contains(&LABEL_IN_PROGRESS) {
                     eprintln!("Auto-worker: removing stale in-progress label from #{}", issue.number);
-                    let _ = remove_label_sync(&project.repo_path, issue.number, "in-progress");
+                    let _ = remove_label_sync(&project.repo_path, issue.number, LABEL_IN_PROGRESS);
                 }
             }
         }
@@ -197,13 +222,18 @@ impl AutoWorkerScheduler {
                         continue;
                     }
 
-                    let issues = match fetch_issues_sync(&project.repo_path) {
+                    let mut issues = match fetch_issues_sync(&project.repo_path) {
                         Ok(issues) => issues,
                         Err(e) => {
                             eprintln!("Auto-worker: failed to fetch issues for {}: {}", project.name, e);
                             continue;
                         }
                     };
+
+                    if let Err(e) = migrate_issues_sync(&project.repo_path, &mut issues) {
+                        eprintln!("Auto-worker: failed to migrate issue labels for {}: {}", project.name, e);
+                        continue;
+                    }
 
                     let eligible = match pick_eligible_issue(&issues) {
                         Some(issue) => issue.clone(),
@@ -212,7 +242,7 @@ impl AutoWorkerScheduler {
 
                     match spawn_auto_worker_session(&state, &app_handle, project, &eligible) {
                         Ok(session_id) => {
-                            let _ = add_label_sync(&project.repo_path, eligible.number, "in-progress");
+                            let _ = add_label_sync(&project.repo_path, eligible.number, LABEL_IN_PROGRESS);
                             emit_status(&app_handle, project.id, "working", None, Some(eligible.number), Some(&eligible.title));
                             active_sessions.insert(project.id, ActiveSession {
                                 session_id,
@@ -291,6 +321,111 @@ fn remove_label_sync(repo_path: &str, issue_number: u64, label: &str) -> Result<
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("gh issue edit failed: {}", stderr));
     }
+    Ok(())
+}
+
+fn ensure_standard_labels_exist_sync(repo_path: &str) -> Result<(), String> {
+    let labels = [
+        (LABEL_PRIORITY_LOW, "Low priority", "a6e3a1"),
+        (LABEL_PRIORITY_HIGH, "High priority", "f38ba8"),
+        (LABEL_COMPLEXITY_SIMPLE, "Simple fix", "89b4fa"),
+        (LABEL_COMPLEXITY_HIGH, "Significant effort", "f9e2af"),
+    ];
+
+    for (label, description, color) in labels {
+        let output = Command::new("gh")
+            .args([
+                "label",
+                "create",
+                label,
+                "--description",
+                description,
+                "--color",
+                color,
+                "--force",
+            ])
+            .current_dir(repo_path)
+            .output()
+            .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("gh label create failed: {}", stderr));
+        }
+    }
+
+    Ok(())
+}
+
+fn dedup_and_sort(values: &mut Vec<String>) {
+    values.sort();
+    values.dedup();
+}
+
+fn migration_for_issue(issue: &GithubIssue) -> LabelMigration {
+    let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
+    let has = |label: &str| labels.contains(&label);
+
+    let mut migration = LabelMigration::default();
+
+    if has(LABEL_PRIORITY_HIGH_OLD) {
+        migration.remove.push(LABEL_PRIORITY_HIGH_OLD.to_string());
+        if !has(LABEL_PRIORITY_HIGH) {
+            migration.add.push(LABEL_PRIORITY_HIGH.to_string());
+        }
+    }
+    if has(LABEL_PRIORITY_LOW_OLD) {
+        migration.remove.push(LABEL_PRIORITY_LOW_OLD.to_string());
+        if !has(LABEL_PRIORITY_LOW) {
+            migration.add.push(LABEL_PRIORITY_LOW.to_string());
+        }
+    }
+    if has(LABEL_COMPLEXITY_LOW_OLD) {
+        migration.remove.push(LABEL_COMPLEXITY_LOW_OLD.to_string());
+        if !has(LABEL_COMPLEXITY_SIMPLE) {
+            migration.add.push(LABEL_COMPLEXITY_SIMPLE.to_string());
+        }
+    }
+    if has(LABEL_COMPLEXITY_HIGH_OLD) {
+        migration.remove.push(LABEL_COMPLEXITY_HIGH_OLD.to_string());
+        if !has(LABEL_COMPLEXITY_HIGH) {
+            migration.add.push(LABEL_COMPLEXITY_HIGH.to_string());
+        }
+    }
+    dedup_and_sort(&mut migration.add);
+    dedup_and_sort(&mut migration.remove);
+    migration
+}
+
+fn apply_issue_migration(issue: &mut GithubIssue, migration: &LabelMigration) {
+    issue.labels
+        .retain(|label| !migration.remove.iter().any(|remove| remove == &label.name));
+    for label in &migration.add {
+        if !issue.labels.iter().any(|existing| existing.name == *label) {
+            issue.labels.push(crate::models::GithubLabel { name: label.clone() });
+        }
+    }
+}
+
+fn migrate_issues_sync(repo_path: &str, issues: &mut [GithubIssue]) -> Result<(), String> {
+    ensure_standard_labels_exist_sync(repo_path)?;
+
+    for issue in issues {
+        let migration = migration_for_issue(issue);
+        if migration.is_empty() {
+            continue;
+        }
+
+        for label in &migration.add {
+            add_label_sync(repo_path, issue.number, label)?;
+        }
+        for label in &migration.remove {
+            remove_label_sync(repo_path, issue.number, label)?;
+        }
+
+        apply_issue_migration(issue, &migration);
+    }
+
     Ok(())
 }
 
@@ -375,7 +510,7 @@ fn kill_session(state: &AppState, session: &ActiveSession) {
     if let Ok(mut pty_manager) = state.pty_manager.lock() {
         let _ = pty_manager.close_session(session.session_id);
     }
-    let _ = remove_label_sync(&session.repo_path, session.issue_number, "in-progress");
+    let _ = remove_label_sync(&session.repo_path, session.issue_number, LABEL_IN_PROGRESS);
     cleanup_session(state, session);
 }
 
@@ -428,9 +563,9 @@ fn close_issue_sync(repo_path: &str, issue_number: u64) -> Result<(), String> {
 }
 
 fn mark_issue_finished(session: &ActiveSession) {
-    let _ = remove_label_sync(&session.repo_path, session.issue_number, "in-progress");
+    let _ = remove_label_sync(&session.repo_path, session.issue_number, LABEL_IN_PROGRESS);
     if has_merged_pr_sync(&session.repo_path, session.issue_number) {
-        let _ = add_label_sync(&session.repo_path, session.issue_number, "finished-by-worker");
+        let _ = add_label_sync(&session.repo_path, session.issue_number, LABEL_FINISHED_BY_WORKER);
         let _ = close_issue_sync(&session.repo_path, session.issue_number);
         eprintln!("Auto-worker: closed #{} (merged PR verified)", session.issue_number);
     } else {
@@ -459,11 +594,10 @@ fn cleanup_session(state: &AppState, session: &ActiveSession) {
 /// Check if an issue is eligible for auto-worker processing.
 pub fn is_eligible(issue: &GithubIssue) -> bool {
     let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
-    labels.contains(&"priority: high")
-        && labels.contains(&"complexity: low")
-        && labels.contains(&"triaged")
-        && !labels.contains(&"in-progress")
-        && !labels.contains(&"finished-by-worker")
+    labels.contains(&LABEL_PRIORITY_HIGH)
+        && labels.contains(&LABEL_COMPLEXITY_SIMPLE)
+        && !labels.contains(&LABEL_IN_PROGRESS)
+        && !labels.contains(&LABEL_FINISHED_BY_WORKER)
 }
 
 /// Pick the first eligible issue from a list.
@@ -488,45 +622,51 @@ mod tests {
 
     #[test]
     fn eligible_issue_has_all_required_labels() {
-        let issue = make_issue(&["priority: high", "complexity: low", "triaged"]);
+        let issue = make_issue(&["priority:high", "complexity:simple", "triaged"]);
+        assert!(is_eligible(&issue));
+    }
+
+    #[test]
+    fn standardized_issue_is_eligible() {
+        let issue = make_issue(&["priority:high", "complexity:simple"]);
         assert!(is_eligible(&issue));
     }
 
     #[test]
     fn missing_priority_high_not_eligible() {
-        let issue = make_issue(&["complexity: low", "triaged"]);
+        let issue = make_issue(&["complexity:simple", "triaged"]);
         assert!(!is_eligible(&issue));
     }
 
     #[test]
     fn missing_complexity_low_not_eligible() {
-        let issue = make_issue(&["priority: high", "triaged"]);
+        let issue = make_issue(&["priority:high", "triaged"]);
         assert!(!is_eligible(&issue));
     }
 
     #[test]
-    fn missing_triaged_not_eligible() {
-        let issue = make_issue(&["priority: high", "complexity: low"]);
-        assert!(!is_eligible(&issue));
+    fn triaged_not_required_for_eligibility() {
+        let issue = make_issue(&["priority:high", "complexity:simple"]);
+        assert!(is_eligible(&issue));
     }
 
     #[test]
     fn in_progress_not_eligible() {
-        let issue = make_issue(&["priority: high", "complexity: low", "triaged", "in-progress"]);
+        let issue = make_issue(&["priority:high", "complexity:simple", "triaged", "in-progress"]);
         assert!(!is_eligible(&issue));
     }
 
     #[test]
     fn finished_by_worker_not_eligible() {
-        let issue = make_issue(&["priority: high", "complexity: low", "triaged", "finished-by-worker"]);
+        let issue = make_issue(&["priority:high", "complexity:simple", "triaged", "finished-by-worker"]);
         assert!(!is_eligible(&issue));
     }
 
     #[test]
     fn pick_eligible_returns_first_match() {
         let issues = vec![
-            make_issue(&["priority: low"]),
-            make_issue(&["priority: high", "complexity: low", "triaged"]),
+            make_issue(&["priority:low"]),
+            make_issue(&["priority:high", "complexity:simple"]),
         ];
         let picked = pick_eligible_issue(&issues);
         assert!(picked.is_some());
@@ -535,10 +675,50 @@ mod tests {
     #[test]
     fn pick_eligible_returns_none_when_no_match() {
         let issues = vec![
-            make_issue(&["priority: low"]),
-            make_issue(&["in-progress", "priority: high", "complexity: low", "triaged"]),
+            make_issue(&["priority:low"]),
+            make_issue(&["in-progress", "priority:high", "complexity:simple"]),
         ];
         assert!(pick_eligible_issue(&issues).is_none());
+    }
+
+    #[test]
+    fn migration_plan_rewrites_legacy_labels() {
+        let issue = make_issue(&["priority: high", "complexity: low"]);
+        let migration = migration_for_issue(&issue);
+        assert_eq!(
+            migration,
+            LabelMigration {
+                add: vec!["complexity:simple".to_string(), "priority:high".to_string()],
+                remove: vec!["complexity: low".to_string(), "priority: high".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn migration_plan_does_not_add_triaged_for_maintainer_issues() {
+        let issue = make_issue(&["filed-by-maintainer", "priority:high", "complexity:simple"]);
+        let migration = migration_for_issue(&issue);
+        assert_eq!(
+            migration,
+            LabelMigration {
+                add: vec![],
+                remove: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn apply_issue_migration_updates_issue_labels() {
+        let mut issue = make_issue(&["filed-by-maintainer", "priority: high", "complexity: low"]);
+        let migration = migration_for_issue(&issue);
+        apply_issue_migration(&mut issue, &migration);
+
+        let labels: Vec<&str> = issue.labels.iter().map(|label| label.name.as_str()).collect();
+        assert!(labels.contains(&"filed-by-maintainer"));
+        assert!(labels.contains(&"priority:high"));
+        assert!(labels.contains(&"complexity:simple"));
+        assert!(!labels.contains(&"priority: high"));
+        assert!(!labels.contains(&"complexity: low"));
     }
 
     #[test]
