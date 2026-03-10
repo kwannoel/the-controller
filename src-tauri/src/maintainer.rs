@@ -92,6 +92,12 @@ struct FindingsOutput {
     summary: String,
 }
 
+#[derive(Debug)]
+struct FilteredFindings {
+    findings: Vec<CandidateFinding>,
+    skipped_semantic: u32,
+}
+
 #[derive(Debug, Clone)]
 struct ExistingIssue {
     number: u32,
@@ -210,6 +216,9 @@ IMPORTANT:
 - Do NOT run any `gh issue create`, `gh issue edit`, or `gh issue comment` commands.
 - The deterministic issue dedup and issue filing/update logic is handled by the Rust pipeline.
 - Return findings only in structured JSON.
+- Do NOT propose behavior changes, workflow changes, default changes, routing changes, UX/copy changes, or new product policies.
+- Only report maintenance issues: clear bugs/regressions, reliability problems, crashes/panics, data loss, security issues, missing tests, stale docs, refactors, dead code, and observability gaps.
+- If something looks like a product decision or semantic change, omit it from the findings entirely.
 
 For each finding, provide:
 - `title`: short actionable issue title
@@ -322,6 +331,140 @@ fn sanitize_finding(finding: CandidateFinding) -> Option<CandidateFinding> {
             .filter(|k| !k.is_empty())
             .collect(),
     })
+}
+
+fn normalize_text_for_matching(input: &str) -> String {
+    input.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn contains_phrase(haystack: &str, phrases: &[&str]) -> bool {
+    phrases.iter().any(|phrase| haystack.contains(phrase))
+}
+
+fn is_semantic_change_finding(finding: &CandidateFinding) -> bool {
+    const EXPLICIT_SEMANTIC_PHRASES: &[&str] = &[
+        "focused project",
+        "active project",
+        "selected project",
+        "target project",
+        "let the user pick",
+        "let users pick",
+        "allow the user to choose",
+        "allow users to choose",
+        "project picker",
+        "workflow change",
+        "behavior change",
+        "change behavior",
+        "default to",
+        "route to",
+        "routing change",
+        "ux improvement",
+        "copy tweak",
+        "copy change",
+    ];
+    const PRODUCT_TERMS: &[&str] = &[
+        "workflow",
+        "behavior",
+        "default",
+        "route",
+        "routing",
+        "picker",
+        "ux",
+        "copy",
+        "project selection",
+        "focused project",
+        "selected project",
+        "active project",
+        "target project",
+    ];
+    const NORMATIVE_TERMS: &[&str] = &[
+        "should",
+        "instead of",
+        "allow users",
+        "allow the user",
+        "let users",
+        "let the user",
+        "use the currently",
+        "use focused",
+        "use selected",
+        "default to",
+        "route to",
+    ];
+    const MAINTENANCE_TERMS: &[&str] = &[
+        "panic",
+        "crash",
+        "data loss",
+        "security",
+        "race condition",
+        "deadlock",
+        "hang",
+        "timeout",
+        "freeze",
+        "flaky",
+        "missing test",
+        "test coverage",
+        "stale docs",
+        "documentation",
+        "readme",
+        "dead code",
+        "refactor",
+        "observability",
+        "logging",
+        "a11y",
+        "accessibility",
+        "duplicate handler",
+        "error swallowing",
+        "typed enum",
+        "reliability",
+    ];
+
+    let normalized = normalize_text_for_matching(&format!(
+        "{} {} {} {} {}",
+        finding.title,
+        finding.body,
+        finding.symptom_type,
+        finding.affected_files.join(" "),
+        finding.keywords.join(" ")
+    ));
+
+    if contains_phrase(&normalized, EXPLICIT_SEMANTIC_PHRASES) {
+        return true;
+    }
+
+    let has_product_term = contains_phrase(&normalized, PRODUCT_TERMS);
+    let has_normative_term = contains_phrase(&normalized, NORMATIVE_TERMS);
+    let has_maintenance_term = contains_phrase(&normalized, MAINTENANCE_TERMS);
+
+    has_product_term && has_normative_term && !has_maintenance_term
+}
+
+fn filter_semantic_findings(findings: Vec<CandidateFinding>) -> FilteredFindings {
+    let mut allowed = Vec::with_capacity(findings.len());
+    let mut skipped_semantic = 0;
+
+    for finding in findings {
+        if is_semantic_change_finding(&finding) {
+            skipped_semantic += 1;
+        } else {
+            allowed.push(finding);
+        }
+    }
+
+    FilteredFindings {
+        findings: allowed,
+        skipped_semantic,
+    }
 }
 
 fn normalize_priority(priority: &str) -> String {
@@ -802,6 +945,7 @@ pub fn run_maintainer_check(
     }
 
     let findings_output = parse_findings_output(&String::from_utf8_lossy(&output.stdout))?;
+    let filtered_findings = filter_semantic_findings(findings_output.findings);
 
     ensure_labels_exist(repo_path, github_repo)?;
 
@@ -812,9 +956,10 @@ pub fn run_maintainer_check(
     let mut issues_filed = Vec::new();
     let mut issues_updated = Vec::new();
     let mut updated_issue_numbers = HashSet::new();
-    let mut issues_skipped: u32 = 0;
+    let mut issues_skipped: u32 = filtered_findings.skipped_semantic;
+    let mut skipped_closed: u32 = 0;
 
-    for finding in &findings_output.findings {
+    for finding in &filtered_findings.findings {
         let fingerprint = build_finding_fingerprint(finding);
         let labels = dedup_labels_for_finding(finding);
         let body = format_issue_body(finding, &fingerprint);
@@ -822,6 +967,7 @@ pub fn run_maintainer_check(
         // Skip findings that match a closed issue (already resolved)
         if find_duplicate_issue(finding, &closed_issues, DEDUP_SIMILARITY_THRESHOLD).is_some() {
             issues_skipped += 1;
+            skipped_closed += 1;
             continue;
         }
 
@@ -880,10 +1026,19 @@ pub fn run_maintainer_check(
     let issues_unchanged = existing_issue_count.saturating_sub(updated_issue_numbers.len()) as u32;
 
     let summary = if issues_filed.is_empty() && issues_updated.is_empty() {
-        if findings_output.summary.trim().is_empty() {
+        let base_summary = if findings_output.summary.trim().is_empty() {
             "No actionable maintainer issues found".to_string()
         } else {
             findings_output.summary
+        };
+
+        if filtered_findings.skipped_semantic > 0 {
+            format!(
+                "{} (skipped {} semantic change proposal(s))",
+                base_summary, filtered_findings.skipped_semantic
+            )
+        } else {
+            base_summary
         }
     } else {
         let mut parts = vec![
@@ -892,7 +1047,14 @@ pub fn run_maintainer_check(
             format!("unchanged {}", issues_unchanged),
         ];
         if issues_skipped > 0 {
-            parts.push(format!("skipped {} (closed)", issues_skipped));
+            let mut skip_reasons = Vec::new();
+            if filtered_findings.skipped_semantic > 0 {
+                skip_reasons.push(format!("{} semantic", filtered_findings.skipped_semantic));
+            }
+            if skipped_closed > 0 {
+                skip_reasons.push(format!("{} closed", skipped_closed));
+            }
+            parts.push(format!("skipped {} ({})", issues_skipped, skip_reasons.join(", ")));
         }
         parts.join(", ")
     };
@@ -919,8 +1081,45 @@ mod tests {
         assert!(prompt.contains("/tmp/my-project"));
         assert!(prompt.contains("Return ONLY this JSON object"));
         assert!(prompt.contains("Do NOT run any `gh issue create`"));
+        assert!(prompt.contains("Do NOT propose behavior changes"));
         assert!(prompt.contains("`complexity`: `high` or `low`"));
         assert!(!prompt.contains("`complexity`: `high` or `simple`"));
+    }
+
+    #[test]
+    fn test_filter_semantic_findings_rejects_product_behavior_changes() {
+        let findings = vec![CandidateFinding {
+            title: "Screenshot workflow should use the focused project".to_string(),
+            body: "Use the currently active project instead of the-controller, or let the user pick a target project.".to_string(),
+            priority: "low".to_string(),
+            complexity: "low".to_string(),
+            affected_files: vec!["src/App.svelte".to_string()],
+            symptom_type: "workflow change".to_string(),
+            keywords: vec!["screenshot".to_string(), "focused project".to_string()],
+        }];
+
+        let filtered = filter_semantic_findings(findings);
+
+        assert_eq!(filtered.findings.len(), 0);
+        assert_eq!(filtered.skipped_semantic, 1);
+    }
+
+    #[test]
+    fn test_filter_semantic_findings_keeps_maintenance_findings() {
+        let findings = vec![CandidateFinding {
+            title: "AppState panics on startup when storage init fails".to_string(),
+            body: "The app crashes during startup if filesystem initialization fails. This is a reliability bug that blocks app launch.".to_string(),
+            priority: "high".to_string(),
+            complexity: "low".to_string(),
+            affected_files: vec!["src-tauri/src/state.rs".to_string()],
+            symptom_type: "startup panic".to_string(),
+            keywords: vec!["panic".to_string(), "startup".to_string()],
+        }];
+
+        let filtered = filter_semantic_findings(findings);
+
+        assert_eq!(filtered.findings.len(), 1);
+        assert_eq!(filtered.skipped_semantic, 0);
     }
 
     #[test]
