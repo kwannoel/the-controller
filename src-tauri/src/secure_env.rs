@@ -195,7 +195,7 @@ pub(crate) fn submit_secure_env_value(
         }
     };
 
-    let result = update_env_file(&pending.env_path, &pending.key, value)?;
+    let result = update_env_file(&pending.env_path, &pending.key, value);
 
     let mut active = state
         .secure_env_request
@@ -210,19 +210,32 @@ pub(crate) fn submit_secure_env_value(
     {
         *active = None;
     }
-    if let Some(response_tx) = response_tx {
-        let _ = response_tx.send(SecureEnvResponse {
-            kind: SecureEnvResponseKind::Ok,
-            status: if result.created {
-                "created".to_string()
-            } else {
-                "updated".to_string()
-            },
-            request_id: request_id.to_string(),
-        });
+    match result {
+        Ok(result) => {
+            if let Some(response_tx) = response_tx {
+                let _ = response_tx.send(SecureEnvResponse {
+                    kind: SecureEnvResponseKind::Ok,
+                    status: if result.created {
+                        "created".to_string()
+                    } else {
+                        "updated".to_string()
+                    },
+                    request_id: request_id.to_string(),
+                });
+            }
+            Ok(result)
+        }
+        Err(error) => {
+            if let Some(response_tx) = response_tx {
+                let _ = response_tx.send(SecureEnvResponse {
+                    kind: SecureEnvResponseKind::Error,
+                    status: "write-failed".to_string(),
+                    request_id: request_id.to_string(),
+                });
+            }
+            Err(error)
+        }
     }
-
-    Ok(result)
 }
 
 #[allow(dead_code)]
@@ -495,5 +508,40 @@ mod tests {
         let written = fs::read_to_string(repo_path.join(".env")).unwrap();
         assert_eq!(written, "OPENAI_API_KEY=new-secret\n");
         assert!(state.secure_env_request.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn submit_write_failure_clears_active_request_and_notifies_cli() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        fs::create_dir_all(repo_path.join(".env")).unwrap();
+        save_project(&state, "demo-project", repo_path);
+
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        super::begin_secure_env_request_with_response(
+            &state,
+            "demo-project",
+            "OPENAI_API_KEY",
+            "req-123",
+            Some(tx),
+        )
+        .unwrap();
+
+        let error = match submit_secure_env_value(&state, "req-123", "new-secret") {
+            Ok(_) => panic!("expected write failure"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("failed to read"));
+        assert!(state.secure_env_request.lock().unwrap().is_none());
+        assert_eq!(
+            rx.recv().unwrap(),
+            SecureEnvResponse {
+                kind: SecureEnvResponseKind::Error,
+                status: "write-failed".to_string(),
+                request_id: "req-123".to_string(),
+            }
+        );
     }
 }

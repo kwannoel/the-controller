@@ -87,13 +87,24 @@ fn dispatch_secure_env_request(
     })
     .to_string();
 
-    emitter
-        .emit("secure-env-requested", &payload)
-        .map_err(|_| crate::secure_env::SecureEnvResponse {
+    if emitter.emit("secure-env-requested", &payload).is_err() {
+        if let Ok(mut active) = state.secure_env_request.lock() {
+            if active
+                .as_ref()
+                .is_some_and(|request| request.pending.request_id == pending.request_id)
+            {
+                *active = None;
+            }
+        }
+
+        return Err(crate::secure_env::SecureEnvResponse {
             kind: crate::secure_env::SecureEnvResponseKind::Error,
             status: "emit-failed".to_string(),
             request_id: request.request_id,
-        })
+        });
+    }
+
+    Ok(())
 }
 
 /// Start the Unix domain socket listener.
@@ -382,6 +393,20 @@ mod tests {
         }
     }
 
+    struct FailingEmitter;
+
+    impl FailingEmitter {
+        fn new() -> Arc<Self> {
+            Arc::new(Self)
+        }
+    }
+
+    impl EventEmitter for FailingEmitter {
+        fn emit(&self, _event: &str, _payload: &str) -> Result<(), String> {
+            Err("emit failed".to_string())
+        }
+    }
+
     fn make_app_state(tmp: &TempDir) -> AppState {
         AppState::from_storage(Storage::new(tmp.path().to_path_buf()), crate::emitter::NoopEmitter::new())
             .unwrap()
@@ -601,5 +626,38 @@ mod tests {
                 request_id: "req-123".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn clears_active_request_when_secure_env_emit_fails() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path);
+        let emitter = FailingEmitter::new();
+        let (tx, _rx) = std::sync::mpsc::sync_channel(1);
+        let request = crate::secure_env::parse_secure_env_request(
+            "set|demo-project|OPENAI_API_KEY|req-123",
+        )
+        .unwrap();
+
+        let response = dispatch_secure_env_request(
+            &state,
+            &(emitter as Arc<dyn EventEmitter>),
+            request,
+            tx,
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            response,
+            SecureEnvResponse {
+                kind: SecureEnvResponseKind::Error,
+                status: "emit-failed".to_string(),
+                request_id: "req-123".to_string(),
+            }
+        );
+        assert!(state.secure_env_request.lock().unwrap().is_none());
     }
 }
