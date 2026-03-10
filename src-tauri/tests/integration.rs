@@ -432,6 +432,70 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
     );
 }
 
+/// If startup crashes after renaming `worktrees/{uuid}/` to `worktrees/{name}/`
+/// but before saving the updated project config, the next startup should still
+/// repair stale UUID-based `worktree_path` values. Re-running the migration
+/// must remain safe once the config has been repaired.
+#[test]
+fn test_migrate_worktree_paths_repairs_stale_paths_after_partial_migration() {
+    let tmp = TempDir::new().unwrap();
+    let storage = make_storage(&tmp);
+
+    let project_id = Uuid::new_v4();
+    let name_wt_dir = tmp.path().join("worktrees").join("recovered-project");
+    let name_session = name_wt_dir.join("session-1");
+    fs::create_dir_all(&name_session).expect("create name worktree dir");
+
+    let stale_uuid_session = tmp
+        .path()
+        .join("worktrees")
+        .join(project_id.to_string())
+        .join("session-1");
+
+    let project = Project {
+        id: project_id,
+        name: "recovered-project".to_string(),
+        repo_path: "/tmp/fake-repo".to_string(),
+        created_at: "2026-03-01T00:00:00Z".to_string(),
+        archived: false,
+        maintainer: MaintainerConfig::default(),
+        auto_worker: AutoWorkerConfig::default(),
+        prompts: vec![],
+        sessions: vec![SessionConfig {
+            id: Uuid::new_v4(),
+            label: "session-1".to_string(),
+            worktree_path: Some(stale_uuid_session.to_str().unwrap().to_string()),
+            worktree_branch: Some("session-1".to_string()),
+            archived: false,
+            kind: "claude".to_string(),
+            github_issue: None,
+            initial_prompt: None,
+            done_commits: vec![],
+            auto_worker_session: false,
+        }],
+        staged_session: None,
+    };
+    storage.save_project(&project).expect("save project");
+
+    storage.migrate_worktree_paths(&project).expect("first migrate");
+    let repaired = storage.load_project(project_id).expect("load repaired project");
+    assert_eq!(
+        repaired.sessions[0].worktree_path.as_deref(),
+        Some(name_session.to_str().unwrap()),
+        "migration should repair stale UUID-based paths when the directory was already renamed"
+    );
+
+    storage
+        .migrate_worktree_paths(&repaired)
+        .expect("second migrate should stay idempotent");
+    let rerun = storage.load_project(project_id).expect("load after second migrate");
+    assert_eq!(
+        rerun.sessions[0].worktree_path.as_deref(),
+        Some(name_session.to_str().unwrap()),
+        "running the migration again should keep the repaired path stable"
+    );
+}
+
 /// When both `worktrees/{uuid}/` and `worktrees/{name}/` exist,
 /// migration should skip the rename to avoid clobbering the name dir.
 /// The stored `worktree_path` must remain unchanged (still UUID-based).

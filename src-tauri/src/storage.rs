@@ -182,12 +182,8 @@ impl Storage {
     /// No-op if the UUID directory doesn't exist (already migrated or no worktrees).
     pub fn migrate_worktree_paths(&self, project: &Project) -> std::io::Result<()> {
         let uuid_dir = self.base_dir.join("worktrees").join(project.id.to_string());
-        if !uuid_dir.exists() {
-            return Ok(());
-        }
-
         let name_dir = self.base_dir.join("worktrees").join(&project.name);
-        if name_dir.exists() {
+        if uuid_dir.exists() && name_dir.exists() {
             eprintln!(
                 "Warning: cannot migrate worktrees for project '{}': target dir already exists",
                 project.name
@@ -195,22 +191,29 @@ impl Storage {
             return Ok(());
         }
 
-        // Rename the directory
-        fs::rename(&uuid_dir, &name_dir)?;
+        if uuid_dir.exists() {
+            fs::rename(&uuid_dir, &name_dir)?;
+        } else if !name_dir.exists() {
+            return Ok(());
+        }
 
-        // Update stored worktree paths
         let uuid_prefix = uuid_dir.to_str().unwrap_or_default();
         let name_prefix = name_dir.to_str().unwrap_or_default();
 
         let mut updated = project.clone();
+        let mut changed = false;
         for session in &mut updated.sessions {
             if let Some(ref wt_path) = session.worktree_path {
                 if wt_path.starts_with(uuid_prefix) {
                     session.worktree_path = Some(wt_path.replacen(uuid_prefix, name_prefix, 1));
+                    changed = true;
                 }
             }
         }
-        self.save_project(&updated)?;
+
+        if changed {
+            self.save_project(&updated)?;
+        }
 
         Ok(())
     }
