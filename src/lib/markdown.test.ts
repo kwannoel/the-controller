@@ -59,6 +59,25 @@ describe("renderMarkdown", () => {
     expect(result).toContain('<a href="https://example.com" target="_blank" rel="noopener">click here</a>');
   });
 
+  it("renders mailto links", () => {
+    const result = renderMarkdown("[email me](mailto:test@example.com)");
+    expect(result).toContain('<a href="mailto:test@example.com" target="_blank" rel="noopener">email me</a>');
+  });
+
+  it("does not render javascript links", () => {
+    const result = renderMarkdown("[click me](javascript:alert-xss)");
+    expect(result).not.toContain("<a ");
+    expect(result).toContain("<p>click me</p>");
+    expect(result).not.toContain("javascript:");
+  });
+
+  it("does not render data links", () => {
+    const result = renderMarkdown("[click me](data:text/html;base64,PHNjcmlwdD4=)");
+    expect(result).not.toContain("<a ");
+    expect(result).toContain("<p>click me</p>");
+    expect(result).not.toContain("data:text/html");
+  });
+
   it("renders unordered lists", () => {
     const md = "- item 1\n- item 2\n- item 3";
     const result = renderMarkdown(md);
