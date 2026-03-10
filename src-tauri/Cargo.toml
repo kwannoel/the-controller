@@ -4,6 +4,7 @@ version = "0.4.0"
 description = "A Tauri desktop app for managing multiple Claude Code sessions"
 authors = ["you"]
 edition = "2021"
+default-run = "the-controller"
 
 [lib]
 name = "the_controller_lib"
