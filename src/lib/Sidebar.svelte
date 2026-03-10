@@ -6,6 +6,7 @@
   import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
+  import { sendFinishBranchPrompt } from "./finish-branch";
   import FuzzyFinder from "./FuzzyFinder.svelte";
   import NewProjectModal from "./NewProjectModal.svelte";
   import DeleteProjectModal from "./DeleteProjectModal.svelte";
@@ -854,20 +855,10 @@
       title="Confirm Merge"
       message="Merge this session's branch?"
       confirmLabel="Merge"
-      onConfirm={() => {
+      onConfirm={async () => {
         if (finishBranchTarget) {
           const { sessionId, kind } = finishBranchTarget;
-          const isCodex = kind === "codex";
-          const prompt = isCodex
-            ? `$the-controller-finishing-a-development-branch`
-            : `/the-controller-finishing-a-development-branch`;
-          if (isCodex) {
-            invoke("write_to_pty", { sessionId, data: prompt }).then(() => {
-              invoke("write_to_pty", { sessionId, data: "\r" });
-            });
-          } else {
-            invoke("write_to_pty", { sessionId, data: `${prompt}\r` });
-          }
+          await sendFinishBranchPrompt(invoke, sessionId, kind);
         }
         finishBranchTarget = null;
       }}
