@@ -452,7 +452,49 @@ impl PtyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::emitter::NoopEmitter;
+    use crate::tmux::set_test_tmux_binary;
     use std::ffi::OsStr;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
+
+    fn make_temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("the-controller-{}-{}", name, Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write_fake_tmux(dir: &Path, log_path: &Path) -> PathBuf {
+        let tmux_path = dir.join("fake-tmux");
+        let script = format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"{}\"\nif [ \"$1\" = \"display-message\" ]; then\n  printf '80 24\\n'\nfi\nexit 0\n",
+            log_path.display()
+        );
+        fs::write(&tmux_path, script).unwrap();
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&tmux_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&tmux_path, perms).unwrap();
+        }
+        tmux_path
+    }
+
+    fn wait_for_log_entry(log_path: &Path, needle: &str) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline {
+            let log = fs::read_to_string(log_path).unwrap_or_default();
+            if log.contains(needle) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        false
+    }
 
     #[test]
     fn test_new_manager_is_empty_and_is_alive_returns_false() {
@@ -514,5 +556,26 @@ mod tests {
             cmd.get_argv().first().map(|arg| arg.as_os_str()),
             Some(OsStr::new("/usr/local/bin/tmux"))
         );
+    }
+
+    #[test]
+    fn test_attach_tmux_session_uses_resolved_tmux_binary() {
+        let temp_dir = make_temp_dir("tmux-attach");
+        let log_path = temp_dir.join("tmux.log");
+        let fake_tmux = write_fake_tmux(&temp_dir, &log_path);
+        let _tmux_guard = set_test_tmux_binary(Some(fake_tmux.to_str().unwrap()));
+
+        let mut manager = PtyManager::new();
+        let session_id = Uuid::new_v4();
+
+        manager
+            .attach_tmux_session(session_id, NoopEmitter::new())
+            .expect("attach should use the resolved tmux binary");
+
+        assert!(wait_for_log_entry(&log_path, "display-message"));
+        assert!(wait_for_log_entry(&log_path, "attach-session"));
+
+        let _ = manager.close_session(session_id);
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

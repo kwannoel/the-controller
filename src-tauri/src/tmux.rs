@@ -3,6 +3,8 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
 use uuid::Uuid;
 
 const TMUX_CANDIDATES: [&str; 3] = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "tmux"];
@@ -17,6 +19,11 @@ impl TmuxManager {
     }
 
     pub fn tmux_binary() -> Option<String> {
+        #[cfg(test)]
+        if let Some(binary) = test_tmux_binary_override().lock().unwrap().clone() {
+            return Some(binary);
+        }
+
         resolve_tmux_binary()
     }
 
@@ -268,6 +275,32 @@ fn is_executable_file(path: &Path) -> bool {
     {
         true
     }
+}
+
+#[cfg(test)]
+fn test_tmux_binary_override() -> &'static Mutex<Option<String>> {
+    static TMUX_BINARY_OVERRIDE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    TMUX_BINARY_OVERRIDE.get_or_init(|| Mutex::new(None))
+}
+
+#[cfg(test)]
+pub(crate) struct TestTmuxBinaryGuard {
+    previous: Option<String>,
+}
+
+#[cfg(test)]
+impl Drop for TestTmuxBinaryGuard {
+    fn drop(&mut self) {
+        *test_tmux_binary_override().lock().unwrap() = self.previous.take();
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn set_test_tmux_binary(binary: Option<&str>) -> TestTmuxBinaryGuard {
+    let mut override_bin = test_tmux_binary_override().lock().unwrap();
+    let previous = override_bin.clone();
+    *override_bin = binary.map(str::to_string);
+    TestTmuxBinaryGuard { previous }
 }
 
 #[cfg(test)]
