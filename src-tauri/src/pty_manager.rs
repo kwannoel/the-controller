@@ -1,5 +1,5 @@
 use base64::Engine;
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
+use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
@@ -21,6 +21,7 @@ fn build_tmux_attach_command(tmux_bin: &str, tmux_name: &str) -> CommandBuilder 
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
+    child: Box<dyn Child + Send + Sync>,
     alive: Arc<Mutex<bool>>,
     tmux_session: bool,
 }
@@ -122,7 +123,7 @@ impl PtyManager {
             cmd.arg(arg);
         }
 
-        let _child = pair
+        let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("failed to spawn {}: {}", command, e))?;
@@ -174,6 +175,7 @@ impl PtyManager {
         let session = PtySession {
             master: pair.master,
             writer,
+            child,
             alive,
             tmux_session: false,
         };
@@ -208,7 +210,7 @@ impl PtyManager {
             TmuxManager::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
         let cmd = build_tmux_attach_command(&tmux_bin, &tmux_name);
 
-        let _child = pair
+        let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("failed to spawn tmux attach: {}", e))?;
@@ -260,6 +262,7 @@ impl PtyManager {
         let session = PtySession {
             master: pair.master,
             writer,
+            child,
             alive,
             tmux_session: true,
         };
@@ -293,7 +296,7 @@ impl PtyManager {
         }
         cmd.env_remove("CLAUDECODE");
 
-        let _child = pair
+        let child = pair
             .slave
             .spawn_command(cmd)
             .map_err(|e| format!("failed to spawn {}: {}", program, e))?;
@@ -345,6 +348,7 @@ impl PtyManager {
         let session = PtySession {
             master: pair.master,
             writer,
+            child,
             alive,
             tmux_session: false,
         };
@@ -429,7 +433,14 @@ impl PtyManager {
 
     /// Close a session. For tmux-backed sessions, also kills the tmux session.
     pub fn close_session(&mut self, session_id: Uuid) -> Result<(), String> {
-        let session = self.sessions.remove(&session_id);
+        let mut session = self.sessions.remove(&session_id);
+
+        if let Some(s) = session.as_mut() {
+            if !matches!(s.child.try_wait(), Ok(Some(_))) {
+                let _ = s.child.kill();
+                let _ = s.child.wait();
+            }
+        }
 
         if let Some(s) = &session {
             if s.tmux_session {
@@ -488,6 +499,47 @@ mod tests {
         while Instant::now() < deadline {
             let log = fs::read_to_string(log_path).unwrap_or_default();
             if log.contains(needle) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        false
+    }
+
+    #[cfg(unix)]
+    fn wait_for_pid_file(pid_path: &Path) -> u32 {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if let Ok(pid) = fs::read_to_string(pid_path)
+                .ok()
+                .and_then(|contents| contents.trim().parse::<u32>().ok())
+                .ok_or(())
+            {
+                return pid;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        panic!("timed out waiting for pid file at {}", pid_path.display());
+    }
+
+    #[cfg(unix)]
+    fn process_is_alive(pid: u32) -> bool {
+        std::process::Command::new("kill")
+            .arg("-0")
+            .arg(pid.to_string())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    #[cfg(unix)]
+    fn wait_for_process_exit(pid: u32) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            if !process_is_alive(pid) {
                 return true;
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -576,6 +628,57 @@ mod tests {
         assert!(wait_for_log_entry(&log_path, "attach-session"));
 
         let _ = manager.close_session(session_id);
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_close_session_kills_direct_child_that_ignores_sighup() {
+        let temp_dir = make_temp_dir("close-session-kills-child");
+        let script_path = temp_dir.join("ignore-sighup.sh");
+        let pid_path = temp_dir.join("child.pid");
+
+        fs::write(
+            &script_path,
+            format!(
+                "echo $$ > '{}'\ntrap '' HUP\nwhile true; do sleep 1; done\n",
+                pid_path.display()
+            ),
+        )
+        .unwrap();
+
+        let mut manager = PtyManager::new();
+        let session_id = Uuid::new_v4();
+        manager
+            .spawn_command(
+                session_id,
+                "/bin/sh",
+                &[script_path.to_str().unwrap()],
+                NoopEmitter::new(),
+            )
+            .expect("spawn should succeed");
+
+        let pid = wait_for_pid_file(&pid_path);
+        assert!(
+            process_is_alive(pid),
+            "test child should be running before close_session"
+        );
+
+        manager.close_session(session_id).unwrap();
+
+        let exited = wait_for_process_exit(pid);
+        if !exited {
+            let _ = std::process::Command::new("kill")
+                .arg("-9")
+                .arg(pid.to_string())
+                .status();
+        }
+
+        assert!(
+            exited,
+            "close_session should terminate a PTY child even if it ignores SIGHUP"
+        );
+
         let _ = fs::remove_dir_all(&temp_dir);
     }
 }
