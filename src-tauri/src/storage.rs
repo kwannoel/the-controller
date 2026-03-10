@@ -178,8 +178,10 @@ impl Storage {
     /// Migrate worktree directories from UUID-based to name-based paths.
     ///
     /// Renames `worktrees/{project_uuid}/` to `worktrees/{project_name}/`
-    /// and updates all `worktree_path` entries in the project's sessions.
-    /// No-op if the UUID directory doesn't exist (already migrated or no worktrees).
+    /// and updates all `worktree_path` entries in the project's sessions. If
+    /// the directory rename already happened, stale UUID-based session paths
+    /// are still repaired on the next startup. No-op only when neither the UUID
+    /// nor name-based directory exists.
     pub fn migrate_worktree_paths(&self, project: &Project) -> std::io::Result<()> {
         let uuid_dir = self.base_dir.join("worktrees").join(project.id.to_string());
         let name_dir = self.base_dir.join("worktrees").join(&project.name);
