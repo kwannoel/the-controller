@@ -548,7 +548,12 @@ pub fn create_session(
     // Build initial prompt: explicit prompt takes priority, then GitHub issue context
     let initial_prompt = initial_prompt.or_else(|| {
         github_issue.as_ref().map(|issue| {
-            crate::session_args::build_issue_prompt(issue.number, &issue.title, &issue.url, background)
+            crate::session_args::build_issue_prompt(
+                issue.number,
+                &issue.title,
+                &issue.url,
+                background,
+            )
         })
     });
 
@@ -669,7 +674,9 @@ pub async fn stage_session_inplace(
     // Extract data under a short-lived storage lock to avoid deadlock with pty_manager
     let (repo_path, branch, worktree_path) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+        let project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
 
         if project.name != "the-controller" {
             return Err("Staging is only supported for the-controller".to_string());
@@ -703,11 +710,9 @@ pub async fn stage_session_inplace(
     // 1. Ensure worktree is clean — prompt Claude to commit if needed
     {
         let wt = worktree_path.clone();
-        let is_clean = tokio::task::spawn_blocking(move || {
-            WorktreeManager::is_worktree_clean(&wt)
-        })
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
+        let is_clean = tokio::task::spawn_blocking(move || WorktreeManager::is_worktree_clean(&wt))
+            .await
+            .map_err(|e| format!("Task failed: {}", e))??;
 
         if !is_clean {
             let prompt = "\nYou have uncommitted changes. Please commit all your work now.\r";
@@ -734,7 +739,9 @@ pub async fn stage_session_inplace(
                 }
             }
             if !committed {
-                return Err("Timed out waiting for commit. Please commit manually and retry.".to_string());
+                return Err(
+                    "Timed out waiting for commit. Please commit manually and retry.".to_string(),
+                );
             }
         }
     }
@@ -742,35 +749,29 @@ pub async fn stage_session_inplace(
     // 2. Rebase onto main if needed
     {
         let rp = repo_path.clone();
-        let main_branch = tokio::task::spawn_blocking(move || {
-            WorktreeManager::detect_main_branch(&rp)
-        })
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
+        let main_branch =
+            tokio::task::spawn_blocking(move || WorktreeManager::detect_main_branch(&rp))
+                .await
+                .map_err(|e| format!("Task failed: {}", e))??;
 
         let rp = repo_path.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            WorktreeManager::sync_main(&rp)
-        })
-        .await;
+        let _ = tokio::task::spawn_blocking(move || WorktreeManager::sync_main(&rp)).await;
 
         let rp = repo_path.clone();
         let br = branch.clone();
         let mb = main_branch.clone();
-        let is_behind = tokio::task::spawn_blocking(move || {
-            WorktreeManager::is_branch_behind(&rp, &br, &mb)
-        })
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
+        let is_behind =
+            tokio::task::spawn_blocking(move || WorktreeManager::is_branch_behind(&rp, &br, &mb))
+                .await
+                .map_err(|e| format!("Task failed: {}", e))??;
 
         if is_behind {
             let wt = worktree_path.clone();
             let mb = main_branch.clone();
-            let rebase_clean = tokio::task::spawn_blocking(move || {
-                WorktreeManager::rebase_onto(&wt, &mb)
-            })
-            .await
-            .map_err(|e| format!("Task failed: {}", e))??;
+            let rebase_clean =
+                tokio::task::spawn_blocking(move || WorktreeManager::rebase_onto(&wt, &mb))
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))??;
 
             if !rebase_clean {
                 // Rebase has conflicts — ask Claude to resolve
@@ -780,13 +781,15 @@ pub async fn stage_session_inplace(
                     let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
                 }
 
-                let _ = app_handle.emit("staging-status", "Rebase conflicts. Claude is resolving...");
+                let _ =
+                    app_handle.emit("staging-status", "Rebase conflicts. Claude is resolving...");
 
                 // Poll until rebase is no longer in progress
                 let max_polls = MAX_REBASE_WAIT_SECS / REBASE_POLL_INTERVAL_SECS;
                 let mut resolved = false;
                 for _ in 0..max_polls {
-                    tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS))
+                        .await;
                     let wt_check = worktree_path.clone();
                     let still_rebasing = tokio::task::spawn_blocking(move || {
                         WorktreeManager::is_rebase_in_progress(&wt_check)
@@ -808,14 +811,15 @@ pub async fn stage_session_inplace(
     // 3. Proceed with staging — re-acquire storage lock
     let rp = repo_path.clone();
     let br = branch.clone();
-    let original_branch = tokio::task::spawn_blocking(move || {
-        WorktreeManager::stage_inplace(&rp, &br)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))??;
+    let original_branch =
+        tokio::task::spawn_blocking(move || WorktreeManager::stage_inplace(&rp, &br))
+            .await
+            .map_err(|e| format!("Task failed: {}", e))??;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
 
     let staging_branch = format!("staging/{}", branch);
     project.staged_session = Some(StagedSession {
@@ -830,14 +834,13 @@ pub async fn stage_session_inplace(
 }
 
 #[tauri::command]
-pub fn unstage_session_inplace(
-    state: State<AppState>,
-    project_id: String,
-) -> Result<(), String> {
+pub fn unstage_session_inplace(state: State<AppState>, project_id: String) -> Result<(), String> {
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
 
     let staged = project
         .staged_session
@@ -856,14 +859,13 @@ pub fn unstage_session_inplace(
 
 #[tauri::command]
 pub fn get_repo_head(repo_path: String) -> Result<(String, String), String> {
-    let repo = git2::Repository::open(&repo_path)
-        .map_err(|e| format!("Failed to open repo: {}", e))?;
+    let repo =
+        git2::Repository::open(&repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
-    let head = repo.head().map_err(|e| format!("Failed to get HEAD: {}", e))?;
-    let branch = head
-        .shorthand()
-        .unwrap_or("HEAD")
-        .to_string();
+    let head = repo
+        .head()
+        .map_err(|e| format!("Failed to get HEAD: {}", e))?;
+    let branch = head.shorthand().unwrap_or("HEAD").to_string();
 
     let commit = head
         .peel_to_commit()
@@ -1593,7 +1595,9 @@ pub async fn configure_maintainer(
     validate_maintainer_interval(interval_minutes)?;
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_id)
+        .map_err(|e| e.to_string())?;
     project.maintainer.enabled = enabled;
     project.maintainer.interval_minutes = interval_minutes;
     project.maintainer.github_repo = github_repo;
@@ -1609,7 +1613,9 @@ pub async fn configure_auto_worker(
 ) -> Result<(), String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+    let mut project = storage
+        .load_project(project_id)
+        .map_err(|e| e.to_string())?;
     project.auto_worker.enabled = enabled;
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
@@ -1654,8 +1660,13 @@ pub async fn trigger_maintainer_check(
 
     let (repo_path, github_repo) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage.load_project(project_id).map_err(|e| e.to_string())?;
-        (project.repo_path.clone(), project.maintainer.github_repo.clone())
+        let project = storage
+            .load_project(project_id)
+            .map_err(|e| e.to_string())?;
+        (
+            project.repo_path.clone(),
+            project.maintainer.github_repo.clone(),
+        )
     };
 
     let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "running");
@@ -1708,7 +1719,9 @@ pub async fn get_maintainer_issues(
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let (repo_path, github_repo) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+        let project = storage
+            .load_project(project_id)
+            .map_err(|e| e.to_string())?;
         (
             project.repo_path.clone(),
             project.maintainer.github_repo.clone(),
@@ -1726,7 +1739,9 @@ pub async fn get_maintainer_issue_detail(
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let (repo_path, github_repo) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+        let project = storage
+            .load_project(project_id)
+            .map_err(|e| e.to_string())?;
         (
             project.repo_path.clone(),
             project.maintainer.github_repo.clone(),
@@ -1874,7 +1889,11 @@ mod tests {
     fn test_next_session_label_empty() {
         let sessions: Vec<SessionConfig> = vec![];
         let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-1-"), "expected session-1-<uuid>, got {}", label);
+        assert!(
+            label.starts_with("session-1-"),
+            "expected session-1-<uuid>, got {}",
+            label
+        );
         assert_eq!(label.len(), "session-1-".len() + 6);
     }
 
@@ -1907,7 +1926,11 @@ mod tests {
             },
         ];
         let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-3-"), "expected session-3-<uuid>, got {}", label);
+        assert!(
+            label.starts_with("session-3-"),
+            "expected session-3-<uuid>, got {}",
+            label
+        );
     }
 
     #[test]
@@ -1953,7 +1976,11 @@ mod tests {
         ];
         // Max is session-3, so next is session-4
         let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-4-"), "expected session-4-<uuid>, got {}", label);
+        assert!(
+            label.starts_with("session-4-"),
+            "expected session-4-<uuid>, got {}",
+            label
+        );
     }
 
     #[test]
@@ -1972,7 +1999,11 @@ mod tests {
             auto_worker_session: false,
         }];
         let label = next_session_label(&sessions);
-        assert!(label.starts_with("session-4-"), "expected session-4-<uuid>, got {}", label);
+        assert!(
+            label.starts_with("session-4-"),
+            "expected session-4-<uuid>, got {}",
+            label
+        );
     }
 
     // --- render_agents_md tests ---
@@ -1988,6 +2019,70 @@ mod tests {
     fn test_render_agents_md_empty_name() {
         let result = render_agents_md("");
         assert!(result.starts_with("# \n"));
+    }
+
+    #[test]
+    fn test_scaffold_project_rolls_back_directory_when_github_creation_fails() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let repo_path = projects_root.path().join("gh-create-failure-test");
+        let real_git = real_git_path();
+
+        with_fake_cli_bins(|gh_path, git_path, state_dir| {
+            let state_dir_display = state_dir.display().to_string();
+            write_fake_command(
+                gh_path,
+                &format!(
+                    "if [ -f \"{state_dir_display}/gh-create-fails\" ]; then\n  echo \"gh create failed\" >&2\n  exit 1\nfi\nif [ \"$1\" = \"repo\" ] && [ \"$2\" = \"create\" ]; then\n  \"{real_git}\" -C \"$PWD\" remote add origin git@github.com:test-owner/gh-create-failure-test.git\n  touch \"{state_dir_display}/remote-created\"\n  exit 0\nfi\necho \"unexpected gh invocation: $*\" >&2\nexit 1"
+                ),
+            );
+            write_fake_command(
+                git_path,
+                "if [ \"$1\" = \"push\" ]; then\n  exit 0\nfi\necho \"unexpected git invocation: $*\" >&2\nexit 1",
+            );
+            fs::write(state_dir.join("gh-create-fails"), "").expect("mark first gh create as failed");
+
+            let error = scaffold_project(
+                state_from_ref(&app_state),
+                "gh-create-failure-test".to_string(),
+            )
+            .expect_err("gh create failure should bubble up");
+            assert!(error.contains("Failed to create GitHub repo"));
+            assert!(
+                !repo_path.exists(),
+                "repo directory should be removed after gh repo create failure"
+            );
+            assert!(
+                !state_dir.join("remote-created").exists(),
+                "gh create failure should not leave remote state behind"
+            );
+
+            let stored = app_state
+                .storage
+                .lock()
+                .unwrap()
+                .list_projects()
+                .expect("list projects after failed scaffold");
+            assert!(
+                stored.is_empty(),
+                "failed scaffold should not persist project state"
+            );
+
+            fs::remove_file(state_dir.join("gh-create-fails")).expect("allow gh create retry");
+
+            let project = scaffold_project(
+                state_from_ref(&app_state),
+                "gh-create-failure-test".to_string(),
+            )
+            .expect("retry should succeed after rollback");
+            assert_eq!(project.name, "gh-create-failure-test");
+            assert!(repo_path.exists(), "retry should recreate repo directory");
+            assert!(
+                state_dir.join("remote-created").exists(),
+                "successful retry should create the remote"
+            );
+        });
     }
 
     // --- find_main_branch_oid tests ---
