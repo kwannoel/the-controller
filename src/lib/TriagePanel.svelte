@@ -403,6 +403,7 @@
 
   .issue-card {
     flex: 1;
+    min-width: 0;
     background: #181825;
     border: 1px solid #313244;
     border-radius: 8px;
@@ -442,6 +443,8 @@
     max-height: 160px;
     overflow-y: auto;
     white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-break: break-word;
     border-top: 1px solid #313244;
     padding-top: 8px;
   }
