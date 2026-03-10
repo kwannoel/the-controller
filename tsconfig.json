@@ -17,5 +17,5 @@
     "verbatimModuleSyntax": true,
     "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "vitest-setup.ts", "e2e/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte", "vitest-setup.ts"]
 }

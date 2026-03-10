@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const SANDBOX_REPO = "noel/e2e-test-sandbox";
+export const SANDBOX_REPO = "noel/e2e-test-sandbox";
 
 export interface TestRepo {
   localPath: string;
@@ -18,7 +18,7 @@ export function setupTestRepo(): TestRepo {
   const branchName = `e2e-test-${Date.now()}`;
 
   // Clone
-  execSync(`gh repo clone ${SANDBOX_REPO} "${tempDir}" -- --depth=1`, {
+  execSync(`gh repo clone ${SANDBOX_REPO} "${tempDir}"`, {
     stdio: "inherit",
   });
 
