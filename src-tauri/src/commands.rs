@@ -584,8 +584,7 @@ pub fn set_initial_prompt(
 
 const COMMIT_POLL_INTERVAL_SECS: u64 = 3;
 const MAX_COMMIT_WAIT_SECS: u64 = 60;
-const MAX_STAGING_REBASE_RETRIES: u32 = 5;
-const MAX_REBASE_POLL_ITERATIONS: u64 = 120; // 120 * 3s = 6 minutes
+const MAX_REBASE_WAIT_SECS: u64 = 360; // 6 minutes
 
 #[tauri::command]
 pub async fn stage_session_inplace(
@@ -668,7 +667,7 @@ pub async fn stage_session_inplace(
         }
     }
 
-    // 2. Rebase onto main if needed — resolve conflicts with retries
+    // 2. Rebase onto main if needed
     {
         let rp = repo_path.clone();
         let main_branch = tokio::task::spawn_blocking(move || {
@@ -683,79 +682,54 @@ pub async fn stage_session_inplace(
         })
         .await;
 
-        let mut rebase_succeeded = false;
-        for attempt in 0..MAX_STAGING_REBASE_RETRIES {
-            let rp = repo_path.clone();
-            let br = branch.clone();
-            let mb = main_branch.clone();
-            let is_behind = tokio::task::spawn_blocking(move || {
-                WorktreeManager::is_branch_behind(&rp, &br, &mb)
-            })
-            .await
-            .map_err(|e| format!("Task failed: {}", e))??;
+        let rp = repo_path.clone();
+        let br = branch.clone();
+        let mb = main_branch.clone();
+        let is_behind = tokio::task::spawn_blocking(move || {
+            WorktreeManager::is_branch_behind(&rp, &br, &mb)
+        })
+        .await
+        .map_err(|e| format!("Task failed: {}", e))??;
 
-            if !is_behind {
-                rebase_succeeded = true;
-                break;
-            }
-
+        if is_behind {
             let wt = worktree_path.clone();
             let mb = main_branch.clone();
-            let rebase_result = tokio::task::spawn_blocking(move || {
+            let rebase_clean = tokio::task::spawn_blocking(move || {
                 WorktreeManager::rebase_onto(&wt, &mb)
             })
             .await
             .map_err(|e| format!("Task failed: {}", e))??;
 
-            if rebase_result {
-                // Rebase succeeded cleanly
-                rebase_succeeded = true;
-                break;
-            }
+            if !rebase_clean {
+                // Rebase has conflicts — ask Claude to resolve
+                let prompt = "\nThere are rebase conflicts. Please resolve all conflicts, then run `git rebase --continue`.\r";
+                {
+                    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+                    let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
+                }
 
-            // Rebase has conflicts — ask Claude to resolve
-            let prompt = "\nThere are rebase conflicts. Please resolve all conflicts, then run `git rebase --continue`.\r";
-            {
-                let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-                let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
-            }
+                let _ = app_handle.emit("staging-status", "Rebase conflicts. Claude is resolving...");
 
-            let _ = app_handle.emit(
-                "staging-status",
-                format!(
-                    "Rebase conflicts (attempt {}/{}). Claude is resolving...",
-                    attempt + 1,
-                    MAX_STAGING_REBASE_RETRIES
-                ),
-            );
-
-            // Poll until rebase is no longer in progress (bounded)
-            let mut rebase_resolved = false;
-            for _ in 0..MAX_REBASE_POLL_ITERATIONS {
-                tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS)).await;
-                let wt_check = worktree_path.clone();
-                let still_rebasing = tokio::task::spawn_blocking(move || {
-                    WorktreeManager::is_rebase_in_progress(&wt_check)
-                })
-                .await
-                .map_err(|e| format!("Task failed: {}", e))?;
-                if !still_rebasing {
-                    rebase_resolved = true;
-                    break;
+                // Poll until rebase is no longer in progress
+                let max_polls = MAX_REBASE_WAIT_SECS / REBASE_POLL_INTERVAL_SECS;
+                let mut resolved = false;
+                for _ in 0..max_polls {
+                    tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS)).await;
+                    let wt_check = worktree_path.clone();
+                    let still_rebasing = tokio::task::spawn_blocking(move || {
+                        WorktreeManager::is_rebase_in_progress(&wt_check)
+                    })
+                    .await
+                    .map_err(|e| format!("Task failed: {}", e))?;
+                    if !still_rebasing {
+                        resolved = true;
+                        break;
+                    }
+                }
+                if !resolved {
+                    return Err("Timed out waiting for rebase conflict resolution.".to_string());
                 }
             }
-            if !rebase_resolved {
-                return Err("Timed out waiting for rebase conflict resolution.".to_string());
-            }
-
-            // Loop back — will check is_behind again
-        }
-
-        if !rebase_succeeded {
-            return Err(format!(
-                "Rebase failed after {} attempts due to recurring conflicts",
-                MAX_STAGING_REBASE_RETRIES
-            ));
         }
     }
 
