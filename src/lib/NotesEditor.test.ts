@@ -140,12 +140,12 @@ describe("NotesEditor", () => {
   });
 
   it("cycles edit, preview, and split modes through the notes hotkey action", async () => {
-    vi.mocked(invoke).mockImplementation((command: string) => {
-      if (command === "read_note") {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
         return Promise.resolve("# Heading\n\nBody copy");
       }
 
-      if (command === "write_note") {
+      if (commandName === "write_note") {
         return Promise.resolve(undefined);
       }
 
