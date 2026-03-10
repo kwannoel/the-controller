@@ -43,6 +43,10 @@ impl IssueCache {
         );
     }
 
+    pub fn invalidate(&mut self, repo_path: &str) {
+        self.entries.remove(repo_path);
+    }
+
     /// Add a newly created issue to the cache for a repo (if cached).
     pub fn add_issue(&mut self, repo_path: &str, issue: GithubIssue) {
         if let Some(entry) = self.entries.get_mut(repo_path) {
@@ -230,6 +234,16 @@ mod tests {
         cache.remove_label("/repo", 1, "in-progress");
         let entry = cache.get("/repo").unwrap();
         assert!(entry.issues[0].labels.is_empty());
+    }
+
+    #[test]
+    fn test_issue_cache_invalidate_removes_repo_entry() {
+        let mut cache = IssueCache::new();
+        cache.insert("/repo".to_string(), vec![]);
+
+        cache.invalidate("/repo");
+
+        assert!(cache.get("/repo").is_none());
     }
 
     #[test]
