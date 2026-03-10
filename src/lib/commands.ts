@@ -109,7 +109,7 @@ export const commands: CommandDef[] = [
   { id: "create-note", key: "n", section: "Notes", description: "Create new note", mode: "notes" },
   { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note", mode: "notes" },
   { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note", mode: "notes" },
-  { id: "toggle-note-preview", key: "p", section: "Notes", description: "Toggle edit/preview", mode: "notes" },
+  { id: "toggle-note-preview", key: "p", section: "Notes", description: "Cycle edit / preview / split", mode: "notes" },
 ];
 
 // Section order for help display
