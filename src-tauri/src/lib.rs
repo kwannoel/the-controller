@@ -10,6 +10,7 @@ pub mod maintainer;
 pub mod models;
 pub mod notes;
 pub mod pty_manager;
+pub mod secure_env;
 pub mod session_args;
 pub mod skills;
 pub mod state;
