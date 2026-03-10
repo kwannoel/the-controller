@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { command } from "$lib/backend";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
+import userEvent from "@testing-library/user-event";
 import { tick } from "svelte";
 import { get } from "svelte/store";
 import NotesEditor from "./NotesEditor.svelte";
@@ -112,7 +113,7 @@ describe("NotesEditor", () => {
     expect(await screen.findByTestId("note-code-editor")).toBeInTheDocument();
   });
 
-  it("keeps focus in the editor on a single escape and returns to the note on double escape", async () => {
+  it("returns to the note on a single escape when vim is already in normal mode", async () => {
     vi.mocked(command).mockImplementation((commandName: string) => {
       if (commandName === "read_note") {
         return Promise.resolve("# Heading\n\nBody copy");
@@ -128,14 +129,76 @@ describe("NotesEditor", () => {
     focusTarget.set({ type: "notes-editor", projectId: "project-1" });
 
     render(NotesEditor);
+    const user = userEvent.setup();
 
     const editor = await screen.findByTestId("note-code-editor");
     const textbox = within(editor).getByRole("textbox");
+    textbox.focus();
 
-    await fireEvent.keyDown(textbox, { key: "Escape" });
+    await user.keyboard("{Escape}");
+
+    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
+  });
+
+  it("keeps escape in the editor when leaving insert mode, then exits on the next normal-mode escape", async () => {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
+        return Promise.resolve("# Heading\n\nBody copy");
+      }
+
+      if (commandName === "write_note") {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(undefined);
+    });
+
+    focusTarget.set({ type: "notes-editor", projectId: "project-1" });
+
+    render(NotesEditor);
+    const user = userEvent.setup();
+
+    const editor = await screen.findByTestId("note-code-editor");
+    const textbox = within(editor).getByRole("textbox");
+    textbox.focus();
+
+    await user.keyboard("i");
+    await user.keyboard("{Escape}");
     expect(get(focusTarget)).toEqual({ type: "notes-editor", projectId: "project-1" });
 
-    await fireEvent.keyDown(textbox, { key: "Escape" });
+    await new Promise((resolve) => setTimeout(resolve, 350));
+
+    await user.keyboard("{Escape}");
+    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
+  });
+
+  it("keeps escape in the editor when leaving visual mode, then exits on the next normal-mode escape", async () => {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
+        return Promise.resolve("# Heading\n\nBody copy");
+      }
+
+      if (commandName === "write_note") {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(undefined);
+    });
+
+    focusTarget.set({ type: "notes-editor", projectId: "project-1" });
+
+    render(NotesEditor);
+    const user = userEvent.setup();
+
+    const editor = await screen.findByTestId("note-code-editor");
+    const textbox = within(editor).getByRole("textbox");
+    textbox.focus();
+
+    await user.keyboard("v");
+    await user.keyboard("{Escape}");
+    expect(get(focusTarget)).toEqual({ type: "notes-editor", projectId: "project-1" });
+
+    await user.keyboard("{Escape}");
     expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
   });
 

@@ -2,19 +2,23 @@
   import { EditorState } from "@codemirror/state";
   import { EditorView, drawSelection } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
-  import { vim } from "@replit/codemirror-vim";
+  import { getCM, vim } from "@replit/codemirror-vim";
+
+  export type VimMode = "normal" | "insert" | "visual" | "replace";
 
   interface Props {
     value: string;
     focused?: boolean;
     onChange?: (value: string) => void;
-    onEscape?: () => void;
+    onEscape?: (mode: VimMode | string) => void;
+    onModeChange?: (mode: VimMode | string) => void;
   }
 
-  let { value, focused = false, onChange, onEscape }: Props = $props();
+  let { value, focused = false, onChange, onEscape, onModeChange }: Props = $props();
 
   let hostEl: HTMLDivElement | undefined;
   let view: EditorView | null = null;
+  let currentMode: VimMode | string = "normal";
 
   function buildState(doc: string) {
     return EditorState.create({
@@ -27,7 +31,7 @@
         EditorView.domEventHandlers({
           keydown: (event) => {
             if (event.key === "Escape") {
-              onEscape?.();
+              onEscape?.(currentMode);
             }
             return false;
           },
@@ -49,7 +53,19 @@
       parent: hostEl,
     });
 
+    currentMode = "normal";
+    onModeChange?.(currentMode);
+
+    const cm = getCM(view);
+    const handleModeChange = (event: { mode?: string }) => {
+      currentMode = event.mode ?? "normal";
+      onModeChange?.(currentMode);
+    };
+
+    cm?.on("vim-mode-change", handleModeChange);
+
     return () => {
+      cm?.off("vim-mode-change", handleModeChange);
       view?.destroy();
       view = null;
     };

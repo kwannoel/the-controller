@@ -3,14 +3,14 @@
   import { untrack } from "svelte";
   import { command } from "$lib/backend";
   import { activeNote, noteViewMode, projects, focusTarget, hotkeyAction, type NoteViewMode, type Project, type FocusTarget } from "./stores";
-  import CodeMirrorNoteEditor from "./CodeMirrorNoteEditor.svelte";
+  import CodeMirrorNoteEditor, { type VimMode } from "./CodeMirrorNoteEditor.svelte";
   import { renderMarkdown } from "./markdown";
 
   let content = $state("");
   let savedContent = $state("");
   let loading = $state(true);
   let saveTimer: ReturnType<typeof setTimeout> | null = $state(null);
-  let lastEditorEscapeAt = $state(0);
+  let editorMode = $state<VimMode | string>("normal");
 
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
@@ -139,18 +139,14 @@
     scheduleSave();
   }
 
-  function handleEditorEscape() {
-    const now = Date.now();
-    if (now - lastEditorEscapeAt < 300) {
-      lastEditorEscapeAt = 0;
-      void saveNow();
-      if (currentNote) {
-        focusTarget.set({ type: "note", filename: currentNote.filename, projectId: currentNote.projectId });
-      }
-      return;
-    }
+  function handleEditorEscape(mode: VimMode | string) {
+    editorMode = mode;
+    if (editorMode !== "normal") return;
 
-    lastEditorEscapeAt = now;
+    void saveNow();
+    if (currentNote) {
+      focusTarget.set({ type: "note", filename: currentNote.filename, projectId: currentNote.projectId });
+    }
   }
 
   function setViewMode(mode: NoteViewMode) {
@@ -204,6 +200,9 @@
           value={content}
           focused={editorFocused}
           onChange={handleEditorChange}
+          onModeChange={(mode) => {
+            editorMode = mode;
+          }}
           onEscape={handleEditorEscape}
         />
       {/if}
