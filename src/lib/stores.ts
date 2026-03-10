@@ -146,6 +146,13 @@ export type AutoWorkerStatus = {
 };
 export const autoWorkerStatuses = writable<Map<string, AutoWorkerStatus>>(new Map());
 
+export interface WorkerReport {
+  issue_number: number;
+  title: string;
+  comment_body: string;
+  updated_at: string;
+}
+
 // Hotkey state
 export type TriageCategory = "untriaged" | "triaged";
 

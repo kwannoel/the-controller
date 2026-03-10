@@ -336,8 +336,44 @@ fn kill_session(state: &AppState, session: &ActiveSession) {
     cleanup_session(state, session);
 }
 
+fn json_has_results(json: &str) -> bool {
+    serde_json::from_str::<Vec<serde_json::Value>>(json)
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+}
+
+fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
+    let search_query = format!("#{}", issue_number);
+    let output = Command::new("gh")
+        .args([
+            "pr", "list",
+            "--search", &search_query,
+            "--state", "merged",
+            "--json", "number",
+            "--limit", "1",
+        ])
+        .current_dir(repo_path)
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            json_has_results(&String::from_utf8_lossy(&o.stdout))
+        }
+        Ok(o) => {
+            eprintln!("Auto-worker: gh pr list failed for #{}: {}", issue_number, String::from_utf8_lossy(&o.stderr));
+            false
+        }
+        Err(e) => {
+            eprintln!("Auto-worker: failed to run gh pr list for #{}: {}", issue_number, e);
+            false
+        }
+    }
+}
+
 fn mark_issue_finished(session: &ActiveSession) {
-    let _ = add_label_sync(&session.repo_path, session.issue_number, "finished-by-worker");
+    if has_merged_pr_sync(&session.repo_path, session.issue_number) {
+        let _ = add_label_sync(&session.repo_path, session.issue_number, "finished-by-worker");
+    }
     let _ = remove_label_sync(&session.repo_path, session.issue_number, "in-progress");
 }
 
@@ -462,5 +498,22 @@ mod tests {
 
         assert_eq!(issue_number, Some(289));
         assert_eq!(issue_title, Some("Dead issue_title field"));
+    }
+
+    #[test]
+    fn json_has_results_with_result() {
+        let json = r#"[{"number":42}]"#;
+        assert!(json_has_results(json));
+    }
+
+    #[test]
+    fn json_has_results_empty() {
+        let json = "[]";
+        assert!(!json_has_results(json));
+    }
+
+    #[test]
+    fn json_has_results_invalid_json() {
+        assert!(!json_has_results("not json"));
     }
 }

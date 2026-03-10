@@ -1444,6 +1444,11 @@ pub async fn configure_auto_worker(
 }
 
 #[tauri::command]
+pub async fn get_worker_reports(repo_path: String) -> Result<Vec<github::WorkerReport>, String> {
+    github::get_worker_reports(repo_path).await
+}
+
+#[tauri::command]
 pub async fn get_maintainer_status(
     state: State<'_, AppState>,
     project_id: String,

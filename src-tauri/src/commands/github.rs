@@ -3,6 +3,14 @@ use tauri::State;
 use crate::models::{AssignedIssue, GithubIssue};
 use crate::state::AppState;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WorkerReport {
+    pub issue_number: u64,
+    pub title: String,
+    pub comment_body: String,
+    pub updated_at: String,
+}
+
 /// Parse a GitHub remote URL into an "owner/repo" string.
 /// Handles SSH (git@github.com:owner/repo.git), HTTPS, and HTTP URLs.
 fn parse_github_nwo(url: &str) -> Result<String, String> {
@@ -412,6 +420,58 @@ pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<Assign
         .collect();
 
     Ok(assigned)
+}
+
+pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerReport>, String> {
+    let nwo = extract_github_repo_async(repo_path).await?;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue", "list",
+            "--repo", &nwo,
+            "--label", "finished-by-worker",
+            "--state", "all",
+            "--json", "number,title,comments,updatedAt",
+            "--limit", "50",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue list failed: {}", stderr));
+    }
+
+    let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+
+    let reports: Vec<WorkerReport> = raw
+        .into_iter()
+        .filter_map(|issue| {
+            let number = issue["number"].as_u64()?;
+            let title = issue["title"].as_str()?.to_string();
+            let updated_at = issue["updatedAt"].as_str().unwrap_or("").to_string();
+            let body = issue["comments"]
+                .as_array()
+                .and_then(|comments| {
+                    comments.iter().rev().find_map(|c| {
+                        let text = c["body"].as_str()?;
+                        text.contains("<!-- auto-worker-report -->").then_some(text)
+                    })
+                })
+                .unwrap_or("")
+                .to_string();
+            Some(WorkerReport {
+                issue_number: number,
+                title,
+                comment_body: body,
+                updated_at,
+            })
+        })
+        .collect();
+
+    Ok(reports)
 }
 
 #[cfg(test)]
