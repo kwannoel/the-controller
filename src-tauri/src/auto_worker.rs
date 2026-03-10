@@ -742,7 +742,7 @@ fn kill_session(state: &AppState, session: &ActiveSession) {
     if let Ok(mut pty_manager) = state.pty_manager.lock() {
         let _ = pty_manager.close_session(session.session_id);
     }
-    let _ = remove_label_sync(&session.repo_path, session.issue_number, LABEL_IN_PROGRESS);
+    mark_issue_finished(session);
     cleanup_session(state, session);
 }
 
@@ -818,11 +818,11 @@ fn cleanup_startup_worker(
         .get(&candidate.repo_path)
         .map(|issues| issues.contains(&candidate.issue_number))
         .unwrap_or(false);
-    if !preserve_label {
-        let _ = remove_label_sync(&candidate.repo_path, candidate.issue_number, LABEL_IN_PROGRESS);
-    }
 
     let session = startup_candidate_to_active_session(candidate);
+    if !preserve_label {
+        mark_issue_finished(&session);
+    }
     cleanup_session(state, &session);
 }
 
