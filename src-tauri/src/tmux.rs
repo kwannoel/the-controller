@@ -1,10 +1,10 @@
+#[cfg(test)]
+use std::cell::RefCell;
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
-#[cfg(test)]
-use std::sync::{Mutex, OnceLock};
 use uuid::Uuid;
 
 const TMUX_CANDIDATES: [&str; 3] = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "tmux"];
@@ -20,7 +20,7 @@ impl TmuxManager {
 
     pub fn tmux_binary() -> Option<String> {
         #[cfg(test)]
-        if let Some(binary) = test_tmux_binary_override().lock().unwrap().clone() {
+        if let Some(binary) = test_tmux_binary_override(|override_bin| override_bin.clone()) {
             return Some(binary);
         }
 
@@ -278,9 +278,13 @@ fn is_executable_file(path: &Path) -> bool {
 }
 
 #[cfg(test)]
-fn test_tmux_binary_override() -> &'static Mutex<Option<String>> {
-    static TMUX_BINARY_OVERRIDE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
-    TMUX_BINARY_OVERRIDE.get_or_init(|| Mutex::new(None))
+thread_local! {
+    static TMUX_BINARY_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn test_tmux_binary_override<R>(f: impl FnOnce(&mut Option<String>) -> R) -> R {
+    TMUX_BINARY_OVERRIDE.with(|override_bin| f(&mut override_bin.borrow_mut()))
 }
 
 #[cfg(test)]
@@ -291,15 +295,17 @@ pub(crate) struct TestTmuxBinaryGuard {
 #[cfg(test)]
 impl Drop for TestTmuxBinaryGuard {
     fn drop(&mut self) {
-        *test_tmux_binary_override().lock().unwrap() = self.previous.take();
+        test_tmux_binary_override(|override_bin| *override_bin = self.previous.take());
     }
 }
 
 #[cfg(test)]
 pub(crate) fn set_test_tmux_binary(binary: Option<&str>) -> TestTmuxBinaryGuard {
-    let mut override_bin = test_tmux_binary_override().lock().unwrap();
-    let previous = override_bin.clone();
-    *override_bin = binary.map(str::to_string);
+    let previous = test_tmux_binary_override(|override_bin| {
+        let previous = override_bin.clone();
+        *override_bin = binary.map(str::to_string);
+        previous
+    });
     TestTmuxBinaryGuard { previous }
 }
 
