@@ -109,6 +109,25 @@ fn cleanup_failed_session_spawn(
     Ok(())
 }
 
+async fn wait_for_merge_rebase_resolution<F, Fut>(
+    mut is_rebase_in_progress: F,
+    max_polls: u64,
+    poll_interval: std::time::Duration,
+) -> Result<(), String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<bool, String>>,
+{
+    for _ in 0..max_polls {
+        tokio::time::sleep(poll_interval).await;
+        if !is_rebase_in_progress().await? {
+            return Ok(());
+        }
+    }
+
+    Err("Timed out waiting for merge conflict resolution.".to_string())
+}
+
 const DEFAULT_AGENTS_MD: &str = r#"# {name}
 
 One-line project description.
@@ -1506,6 +1525,7 @@ pub fn delete_note(
 
 const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;
+const MAX_MERGE_REBASE_WAIT_SECS: u64 = 600; // 10 minutes
 
 #[tauri::command]
 pub async fn merge_session_branch(
@@ -1576,21 +1596,24 @@ pub async fn merge_session_branch(
                     ),
                 );
 
-                // Poll until rebase is no longer in progress
+                // Poll until rebase is no longer in progress, but stop waiting
+                // eventually so the frontend can recover if Claude never resolves it.
                 let wt_poll = worktree_path.clone();
-                loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS))
-                        .await;
-                    let wt_check = wt_poll.clone();
-                    let still_rebasing = tokio::task::spawn_blocking(move || {
-                        WorktreeManager::is_rebase_in_progress(&wt_check)
-                    })
-                    .await
-                    .map_err(|e| format!("Task failed: {}", e))?;
-                    if !still_rebasing {
-                        break;
-                    }
-                }
+                wait_for_merge_rebase_resolution(
+                    move || {
+                        let wt_check = wt_poll.clone();
+                        async move {
+                            tokio::task::spawn_blocking(move || {
+                                WorktreeManager::is_rebase_in_progress(&wt_check)
+                            })
+                            .await
+                            .map_err(|e| format!("Task failed: {}", e))
+                        }
+                    },
+                    MAX_MERGE_REBASE_WAIT_SECS / REBASE_POLL_INTERVAL_SECS,
+                    std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS),
+                )
+                .await?;
 
                 // Loop back — will sync main and rebase again
                 continue;
@@ -1896,6 +1919,7 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
@@ -1980,6 +2004,56 @@ mod tests {
         }
 
         result
+    }
+
+    #[test]
+    fn test_wait_for_merge_rebase_resolution_times_out() {
+        run_async_test(async {
+            let checks = Arc::new(AtomicUsize::new(0));
+            let checks_for_closure = Arc::clone(&checks);
+
+            let result = wait_for_merge_rebase_resolution(
+                move || {
+                    let checks_for_closure = Arc::clone(&checks_for_closure);
+                    async move {
+                        checks_for_closure.fetch_add(1, Ordering::SeqCst);
+                        Ok(true)
+                    }
+                },
+                2,
+                Duration::from_millis(1),
+            )
+            .await;
+            assert_eq!(
+                result.expect_err("wait should time out"),
+                "Timed out waiting for merge conflict resolution."
+            );
+            assert_eq!(checks.load(Ordering::SeqCst), 2);
+        });
+    }
+
+    #[test]
+    fn test_wait_for_merge_rebase_resolution_stops_once_rebase_clears() {
+        run_async_test(async {
+            let checks = Arc::new(AtomicUsize::new(0));
+            let checks_for_closure = Arc::clone(&checks);
+
+            let result = wait_for_merge_rebase_resolution(
+                move || {
+                    let checks_for_closure = Arc::clone(&checks_for_closure);
+                    async move {
+                        let attempt = checks_for_closure.fetch_add(1, Ordering::SeqCst);
+                        Ok(attempt == 0)
+                    }
+                },
+                5,
+                Duration::from_millis(1),
+            )
+            .await;
+
+            assert!(result.is_ok(), "wait should stop after rebase clears");
+            assert_eq!(checks.load(Ordering::SeqCst), 2);
+        });
     }
 
     // --- validate_project_name tests ---
