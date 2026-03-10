@@ -377,18 +377,12 @@ impl AutoWorkerScheduler {
             }
         }
 
-        let reconciliation = reconcile_startup_workers(candidates);
-        let protected_issues = protected_issue_numbers_by_repo(&reconciliation.restore);
-
-        Self::cleanup_stale_labels(app_handle, &protected_issues);
-
-        for candidate in &reconciliation.cleanup {
-            cleanup_startup_worker(&state, candidate, &protected_issues);
-        }
-
         let mut active_sessions = HashMap::new();
+        let mut attached_session_ids = HashSet::new();
 
-        for candidate in reconciliation.restore {
+        let reconciliation = reconcile_startup_workers(candidates);
+
+        for candidate in &reconciliation.restore {
             let restored = startup_candidate_to_active_session(&candidate);
             let attach_result = {
                 let mut pty_manager = match state.pty_manager.lock() {
@@ -415,7 +409,17 @@ impl AutoWorkerScheduler {
                 continue;
             }
 
+            attached_session_ids.insert(candidate.session_id);
             active_sessions.insert(candidate.project_id, restored);
+        }
+
+        let finalized = finalize_startup_restoration(reconciliation, &attached_session_ids);
+        let protected_issues = protected_issue_numbers_by_repo(&finalized.restore);
+
+        Self::cleanup_stale_labels(app_handle, &protected_issues);
+
+        for candidate in &finalized.cleanup {
+            cleanup_startup_worker(&state, candidate, &protected_issues);
         }
 
         active_sessions
@@ -470,6 +474,26 @@ fn reconcile_startup_workers(candidates: Vec<StartupWorkerCandidate>) -> Startup
     }
 
     reconciliation
+}
+
+fn finalize_startup_restoration(
+    reconciliation: StartupReconciliation,
+    attached_session_ids: &HashSet<Uuid>,
+) -> StartupReconciliation {
+    let mut finalized = StartupReconciliation {
+        restore: Vec::new(),
+        cleanup: reconciliation.cleanup,
+    };
+
+    for candidate in reconciliation.restore {
+        if attached_session_ids.contains(&candidate.session_id) {
+            finalized.restore.push(candidate);
+        } else {
+            finalized.cleanup.push(candidate);
+        }
+    }
+
+    finalized
 }
 
 fn protected_issue_numbers_by_repo(candidates: &[StartupWorkerCandidate]) -> HashMap<String, HashSet<u64>> {
@@ -1022,5 +1046,30 @@ mod tests {
 
         assert_eq!(reconciliation.cleanup.len(), 1);
         assert_eq!(reconciliation.cleanup[0].issue_number, 328);
+    }
+
+    #[test]
+    fn startup_restoration_failed_attach_moves_worker_to_cleanup() {
+        let project_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let candidate = StartupWorkerCandidate {
+            session_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+            project_id,
+            issue_number: 327,
+            issue_title: "Current live task".to_string(),
+            repo_path: "/tmp/the-controller".to_string(),
+            session_dir: "/tmp/the-controller/session-51".to_string(),
+            kind: "codex".to_string(),
+            ordinal: 1,
+            live_tmux: true,
+        };
+        let reconciliation = StartupReconciliation {
+            restore: vec![candidate.clone()],
+            cleanup: vec![],
+        };
+
+        let finalized = finalize_startup_restoration(reconciliation, &HashSet::new());
+
+        assert!(finalized.restore.is_empty());
+        assert_eq!(finalized.cleanup, vec![candidate]);
     }
 }
