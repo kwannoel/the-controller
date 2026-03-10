@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -25,7 +26,11 @@ impl ProjectInventory {
         F: FnMut(&Project) -> bool,
     {
         Self {
-            projects: self.projects.into_iter().filter(|project| predicate(project)).collect(),
+            projects: self
+                .projects
+                .into_iter()
+                .filter(|project| predicate(project))
+                .collect(),
             corrupt_entries: self.corrupt_entries,
         }
     }
@@ -40,7 +45,6 @@ impl ProjectInventory {
             );
         }
     }
-
 }
 
 impl Deref for ProjectInventory {
@@ -94,12 +98,22 @@ impl Storage {
         Self { base_dir }
     }
 
+    pub fn default_base_dir(home_dir: Option<PathBuf>) -> io::Result<PathBuf> {
+        home_dir
+            .map(|home| home.join(".the-controller"))
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "could not determine home directory",
+                )
+            })
+    }
+
     /// Create a Storage using the default `~/.the-controller/` directory.
-    pub fn with_default_path() -> Self {
-        let home = dirs::home_dir().expect("could not determine home directory");
-        Self {
-            base_dir: home.join(".the-controller"),
-        }
+    pub fn with_default_path() -> io::Result<Self> {
+        Ok(Self {
+            base_dir: Self::default_base_dir(dirs::home_dir())?,
+        })
     }
 
     /// Return the base directory path.
@@ -192,8 +206,7 @@ impl Storage {
         for session in &mut updated.sessions {
             if let Some(ref wt_path) = session.worktree_path {
                 if wt_path.starts_with(uuid_prefix) {
-                    session.worktree_path =
-                        Some(wt_path.replacen(uuid_prefix, name_prefix, 1));
+                    session.worktree_path = Some(wt_path.replacen(uuid_prefix, name_prefix, 1));
                 }
             }
         }
@@ -257,7 +270,10 @@ impl Storage {
     }
 
     /// Load the most recent maintainer run log for a project.
-    pub fn latest_maintainer_run_log(&self, project_id: Uuid) -> std::io::Result<Option<MaintainerRunLog>> {
+    pub fn latest_maintainer_run_log(
+        &self,
+        project_id: Uuid,
+    ) -> std::io::Result<Option<MaintainerRunLog>> {
         let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(None);
@@ -268,7 +284,11 @@ impl Storage {
     }
 
     /// Load maintainer run log history for a project, most recent first.
-    pub fn maintainer_run_log_history(&self, project_id: Uuid, limit: usize) -> std::io::Result<Vec<MaintainerRunLog>> {
+    pub fn maintainer_run_log_history(
+        &self,
+        project_id: Uuid,
+        limit: usize,
+    ) -> std::io::Result<Vec<MaintainerRunLog>> {
         let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(vec![]);
@@ -289,7 +309,10 @@ impl Storage {
         Ok(())
     }
 
-    fn load_run_logs_from_dir(&self, dir: &std::path::Path) -> std::io::Result<Vec<MaintainerRunLog>> {
+    fn load_run_logs_from_dir(
+        &self,
+        dir: &std::path::Path,
+    ) -> std::io::Result<Vec<MaintainerRunLog>> {
         let mut logs = Vec::new();
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -309,9 +332,7 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{
-        IssueAction, IssueSummary, MaintainerRunLog, SessionConfig,
-    };
+    use crate::models::{IssueAction, IssueSummary, MaintainerRunLog, SessionConfig};
     use tempfile::TempDir;
 
     fn make_storage(tmp: &TempDir) -> Storage {
@@ -419,7 +440,10 @@ mod tests {
         storage
             .save_agents_md(project.id, "local agents content")
             .expect("save agents.md");
-        assert_eq!(storage.get_agents_md(&project).unwrap(), "local agents content");
+        assert_eq!(
+            storage.get_agents_md(&project).unwrap(),
+            "local agents content"
+        );
     }
 
     #[test]
@@ -489,13 +513,23 @@ mod tests {
     }
 
     #[test]
+    fn test_default_base_dir_returns_error_when_home_is_unavailable() {
+        let error = Storage::default_base_dir(None)
+            .expect_err("expected missing home directory to return an error");
+
+        assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
     fn test_save_and_get_agents_md_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let storage = make_storage(&tmp);
         let project = make_project("test-project", "/tmp/nonexistent-repo");
         let id = project.id;
 
-        storage.save_agents_md(id, "# My Agents\nContent here").unwrap();
+        storage
+            .save_agents_md(id, "# My Agents\nContent here")
+            .unwrap();
 
         // get_agents_md falls back to config dir when repo doesn't exist
         let content = storage.get_agents_md(&project).unwrap();
@@ -582,7 +616,9 @@ mod tests {
         storage.save_maintainer_run_log(&r2).expect("save r2");
         storage.save_maintainer_run_log(&r3).expect("save r3");
 
-        let history = storage.maintainer_run_log_history(project_id, 10).expect("history");
+        let history = storage
+            .maintainer_run_log_history(project_id, 10)
+            .expect("history");
         assert_eq!(history.len(), 3);
         assert_eq!(history[0].timestamp, "2026-03-09T03:00:00Z");
         assert_eq!(history[2].timestamp, "2026-03-09T01:00:00Z");
@@ -596,10 +632,18 @@ mod tests {
 
         let r1 = make_run_log(project_id, "2026-03-09T01:00:00Z");
         storage.save_maintainer_run_log(&r1).expect("save");
-        assert!(storage.latest_maintainer_run_log(project_id).unwrap().is_some());
+        assert!(storage
+            .latest_maintainer_run_log(project_id)
+            .unwrap()
+            .is_some());
 
-        storage.clear_maintainer_run_logs(project_id).expect("clear");
-        assert!(storage.latest_maintainer_run_log(project_id).unwrap().is_none());
+        storage
+            .clear_maintainer_run_logs(project_id)
+            .expect("clear");
+        assert!(storage
+            .latest_maintainer_run_log(project_id)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

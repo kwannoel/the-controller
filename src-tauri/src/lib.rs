@@ -15,12 +15,32 @@ pub mod storage;
 pub mod tmux;
 pub mod worktree;
 
+fn show_startup_error(error: &std::io::Error) {
+    eprintln!("Failed to initialize app storage: {error}");
+    let _ = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title("The Controller failed to start")
+        .set_description(format!(
+            "The Controller could not initialize its storage directory.\n\n{}",
+            error
+        ))
+        .show();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let app_state = match state::AppState::new() {
+        Ok(state) => state,
+        Err(error) => {
+            show_startup_error(&error);
+            return;
+        }
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(state::AppState::new())
+        .manage(app_state)
         .setup(|app| {
             skills::sync_skills();
             status_socket::start_listener(app.handle().clone());
