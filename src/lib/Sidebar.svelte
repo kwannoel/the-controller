@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import { sendFinishBranchPrompt } from "./finish-branch";
@@ -61,9 +61,6 @@
   const IDLE_DEBOUNCE_MS = 1500;
   let surfacedCorruptProjectWarnings = $state(new Set<string>());
 
-  const jumpModeState = fromStore(jumpMode);
-  let jumpState: JumpPhase = $derived(jumpModeState.current);
-
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
 
@@ -118,12 +115,6 @@
         });
       }
     }
-  });
-
-  let projectJumpLabels = $derived.by(() => {
-    if (!jumpState || jumpState.phase !== 'project') return [];
-    const list = isArchiveView ? archivedProjectList : projectList;
-    return generateJumpLabels(list.length);
   });
 
   // React to hotkey actions
@@ -707,8 +698,6 @@
         {expandedProjectSet}
         {activeSession}
         {currentFocus}
-        jumpState={jumpState}
-        {projectJumpLabels}
         {getSessionStatus}
         onToggleProject={toggleProject}
         onProjectFocus={(projectId) => {

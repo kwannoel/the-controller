@@ -252,25 +252,3 @@ export type FocusTarget =
   | { type: "notes-editor"; projectId: string }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
-
-// Jump navigation
-export type JumpPhase = { phase: "project" } | null;
-
-export const jumpMode = writable<JumpPhase>(null);
-
-export const JUMP_KEYS = ["z", "x", "c", "b", "n", "m"];
-
-export function generateJumpLabels(count: number): string[] {
-  if (count <= 0) return [];
-  if (count <= JUMP_KEYS.length) {
-    return JUMP_KEYS.slice(0, count);
-  }
-  const labels: string[] = [];
-  for (const a of JUMP_KEYS) {
-    for (const b of JUMP_KEYS) {
-      labels.push(a + b);
-      if (labels.length >= count) return labels;
-    }
-  }
-  return labels;
-}

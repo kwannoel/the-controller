@@ -8,7 +8,6 @@ export type CommandId =
   | "navigate-prev"
   | "navigate-project-next"
   | "navigate-project-prev"
-  | "jump-mode"
   | "fuzzy-finder"
   | "new-project"
   | "delete"
@@ -66,7 +65,6 @@ export const commands: CommandDef[] = [
   { id: "navigate-project-prev", key: "K", section: "Navigation", description: "Next / previous project (skip sessions)", hidden: true },
   { id: "expand-collapse", key: "l", section: "Navigation", description: "Expand/collapse project or focus terminal", helpKey: "l / Enter" },
   { id: "expand-collapse", key: "Enter", section: "Navigation", description: "Expand/collapse project or focus terminal", hidden: true },
-  { id: "jump-mode", key: "g", section: "Navigation", description: "Go to project / session (jump mode)" },
   { id: "fuzzy-finder", key: "f", section: "Navigation", description: "Find project (fuzzy finder)" },
   { id: "escape-focus", key: "Esc", section: "Navigation", description: "Move focus up (terminal → session → project)", handledExternally: true },
   { id: "escape-forward", key: "Esc Esc", section: "Navigation", description: "Forward escape to terminal", handledExternally: true },

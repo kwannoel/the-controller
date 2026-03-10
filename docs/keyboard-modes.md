@@ -1,6 +1,6 @@
 # Keyboard Mode State Machine
 
-All keyboard input flows through `HotkeyManager.svelte`. The system has three modes plus jump navigation:
+All keyboard input flows through `HotkeyManager.svelte`. The active states are terminal passthrough, ambient mode, toggle mode, and workspace mode:
 
 ```
 +-----------------+
@@ -15,11 +15,14 @@ All keyboard input flows through `HotkeyManager.svelte`. The system has three mo
 |   Ambient Mode   |
 | (sidebar/no      |
 |  focus on input) |
-+--------+---------+
-         |
-    j → Jump Project Phase
-         |
-    label match → Jump Session Phase
++----+--------+----+
+     |        |
+   o |        | Space
+     v        v
++---------+  +-------------+
+| Toggle  |  | Workspace   |
+| Mode    |  | Mode Picker |
++---------+  +-------------+
 ```
 
 ## Focus Target
@@ -55,46 +58,48 @@ Hotkeys work directly. Input/textarea/contenteditable elements are excluded.
 
 | Key | Action |
 |-----|--------|
-| j | Enter Jump mode (project phase) |
-| c | Create session (in active project) |
-| x | Close active session |
-| d | Delete active project |
-| a | Archive active project |
+| j / k | Move focus through visible projects and sessions |
+| J / K | Move focus between projects only |
+| l / Enter | Expand/collapse project, focus terminal from session, or open the focused panel |
+| c | Create session for the focused project |
+| d | Delete focused project or session |
+| a | Archive focused project or session |
+| A | Toggle archive view |
 | f | Open fuzzy finder |
 | n | New project |
-| h | Focus sidebar |
-| l | Focus terminal |
+| i | Create issue for the focused project |
+| m | Finish branch for the active session |
+| o | Enter toggle mode |
+| Space | Open workspace mode picker |
 | s | Toggle sidebar visibility |
 | ? | Toggle help overlay |
 
-### Jump Mode — Project Phase
+### Toggle Mode
 
-**When**: User pressed `j` from Ambient mode.
+**When**: User pressed `o` from Ambient mode in development workspace.
 
-Labels (from `JUMP_KEYS = [z,x,c,b,n,m]`) appear next to each project in the sidebar. Single-char for <=6 projects, two-char for >6.
-
-| Key | Action |
-|-----|--------|
-| Esc | Cancel jump mode |
-| Label match | Enter Session Phase for that project |
-| Label prefix | Buffer key, wait for next |
-| Non-label key | Cancel jump mode |
-
-### Jump Mode — Session Phase
-
-**When**: User matched a project label in Project Phase.
-
-Labels appear next to each session + a virtual "+ New session" entry. Also accepts `d`/`a` for project-level operations.
+The next key is interpreted as a maintainer/worker toggle command.
 
 | Key | Action |
 |-----|--------|
-| Esc | Cancel jump mode |
-| d | Delete the jumped-to project |
-| a | Archive the jumped-to project |
-| Label match (session) | Switch to that session |
-| Label match (last = new) | Create new session in that project |
-| Label prefix | Buffer key, wait for next |
-| Non-label key | Cancel jump mode |
+| m | Toggle maintainer |
+| w | Toggle auto-worker |
+| Esc | Cancel toggle mode |
+| Any other key | Cancel toggle mode |
+
+### Workspace Mode Picker
+
+**When**: User pressed `Space` from Ambient mode.
+
+The next key switches workspace modes.
+
+| Key | Action |
+|-----|--------|
+| d | Switch to Development |
+| a | Switch to Agents |
+| n | Switch to Notes |
+| Esc | Cancel picker |
+| Any other key | Cancel picker |
 
 ## Transitions
 
@@ -104,18 +109,16 @@ Terminal Passthrough
   --[Esc double]--> Terminal Passthrough (forwards Esc to PTY)
 
 Ambient Mode
-  --[j]--> Jump Project Phase
-  --[l]--> Terminal Passthrough (focusTarget → terminal)
+  --[o]--> Toggle Mode
+  --[Space]--> Workspace Mode Picker
+  --[l/Enter on session]--> Terminal Passthrough (focusTarget → terminal)
   --[hotkey]--> Ambient Mode (executes action)
 
-Jump Project Phase
-  --[Esc]--> Ambient Mode
-  --[label match]--> Jump Session Phase
-  --[non-label]--> Ambient Mode
+Toggle Mode
+  --[m/w]--> Ambient Mode (dispatches toggle action)
+  --[Esc/other]--> Ambient Mode
 
-Jump Session Phase
-  --[Esc]--> Ambient Mode
-  --[d/a]--> Ambient Mode (dispatches project action)
-  --[label match]--> Ambient Mode (switches session or creates new)
-  --[non-label]--> Ambient Mode
+Workspace Mode Picker
+  --[d/a/n]--> Ambient Mode (switches workspace)
+  --[Esc/other]--> Ambient Mode
 ```

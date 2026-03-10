@@ -10,7 +10,6 @@ import {
   expandedProjects,
   focusTarget,
   hotkeyAction,
-  jumpMode,
   noteEntries,
   projects,
   selectedSessionProvider,
@@ -63,7 +62,6 @@ describe("Sidebar provider indicator", () => {
     activeSessionId.set(null);
     sessionStatuses.set(new Map());
     showKeyHints.set(false);
-    jumpMode.set(null);
     archiveView.set(false);
     archivedProjects.set([]);
     focusTarget.set(null);
