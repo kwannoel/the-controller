@@ -159,7 +159,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
+      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
         projectId: "proj-1",
         kind: "codex",
         initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
