@@ -394,6 +394,8 @@ pub fn create_project(
     name: String,
     repo_path: String,
 ) -> Result<Project, String> {
+    validate_project_name(&name)?;
+
     let path = Path::new(&repo_path);
     if !path.is_dir() {
         return Err(format!("repo_path is not a directory: {}", repo_path));
@@ -444,6 +446,8 @@ pub fn load_project(
     name: String,
     repo_path: String,
 ) -> Result<Project, String> {
+    validate_project_name(&name)?;
+
     let path = Path::new(&repo_path);
     if !path.is_dir() {
         return Err(format!("repo_path is not a directory: {}", repo_path));
@@ -2778,6 +2782,23 @@ mod tests {
     }
 
     #[test]
+    fn test_create_project_rejects_invalid_project_name() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let repo_dir = TempDir::new().unwrap();
+
+        let error = create_project(
+            state_from_ref(&app_state),
+            "invalid/name".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect_err("create_project should reject invalid names");
+
+        assert!(error.contains("Invalid project name: invalid/name"));
+    }
+
+    #[test]
     fn test_load_project_succeeds_with_corrupt_sibling_metadata() {
         let base_dir = TempDir::new().unwrap();
         let projects_root = TempDir::new().unwrap();
@@ -2800,6 +2821,24 @@ mod tests {
         .expect("load project should ignore corrupt sibling metadata");
 
         assert_eq!(project.name, "imported-project");
+    }
+
+    #[test]
+    fn test_load_project_rejects_invalid_project_name() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let repo_dir = TempDir::new().unwrap();
+        git2::Repository::init(repo_dir.path()).expect("init git repo");
+
+        let error = load_project(
+            state_from_ref(&app_state),
+            "invalid/name".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect_err("load_project should reject invalid names");
+
+        assert!(error.contains("Invalid project name: invalid/name"));
     }
 
     #[test]
