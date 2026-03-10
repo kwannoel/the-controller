@@ -7,6 +7,56 @@ export function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function escapeHtmlAttribute(text: string): string {
+  return escapeHtml(text).replace(/"/g, "&quot;");
+}
+
+const ALLOWED_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
+
+function sanitizeLinkUrl(url: string): string | null {
+  const trimmedUrl = url.trim();
+  if (trimmedUrl === "") {
+    return null;
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedUrl);
+    if (!ALLOWED_LINK_PROTOCOLS.has(parsedUrl.protocol)) {
+      return null;
+    }
+
+    return trimmedUrl;
+  } catch {
+    return null;
+  }
+}
+
+function renderLinks(text: string): string {
+  const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let result = "";
+  let lastIndex = 0;
+
+  for (const match of text.matchAll(linkPattern)) {
+    const matchIndex = match.index ?? 0;
+    const [fullMatch, linkText, linkUrl] = match;
+
+    result += escapeHtml(text.slice(lastIndex, matchIndex));
+
+    const sanitizedUrl = sanitizeLinkUrl(linkUrl);
+    const escapedLinkText = escapeHtml(linkText);
+    if (sanitizedUrl) {
+      result += `<a href="${escapeHtmlAttribute(sanitizedUrl)}" target="_blank" rel="noopener">${escapedLinkText}</a>`;
+    } else {
+      result += escapedLinkText;
+    }
+
+    lastIndex = matchIndex + fullMatch.length;
+  }
+
+  result += escapeHtml(text.slice(lastIndex));
+  return result;
+}
+
 function processInline(line: string): string {
   // Inline code first (to prevent nested processing inside code spans)
   let result = "";
@@ -30,9 +80,7 @@ function processInline(line: string): string {
 }
 
 function processInlineFormatting(text: string): string {
-  let result = escapeHtml(text);
-  // Links: [text](url)
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  let result = renderLinks(text);
   // Bold: **text**
   result = result.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   // Italic: *text* (but not inside bold markers)
