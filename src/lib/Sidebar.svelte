@@ -2,6 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { refreshProjectsFromBackend } from "./project-listing";
   import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
@@ -357,8 +358,7 @@
 
   async function loadProjects() {
     try {
-      const result = await invoke<ProjectInventory>("list_projects");
-      projects.set(result.projects);
+      const result = await refreshProjectsFromBackend();
       surfaceCorruptProjectWarnings(result.corrupt_entries);
     } catch (err) {
       showToast(String(err), "error");
