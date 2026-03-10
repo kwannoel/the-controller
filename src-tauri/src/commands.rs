@@ -766,6 +766,28 @@ pub fn set_initial_prompt(
     Ok(())
 }
 
+#[tauri::command]
+pub fn submit_secure_env_value(
+    state: State<AppState>,
+    request_id: String,
+    value: String,
+) -> Result<String, String> {
+    let result = crate::secure_env::submit_secure_env_value(&state, &request_id, &value)?;
+    Ok(if result.created {
+        "created".to_string()
+    } else {
+        "updated".to_string()
+    })
+}
+
+#[tauri::command]
+pub fn cancel_secure_env_request(
+    state: State<AppState>,
+    request_id: String,
+) -> Result<(), String> {
+    crate::secure_env::cancel_secure_env_request(&state, &request_id)
+}
+
 const COMMIT_POLL_INTERVAL_SECS: u64 = 3;
 const MAX_COMMIT_WAIT_SECS: u64 = 60;
 const MAX_REBASE_WAIT_SECS: u64 = 360; // 6 minutes
@@ -3122,5 +3144,70 @@ mod tests {
         assert!(queue[0].is_active);
         assert_eq!(queue[1].number, 34);
         assert!(!queue[1].is_active);
+    }
+
+    #[test]
+    fn test_submit_secure_env_value_command_writes_env_file() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let repo_dir = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+
+        let project = create_project(
+            state_from_ref(&app_state),
+            "secure-env-submit".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect("create project");
+
+        crate::secure_env::begin_secure_env_request(
+            &app_state,
+            &project.name,
+            "OPENAI_API_KEY",
+            "req-123",
+        )
+        .expect("begin secure env request");
+
+        let status = submit_secure_env_value(
+            state_from_ref(&app_state),
+            "req-123".to_string(),
+            "new-secret".to_string(),
+        )
+        .expect("submit secure env value");
+
+        assert_eq!(status, "created");
+        let written = fs::read_to_string(repo_dir.path().join(".env")).expect("read .env");
+        assert_eq!(written, "OPENAI_API_KEY=new-secret\n");
+    }
+
+    #[test]
+    fn test_cancel_secure_env_request_command_clears_pending_request() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let repo_dir = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+
+        let project = create_project(
+            state_from_ref(&app_state),
+            "secure-env-cancel".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect("create project");
+
+        crate::secure_env::begin_secure_env_request(
+            &app_state,
+            &project.name,
+            "OPENAI_API_KEY",
+            "req-123",
+        )
+        .expect("begin secure env request");
+
+        cancel_secure_env_request(
+            state_from_ref(&app_state),
+            "req-123".to_string(),
+        )
+        .expect("cancel secure env request");
+
+        assert!(app_state.secure_env_request.lock().unwrap().is_none());
     }
 }
