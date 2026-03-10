@@ -53,6 +53,62 @@ pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
     format!("session-{}-{}", max_num + 1, short_id)
 }
 
+fn update_project_with_rollback<T, C, M, R, A>(
+    state: &AppState,
+    project_id: Uuid,
+    mutate: M,
+    rollback: R,
+    action: A,
+) -> Result<T, String>
+where
+    M: FnOnce(&mut Project) -> Result<C, String>,
+    R: FnOnce(&mut Project) -> Result<(), String>,
+    A: FnOnce(C) -> Result<T, String>,
+{
+    let action_context = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let mut project = storage
+            .load_project(project_id)
+            .map_err(|e| e.to_string())?;
+        let action_context = mutate(&mut project)?;
+        storage.save_project(&project).map_err(|e| e.to_string())?;
+        action_context
+    };
+
+    match action(action_context) {
+        Ok(result) => Ok(result),
+        Err(action_err) => {
+            let rollback = (|| -> Result<(), String> {
+                let storage = state.storage.lock().map_err(|e| e.to_string())?;
+                let mut project = storage
+                    .load_project(project_id)
+                    .map_err(|e| e.to_string())?;
+                rollback(&mut project)?;
+                storage.save_project(&project).map_err(|e| e.to_string())
+            })();
+
+            match rollback {
+                Ok(()) => Err(action_err),
+                Err(rollback_err) => Err(format!(
+                    "{} (rollback failed: {})",
+                    action_err, rollback_err
+                )),
+            }
+        }
+    }
+}
+
+fn cleanup_failed_session_spawn(
+    repo_path: &str,
+    worktree_path: Option<&str>,
+    worktree_branch: Option<&str>,
+) -> Result<(), String> {
+    if let Some((path, branch)) = worktree_path.zip(worktree_branch) {
+        WorktreeManager::remove_worktree(path, repo_path, branch)?;
+    }
+    Ok(())
+}
+
 const DEFAULT_AGENTS_MD: &str = r#"# {name}
 
 One-line project description.
@@ -663,42 +719,58 @@ pub fn create_session(
             )
         })
     });
+    let rollback_worktree = wt_path.clone().zip(wt_branch.clone());
 
-    // Save session config
-    {
-        let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let mut project = storage
-            .load_project(project_uuid)
-            .map_err(|e| e.to_string())?;
+    let session_config = SessionConfig {
+        id: session_id,
+        label: label.clone(),
+        worktree_path: wt_path,
+        worktree_branch: wt_branch,
+        archived: false,
+        kind: kind.clone(),
+        github_issue,
+        initial_prompt: initial_prompt.clone(),
+        done_commits: vec![],
+        auto_worker_session: false,
+    };
 
-        let session_config = SessionConfig {
-            id: session_id,
-            label: label.clone(),
-            worktree_path: wt_path,
-            worktree_branch: wt_branch,
-            archived: false,
-            kind: kind.clone(),
-            github_issue,
-            initial_prompt: initial_prompt.clone(),
-            done_commits: vec![],
-            auto_worker_session: false,
-        };
-        project.sessions.push(session_config);
-        storage.save_project(&project).map_err(|e| e.to_string())?;
-    }
-
-    // Spawn the PTY session in the worktree (or repo) directory
-    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(
-        session_id,
-        &session_dir,
-        &kind,
-        app_handle,
-        false,
-        initial_prompt.as_deref(),
-        24,
-        80,
-    )?;
+    update_project_with_rollback(
+        &state,
+        project_uuid,
+        |project| {
+            project.sessions.push(session_config);
+            Ok(())
+        },
+        |project| {
+            project.sessions.retain(|session| session.id != session_id);
+            Ok(())
+        },
+        |()| {
+            let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+            pty_manager.spawn_session(
+                session_id,
+                &session_dir,
+                &kind,
+                app_handle,
+                false,
+                initial_prompt.as_deref(),
+                24,
+                80,
+            )
+        },
+    )
+    .map_err(|spawn_err| {
+        if let Some((ref worktree_path, ref worktree_branch)) = rollback_worktree {
+            if let Err(cleanup_err) = cleanup_failed_session_spawn(
+                &repo_path,
+                Some(worktree_path.as_str()),
+                Some(worktree_branch.as_str()),
+            ) {
+                return format!("{} (worktree cleanup failed: {})", spawn_err, cleanup_err);
+            }
+        }
+        spawn_err
+    })?;
 
     Ok(session_id.to_string())
 }
@@ -1096,41 +1168,41 @@ pub fn unarchive_session(
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage
-        .load_project(project_uuid)
-        .map_err(|e| e.to_string())?;
+    update_project_with_rollback(
+        &state,
+        project_uuid,
+        |project| {
+            let repo_path = project.repo_path.clone();
+            let session = project
+                .sessions
+                .iter_mut()
+                .find(|s| s.id == session_uuid && s.archived)
+                .ok_or_else(|| "Archived session not found".to_string())?;
 
-    let session = project
-        .sessions
-        .iter_mut()
-        .find(|s| s.id == session_uuid && s.archived)
-        .ok_or_else(|| "Archived session not found".to_string())?;
-
-    // Use existing worktree path, or fall back to repo path
-    let session_dir = session
-        .worktree_path
-        .clone()
-        .unwrap_or_else(|| project.repo_path.clone());
-    let kind = session.kind.clone();
-
-    session.archived = false;
-    storage.save_project(&project).map_err(|e| e.to_string())?;
-
-    // Need to drop storage lock before acquiring pty_manager lock
-    drop(storage);
-
-    // Spawn the PTY session in the existing worktree directory
-    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_session(
-        session_uuid,
-        &session_dir,
-        &kind,
-        app_handle,
-        true,
-        None,
-        24,
-        80,
+            let session_dir = session.worktree_path.clone().unwrap_or(repo_path);
+            let kind = session.kind.clone();
+            session.archived = false;
+            Ok((session_dir, kind))
+        },
+        |project| {
+            if let Some(session) = project.sessions.iter_mut().find(|s| s.id == session_uuid) {
+                session.archived = true;
+            }
+            Ok(())
+        },
+        |(session_dir, kind)| {
+            let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+            pty_manager.spawn_session(
+                session_uuid,
+                &session_dir,
+                &kind,
+                app_handle,
+                true,
+                None,
+                24,
+                80,
+            )
+        },
     )?;
 
     Ok(())
@@ -1809,7 +1881,7 @@ fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
 mod tests {
     use super::*;
     use crate::config::{save_config, Config};
-    use crate::models::SessionConfig;
+    use crate::models::{SavedPrompt, SessionConfig};
     use crate::pty_manager::PtyManager;
     use crate::state::{AppState, IssueCache};
     use crate::storage::Storage;
@@ -2276,7 +2348,10 @@ mod tests {
                 1,
                 "only the competing project should remain after rollback"
             );
-            assert_eq!(stored.projects[0].repo_path, imported_repo.path().to_string_lossy());
+            assert_eq!(
+                stored.projects[0].repo_path,
+                imported_repo.path().to_string_lossy()
+            );
         });
     }
 
@@ -2435,6 +2510,247 @@ mod tests {
             );
             assert_eq!(stored.projects[0].repo_path, repo_path.to_string_lossy());
         });
+    }
+
+    #[test]
+    fn test_rollback_session_metadata_for_create_session_path() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let repo_dir = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+
+        let project = create_project(
+            state_from_ref(&app_state),
+            "rollback-session-create".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect("create project");
+
+        let session_id = Uuid::new_v4();
+        let error = update_project_with_rollback(
+            &app_state,
+            project.id,
+            |project| {
+                project.sessions.push(SessionConfig {
+                    id: session_id,
+                    label: "session-1".to_string(),
+                    worktree_path: Some("/tmp/worktree".to_string()),
+                    worktree_branch: Some("session-1".to_string()),
+                    archived: false,
+                    kind: "claude".to_string(),
+                    github_issue: None,
+                    initial_prompt: None,
+                    done_commits: vec![],
+                    auto_worker_session: false,
+                });
+                Ok(())
+            },
+            |project| {
+                project.sessions.retain(|session| session.id != session_id);
+                Ok(())
+            },
+            |()| Err::<(), String>("spawn failed".to_string()),
+        )
+        .expect_err("post-save failure should bubble up");
+
+        assert_eq!(error, "spawn failed");
+
+        let stored = app_state
+            .storage
+            .lock()
+            .unwrap()
+            .load_project(project.id)
+            .expect("load project after rollback");
+        assert!(
+            stored.sessions.is_empty(),
+            "failed create-session path should remove persisted session metadata"
+        );
+    }
+
+    #[test]
+    fn test_rollback_session_metadata_for_unarchive_session_path() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let repo_dir = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+
+        let project = create_project(
+            state_from_ref(&app_state),
+            "rollback-session-unarchive".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect("create project");
+
+        let session_id = Uuid::new_v4();
+        {
+            let storage = app_state.storage.lock().unwrap();
+            let mut stored = storage.load_project(project.id).expect("load project");
+            stored.sessions.push(SessionConfig {
+                id: session_id,
+                label: "session-1".to_string(),
+                worktree_path: Some("/tmp/worktree".to_string()),
+                worktree_branch: Some("session-1".to_string()),
+                archived: true,
+                kind: "claude".to_string(),
+                github_issue: None,
+                initial_prompt: None,
+                done_commits: vec![],
+                auto_worker_session: false,
+            });
+            storage
+                .save_project(&stored)
+                .expect("save archived session");
+        }
+
+        let error = update_project_with_rollback(
+            &app_state,
+            project.id,
+            |project| {
+                let session = project
+                    .sessions
+                    .iter_mut()
+                    .find(|session| session.id == session_id)
+                    .expect("find archived session");
+                session.archived = false;
+                Ok(())
+            },
+            |project| {
+                if let Some(session) = project
+                    .sessions
+                    .iter_mut()
+                    .find(|session| session.id == session_id)
+                {
+                    session.archived = true;
+                }
+                Ok(())
+            },
+            |()| Err::<(), String>("spawn failed".to_string()),
+        )
+        .expect_err("post-save failure should bubble up");
+
+        assert_eq!(error, "spawn failed");
+
+        let stored = app_state
+            .storage
+            .lock()
+            .unwrap()
+            .load_project(project.id)
+            .expect("load project after rollback");
+        assert_eq!(stored.sessions.len(), 1);
+        assert!(
+            stored.sessions[0].archived,
+            "failed unarchive path should restore archived session metadata"
+        );
+    }
+
+    #[test]
+    fn test_rollback_session_metadata_preserves_concurrent_project_updates() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let repo_dir = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+
+        let project = create_project(
+            state_from_ref(&app_state),
+            "rollback-session-concurrency".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect("create project");
+
+        let session_id = Uuid::new_v4();
+        let prompt_id = Uuid::new_v4();
+        let error = update_project_with_rollback(
+            &app_state,
+            project.id,
+            |project| {
+                project.sessions.push(SessionConfig {
+                    id: session_id,
+                    label: "session-1".to_string(),
+                    worktree_path: Some("/tmp/worktree".to_string()),
+                    worktree_branch: Some("session-1".to_string()),
+                    archived: false,
+                    kind: "claude".to_string(),
+                    github_issue: None,
+                    initial_prompt: None,
+                    done_commits: vec![],
+                    auto_worker_session: false,
+                });
+                Ok(())
+            },
+            |project| {
+                project.sessions.retain(|session| session.id != session_id);
+                Ok(())
+            },
+            |()| {
+                let storage = app_state.storage.lock().unwrap();
+                let mut latest = storage
+                    .load_project(project.id)
+                    .expect("load latest project");
+                latest.prompts.push(SavedPrompt {
+                    id: prompt_id,
+                    name: "Concurrent prompt".to_string(),
+                    text: "Preserve me".to_string(),
+                    created_at: "2026-03-10T00:00:00Z".to_string(),
+                    source_session_label: "session-elsewhere".to_string(),
+                });
+                storage
+                    .save_project(&latest)
+                    .expect("save concurrent update");
+                Err::<(), String>("spawn failed".to_string())
+            },
+        )
+        .expect_err("post-save failure should bubble up");
+
+        assert_eq!(error, "spawn failed");
+
+        let stored = app_state
+            .storage
+            .lock()
+            .unwrap()
+            .load_project(project.id)
+            .expect("load project after rollback");
+        assert!(
+            stored.sessions.is_empty(),
+            "rollback should still remove the failed session metadata"
+        );
+        assert_eq!(stored.prompts.len(), 1);
+        assert_eq!(stored.prompts[0].id, prompt_id);
+    }
+
+    #[test]
+    fn test_cleanup_failed_session_spawn_removes_created_worktree() {
+        let repo_dir = TempDir::new().unwrap();
+        let repo = git2::Repository::init(repo_dir.path()).unwrap();
+        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+        let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        let worktree_root = TempDir::new().unwrap();
+        let branch = "session-cleanup";
+        let worktree_path = WorktreeManager::create_worktree(
+            &repo_dir.path().to_string_lossy(),
+            branch,
+            &worktree_root.path().join(branch),
+        )
+        .expect("create worktree");
+
+        cleanup_failed_session_spawn(
+            &repo_dir.path().to_string_lossy(),
+            Some(worktree_path.to_str().unwrap()),
+            Some(branch),
+        )
+        .expect("cleanup created worktree");
+
+        assert!(
+            !worktree_path.exists(),
+            "failed session spawn cleanup should remove the worktree directory"
+        );
+        assert!(
+            repo.find_branch(branch, git2::BranchType::Local).is_err(),
+            "failed session spawn cleanup should remove the branch reference"
+        );
     }
 
     #[test]
