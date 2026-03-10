@@ -336,14 +336,14 @@ fn kill_session(state: &AppState, session: &ActiveSession) {
     cleanup_session(state, session);
 }
 
-fn parse_merged_pr_count(json: &str) -> bool {
+fn json_has_results(json: &str) -> bool {
     serde_json::from_str::<Vec<serde_json::Value>>(json)
         .map(|v| !v.is_empty())
         .unwrap_or(false)
 }
 
 fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
-    let search_query = format!("closes #{}", issue_number);
+    let search_query = format!("#{}", issue_number);
     let output = Command::new("gh")
         .args([
             "pr", "list",
@@ -357,9 +357,16 @@ fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
 
     match output {
         Ok(o) if o.status.success() => {
-            parse_merged_pr_count(&String::from_utf8_lossy(&o.stdout))
+            json_has_results(&String::from_utf8_lossy(&o.stdout))
         }
-        _ => false,
+        Ok(o) => {
+            eprintln!("Auto-worker: gh pr list failed for #{}: {}", issue_number, String::from_utf8_lossy(&o.stderr));
+            false
+        }
+        Err(e) => {
+            eprintln!("Auto-worker: failed to run gh pr list for #{}: {}", issue_number, e);
+            false
+        }
     }
 }
 
@@ -494,19 +501,19 @@ mod tests {
     }
 
     #[test]
-    fn parse_merged_pr_count_with_result() {
+    fn json_has_results_with_result() {
         let json = r#"[{"number":42}]"#;
-        assert!(parse_merged_pr_count(json));
+        assert!(json_has_results(json));
     }
 
     #[test]
-    fn parse_merged_pr_count_empty() {
+    fn json_has_results_empty() {
         let json = "[]";
-        assert!(!parse_merged_pr_count(json));
+        assert!(!json_has_results(json));
     }
 
     #[test]
-    fn parse_merged_pr_count_invalid_json() {
-        assert!(!parse_merged_pr_count("not json"));
+    fn json_has_results_invalid_json() {
+        assert!(!json_has_results("not json"));
     }
 }
