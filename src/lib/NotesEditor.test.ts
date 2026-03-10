@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/svelte";
 import { command } from "$lib/backend";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import { tick } from "svelte";
+import { get } from "svelte/store";
 import NotesEditor from "./NotesEditor.svelte";
 import {
   activeNote,
   focusTarget,
   hotkeyAction,
-  notePreviewMode,
+  noteViewMode,
   projects,
   type Project,
 } from "./stores";
@@ -40,9 +41,102 @@ describe("NotesEditor", () => {
     vi.clearAllMocks();
     projects.set([baseProject]);
     activeNote.set({ projectId: "project-1", filename: "a.md" });
-    notePreviewMode.set(false);
+    noteViewMode.set("edit");
     focusTarget.set(null);
     hotkeyAction.set(null);
+  });
+
+  it("renders explicit edit, preview, and split mode controls", async () => {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
+        return Promise.resolve("# Heading\n\nBody copy");
+      }
+
+      if (commandName === "write_note") {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(undefined);
+    });
+
+    render(NotesEditor);
+
+    await screen.findByTestId("note-code-editor");
+
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Split" })).toBeInTheDocument();
+  });
+
+  it("shows both the editor and rendered markdown in split mode", async () => {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
+        return Promise.resolve("# Heading\n\nBody copy");
+      }
+
+      if (commandName === "write_note") {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(undefined);
+    });
+
+    render(NotesEditor);
+
+    await screen.findByTestId("note-code-editor");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Split" }));
+
+    expect(screen.getByTestId("note-code-editor")).toBeInTheDocument();
+    const preview = document.querySelector(".preview");
+    expect(preview).not.toBeNull();
+    expect(within(preview as HTMLElement).getByRole("heading", { name: "Heading" })).toBeInTheDocument();
+    expect(within(preview as HTMLElement).getByText("Body copy")).toBeInTheDocument();
+  });
+
+  it("mounts a dedicated code editor surface in edit mode", async () => {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
+        return Promise.resolve("# Heading\n\nBody copy");
+      }
+
+      if (commandName === "write_note") {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(undefined);
+    });
+
+    render(NotesEditor);
+
+    expect(await screen.findByTestId("note-code-editor")).toBeInTheDocument();
+  });
+
+  it("keeps focus in the editor on a single escape and returns to the note on double escape", async () => {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
+        return Promise.resolve("# Heading\n\nBody copy");
+      }
+
+      if (commandName === "write_note") {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(undefined);
+    });
+
+    focusTarget.set({ type: "notes-editor", projectId: "project-1" });
+
+    render(NotesEditor);
+
+    const editor = await screen.findByTestId("note-code-editor");
+    const textbox = within(editor).getByRole("textbox");
+
+    await fireEvent.keyDown(textbox, { key: "Escape" });
+    expect(get(focusTarget)).toEqual({ type: "notes-editor", projectId: "project-1" });
+
+    await fireEvent.keyDown(textbox, { key: "Escape" });
+    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
   });
 
   it("keeps the latest note content when read_note resolves out of order", async () => {
@@ -83,9 +177,8 @@ describe("NotesEditor", () => {
 
     noteBRequest.resolve("newest note content");
 
-    const textarea = await screen.findByRole("textbox");
     await waitFor(() => {
-      expect(textarea).toHaveValue("newest note content");
+      expect(screen.getByTestId("note-code-editor")).toHaveTextContent("newest note content");
     });
 
     noteARequest.resolve("stale note content");
@@ -93,6 +186,6 @@ describe("NotesEditor", () => {
     await tick();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(textarea).toHaveValue("newest note content");
+    expect(screen.getByTestId("note-code-editor")).toHaveTextContent("newest note content");
   });
 });

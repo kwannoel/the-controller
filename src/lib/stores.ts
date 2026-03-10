@@ -144,7 +144,8 @@ export const activeNote = writable<{
   filename: string;
 } | null>(null);
 export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
-export const notePreviewMode = writable<boolean>(false);
+export type NoteViewMode = "edit" | "preview" | "split";
+export const noteViewMode = writable<NoteViewMode>("edit");
 
 export const projects = writable<Project[]>([]);
 export const activeSessionId = writable<string | null>(null);

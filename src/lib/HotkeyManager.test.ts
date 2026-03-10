@@ -864,6 +864,20 @@ describe('HotkeyManager', () => {
       textarea.remove();
     });
 
+    it('hotkeys are ignored when a contenteditable element is focused', () => {
+      const editor = document.createElement('div');
+      editor.contentEditable = 'true';
+      document.body.appendChild(editor);
+      editor.focus();
+
+      pressKey('g');
+      expect(get(activeSessionId)).toBe('sess-1');
+      expect(get(hotkeyAction)).toBeNull();
+
+      editor.blur();
+      editor.remove();
+    });
+
     it('Escape does nothing when input is focused', () => {
       const input = document.createElement('input');
       document.body.appendChild(input);
