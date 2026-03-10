@@ -3,6 +3,7 @@ use tauri::Manager;
 pub mod auto_worker;
 pub mod commands;
 pub mod config;
+pub mod emitter;
 pub mod maintainer;
 pub mod models;
 pub mod notes;
@@ -29,19 +30,19 @@ fn show_startup_error(error: &std::io::Error) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app_state = match state::AppState::new() {
-        Ok(state) => state,
-        Err(error) => {
-            show_startup_error(&error);
-            return;
-        }
-    };
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .manage(app_state)
         .setup(|app| {
+            let emitter = emitter::TauriEmitter::new(app.handle().clone());
+            let app_state = match state::AppState::new(emitter) {
+                Ok(state) => state,
+                Err(error) => {
+                    show_startup_error(&error);
+                    std::process::exit(1);
+                }
+            };
+            app.manage(app_state);
             skills::sync_skills();
             status_socket::start_listener(app.handle().clone());
             maintainer::MaintainerScheduler::start(app.handle().clone());

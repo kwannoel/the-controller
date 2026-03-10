@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::models::GithubIssue;
@@ -262,7 +262,7 @@ impl AutoWorkerScheduler {
                         eprintln!("Auto-worker: session timed out for #{}", session.issue_number);
                         let (issue_number, issue_title) = session_issue_context(&session);
                         kill_session(&state, &session);
-                        emit_status(&app_handle, project_id, "idle", Some("Session timed out"), issue_number, issue_title);
+                        emit_status(&state, project_id, "idle", Some("Session timed out"), issue_number, issue_title);
                     }
                 }
 
@@ -283,7 +283,7 @@ impl AutoWorkerScheduler {
                             eprintln!("Auto-worker: killed after {} nudges for #{}", MAX_NUDGES, session.issue_number);
                             let (issue_number, issue_title) = session_issue_context(&session);
                             kill_session(&state, &session);
-                            emit_status(&app_handle, project_id, "idle", Some("Killed after max nudges"), issue_number, issue_title);
+                            emit_status(&state, project_id, "idle", Some("Killed after max nudges"), issue_number, issue_title);
                         } else {
                             nudge_session(&state, session);
                         }
@@ -310,7 +310,7 @@ impl AutoWorkerScheduler {
                         mark_issue_finished(state.inner(), &session);
                         cleanup_session(&state, &session);
                         emit_status(
-                            &app_handle,
+                            &state,
                             project_id,
                             "idle",
                             Some(&format!("Completed #{}", session.issue_number)),
@@ -356,7 +356,7 @@ impl AutoWorkerScheduler {
                         None => continue,
                     };
 
-                    match spawn_auto_worker_session(&state, &app_handle, project, &eligible) {
+                    match spawn_auto_worker_session(&state, project, &eligible) {
                         Ok(session_id) => {
                             apply_worker_label_plan_sync(
                                 state.inner(),
@@ -364,7 +364,7 @@ impl AutoWorkerScheduler {
                                 eligible.number,
                                 &worker_claim_label_plan(),
                             );
-                            emit_status(&app_handle, project.id, "working", None, Some(eligible.number), Some(&eligible.title));
+                            emit_status(&state, project.id, "working", None, Some(eligible.number), Some(&eligible.title));
                             active_sessions.insert(project.id, ActiveSession {
                                 session_id,
                                 project_id: project.id,
@@ -453,7 +453,7 @@ impl AutoWorkerScheduler {
                     candidate.session_id,
                     &candidate.session_dir,
                     &candidate.kind,
-                    app_handle.clone(),
+                    state.emitter.clone(),
                     true,
                     None,
                     24,
@@ -486,14 +486,14 @@ impl AutoWorkerScheduler {
     }
 }
 
-fn emit_status(app_handle: &AppHandle, project_id: Uuid, status: &str, message: Option<&str>, issue_number: Option<u64>, issue_title: Option<&str>) {
+fn emit_status(state: &AppState, project_id: Uuid, status: &str, message: Option<&str>, issue_number: Option<u64>, issue_title: Option<&str>) {
     let payload = serde_json::json!({
         "status": status,
         "message": message.unwrap_or(""),
         "issue_number": issue_number,
         "issue_title": issue_title.unwrap_or(""),
     });
-    let _ = app_handle.emit(&format!("auto-worker-status:{}", project_id), payload.to_string());
+    let _ = state.emitter.emit(&format!("auto-worker-status:{}", project_id), &payload.to_string());
 }
 
 fn session_issue_context(session: &ActiveSession) -> (Option<u64>, Option<&str>) {
@@ -766,7 +766,6 @@ fn migrate_issues_sync(state: &AppState, repo_path: &str, issues: &mut [GithubIs
 
 fn spawn_auto_worker_session(
     state: &AppState,
-    app_handle: &AppHandle,
     project: &crate::models::Project,
     issue: &GithubIssue,
 ) -> Result<Uuid, String> {
@@ -821,7 +820,7 @@ fn spawn_auto_worker_session(
         session_id,
         &session_dir,
         "codex",
-        app_handle.clone(),
+        state.emitter.clone(),
         false,
         Some(&initial_prompt),
         24,
@@ -1135,7 +1134,7 @@ mod tests {
     #[test]
     fn successful_label_edit_invalidates_issue_cache() {
         let tmp = TempDir::new().unwrap();
-        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf())).unwrap();
+        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf()), crate::emitter::NoopEmitter::new()).unwrap();
         let repo_path = "/tmp/repo";
 
         {
@@ -1152,7 +1151,7 @@ mod tests {
     #[test]
     fn failed_label_edit_keeps_issue_cache() {
         let tmp = TempDir::new().unwrap();
-        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf())).unwrap();
+        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf()), crate::emitter::NoopEmitter::new()).unwrap();
         let repo_path = "/tmp/repo";
 
         {

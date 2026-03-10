@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::models::{IssueAction, IssueSummary, MaintainerRunLog};
@@ -177,7 +177,7 @@ impl MaintainerScheduler {
                     last_run.insert(project.id, Instant::now());
 
                     let _ =
-                        app_handle.emit(&format!("maintainer-status:{}", project.id), "running");
+                        state.emitter.emit(&format!("maintainer-status:{}", project.id), "running");
 
                     let github_repo = project.maintainer.github_repo.as_deref();
                     let result = run_maintainer_check(&project.repo_path, project.id, github_repo);
@@ -191,15 +191,15 @@ impl MaintainerScheduler {
                                 }
                             }
 
-                            let _ = app_handle
+                            let _ = state.emitter
                                 .emit(&format!("maintainer-status:{}", project.id), "idle");
                         }
                         Err(e) => {
                             eprintln!("Maintainer check failed for {}: {}", project.name, e);
-                            let _ = app_handle
+                            let _ = state.emitter
                                 .emit(&format!("maintainer-status:{}", project.id), "error");
-                            let _ = app_handle
-                                .emit(&format!("maintainer-error:{}", project.id), e.to_string());
+                            let _ = state.emitter
+                                .emit(&format!("maintainer-error:{}", project.id), &e.to_string());
                         }
                     }
                 }

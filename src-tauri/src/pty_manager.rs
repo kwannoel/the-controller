@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
+
+use crate::emitter::EventEmitter;
 
 use crate::tmux::TmuxManager;
 
@@ -36,7 +37,7 @@ impl PtyManager {
         session_id: Uuid,
         working_dir: &str,
         kind: &str,
-        app_handle: AppHandle,
+        emitter: Arc<dyn EventEmitter>,
         continue_session: bool,
         initial_prompt: Option<&str>,
         rows: u16,
@@ -61,10 +62,10 @@ impl PtyManager {
             // produce extra newlines).
             let _ = TmuxManager::resize_session(session_id, cols, rows);
             // Attach to the tmux session via a local PTY
-            self.attach_tmux_session(session_id, app_handle)
+            self.attach_tmux_session(session_id, emitter)
         } else {
             // No tmux — spawn the command directly in a PTY
-            self.spawn_direct_session(session_id, working_dir, command, app_handle, initial_prompt, rows, cols)
+            self.spawn_direct_session(session_id, working_dir, command, emitter, initial_prompt, rows, cols)
         }
     }
 
@@ -74,7 +75,7 @@ impl PtyManager {
         session_id: Uuid,
         working_dir: &str,
         command: &str,
-        app_handle: AppHandle,
+        emitter: Arc<dyn EventEmitter>,
         initial_prompt: Option<&str>,
         rows: u16,
         cols: u16,
@@ -130,19 +131,19 @@ impl PtyManager {
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
-                        let _ = app_handle.emit(&status_event, "idle");
+                        let _ = emitter.emit(&status_event, "idle");
                         break;
                     }
                     Ok(n) => {
                         let encoded =
                             base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
-                        let _ = app_handle.emit(&output_event, encoded);
+                        let _ = emitter.emit(&output_event, &encoded);
                     }
                     Err(_) => {
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
-                        let _ = app_handle.emit(&status_event, "idle");
+                        let _ = emitter.emit(&status_event, "idle");
                         break;
                     }
                 }
@@ -164,7 +165,7 @@ impl PtyManager {
     fn attach_tmux_session(
         &mut self,
         session_id: Uuid,
-        app_handle: AppHandle,
+        emitter: Arc<dyn EventEmitter>,
     ) -> Result<(), String> {
         let tmux_name = TmuxManager::session_name(session_id);
 
@@ -218,19 +219,19 @@ impl PtyManager {
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
-                        let _ = app_handle.emit(&status_event, "idle");
+                        let _ = emitter.emit(&status_event, "idle");
                         break;
                     }
                     Ok(n) => {
                         let encoded =
                             base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
-                        let _ = app_handle.emit(&output_event, encoded);
+                        let _ = emitter.emit(&output_event, &encoded);
                     }
                     Err(_) => {
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
-                        let _ = app_handle.emit(&status_event, "idle");
+                        let _ = emitter.emit(&status_event, "idle");
                         break;
                     }
                 }
@@ -254,7 +255,7 @@ impl PtyManager {
         session_id: Uuid,
         program: &str,
         args: &[&str],
-        app_handle: AppHandle,
+        emitter: Arc<dyn EventEmitter>,
     ) -> Result<(), String> {
         let pty_system = native_pty_system();
 
@@ -304,19 +305,19 @@ impl PtyManager {
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
-                        let _ = app_handle.emit(&status_event, "idle");
+                        let _ = emitter.emit(&status_event, "idle");
                         break;
                     }
                     Ok(n) => {
                         let encoded =
                             base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
-                        let _ = app_handle.emit(&output_event, encoded);
+                        let _ = emitter.emit(&output_event, &encoded);
                     }
                     Err(_) => {
                         if let Ok(mut a) = alive_clone.lock() {
                             *a = false;
                         }
-                        let _ = app_handle.emit(&status_event, "idle");
+                        let _ = emitter.emit(&status_event, "idle");
                         break;
                     }
                 }
