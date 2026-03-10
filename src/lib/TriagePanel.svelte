@@ -119,7 +119,7 @@
       invoke("add_github_label", {
         repoPath: path,
         issueNumber: issue.number,
-        label: `priority: ${priority}`,
+        label: `priority:${priority}`,
         description: priority === "high" ? "Important, should be tackled soon" : "Nice to have, can wait",
         color: priority === "high" ? "F38BA8" : "A6E3A1",
       }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));
@@ -129,7 +129,7 @@
       invoke("add_github_label", {
         repoPath: path,
         issueNumber: issue.number,
-        label: `complexity: ${complexity}`,
+        label: complexity === "low" ? "complexity:simple" : "complexity:high",
         description: complexity === "low" ? "Quick task, suitable for simple agents" : "Multi-step task, needs capable agents",
         color: complexity === "low" ? "89DCEB" : "FAB387",
       }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));
