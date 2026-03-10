@@ -1,3 +1,4 @@
+use crate::controller_chat::ControllerChatSession;
 use crate::emitter::EventEmitter;
 use crate::models::{GithubIssue, GithubLabel};
 use crate::pty_manager::PtyManager;
@@ -82,6 +83,7 @@ pub struct AppState {
     pub storage: Mutex<Storage>,
     pub pty_manager: Arc<Mutex<PtyManager>>,
     pub issue_cache: Arc<Mutex<IssueCache>>,
+    pub controller_chat: Arc<Mutex<ControllerChatSession>>,
     pub emitter: Arc<dyn EventEmitter>,
 }
 
@@ -92,6 +94,7 @@ impl AppState {
             storage: Mutex::new(storage),
             pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
+            controller_chat: Arc::new(Mutex::new(ControllerChatSession::default())),
             emitter,
         })
     }

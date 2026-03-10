@@ -1,6 +1,7 @@
 use tauri::Manager;
 
 pub mod auto_worker;
+pub mod controller_chat;
 pub mod commands;
 pub mod config;
 pub mod emitter;
