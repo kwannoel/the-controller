@@ -151,6 +151,22 @@ describe("App screenshot flow", () => {
     });
   });
 
+  it("uses the selected provider for screenshot sessions", async () => {
+    setupMocks();
+    selectedSessionProvider.set("codex");
+
+    render(App);
+    hotkeyAction.set({ type: "screenshot-to-session" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
+        projectId: "proj-1",
+        kind: "codex",
+        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
+      }));
+    });
+  });
+
   it("Cmd+Shift+S: captures screenshot with preview", async () => {
     setupMocks();
     render(App);

@@ -257,7 +257,7 @@
       // Tell Claude to share the path and wait for further instructions.
       const sessionId: string = await invoke("create_session", {
         projectId: project.id,
-        kind: "claude",
+        kind: currentSessionProvider,
         initialPrompt: `I just took a screenshot of the app. The screenshot is saved at: ${screenshotPath}\nPlease read the screenshot image and share what you see, but wait for further prompts before taking any action.`,
       });
 
