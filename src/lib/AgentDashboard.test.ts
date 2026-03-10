@@ -75,6 +75,7 @@ describe("AgentDashboard auto-worker pane", () => {
     });
 
     expect(screen.getByText("assigned-to-auto-worker")).toBeInTheDocument();
+    expect(screen.getByText("complexity:low")).toBeInTheDocument();
     expect(screen.queryByText("finished-by-worker")).not.toBeInTheDocument();
   });
 

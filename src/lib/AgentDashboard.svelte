@@ -451,7 +451,7 @@
           <span class="policy-label">Required</span>
           <div class="policy-labels">
             <span class="policy-tag required">priority:high</span>
-            <span class="policy-tag required">complexity:simple</span>
+            <span class="policy-tag required">complexity:low</span>
           </div>
         </div>
         <div class="policy-row">

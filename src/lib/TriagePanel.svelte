@@ -129,7 +129,7 @@
       command("add_github_label", {
         repoPath: path,
         issueNumber: issue.number,
-        label: complexity === "low" ? "complexity:simple" : "complexity:high",
+        label: complexity === "low" ? "complexity:low" : "complexity:high",
         description: complexity === "low" ? "Quick task, suitable for simple agents" : "Multi-step task, needs capable agents",
         color: complexity === "low" ? "89DCEB" : "FAB387",
       }).catch((e: unknown) => showToast(`Failed to label #${issue.number}: ${e}`, "error"));

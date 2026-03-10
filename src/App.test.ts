@@ -40,7 +40,9 @@ vi.mock("./lib/Toast.svelte", () => ({ default: function MockToast() {} }));
 vi.mock("./lib/HotkeyManager.svelte", () => ({ default: function MockHotkeyManager() {} }));
 vi.mock("./lib/HotkeyHelp.svelte", () => ({ default: function MockHotkeyHelp() {} }));
 
-vi.mock("./lib/CreateIssueModal.svelte", () => ({ default: function MockCreateIssueModal() {} }));
+vi.mock("./lib/CreateIssueModal.svelte", async () => ({
+  default: (await import("./test/CreateIssueModalMock.svelte")).default,
+}));
 vi.mock("./lib/IssuePickerModal.svelte", async () => ({
   default: (await import("./test/IssuePickerModalMock.svelte")).default,
 }));
@@ -376,6 +378,71 @@ describe("App issue picker flow", () => {
         githubIssue: expect.objectContaining({ number: 42 }),
         kind: "codex",
         background: true,
+      }));
+    });
+  });
+});
+
+describe("App issue creation flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_COMMIT__ = "test-commit";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_BRANCH__ = "test-branch";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__DEV_PORT__ = "1420";
+
+    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null }]);
+    activeSessionId.set(null);
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+    hotkeyAction.set(null);
+    showKeyHints.set(false);
+    sidebarVisible.set(true);
+    selectedSessionProvider.set("claude");
+    onboardingComplete.set(true);
+    appConfig.set({ projects_root: "/tmp/projects" });
+    sessionStatuses.set(new Map());
+    expandedProjects.set(new Set());
+
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "generate_issue_body") return "Generated body";
+      if (cmd === "create_github_issue") {
+        return {
+          number: 77,
+          title: "Mock issue",
+          url: "https://example.com/issues/77",
+          body: "Generated body",
+          labels: [],
+        };
+      }
+      if (cmd === "list_projects") {
+        return {
+          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null, sessions: [] }],
+          corrupt_entries: [],
+        };
+      }
+      return;
+    });
+  });
+
+  it("creates low-complexity issues with the canonical complexity:low label", async () => {
+    render(App);
+
+    hotkeyAction.set({
+      type: "create-issue",
+      projectId: "proj-1",
+      repoPath: "/tmp/the-controller",
+    });
+
+    await fireEvent.click(await screen.findByTestId("mock-create-issue-submit"));
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("add_github_label", expect.objectContaining({
+        issueNumber: 77,
+        label: "complexity:low",
       }));
     });
   });
