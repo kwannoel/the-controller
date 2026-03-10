@@ -46,6 +46,8 @@ async fn main() {
         .route("/api/resize_pty", post(resize_pty))
         .route("/api/close_session", post(close_session))
         .route("/api/create_session", post(create_session))
+        .route("/api/list_archived_projects", post(list_archived_projects))
+        .route("/api/generate_architecture", post(generate_architecture))
         .route("/api/merge_session_branch", post(merge_session_branch))
         .route("/api/get_controller_chat_session", post(get_controller_chat_session))
         .route("/api/update_controller_chat_focus", post(update_controller_chat_focus))
@@ -62,9 +64,7 @@ async fn main() {
         .with_state(state);
 
     println!("Server listening on http://localhost:3001");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -128,13 +128,11 @@ async fn connect_session(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let session_id = args["sessionId"]
-        .as_str()
-        .unwrap_or_default();
+    let session_id = args["sessionId"].as_str().unwrap_or_default();
     let rows = args["rows"].as_u64().unwrap_or(24) as u16;
     let cols = args["cols"].as_u64().unwrap_or(80) as u16;
-    let id = uuid::Uuid::parse_str(session_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let id =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     // Check if already connected
     {
@@ -189,7 +187,12 @@ async fn connect_session(
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))
     })
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task failed: {}", e)))??;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Task failed: {}", e),
+        )
+    })??;
 
     Ok(Json(Value::Null))
 }
@@ -198,11 +201,9 @@ async fn load_project(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let project_id = args["projectId"]
-        .as_str()
-        .unwrap_or_default();
-    let id = uuid::Uuid::parse_str(project_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let project_id = args["projectId"].as_str().unwrap_or_default();
+    let id =
+        uuid::Uuid::parse_str(project_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let storage = state
         .app
         .storage
@@ -218,12 +219,10 @@ async fn write_to_pty(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let session_id = args["sessionId"]
-        .as_str()
-        .unwrap_or_default();
+    let session_id = args["sessionId"].as_str().unwrap_or_default();
     let data = args["data"].as_str().unwrap_or_default();
-    let id = uuid::Uuid::parse_str(session_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let id =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let mut pty = state
         .app
         .pty_manager
@@ -238,12 +237,10 @@ async fn send_raw_to_pty(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let session_id = args["sessionId"]
-        .as_str()
-        .unwrap_or_default();
+    let session_id = args["sessionId"].as_str().unwrap_or_default();
     let data = args["data"].as_str().unwrap_or_default();
-    let id = uuid::Uuid::parse_str(session_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let id =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let mut pty = state
         .app
         .pty_manager
@@ -258,13 +255,11 @@ async fn resize_pty(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let session_id = args["sessionId"]
-        .as_str()
-        .unwrap_or_default();
+    let session_id = args["sessionId"].as_str().unwrap_or_default();
     let rows = args["rows"].as_u64().unwrap_or(24) as u16;
     let cols = args["cols"].as_u64().unwrap_or(80) as u16;
-    let id = uuid::Uuid::parse_str(session_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let id =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let pty = state
         .app
         .pty_manager
@@ -279,11 +274,9 @@ async fn close_session(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let session_id = args["sessionId"]
-        .as_str()
-        .unwrap_or_default();
-    let id = uuid::Uuid::parse_str(session_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let session_id = args["sessionId"].as_str().unwrap_or_default();
+    let id =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     let mut pty = state
         .app
         .pty_manager
@@ -303,30 +296,69 @@ async fn create_session(
     ))
 }
 
+async fn generate_architecture(
+    AxumState(_state): AxumState<Arc<ServerState>>,
+    Json(_args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        "generate_architecture not yet wired".to_string(),
+    ))
+}
+
+async fn list_archived_projects(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let storage = state
+        .app
+        .storage
+        .lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let inventory = storage
+        .list_projects()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let filtered = inventory.filter_projects(|project| {
+        project.archived || project.sessions.iter().any(|session| session.archived)
+    });
+    Ok(Json(serde_json::to_value(filtered).unwrap()))
+}
 async fn merge_session_branch(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    use the_controller_lib::worktree::{MergeResult, WorktreeManager};
     use the_controller_lib::models::MergeResponse;
+    use the_controller_lib::worktree::{MergeResult, WorktreeManager};
 
     let project_id = args["projectId"].as_str().unwrap_or_default();
     let session_id = args["sessionId"].as_str().unwrap_or_default();
-    let project_uuid = uuid::Uuid::parse_str(project_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-    let session_uuid = uuid::Uuid::parse_str(session_id)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let project_uuid =
+        uuid::Uuid::parse_str(project_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let session_uuid =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
     let (repo_path, worktree_path, branch_name) = {
-        let storage = state.app.storage.lock()
+        let storage = state
+            .app
+            .storage
+            .lock()
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        let project = storage.load_project(project_uuid)
+        let project = storage
+            .load_project(project_uuid)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-        let session = project.sessions.iter().find(|s| s.id == session_uuid)
+        let session = project
+            .sessions
+            .iter()
+            .find(|s| s.id == session_uuid)
             .ok_or_else(|| (StatusCode::NOT_FOUND, "Session not found".to_string()))?;
-        let wt_path = session.worktree_path.clone()
-            .ok_or_else(|| (StatusCode::BAD_REQUEST, "Session has no worktree".to_string()))?;
-        let branch = session.worktree_branch.clone()
+        let wt_path = session.worktree_path.clone().ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Session has no worktree".to_string(),
+            )
+        })?;
+        let branch = session
+            .worktree_branch
+            .clone()
             .ok_or_else(|| (StatusCode::BAD_REQUEST, "Session has no branch".to_string()))?;
         (project.repo_path.clone(), wt_path, branch)
     };
@@ -347,7 +379,12 @@ async fn merge_session_branch(
             }
         })
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task failed: {}", e)))?
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Task failed: {}", e),
+            )
+        })?
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
         match result {
@@ -358,14 +395,21 @@ async fn merge_session_branch(
             MergeResult::RebaseConflicts => {
                 let prompt = "merge\r";
                 {
-                    let mut pty_manager = state.app.pty_manager.lock()
+                    let mut pty_manager = state
+                        .app
+                        .pty_manager
+                        .lock()
                         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                     let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
                 }
 
                 let _ = state.app.emitter.emit(
                     "merge-status",
-                    &format!("Rebase conflicts (attempt {}/{}). Claude is resolving...", attempt + 1, MAX_RETRIES),
+                    &format!(
+                        "Rebase conflicts (attempt {}/{}). Claude is resolving...",
+                        attempt + 1,
+                        MAX_RETRIES
+                    ),
                 );
 
                 let wt_poll = worktree_path.clone();
@@ -376,7 +420,12 @@ async fn merge_session_branch(
                         WorktreeManager::is_rebase_in_progress(&wt_check)
                     })
                     .await
-                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task failed: {}", e)))?;
+                    .map_err(|e| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Task failed: {}", e),
+                        )
+                    })?;
                     if !still_rebasing {
                         break;
                     }
@@ -388,7 +437,10 @@ async fn merge_session_branch(
 
     Err((
         StatusCode::INTERNAL_SERVER_ERROR,
-        format!("Merge failed after {} attempts due to recurring conflicts", MAX_RETRIES),
+        format!(
+            "Merge failed after {} attempts due to recurring conflicts",
+            MAX_RETRIES
+        ),
     ))
 }
 
