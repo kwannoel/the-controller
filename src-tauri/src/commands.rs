@@ -1283,12 +1283,21 @@ pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Resul
         .await
         .map_err(|e| format!("Task failed: {}", e))??;
 
-    state
-        .storage
-        .lock()
-        .map_err(|e| e.to_string())?
-        .save_project(&project)
-        .map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    if let Ok(inventory) = storage.list_projects() {
+        let existing = inventory.projects;
+        if existing
+            .iter()
+            .any(|p| p.name == project.name && !p.archived)
+        {
+            drop(storage);
+            return Err(rollback_scaffold_state(
+                Path::new(&project.repo_path),
+                format!("A project named '{}' already exists", project.name),
+            ));
+        }
+    }
+    storage.save_project(&project).map_err(|e| e.to_string())?;
 
     Ok(project)
 }
@@ -2186,6 +2195,88 @@ mod tests {
                 storage_lock_available,
                 "storage lock should stay available while external publish is blocked"
             );
+        });
+    }
+
+    #[test]
+    fn test_scaffold_project_rolls_back_if_name_is_claimed_before_final_save() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = Arc::new(make_test_state(base_dir.path(), projects_root.path()));
+        let repo_path = projects_root.path().join("lock-race-test");
+        let imported_repo = TempDir::new().unwrap();
+        let real_git = real_git_path();
+
+        with_fake_cli_bins(|gh_path, git_path, state_dir| {
+            let state_dir_display = state_dir.display().to_string();
+            write_fake_command(
+                gh_path,
+                &format!(
+                    "if [ \"$1\" = \"repo\" ] && [ \"$2\" = \"create\" ]; then\n  touch \"{state_dir_display}/gh-create-started\"\n  while [ -f \"{state_dir_display}/gh-create-block\" ]; do\n    sleep 0.05\n  done\n  \"{real_git}\" -C \"$PWD\" remote add origin git@github.com:test-owner/lock-race-test.git\n  touch \"{state_dir_display}/remote-created\"\n  exit 0\nfi\nif [ \"$1\" = \"repo\" ] && [ \"$2\" = \"delete\" ]; then\n  rm -f \"{state_dir_display}/remote-created\"\n  touch \"{state_dir_display}/remote-deleted\"\n  exit 0\nfi\necho \"unexpected gh invocation: $*\" >&2\nexit 1"
+                ),
+            );
+            write_fake_command(git_path, "if [ \"$1\" = \"push\" ]; then\n  exit 0\nfi\necho \"unexpected git invocation: $*\" >&2\nexit 1");
+            fs::write(state_dir.join("gh-create-block"), "").expect("block gh create");
+
+            let app_state_for_thread = Arc::clone(&app_state);
+            let handle = thread::spawn(move || {
+                run_async_test(scaffold_project(
+                    state_from_ref(app_state_for_thread.as_ref()),
+                    "lock-race-test".to_string(),
+                ))
+            });
+
+            for _ in 0..100 {
+                if state_dir.join("gh-create-started").exists() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert!(
+                state_dir.join("gh-create-started").exists(),
+                "scaffold should reach gh repo create"
+            );
+
+            let imported = create_project(
+                state_from_ref(app_state.as_ref()),
+                "lock-race-test".to_string(),
+                imported_repo.path().to_string_lossy().to_string(),
+            )
+            .expect("concurrent create_project should claim the name");
+            assert_eq!(imported.name, "lock-race-test");
+
+            fs::remove_file(state_dir.join("gh-create-block")).expect("unblock gh create");
+
+            let error = handle
+                .join()
+                .expect("scaffold thread should not panic")
+                .expect_err("scaffold should fail once the name is claimed");
+
+            assert!(
+                error.contains("A project named 'lock-race-test' already exists"),
+                "expected duplicate-name failure, got: {error}"
+            );
+            assert!(
+                !repo_path.exists(),
+                "scaffold repo should be rolled back if final save loses the name race"
+            );
+            assert!(
+                state_dir.join("remote-deleted").exists(),
+                "remote repo should be deleted when the final save loses the name race"
+            );
+
+            let stored = app_state
+                .storage
+                .lock()
+                .unwrap()
+                .list_projects()
+                .expect("list projects after duplicate-name race");
+            assert_eq!(
+                stored.projects.len(),
+                1,
+                "only the competing project should remain after rollback"
+            );
+            assert_eq!(stored.projects[0].repo_path, imported_repo.path().to_string_lossy());
         });
     }
 

@@ -52,7 +52,7 @@ Split `scaffold_project` into three phases:
 
 1. Acquire `state.storage` briefly to load the config, list projects, and reject duplicates or pre-existing directories.
 2. Run the scaffold side effects in `tokio::task::spawn_blocking`, including repo creation, template writes, git commit, GitHub publish, and rollback on failure. This phase returns the constructed `Project` without touching storage.
-3. Reacquire `state.storage` after the blocking task completes and persist the finished `Project`.
+3. Reacquire `state.storage` after the blocking task completes, re-check duplicate-name uniqueness while holding the mutex, and persist the finished `Project` only if the name is still available. If another command claimed the name while scaffolding was in flight, roll back the scaffolded local and remote repo instead of saving duplicate metadata.
 
 This keeps the global storage mutex unavailable only for short metadata reads and the final save, while all filesystem and external process work happens without the lock and off the UI thread.
 
@@ -67,4 +67,5 @@ This keeps the global storage mutex unavailable only for short metadata reads an
 - Add a command-level regression test that starts `scaffold_project` on a separate thread with a fake `gh repo create` script that blocks on a sentinel file.
 - While that fake `gh` command is sleeping, attempt to acquire `app_state.storage.lock()` from the test thread and assert it succeeds immediately.
 - Release the sentinel so scaffolding completes, then assert the project is saved successfully.
+- Add a concurrency regression test that blocks `scaffold_project`, claims the same name through `create_project`, then verifies `scaffold_project` rolls its local and remote state back instead of saving a duplicate project name.
 - Run the existing scaffold rollback tests to ensure the refactor did not change failure cleanup behavior.

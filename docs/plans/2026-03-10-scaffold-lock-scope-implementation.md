@@ -28,7 +28,7 @@ Add a command test that:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cargo test test_scaffold_project_does_not_hold_storage_lock_during_external_publish --manifest-path src-tauri/Cargo.toml -- --exact`
+Run: `cargo test 'commands::tests::test_scaffold_project_does_not_hold_storage_lock_during_external_publish' --manifest-path src-tauri/Cargo.toml -- --exact`
 
 Expected: FAIL because the current implementation still holds the storage mutex for the full scaffold.
 
@@ -42,11 +42,12 @@ Expected: FAIL because the current implementation still holds the storage mutex 
 - Change `scaffold_project` to `pub async fn`.
 - Under an initial short-lived storage lock, load config and reject duplicates.
 - Move the existing scaffold body into `spawn_blocking`.
-- Reacquire storage only for `save_project`.
+- Reacquire storage only for the final duplicate-name recheck and `save_project`.
+- If the name was claimed while scaffolding was in flight, roll back the scaffolded repo/remote before returning the duplicate-name error.
 
 **Step 2: Run the new regression to verify it passes**
 
-Run: `cargo test test_scaffold_project_does_not_hold_storage_lock_during_external_publish --manifest-path src-tauri/Cargo.toml -- --exact`
+Run: `cargo test 'commands::tests::test_scaffold_project_does_not_hold_storage_lock_during_external_publish' --manifest-path src-tauri/Cargo.toml -- --exact`
 
 Expected: PASS.
 
@@ -60,6 +61,8 @@ Expected: PASS.
 Run: `cargo test test_scaffold_project_rolls_back_directory_when_github_creation_fails --manifest-path src-tauri/Cargo.toml -- --exact`
 
 Run: `cargo test test_scaffold_project_rolls_back_remote_and_local_state_when_initial_push_fails --manifest-path src-tauri/Cargo.toml -- --exact`
+
+Run: `cargo test 'commands::tests::test_scaffold_project_rolls_back_if_name_is_claimed_before_final_save' --manifest-path src-tauri/Cargo.toml -- --exact`
 
 Expected: PASS.
 
