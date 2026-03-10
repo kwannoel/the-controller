@@ -45,6 +45,7 @@ async fn main() {
         .route("/api/close_session", post(close_session))
         .route("/api/create_session", post(create_session))
         .route("/api/list_archived_projects", post(list_archived_projects))
+        .route("/api/merge_session_branch", post(merge_session_branch))
         .route("/ws", get(ws_upgrade))
         .fallback(post(fallback_handler))
         .layer(CorsLayer::permissive())
@@ -308,6 +309,95 @@ async fn list_archived_projects(
         project.archived || project.sessions.iter().any(|session| session.archived)
     });
     Ok(Json(serde_json::to_value(filtered).unwrap()))
+}
+
+async fn merge_session_branch(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    use the_controller_lib::worktree::{MergeResult, WorktreeManager};
+    use the_controller_lib::models::MergeResponse;
+
+    let project_id = args["projectId"].as_str().unwrap_or_default();
+    let session_id = args["sessionId"].as_str().unwrap_or_default();
+    let project_uuid = uuid::Uuid::parse_str(project_id)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let session_uuid = uuid::Uuid::parse_str(session_id)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    let (repo_path, worktree_path, branch_name) = {
+        let storage = state.app.storage.lock()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let project = storage.load_project(project_uuid)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let session = project.sessions.iter().find(|s| s.id == session_uuid)
+            .ok_or_else(|| (StatusCode::NOT_FOUND, "Session not found".to_string()))?;
+        let wt_path = session.worktree_path.clone()
+            .ok_or_else(|| (StatusCode::BAD_REQUEST, "Session has no worktree".to_string()))?;
+        let branch = session.worktree_branch.clone()
+            .ok_or_else(|| (StatusCode::BAD_REQUEST, "Session has no branch".to_string()))?;
+        (project.repo_path.clone(), wt_path, branch)
+    };
+
+    const MAX_RETRIES: u32 = 5;
+    const POLL_INTERVAL_SECS: u64 = 3;
+
+    for attempt in 0..MAX_RETRIES {
+        let rp = repo_path.clone();
+        let wt = worktree_path.clone();
+        let br = branch_name.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            if WorktreeManager::is_rebase_in_progress(&wt) {
+                Ok(MergeResult::RebaseConflicts)
+            } else {
+                WorktreeManager::merge_via_pr(&rp, &wt, &br)
+            }
+        })
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task failed: {}", e)))?
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+        match result {
+            MergeResult::PrCreated(url) => {
+                let resp = MergeResponse::PrCreated { url };
+                return Ok(Json(serde_json::to_value(resp).unwrap()));
+            }
+            MergeResult::RebaseConflicts => {
+                let prompt = "merge\r";
+                {
+                    let mut pty_manager = state.app.pty_manager.lock()
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
+                }
+
+                let _ = state.app.emitter.emit(
+                    "merge-status",
+                    &format!("Rebase conflicts (attempt {}/{}). Claude is resolving...", attempt + 1, MAX_RETRIES),
+                );
+
+                let wt_poll = worktree_path.clone();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
+                    let wt_check = wt_poll.clone();
+                    let still_rebasing = tokio::task::spawn_blocking(move || {
+                        WorktreeManager::is_rebase_in_progress(&wt_check)
+                    })
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Task failed: {}", e)))?;
+                    if !still_rebasing {
+                        break;
+                    }
+                }
+                continue;
+            }
+        }
+    }
+
+    Err((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("Merge failed after {} attempts due to recurring conflicts", MAX_RETRIES),
+    ))
 }
 
 // --- WebSocket ---

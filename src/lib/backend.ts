@@ -3,7 +3,7 @@ const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI__;
 let sharedWs: WebSocket | null = null;
 
 function getSharedWebSocket(): WebSocket {
-  if (!sharedWs || sharedWs.readyState === WebSocket.CLOSED) {
+  if (!sharedWs || sharedWs.readyState === WebSocket.CLOSED || sharedWs.readyState === WebSocket.CLOSING) {
     const wsUrl = `ws://${window.location.hostname}:3001/ws`;
     sharedWs = new WebSocket(wsUrl);
   }
@@ -27,12 +27,17 @@ export async function command<T>(cmd: string, args?: Record<string, unknown>): P
 export function listen<T>(event: string, handler: (payload: T) => void): () => void {
   if (isTauri) {
     let unlisten: (() => void) | undefined;
+    let cancelled = false;
     import("@tauri-apps/api/event").then(({ listen }) => {
       listen<T>(event, (e) => handler(e.payload)).then((fn) => {
-        unlisten = fn;
+        if (cancelled) fn();
+        else unlisten = fn;
       });
     });
-    return () => unlisten?.();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }
 
   const ws = getSharedWebSocket();
