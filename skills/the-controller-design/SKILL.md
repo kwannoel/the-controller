@@ -56,6 +56,7 @@ You MUST follow these steps in order:
    - Interaction model (keyboard/mouse, transitions)
    - Visual treatment (Catppuccin Mocha tokens, typography, spacing)
    - States (empty, loading, error, populated, edge cases)
+   Be specific. "Clean layout with good spacing" is worthless. Say which elements, what spacing, which tokens.
 
 4. **Critique loop** — Challenge each decision:
    - Does this serve the feeling?
@@ -71,91 +72,25 @@ You MUST follow these steps in order:
 
 7. **Invoke writing-plans** — Hand off to implementation planning.
 
-```dot
-digraph design {
-    "Define feeling" [shape=box];
-    "Research 2-3 references" [shape=box];
-    "Derive design decisions" [shape=box];
-    "Critique loop" [shape=box];
-    "Every decision survives?" [shape=diamond];
-    "Present design" [shape=box];
-    "User approves?" [shape=diamond];
-    "Write design doc" [shape=box];
-    "Invoke writing-plans" [shape=doublecircle];
-
-    "Define feeling" -> "Research 2-3 references";
-    "Research 2-3 references" -> "Derive design decisions";
-    "Derive design decisions" -> "Critique loop";
-    "Critique loop" -> "Every decision survives?";
-    "Every decision survives?" -> "Derive design decisions" [label="no, revise"];
-    "Every decision survives?" -> "Present design" [label="yes"];
-    "Present design" -> "User approves?";
-    "User approves?" -> "Derive design decisions" [label="no, revise"];
-    "User approves?" -> "Write design doc" [label="yes"];
-    "Write design doc" -> "Invoke writing-plans";
-}
-```
-
 **Terminal state is invoking writing-plans.** Do NOT invoke any other skill.
 
 ## Design Lenses
 
-Run every design choice through these:
+Apply these by name in the critique loop:
 
-- **Eye movement** — Where does the eye land first? Is that the most important thing?
-- **Negative space** — Is the emptiness intentional? Grouping, breathing room, or focus?
-- **Visual weight** — Which elements feel heavy? Does weight match hierarchy?
-- **Contrast as communication** — Color, size, weight differences tell the user what matters. Saying the right things?
-- **Edge cases as design inputs** — 1 item? 50 items? 200-character name? Error? These reveal if the design works.
-- **Motion as meaning** — Animation answers "what just happened?" If not, remove it.
-- **Density vs. cognitive load** — Dense + flat = overwhelming. Dense + structured = powerful.
-- **The glance test** — Half-second view. What do they understand?
-- **Consistency as trust** — Same patterns repeating predictably. User stops thinking about the interface.
-
-## Principles
-
-1. **Feeling is the north star** — Every decision traces back to the feeling statement.
-2. **Research before inventing** — Always look at how others solved it first.
-3. **Coherence with the whole** — New designs must feel like they belong in The Controller.
-4. **Remove until it breaks** — Don't ask "is this simple enough?" Ask "what happens if I remove this?" If nothing, remove it.
-5. **Specify or it didn't happen** — "Clean layout with good spacing" is worthless. Say which elements, what spacing, which tokens.
+- **Eye movement** — Does the eye land on the most important thing first?
+- **Negative space** — Is emptiness intentional (grouping, breathing room)?
+- **Visual weight** — Does weight distribution match hierarchy?
+- **Contrast as communication** — Are color/size differences saying the right things?
+- **Edge cases as design inputs** — 1 item? 50? 200-char name? Error?
+- **Motion as meaning** — Does animation communicate state change? If not, remove it.
+- **Density vs. cognitive load** — Dense + structured = powerful. Dense + flat = overwhelming.
+- **The glance test** — Half-second view: what do they understand?
+- **Consistency as trust** — Same patterns repeating predictably.
 
 ## Design Doc Format
 
-```
-# <Feature> Design
-
-## Feeling
-One sentence.
-
-## Research
-For each reference (2-3):
-- What it is
-- What works and why
-- What doesn't or wouldn't fit
-
-## Design
-
-### Layout
-Spatial relationships, positioning, sizing.
-
-### Hierarchy
-What gets attention first. Typography, color, spacing.
-
-### Interactions
-Keyboard, mouse, transitions, animations.
-
-### Visual Treatment
-Catppuccin Mocha tokens, spacing values, typography.
-
-### States
-Empty, loading, populated, error, edge cases.
-
-## Critique
-Decisions challenged and why they survived. What was removed.
-```
-
-Scaled to complexity.
+Output as: `# <Feature> Design` with sections: **Feeling** (one sentence), **Research** (2-3 references with lessons), **Design** (Layout, Hierarchy, Interactions, Visual Treatment, States), **Critique** (lenses applied by name, what was removed). Scale each section to complexity.
 
 ## Red Flags — STOP and Revise
 
