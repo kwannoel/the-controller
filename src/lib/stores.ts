@@ -137,7 +137,7 @@ export type WorkspaceMode = "development" | "agents" | "notes";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
 export type SessionProvider = "claude" | "codex";
-export const selectedSessionProvider = writable<SessionProvider>("claude");
+export const selectedSessionProvider = writable<SessionProvider>("codex");
 
 export const activeNote = writable<{
   projectId: string;
