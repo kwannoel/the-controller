@@ -13,12 +13,7 @@ pub enum MergeResult {
 /// Touch files that differ between two commits to trigger file system watchers.
 /// After `git2::checkout_tree`, macOS FSEvents may not reliably notify editors
 /// and Vite HMR. Explicitly touching changed files generates fresh events.
-fn touch_changed_files(
-    repo: &Repository,
-    from: &git2::Commit,
-    to: &git2::Commit,
-    repo_path: &str,
-) {
+fn touch_changed_files(repo: &Repository, from: &git2::Commit, to: &git2::Commit, repo_path: &str) {
     let Ok(old_tree) = from.tree() else { return };
     let Ok(new_tree) = to.tree() else { return };
     let Ok(diff) = repo.diff_tree_to_tree(Some(&old_tree), Some(&new_tree), None) else {
@@ -35,9 +30,7 @@ fn touch_changed_files(
         .collect();
 
     if !paths.is_empty() {
-        let _ = Command::new("touch")
-            .args(&paths)
-            .output();
+        let _ = Command::new("touch").args(&paths).output();
     }
 }
 
@@ -53,7 +46,8 @@ impl WorktreeManager {
         branch_name: &str,
         worktree_dir: &Path,
     ) -> Result<PathBuf, String> {
-        let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+        let repo =
+            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
 
         // Check if the repo has any commits (HEAD exists)
         let head = match repo.head() {
@@ -111,8 +105,8 @@ impl WorktreeManager {
 
     /// Detect the main branch name (main or master) for a repository.
     pub fn detect_main_branch(repo_path: &str) -> Result<String, String> {
-        let repo = Repository::open(repo_path)
-            .map_err(|e| format!("failed to open repo: {}", e))?;
+        let repo =
+            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
 
         for name in &["main", "master"] {
             if repo.find_branch(name, git2::BranchType::Local).is_ok() {
@@ -121,7 +115,9 @@ impl WorktreeManager {
         }
 
         // Fall back to whatever HEAD points to
-        let head = repo.head().map_err(|e| format!("failed to get HEAD: {}", e))?;
+        let head = repo
+            .head()
+            .map_err(|e| format!("failed to get HEAD: {}", e))?;
         if let Some(shorthand) = head.shorthand() {
             return Ok(shorthand.to_string());
         }
@@ -220,14 +216,18 @@ impl WorktreeManager {
                     .map_err(|e| format!("failed to get existing PR: {}", e))?;
 
                 if view_output.status.success() {
-                    let url = String::from_utf8_lossy(&view_output.stdout).trim().to_string();
+                    let url = String::from_utf8_lossy(&view_output.stdout)
+                        .trim()
+                        .to_string();
                     return Ok(MergeResult::PrCreated(url));
                 }
             }
             return Err(format!("PR creation failed: {}", stderr.trim()));
         }
 
-        let pr_url = String::from_utf8_lossy(&pr_output.stdout).trim().to_string();
+        let pr_url = String::from_utf8_lossy(&pr_output.stdout)
+            .trim()
+            .to_string();
         Ok(MergeResult::PrCreated(pr_url))
     }
 
@@ -249,9 +249,13 @@ impl WorktreeManager {
     }
 
     /// Check if `branch` needs rebasing onto `main_branch` (behind or diverged).
-    pub fn is_branch_behind(repo_path: &str, branch: &str, main_branch: &str) -> Result<bool, String> {
-        let repo = Repository::open(repo_path)
-            .map_err(|e| format!("failed to open repo: {}", e))?;
+    pub fn is_branch_behind(
+        repo_path: &str,
+        branch: &str,
+        main_branch: &str,
+    ) -> Result<bool, String> {
+        let repo =
+            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
 
         let branch_commit = repo
             .find_branch(branch, git2::BranchType::Local)
@@ -412,9 +416,12 @@ impl WorktreeManager {
 
         // Checkout the original branch
         let refname = format!("refs/heads/{}", original_branch);
-        let obj = repo
-            .revparse_single(&refname)
-            .map_err(|e| format!("failed to find original branch '{}': {}", original_branch, e))?;
+        let obj = repo.revparse_single(&refname).map_err(|e| {
+            format!(
+                "failed to find original branch '{}': {}",
+                original_branch, e
+            )
+        })?;
         let original_oid = obj.id();
         repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().force()))
             .map_err(|e| format!("failed to checkout original branch: {}", e))?;
@@ -458,8 +465,8 @@ impl WorktreeManager {
         }
 
         // Prune the worktree reference
-        let repo = Repository::open(repo_path)
-            .map_err(|e| format!("failed to open repo: {}", e))?;
+        let repo =
+            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
 
         if let Ok(wt) = repo.find_worktree(branch_name) {
             let mut prune_opts = git2::WorktreePruneOptions::new();
@@ -489,9 +496,9 @@ mod tests {
         let repo_path = tmp.path().to_str().unwrap().to_string();
 
         let repo = Repository::init(&repo_path).expect("init repo");
-        let sig = repo.signature().unwrap_or_else(|_| {
-            git2::Signature::now("Test", "test@example.com").unwrap()
-        });
+        let sig = repo
+            .signature()
+            .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
 
         // Write an empty tree
         let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
@@ -522,12 +529,8 @@ mod tests {
         );
 
         // Remove the worktree
-        WorktreeManager::remove_worktree(
-            wt_path.to_str().unwrap(),
-            &repo_path,
-            "feature-test",
-        )
-        .expect("remove worktree");
+        WorktreeManager::remove_worktree(wt_path.to_str().unwrap(), &repo_path, "feature-test")
+            .expect("remove worktree");
 
         // Verify the directory is gone
         assert!(!wt_path.exists(), "worktree directory should be removed");
@@ -569,7 +572,11 @@ mod tests {
         let (_tmp, repo_path) = setup_test_repo();
         // sync_main on a repo with no remote should succeed (no-op)
         let result = WorktreeManager::sync_main(&repo_path);
-        assert!(result.is_ok(), "sync_main should succeed on local-only repo: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "sync_main should succeed on local-only repo: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -648,7 +655,10 @@ mod tests {
         let wt_path = WorktreeManager::create_worktree(&repo_path, "no-env-test", &worktree_dir)
             .expect("create worktree");
 
-        assert!(!wt_path.join(".env").exists(), ".env should not exist in worktree");
+        assert!(
+            !wt_path.join(".env").exists(),
+            ".env should not exist in worktree"
+        );
     }
 
     #[test]
@@ -668,9 +678,8 @@ mod tests {
         let worktree_dir = wt_dir.path().join("staging-test");
 
         // Create a worktree with a commit
-        let wt_path =
-            WorktreeManager::create_worktree(&repo_path, "staging-test", &worktree_dir)
-                .expect("create worktree");
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "staging-test", &worktree_dir)
+            .expect("create worktree");
 
         // Add a file in the worktree so we can verify checkout works
         let test_file = wt_path.join("staged-file.txt");
@@ -686,7 +695,14 @@ mod tests {
             .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
         let parent = wt_repo.head().unwrap().peel_to_commit().unwrap();
         wt_repo
-            .commit(Some("HEAD"), &sig, &sig, "add staged file", &tree, &[&parent])
+            .commit(
+                Some("HEAD"),
+                &sig,
+                &sig,
+                "add staged file",
+                &tree,
+                &[&parent],
+            )
             .unwrap();
 
         // Stage inplace
@@ -777,13 +793,20 @@ mod tests {
 
         // Add a commit to main so the worktree branch is behind
         let repo = Repository::open(&repo_path).unwrap();
-        let sig = repo.signature().unwrap_or_else(|_| {
-            git2::Signature::now("Test", "test@example.com").unwrap()
-        });
+        let sig = repo
+            .signature()
+            .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
         let head = repo.head().unwrap().peel_to_commit().unwrap();
         let tree = head.tree().unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "new commit on main", &tree, &[&head])
-            .unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "new commit on main",
+            &tree,
+            &[&head],
+        )
+        .unwrap();
 
         let main = WorktreeManager::detect_main_branch(&repo_path).unwrap();
         assert!(WorktreeManager::is_branch_behind(&repo_path, "behind-test2", &main).unwrap());
@@ -800,9 +823,9 @@ mod tests {
 
         // Add a commit to main
         let repo = Repository::open(&repo_path).unwrap();
-        let sig = repo.signature().unwrap_or_else(|_| {
-            git2::Signature::now("Test", "test@example.com").unwrap()
-        });
+        let sig = repo
+            .signature()
+            .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
         let head = repo.head().unwrap().peel_to_commit().unwrap();
         let mut index = repo.index().unwrap();
         std::fs::write(Path::new(&repo_path).join("main-file.txt"), "from main").unwrap();
@@ -810,13 +833,14 @@ mod tests {
         index.write().unwrap();
         let tree_id = index.write_tree().unwrap();
         let tree = repo.find_tree(tree_id).unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "main commit", &tree, &[&head]).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "main commit", &tree, &[&head])
+            .unwrap();
 
         // Add a non-conflicting commit to worktree
         let wt_repo = Repository::open(&wt_path).unwrap();
-        let wt_sig = wt_repo.signature().unwrap_or_else(|_| {
-            git2::Signature::now("Test", "test@example.com").unwrap()
-        });
+        let wt_sig = wt_repo
+            .signature()
+            .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
         let wt_head = wt_repo.head().unwrap().peel_to_commit().unwrap();
         std::fs::write(wt_path.join("wt-file.txt"), "from worktree").unwrap();
         let mut wt_index = wt_repo.index().unwrap();
@@ -824,7 +848,16 @@ mod tests {
         wt_index.write().unwrap();
         let wt_tree_id = wt_index.write_tree().unwrap();
         let wt_tree = wt_repo.find_tree(wt_tree_id).unwrap();
-        wt_repo.commit(Some("HEAD"), &wt_sig, &wt_sig, "wt commit", &wt_tree, &[&wt_head]).unwrap();
+        wt_repo
+            .commit(
+                Some("HEAD"),
+                &wt_sig,
+                &wt_sig,
+                "wt commit",
+                &wt_tree,
+                &[&wt_head],
+            )
+            .unwrap();
 
         let main = WorktreeManager::detect_main_branch(&repo_path).unwrap();
         let result = WorktreeManager::rebase_onto(wt_path.to_str().unwrap(), &main);

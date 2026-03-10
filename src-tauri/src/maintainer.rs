@@ -145,8 +145,17 @@ impl MaintainerScheduler {
                         Ok(s) => s,
                         Err(_) => continue,
                     };
-                    match storage.list_projects() {
-                        Ok(p) => p,
+                    match storage.scan_projects() {
+                        Ok(scan) => {
+                            for entry in &scan.corrupt_entries {
+                                eprintln!(
+                                    "maintainer scheduler: corrupt project metadata at {}: {}",
+                                    entry.path.display(),
+                                    entry.error
+                                );
+                            }
+                            scan.projects
+                        }
                         Err(_) => continue,
                     }
                 };

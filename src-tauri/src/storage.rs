@@ -1,8 +1,31 @@
+use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::models::{MaintainerRunLog, Project};
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CorruptProjectEntry {
+    pub path: PathBuf,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectScan {
+    pub projects: Vec<Project>,
+    pub corrupt_entries: Vec<CorruptProjectEntry>,
+}
+
+impl ProjectScan {
+    pub fn corruption_summary(&self) -> String {
+        self.corrupt_entries
+            .iter()
+            .map(|entry| format!("{} ({})", entry.path.display(), entry.error))
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
 
 pub struct Storage {
     base_dir: PathBuf,
@@ -56,23 +79,51 @@ impl Storage {
 
     /// List all projects by reading every `project.json` in the projects directory.
     pub fn list_projects(&self) -> std::io::Result<Vec<Project>> {
+        let scan = self.scan_projects()?;
+        if !scan.corrupt_entries.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("corrupt project metadata: {}", scan.corruption_summary()),
+            ));
+        }
+        Ok(scan.projects)
+    }
+
+    /// Scan all project metadata, keeping valid entries and recording corrupt files.
+    pub fn scan_projects(&self) -> std::io::Result<ProjectScan> {
         let projects_dir = self.base_dir.join("projects");
         if !projects_dir.exists() {
-            return Ok(Vec::new());
+            return Ok(ProjectScan {
+                projects: Vec::new(),
+                corrupt_entries: Vec::new(),
+            });
         }
 
         let mut projects = Vec::new();
+        let mut corrupt_entries = Vec::new();
         for entry in fs::read_dir(&projects_dir)? {
             let entry = entry?;
             let project_file = entry.path().join("project.json");
             if project_file.exists() {
-                let json = fs::read_to_string(&project_file)?;
-                if let Ok(project) = serde_json::from_str::<Project>(&json) {
-                    projects.push(project);
+                match fs::read_to_string(&project_file) {
+                    Ok(json) => match serde_json::from_str::<Project>(&json) {
+                        Ok(project) => projects.push(project),
+                        Err(error) => corrupt_entries.push(CorruptProjectEntry {
+                            path: project_file,
+                            error: error.to_string(),
+                        }),
+                    },
+                    Err(error) => corrupt_entries.push(CorruptProjectEntry {
+                        path: project_file,
+                        error: error.to_string(),
+                    }),
                 }
             }
         }
-        Ok(projects)
+        Ok(ProjectScan {
+            projects,
+            corrupt_entries,
+        })
     }
 
     /// Migrate worktree directories from UUID-based to name-based paths.
@@ -106,8 +157,7 @@ impl Storage {
         for session in &mut updated.sessions {
             if let Some(ref wt_path) = session.worktree_path {
                 if wt_path.starts_with(uuid_prefix) {
-                    session.worktree_path =
-                        Some(wt_path.replacen(uuid_prefix, name_prefix, 1));
+                    session.worktree_path = Some(wt_path.replacen(uuid_prefix, name_prefix, 1));
                 }
             }
         }
@@ -171,7 +221,10 @@ impl Storage {
     }
 
     /// Load the most recent maintainer run log for a project.
-    pub fn latest_maintainer_run_log(&self, project_id: Uuid) -> std::io::Result<Option<MaintainerRunLog>> {
+    pub fn latest_maintainer_run_log(
+        &self,
+        project_id: Uuid,
+    ) -> std::io::Result<Option<MaintainerRunLog>> {
         let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(None);
@@ -182,7 +235,11 @@ impl Storage {
     }
 
     /// Load maintainer run log history for a project, most recent first.
-    pub fn maintainer_run_log_history(&self, project_id: Uuid, limit: usize) -> std::io::Result<Vec<MaintainerRunLog>> {
+    pub fn maintainer_run_log_history(
+        &self,
+        project_id: Uuid,
+        limit: usize,
+    ) -> std::io::Result<Vec<MaintainerRunLog>> {
         let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(vec![]);
@@ -203,7 +260,10 @@ impl Storage {
         Ok(())
     }
 
-    fn load_run_logs_from_dir(&self, dir: &std::path::Path) -> std::io::Result<Vec<MaintainerRunLog>> {
+    fn load_run_logs_from_dir(
+        &self,
+        dir: &std::path::Path,
+    ) -> std::io::Result<Vec<MaintainerRunLog>> {
         let mut logs = Vec::new();
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -223,9 +283,7 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{
-        IssueAction, IssueSummary, MaintainerRunLog, SessionConfig,
-    };
+    use crate::models::{IssueAction, IssueSummary, MaintainerRunLog, SessionConfig};
     use tempfile::TempDir;
 
     fn make_storage(tmp: &TempDir) -> Storage {
@@ -290,6 +348,34 @@ mod tests {
     }
 
     #[test]
+    fn test_scan_projects_reports_corrupt_entries() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+
+        let valid = make_project("valid-project", "/tmp/repo-valid");
+        storage.save_project(&valid).expect("save valid");
+
+        let corrupt_dir = tmp.path().join("projects").join(Uuid::new_v4().to_string());
+        fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
+        let corrupt_file = corrupt_dir.join("project.json");
+        fs::write(&corrupt_file, "{ not valid json").expect("write corrupt project");
+
+        let scan = storage.scan_projects().expect("scan");
+
+        assert_eq!(scan.projects.len(), 1);
+        assert_eq!(scan.projects[0].id, valid.id);
+        assert_eq!(scan.corrupt_entries.len(), 1);
+        assert_eq!(scan.corrupt_entries[0].path, corrupt_file);
+        assert!(
+            scan.corrupt_entries[0]
+                .error
+                .contains("key must be a string"),
+            "unexpected parse error: {}",
+            scan.corrupt_entries[0].error
+        );
+    }
+
+    #[test]
     fn test_list_empty() {
         let tmp = TempDir::new().unwrap();
         let storage = make_storage(&tmp);
@@ -311,7 +397,10 @@ mod tests {
         storage
             .save_agents_md(project.id, "local agents content")
             .expect("save agents.md");
-        assert_eq!(storage.get_agents_md(&project).unwrap(), "local agents content");
+        assert_eq!(
+            storage.get_agents_md(&project).unwrap(),
+            "local agents content"
+        );
     }
 
     #[test]
@@ -387,7 +476,9 @@ mod tests {
         let project = make_project("test-project", "/tmp/nonexistent-repo");
         let id = project.id;
 
-        storage.save_agents_md(id, "# My Agents\nContent here").unwrap();
+        storage
+            .save_agents_md(id, "# My Agents\nContent here")
+            .unwrap();
 
         // get_agents_md falls back to config dir when repo doesn't exist
         let content = storage.get_agents_md(&project).unwrap();
@@ -474,7 +565,9 @@ mod tests {
         storage.save_maintainer_run_log(&r2).expect("save r2");
         storage.save_maintainer_run_log(&r3).expect("save r3");
 
-        let history = storage.maintainer_run_log_history(project_id, 10).expect("history");
+        let history = storage
+            .maintainer_run_log_history(project_id, 10)
+            .expect("history");
         assert_eq!(history.len(), 3);
         assert_eq!(history[0].timestamp, "2026-03-09T03:00:00Z");
         assert_eq!(history[2].timestamp, "2026-03-09T01:00:00Z");
@@ -488,10 +581,18 @@ mod tests {
 
         let r1 = make_run_log(project_id, "2026-03-09T01:00:00Z");
         storage.save_maintainer_run_log(&r1).expect("save");
-        assert!(storage.latest_maintainer_run_log(project_id).unwrap().is_some());
+        assert!(storage
+            .latest_maintainer_run_log(project_id)
+            .unwrap()
+            .is_some());
 
-        storage.clear_maintainer_run_logs(project_id).expect("clear");
-        assert!(storage.latest_maintainer_run_log(project_id).unwrap().is_none());
+        storage
+            .clear_maintainer_run_logs(project_id)
+            .expect("clear");
+        assert!(storage
+            .latest_maintainer_run_log(project_id)
+            .unwrap()
+            .is_none());
     }
 
     #[test]

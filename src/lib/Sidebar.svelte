@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+  import { applyProjectScan, projects, projectMetadataErrors, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectScanResult, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -52,6 +52,8 @@
   });
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
+  const projectMetadataErrorsState = fromStore(projectMetadataErrors);
+  let projectMetadataErrorList: CorruptProjectEntry[] = $derived(projectMetadataErrorsState.current);
   const activeSessionIdState = fromStore(activeSessionId);
   let activeSession: string | null = $derived(activeSessionIdState.current);
   const sessionStatusesState = fromStore(sessionStatuses);
@@ -356,8 +358,8 @@
 
   async function loadProjects() {
     try {
-      const result: Project[] = await invoke("list_projects");
-      projects.set(result);
+      const result = await invoke<ProjectScanResult>("list_projects");
+      applyProjectScan(result);
     } catch (err) {
       showToast(String(err), "error");
     }
@@ -365,8 +367,8 @@
 
   async function loadArchivedProjects() {
     try {
-      const result = await invoke<Project[]>("list_archived_projects");
-      archivedProjects.set(result);
+      const result = await invoke<ProjectScanResult>("list_archived_projects");
+      archivedProjects.set(result.projects);
     } catch (err) {
       showToast(String(err), "error");
     }
@@ -641,6 +643,18 @@
   <div class="sidebar-header">
     <h2>{isArchiveView ? "Archives" : currentMode === "agents" ? "Agents" : currentMode === "notes" ? "Notes" : "Development"}</h2>
   </div>
+
+  {#if projectMetadataErrorList.length > 0}
+    <div class="project-scan-warning">
+      <div class="project-scan-warning-title">Corrupt project metadata detected</div>
+      {#each projectMetadataErrorList as entry (entry.path)}
+        <div class="project-scan-warning-entry">
+          <code>{entry.path}</code>
+          <span>{entry.error}</span>
+        </div>
+      {/each}
+    </div>
+  {/if}
 
   <div class="project-list">
     {#if currentMode === "agents"}
@@ -929,6 +943,39 @@
   .project-list {
     flex: 1;
     overflow-y: auto;
+  }
+
+  .project-scan-warning {
+    margin: 12px 16px 0;
+    padding: 10px 12px;
+    border: 1px solid rgba(243, 139, 168, 0.35);
+    border-radius: 10px;
+    background: rgba(243, 139, 168, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .project-scan-warning-title {
+    color: #f38ba8;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .project-scan-warning-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #cdd6f4;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .project-scan-warning-entry code {
+    color: #f9e2af;
+    word-break: break-all;
   }
 
   /* Footer */

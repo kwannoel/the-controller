@@ -54,7 +54,13 @@ impl PtyManager {
         if TmuxManager::is_available() {
             // Create tmux session if it doesn't already exist
             if !TmuxManager::has_session(session_id) {
-                TmuxManager::create_session(session_id, working_dir, command, continue_session, initial_prompt)?;
+                TmuxManager::create_session(
+                    session_id,
+                    working_dir,
+                    command,
+                    continue_session,
+                    initial_prompt,
+                )?;
             }
             // Pre-resize tmux to the target size so attaching doesn't cause
             // an intermediate resize (which would make claude re-render and
@@ -64,7 +70,15 @@ impl PtyManager {
             self.attach_tmux_session(session_id, app_handle)
         } else {
             // No tmux — spawn the command directly in a PTY
-            self.spawn_direct_session(session_id, working_dir, command, app_handle, initial_prompt, rows, cols)
+            self.spawn_direct_session(
+                session_id,
+                working_dir,
+                command,
+                app_handle,
+                initial_prompt,
+                rows,
+                cols,
+            )
         }
     }
 
@@ -134,8 +148,7 @@ impl PtyManager {
                         break;
                     }
                     Ok(n) => {
-                        let encoded =
-                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
                         let _ = app_handle.emit(&output_event, encoded);
                     }
                     Err(_) => {
@@ -222,8 +235,7 @@ impl PtyManager {
                         break;
                     }
                     Ok(n) => {
-                        let encoded =
-                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
                         let _ = app_handle.emit(&output_event, encoded);
                     }
                     Err(_) => {
@@ -308,8 +320,7 @@ impl PtyManager {
                         break;
                     }
                     Ok(n) => {
-                        let encoded =
-                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
                         let _ = app_handle.emit(&output_event, encoded);
                     }
                     Err(_) => {

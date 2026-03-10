@@ -9,7 +9,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
-  import { activeSessionId, projects, type Project } from "./stores";
+  import { activeSessionId, applyProjectScan, projects, type ProjectScanResult } from "./stores";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {
@@ -82,8 +82,8 @@
       prompt,
     }).then(() => {
       // Refresh the store so SummaryPane picks up the change
-      invoke<Project[]>("list_projects").then((result) => {
-        projects.set(result);
+      invoke<ProjectScanResult>("list_projects").then((result) => {
+        applyProjectScan(result);
       });
     }).catch((err) => {
       console.error("Failed to save initial prompt:", err);

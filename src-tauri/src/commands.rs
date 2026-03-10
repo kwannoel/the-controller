@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::config;
 use crate::models::{CommitInfo, Project, SessionConfig};
 use crate::state::AppState;
+use crate::storage::{ProjectScan, Storage};
 use crate::worktree::WorktreeManager;
 
 mod github;
@@ -132,8 +133,7 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
                             "remote cleanup failed: {}",
                             String::from_utf8_lossy(&output.stderr).trim()
                         )),
-                        Err(e) => cleanup_errors
-                            .push(format!("remote cleanup failed: {}", e)),
+                        Err(e) => cleanup_errors.push(format!("remote cleanup failed: {}", e)),
                     }
                 }
             }
@@ -151,13 +151,44 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
     }
 }
 
+fn log_project_scan_warnings(context: &str, scan: &ProjectScan) {
+    for entry in &scan.corrupt_entries {
+        eprintln!(
+            "{}: corrupt project metadata at {}: {}",
+            context,
+            entry.path.display(),
+            entry.error
+        );
+    }
+}
+
+fn scan_projects(storage: &Storage, context: &str) -> Result<ProjectScan, String> {
+    let scan = storage.scan_projects().map_err(|e| e.to_string())?;
+    if !scan.corrupt_entries.is_empty() {
+        log_project_scan_warnings(context, &scan);
+    }
+    Ok(scan)
+}
+
+fn require_clean_project_scan(storage: &Storage, context: &str) -> Result<ProjectScan, String> {
+    let scan = scan_projects(storage, context)?;
+    if scan.corrupt_entries.is_empty() {
+        Ok(scan)
+    } else {
+        Err(format!(
+            "Cannot continue because corrupt project metadata was detected: {}",
+            scan.corruption_summary()
+        ))
+    }
+}
+
 /// Run storage migrations on startup (worktree path format, etc.).
 /// PTY connections are deferred to `connect_session` so each terminal
 /// can attach at the correct size.
 #[tauri::command]
 pub fn restore_sessions(state: State<AppState>) -> Result<(), String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let projects = storage.list_projects().map_err(|e| e.to_string())?;
+    let projects = scan_projects(&storage, "restore_sessions")?.projects;
     // Migrate worktree paths from UUID-based to name-based directories
     for project in &projects {
         if let Err(e) = storage.migrate_worktree_paths(project) {
@@ -198,7 +229,7 @@ pub async fn connect_session(
     // Find session config from storage
     let (session_dir, kind) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let projects = storage.list_projects().map_err(|e| e.to_string())?;
+        let projects = scan_projects(&storage, "connect_session")?.projects;
         projects
             .iter()
             .flat_map(|p| p.sessions.iter().map(move |s| (p, s)))
@@ -240,10 +271,13 @@ pub fn create_project(
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
     // Reject duplicate project names (skip archived projects)
-    if let Ok(existing) = storage.list_projects() {
-        if existing.iter().any(|p| p.name == name && !p.archived) {
-            return Err(format!("A project named '{}' already exists", name));
-        }
+    let existing = require_clean_project_scan(&storage, "create_project")?;
+    if existing
+        .projects
+        .iter()
+        .any(|p| p.name == name && !p.archived)
+    {
+        return Err(format!("A project named '{}' already exists", name));
     }
 
     let project = Project {
@@ -295,23 +329,26 @@ pub fn load_project(
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
     // Return existing project if one with the same repo_path exists
-    if let Ok(existing) = storage.list_projects() {
-        if let Some(project) = existing.iter().find(|p| p.repo_path == repo_path) {
-            if project.archived {
-                // Unarchive the project so it becomes active again
-                let mut unarchived = project.clone();
-                unarchived.archived = false;
-                storage
-                    .save_project(&unarchived)
-                    .map_err(|e| e.to_string())?;
-                return Ok(unarchived);
-            }
-            return Ok(project.clone());
+    let existing = require_clean_project_scan(&storage, "load_project")?;
+    if let Some(project) = existing.projects.iter().find(|p| p.repo_path == repo_path) {
+        if project.archived {
+            // Unarchive the project so it becomes active again
+            let mut unarchived = project.clone();
+            unarchived.archived = false;
+            storage
+                .save_project(&unarchived)
+                .map_err(|e| e.to_string())?;
+            return Ok(unarchived);
         }
-        // Reject duplicate project names when creating new (skip archived projects)
-        if existing.iter().any(|p| p.name == name && !p.archived) {
-            return Err(format!("A project named '{}' already exists", name));
-        }
+        return Ok(project.clone());
+    }
+    // Reject duplicate project names when creating new (skip archived projects)
+    if existing
+        .projects
+        .iter()
+        .any(|p| p.name == name && !p.archived)
+    {
+        return Err(format!("A project named '{}' already exists", name));
     }
 
     let project = Project {
@@ -344,10 +381,13 @@ pub fn load_project(
 }
 
 #[tauri::command]
-pub fn list_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
+pub fn list_projects(state: State<AppState>) -> Result<ProjectScan, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects.into_iter().filter(|p| !p.archived).collect())
+    let scan = scan_projects(&storage, "list_projects")?;
+    Ok(ProjectScan {
+        projects: scan.projects.into_iter().filter(|p| !p.archived).collect(),
+        corrupt_entries: scan.corrupt_entries,
+    })
 }
 
 #[tauri::command]
@@ -413,13 +453,17 @@ pub fn delete_project(
 }
 
 #[tauri::command]
-pub fn list_archived_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
+pub fn list_archived_projects(state: State<AppState>) -> Result<ProjectScan, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects
-        .into_iter()
-        .filter(|p| p.archived || p.sessions.iter().any(|s| s.archived))
-        .collect())
+    let scan = scan_projects(&storage, "list_archived_projects")?;
+    Ok(ProjectScan {
+        projects: scan
+            .projects
+            .into_iter()
+            .filter(|p| p.archived || p.sessions.iter().any(|s| s.archived))
+            .collect(),
+        corrupt_entries: scan.corrupt_entries,
+    })
 }
 
 #[tauri::command]
@@ -1155,10 +1199,13 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
     // Reject duplicate project names (skip archived projects)
-    if let Ok(existing) = storage.list_projects() {
-        if existing.iter().any(|p| p.name == name && !p.archived) {
-            return Err(format!("A project named '{}' already exists", name));
-        }
+    let existing = require_clean_project_scan(&storage, "scaffold_project")?;
+    if existing
+        .projects
+        .iter()
+        .any(|p| p.name == name && !p.archived)
+    {
+        return Err(format!("A project named '{}' already exists", name));
     }
 
     let cfg = config::load_config(&storage.base_dir())
@@ -1218,20 +1265,32 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
 
     // Create GitHub remote, then push separately so failed pushes can roll back the remote.
     let gh_output = github_cli_command()
-        .args(["repo", "create", &name, "--private", "--source=.", "--remote=origin"])
+        .args([
+            "repo",
+            "create",
+            &name,
+            "--private",
+            "--source=.",
+            "--remote=origin",
+        ])
         .current_dir(&repo_path)
         .output()
         .map_err(|e| rollback_dir(format!("Failed to run gh CLI: {}. Is gh installed?", e)))?;
     if !gh_output.status.success() {
         let stderr = String::from_utf8_lossy(&gh_output.stderr);
-        return Err(rollback_dir(format!("Failed to create GitHub repo: {}", stderr.trim())));
+        return Err(rollback_dir(format!(
+            "Failed to create GitHub repo: {}",
+            stderr.trim()
+        )));
     }
 
     let push_output = git_cli_command()
         .args(["push", "--set-upstream", "origin", "HEAD"])
         .current_dir(&repo_path)
         .output()
-        .map_err(|e| rollback_scaffold_state(&repo_path, format!("Failed to run git push: {}", e)))?;
+        .map_err(|e| {
+            rollback_scaffold_state(&repo_path, format!("Failed to run git push: {}", e))
+        })?;
     if !push_output.status.success() {
         let stderr = String::from_utf8_lossy(&push_output.stderr);
         return Err(rollback_scaffold_state(
@@ -1764,8 +1823,8 @@ fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Config, save_config};
-    use crate::models::SessionConfig;
+    use crate::config::{save_config, Config};
+    use crate::models::{AutoWorkerConfig, MaintainerConfig, Project, SessionConfig};
     use crate::pty_manager::PtyManager;
     use crate::state::{AppState, IssueCache};
     use crate::storage::Storage;
@@ -1809,7 +1868,10 @@ mod tests {
             .output()
             .expect("locate git");
         assert!(output.status.success(), "which git should succeed");
-        String::from_utf8(output.stdout).expect("utf8 git path").trim().to_string()
+        String::from_utf8(output.stdout)
+            .expect("utf8 git path")
+            .trim()
+            .to_string()
     }
 
     fn write_fake_command(path: &Path, body: &str) {
@@ -2209,7 +2271,8 @@ mod tests {
             );
 
             fs::remove_file(state_dir.join("push-fails")).expect("allow retry push");
-            fs::remove_file(state_dir.join("remote-deleted")).expect("clear previous delete marker");
+            fs::remove_file(state_dir.join("remote-deleted"))
+                .expect("clear previous delete marker");
 
             let project = scaffold_project(state_from_ref(&app_state), "rollback-test".to_string())
                 .expect("retry should succeed after rollback");
@@ -2233,6 +2296,56 @@ mod tests {
             );
             assert_eq!(stored[0].repo_path, repo_path.to_string_lossy());
         });
+    }
+
+    #[test]
+    fn test_create_project_rejects_corrupt_project_metadata() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+
+        let existing_repo = projects_root.path().join("existing");
+        let new_repo = projects_root.path().join("new-project");
+        fs::create_dir_all(&existing_repo).unwrap();
+        fs::create_dir_all(&new_repo).unwrap();
+
+        let existing = Project {
+            id: Uuid::new_v4(),
+            name: "existing".to_string(),
+            repo_path: existing_repo.to_string_lossy().to_string(),
+            created_at: "2026-03-10T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
+            sessions: vec![],
+            staged_session: None,
+        };
+        app_state
+            .storage
+            .lock()
+            .unwrap()
+            .save_project(&existing)
+            .expect("save existing project");
+
+        let corrupt_dir = base_dir
+            .path()
+            .join("projects")
+            .join(Uuid::new_v4().to_string());
+        fs::create_dir_all(&corrupt_dir).unwrap();
+        fs::write(corrupt_dir.join("project.json"), "{ invalid json").unwrap();
+
+        let err = create_project(
+            state_from_ref(&app_state),
+            "new-project".to_string(),
+            new_repo.to_string_lossy().to_string(),
+        )
+        .expect_err("create should fail when project metadata is corrupt");
+
+        assert!(
+            err.contains("corrupt project metadata"),
+            "unexpected error: {err}"
+        );
     }
 
     // --- validate_maintainer_interval tests ---

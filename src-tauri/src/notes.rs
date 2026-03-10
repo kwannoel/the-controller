@@ -11,7 +11,11 @@ pub struct NoteEntry {
 
 /// Validates that a filename does not escape the notes directory.
 fn validate_filename(filename: &str) -> std::io::Result<()> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") || filename.is_empty() {
+    if filename.contains('/')
+        || filename.contains('\\')
+        || filename.contains("..")
+        || filename.is_empty()
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("invalid note filename: {}", filename),
@@ -35,10 +39,7 @@ pub fn notes_dir_with_base(base: &std::path::Path, project_name: &str) -> PathBu
 }
 
 /// List all `.md` files in the project's notes directory, sorted by modified time (newest first).
-pub fn list_notes(
-    base: &std::path::Path,
-    project_name: &str,
-) -> std::io::Result<Vec<NoteEntry>> {
+pub fn list_notes(base: &std::path::Path, project_name: &str) -> std::io::Result<Vec<NoteEntry>> {
     let dir = notes_dir_with_base(base, project_name);
     if !dir.exists() {
         return Ok(Vec::new());
@@ -236,7 +237,10 @@ mod tests {
         create_note(tmp.path(), "proj", "dup").unwrap();
         let result = create_note(tmp.path(), "proj", "dup");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
     }
 
     #[test]
@@ -276,7 +280,10 @@ mod tests {
         create_note(tmp.path(), "proj", "b").unwrap();
         let result = rename_note(tmp.path(), "proj", "a.md", "b");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
     }
 
     #[test]
@@ -320,15 +327,24 @@ mod tests {
 
         let read_result = read_note(tmp.path(), "proj", malicious);
         assert!(read_result.is_err());
-        assert_eq!(read_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            read_result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
 
         let write_result = write_note(tmp.path(), "proj", malicious, "pwned");
         assert!(write_result.is_err());
-        assert_eq!(write_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            write_result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
 
         let delete_result = delete_note(tmp.path(), "proj", malicious);
         assert!(delete_result.is_err());
-        assert_eq!(delete_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            delete_result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
     }
 
     #[test]

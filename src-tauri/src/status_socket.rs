@@ -116,7 +116,15 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
     // the lock ordering used by Tauri commands (storage → pty_manager).
     // Reversed order causes deadlock.
     if let Ok(storage) = state.storage.lock() {
-        if let Ok(mut projects) = storage.list_projects() {
+        if let Ok(scan) = storage.scan_projects() {
+            for entry in &scan.corrupt_entries {
+                eprintln!(
+                    "cleanup: corrupt project metadata at {}: {}",
+                    entry.path.display(),
+                    entry.error
+                );
+            }
+            let mut projects = scan.projects;
             for project in &mut projects {
                 if let Some(pos) = project.sessions.iter().position(|s| s.id == session_id) {
                     let session = project.sessions.remove(pos);
@@ -127,11 +135,9 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
                     if let (Some(wt_path), Some(branch)) =
                         (&session.worktree_path, &session.worktree_branch)
                     {
-                        if let Err(e) = WorktreeManager::remove_worktree(
-                            wt_path,
-                            &project.repo_path,
-                            branch,
-                        ) {
+                        if let Err(e) =
+                            WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch)
+                        {
                             eprintln!("cleanup: failed to remove worktree: {}", e);
                         }
                     }
@@ -243,7 +249,13 @@ mod tests {
         assert!(hooks.get("Notification").is_some());
 
         // Verify new hooks format: each event entry must have a nested "hooks" array
-        for event_name in &["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification"] {
+        for event_name in &[
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "Stop",
+            "Notification",
+        ] {
             let entries = hooks.get(*event_name).unwrap().as_array().unwrap();
             for entry in entries {
                 assert!(

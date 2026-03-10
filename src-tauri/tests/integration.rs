@@ -98,11 +98,12 @@ fn test_agents_md_lifecycle() {
 
     // Write agents.md in the repo root — this should take priority
     let repo_content = "# Repo-Level Agents\n\nHigher priority content.\n";
-    fs::write(repo_dir.path().join("agents.md"), repo_content)
-        .expect("write repo agents.md");
+    fs::write(repo_dir.path().join("agents.md"), repo_content).expect("write repo agents.md");
 
     // Verify repo-root file takes priority
-    let priority_read = storage.get_agents_md(&project).expect("read priority agents.md");
+    let priority_read = storage
+        .get_agents_md(&project)
+        .expect("read priority agents.md");
     assert_eq!(priority_read, repo_content);
 }
 
@@ -167,7 +168,9 @@ fn test_sessions_persist_across_restarts() {
     storage.save_project(&project).expect("save project");
 
     // Simulate restart: reload from disk
-    let loaded = storage.load_project(project_id).expect("load after restart");
+    let loaded = storage
+        .load_project(project_id)
+        .expect("load after restart");
     assert_eq!(loaded.sessions.len(), 3, "all sessions should persist");
     assert_eq!(
         loaded.sessions.iter().filter(|s| !s.archived).count(),
@@ -203,7 +206,9 @@ fn test_no_duplicate_project_names() {
         sessions: vec![],
         staged_session: None,
     };
-    storage.save_project(&project_a).expect("save first project");
+    storage
+        .save_project(&project_a)
+        .expect("save first project");
 
     // Attempting to save another project with the same name should be caught
     // by the command layer. At the storage layer, we verify the invariant
@@ -220,7 +225,9 @@ fn test_no_duplicate_project_names() {
         sessions: vec![],
         staged_session: None,
     };
-    storage.save_project(&project_b).expect("save second project");
+    storage
+        .save_project(&project_b)
+        .expect("save second project");
 
     let projects = storage.list_projects().expect("list projects");
     let count = projects.iter().filter(|p| p.name == "my-project").count();
@@ -253,11 +260,15 @@ fn test_archived_project_name_can_be_reused() {
         sessions: vec![],
         staged_session: None,
     };
-    storage.save_project(&project).expect("save archived project");
+    storage
+        .save_project(&project)
+        .expect("save archived project");
 
     // Simulate the command-layer duplicate check (same as create_project/scaffold_project)
     let existing = storage.list_projects().expect("list projects");
-    let has_active_duplicate = existing.iter().any(|p| p.name == "reusable-name" && !p.archived);
+    let has_active_duplicate = existing
+        .iter()
+        .any(|p| p.name == "reusable-name" && !p.archived);
     assert!(
         !has_active_duplicate,
         "archived project should not block reuse of its name"
@@ -269,7 +280,9 @@ fn test_archived_project_name_can_be_reused() {
     storage.save_project(&project).expect("save active project");
 
     let existing = storage.list_projects().expect("list projects");
-    let has_active_duplicate = existing.iter().any(|p| p.name == "reusable-name" && !p.archived);
+    let has_active_duplicate = existing
+        .iter()
+        .any(|p| p.name == "reusable-name" && !p.archived);
     assert!(
         has_active_duplicate,
         "active project should block reuse of its name"
@@ -286,9 +299,9 @@ fn test_worktrees_persist_across_restarts() {
     let repo_dir = TempDir::new().unwrap();
     let repo_path = repo_dir.path().to_str().unwrap().to_string();
     let repo = git2::Repository::init(&repo_path).expect("init repo");
-    let sig = repo.signature().unwrap_or_else(|_| {
-        git2::Signature::now("Test", "test@example.com").unwrap()
-    });
+    let sig = repo
+        .signature()
+        .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
     let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
     repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
@@ -328,9 +341,14 @@ fn test_worktrees_persist_across_restarts() {
     storage.save_project(&project).expect("save project");
 
     // Simulate restart: reload from disk
-    let loaded = storage.load_project(project_id).expect("load after restart");
+    let loaded = storage
+        .load_project(project_id)
+        .expect("load after restart");
     assert_eq!(loaded.sessions.len(), 1, "session should persist");
-    assert!(wt_path.exists(), "worktree should still exist on disk after restart");
+    assert!(
+        wt_path.exists(),
+        "worktree should still exist on disk after restart"
+    );
 }
 
 /// Worktree directories should use project name, not UUID.
@@ -377,13 +395,19 @@ fn test_migrate_worktree_paths_renames_uuid_dir() {
     // UUID dir should be gone, name dir should exist
     assert!(!uuid_wt_dir.exists(), "UUID dir should be removed");
     let name_wt_dir = tmp.path().join("worktrees").join("my-cool-project");
-    assert!(name_wt_dir.join("session-1").exists(), "name dir should exist");
+    assert!(
+        name_wt_dir.join("session-1").exists(),
+        "name dir should exist"
+    );
 
     // Stored paths should be updated
     let loaded = storage.load_project(project_id).expect("load");
     let session = &loaded.sessions[0];
     let expected_path = name_wt_dir.join("session-1").to_str().unwrap().to_string();
-    assert_eq!(session.worktree_path.as_deref(), Some(expected_path.as_str()));
+    assert_eq!(
+        session.worktree_path.as_deref(),
+        Some(expected_path.as_str())
+    );
 }
 
 #[test]
@@ -422,7 +446,9 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
     storage.save_project(&project).expect("save project");
 
     // Should not error or change anything
-    storage.migrate_worktree_paths(&project).expect("migrate noop");
+    storage
+        .migrate_worktree_paths(&project)
+        .expect("migrate noop");
 
     assert!(session_wt.exists(), "name dir should still exist");
     let loaded = storage.load_project(project_id).expect("load");
@@ -524,7 +550,9 @@ fn test_archive_project_with_no_sessions() {
     // Simulate what archive_project should do: set project.archived = true
     let mut project = storage.load_project(project_id).expect("load project");
     project.archived = true;
-    storage.save_project(&project).expect("save archived project");
+    storage
+        .save_project(&project)
+        .expect("save archived project");
 
     // Verify the project is archived
     let archived = storage.load_project(project_id).expect("load archived");
@@ -562,9 +590,9 @@ fn test_create_session_uses_project_name_in_path() {
     let repo_dir = TempDir::new().unwrap();
     let repo_path = repo_dir.path().to_str().unwrap().to_string();
     let repo = git2::Repository::init(&repo_path).expect("init repo");
-    let sig = repo.signature().unwrap_or_else(|_| {
-        git2::Signature::now("Test", "test@example.com").unwrap()
-    });
+    let sig = repo
+        .signature()
+        .unwrap_or_else(|_| git2::Signature::now("Test", "test@example.com").unwrap());
     let tree_id = repo.treebuilder(None).unwrap().write().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
     repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
@@ -585,7 +613,8 @@ fn test_create_session_uses_project_name_in_path() {
     storage.save_project(&project).expect("save project");
 
     // Create worktree using name-based path (what create_session should do)
-    let worktree_dir = tmp.path()
+    let worktree_dir = tmp
+        .path()
         .join("worktrees")
         .join(&project.name)
         .join("session-1");
@@ -628,8 +657,19 @@ fn test_scaffold_project_creates_template_files() {
     assert!(repo_path.join("docs/plans/.gitkeep").exists());
 
     // Verify CLAUDE.md is a symlink to agents.md
-    assert!(repo_path.join("CLAUDE.md").symlink_metadata().unwrap().file_type().is_symlink());
-    assert_eq!(fs::read_link(repo_path.join("CLAUDE.md")).unwrap().to_str().unwrap(), "agents.md");
+    assert!(repo_path
+        .join("CLAUDE.md")
+        .symlink_metadata()
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(repo_path.join("CLAUDE.md"))
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "agents.md"
+    );
 
     // Verify agents.md contains the project name
     let content = fs::read_to_string(repo_path.join("agents.md")).unwrap();
@@ -661,26 +701,42 @@ fn test_scaffold_initial_commit_contains_template_files() {
     let mut index = repo.index().unwrap();
     index.add_path(std::path::Path::new("agents.md")).unwrap();
     index.add_path(std::path::Path::new("CLAUDE.md")).unwrap();
-    index.add_path(std::path::Path::new("docs/plans/.gitkeep")).unwrap();
+    index
+        .add_path(std::path::Path::new("docs/plans/.gitkeep"))
+        .unwrap();
     index.write().unwrap();
     let tree_id = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[]).unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+        .unwrap();
 
     // Verify the HEAD commit tree contains our files
     let head = repo.head().unwrap().peel_to_commit().unwrap();
     let commit_tree = head.tree().unwrap();
 
     // agents.md and CLAUDE.md should be at root
-    assert!(commit_tree.get_name("agents.md").is_some(), "agents.md missing from commit tree");
-    assert!(commit_tree.get_name("CLAUDE.md").is_some(), "CLAUDE.md missing from commit tree");
+    assert!(
+        commit_tree.get_name("agents.md").is_some(),
+        "agents.md missing from commit tree"
+    );
+    assert!(
+        commit_tree.get_name("CLAUDE.md").is_some(),
+        "CLAUDE.md missing from commit tree"
+    );
 
     // docs/plans/.gitkeep should be nested
-    let docs_entry = commit_tree.get_name("docs").expect("docs/ missing from commit tree");
+    let docs_entry = commit_tree
+        .get_name("docs")
+        .expect("docs/ missing from commit tree");
     let docs_tree = repo.find_tree(docs_entry.id()).unwrap();
-    let plans_entry = docs_tree.get_name("plans").expect("plans/ missing from docs tree");
+    let plans_entry = docs_tree
+        .get_name("plans")
+        .expect("plans/ missing from docs tree");
     let plans_tree = repo.find_tree(plans_entry.id()).unwrap();
-    assert!(plans_tree.get_name(".gitkeep").is_some(), ".gitkeep missing from plans tree");
+    assert!(
+        plans_tree.get_name(".gitkeep").is_some(),
+        ".gitkeep missing from plans tree"
+    );
 
     // Verify agents.md content in the commit
     let agents_entry = commit_tree.get_name("agents.md").unwrap();
@@ -702,8 +758,19 @@ fn test_ensure_claude_md_symlink_creates_when_missing() {
     the_controller_lib::commands::ensure_claude_md_symlink(dir).unwrap();
 
     assert!(dir.join("CLAUDE.md").exists());
-    assert!(dir.join("CLAUDE.md").symlink_metadata().unwrap().file_type().is_symlink());
-    assert_eq!(fs::read_link(dir.join("CLAUDE.md")).unwrap().to_str().unwrap(), "agents.md");
+    assert!(dir
+        .join("CLAUDE.md")
+        .symlink_metadata()
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_link(dir.join("CLAUDE.md"))
+            .unwrap()
+            .to_str()
+            .unwrap(),
+        "agents.md"
+    );
     // Content should match
     assert_eq!(fs::read_to_string(dir.join("CLAUDE.md")).unwrap(), "# Test");
 }
@@ -719,8 +786,16 @@ fn test_ensure_claude_md_symlink_skips_when_exists() {
     the_controller_lib::commands::ensure_claude_md_symlink(dir).unwrap();
 
     // Should not have been replaced
-    assert!(!dir.join("CLAUDE.md").symlink_metadata().unwrap().file_type().is_symlink());
-    assert_eq!(fs::read_to_string(dir.join("CLAUDE.md")).unwrap(), "# Custom");
+    assert!(!dir
+        .join("CLAUDE.md")
+        .symlink_metadata()
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        fs::read_to_string(dir.join("CLAUDE.md")).unwrap(),
+        "# Custom"
+    );
 }
 
 /// ensure_claude_md_symlink does nothing when agents.md is missing.
@@ -764,7 +839,10 @@ fn test_load_archived_project_by_repo_path_unarchives_it() {
     // find the archived one, unarchive it, and save.
     let all = storage.list_projects().expect("list");
     let found = all.iter().find(|p| p.repo_path == repo_path);
-    assert!(found.is_some(), "archived project should be findable by repo_path");
+    assert!(
+        found.is_some(),
+        "archived project should be findable by repo_path"
+    );
     let found = found.unwrap();
     assert!(found.archived, "project should be archived");
 
@@ -775,7 +853,10 @@ fn test_load_archived_project_by_repo_path_unarchives_it() {
 
     // Verify it's now active
     let reloaded = storage.load_project(project_id).expect("reload");
-    assert!(!reloaded.archived, "project should be unarchived after re-load");
+    assert!(
+        !reloaded.archived,
+        "project should be unarchived after re-load"
+    );
 
     // The duplicate name check should skip archived projects, so a new project
     // with a different repo_path but same name should be creatable after the

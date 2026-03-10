@@ -415,8 +415,12 @@ mod tests {
             url: "https://github.com/owner/repo/issues/42".to_string(),
             body: None,
             labels: vec![
-                GithubLabel { name: "bug".to_string() },
-                GithubLabel { name: "priority".to_string() },
+                GithubLabel {
+                    name: "bug".to_string(),
+                },
+                GithubLabel {
+                    name: "priority".to_string(),
+                },
             ],
         };
         let json = serde_json::to_string(&issue).unwrap();

@@ -22,16 +22,36 @@ vi.mock("./toast", () => ({
   showToast: vi.fn(),
 }));
 
-vi.mock("./FuzzyFinder.svelte", () => ({ default: function MockFuzzyFinder() {} }));
-vi.mock("./NewProjectModal.svelte", () => ({ default: function MockNewProjectModal() {} }));
-vi.mock("./DeleteProjectModal.svelte", () => ({ default: function MockDeleteProjectModal() {} }));
-vi.mock("./ConfirmModal.svelte", () => ({ default: function MockConfirmModal() {} }));
-vi.mock("./DeleteSessionModal.svelte", () => ({ default: function MockDeleteSessionModal() {} }));
-vi.mock("./NewNoteModal.svelte", () => ({ default: function MockNewNoteModal() {} }));
-vi.mock("./RenameNoteModal.svelte", () => ({ default: function MockRenameNoteModal() {} }));
-vi.mock("./sidebar/ProjectTree.svelte", () => ({ default: function MockProjectTree() {} }));
-vi.mock("./sidebar/AgentTree.svelte", () => ({ default: function MockAgentTree() {} }));
-vi.mock("./sidebar/NotesTree.svelte", () => ({ default: function MockNotesTree() {} }));
+vi.mock("./FuzzyFinder.svelte", () => ({
+  default: function MockFuzzyFinder() {},
+}));
+vi.mock("./NewProjectModal.svelte", () => ({
+  default: function MockNewProjectModal() {},
+}));
+vi.mock("./DeleteProjectModal.svelte", () => ({
+  default: function MockDeleteProjectModal() {},
+}));
+vi.mock("./ConfirmModal.svelte", () => ({
+  default: function MockConfirmModal() {},
+}));
+vi.mock("./DeleteSessionModal.svelte", () => ({
+  default: function MockDeleteSessionModal() {},
+}));
+vi.mock("./NewNoteModal.svelte", () => ({
+  default: function MockNewNoteModal() {},
+}));
+vi.mock("./RenameNoteModal.svelte", () => ({
+  default: function MockRenameNoteModal() {},
+}));
+vi.mock("./sidebar/ProjectTree.svelte", () => ({
+  default: function MockProjectTree() {},
+}));
+vi.mock("./sidebar/AgentTree.svelte", () => ({
+  default: function MockAgentTree() {},
+}));
+vi.mock("./sidebar/NotesTree.svelte", () => ({
+  default: function MockNotesTree() {},
+}));
 
 import Sidebar from "./Sidebar.svelte";
 
@@ -54,8 +74,9 @@ describe("Sidebar provider indicator", () => {
     selectedSessionProvider.set("claude");
 
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
-      if (cmd === "list_projects") return [];
-      if (cmd === "list_archived_projects") return [];
+      if (cmd === "list_projects") return { projects: [], corrupt_entries: [] };
+      if (cmd === "list_archived_projects")
+        return { projects: [], corrupt_entries: [] };
       return;
     });
   });
@@ -75,6 +96,37 @@ describe("Sidebar provider indicator", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Provider: Codex/i)).toBeInTheDocument();
+    });
+  });
+
+  it("renders corrupt project metadata warnings from project scans", async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_projects") {
+        return {
+          projects: [],
+          corrupt_entries: [
+            {
+              path: "/tmp/projects/bad/project.json",
+              error: "expected value at line 1 column 1",
+            },
+          ],
+        };
+      }
+      if (cmd === "list_archived_projects") {
+        return { projects: [], corrupt_entries: [] };
+      }
+      return;
+    });
+
+    render(Sidebar);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Corrupt project metadata detected/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("/tmp/projects/bad/project.json"),
+      ).toBeInTheDocument();
     });
   });
 });

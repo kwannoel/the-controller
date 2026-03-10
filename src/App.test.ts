@@ -34,18 +34,32 @@ vi.mock("./lib/toast", () => ({
 }));
 
 vi.mock("./lib/Sidebar.svelte", () => ({ default: function MockSidebar() {} }));
-vi.mock("./lib/TerminalManager.svelte", () => ({ default: function MockTerminalManager() {} }));
-vi.mock("./lib/Onboarding.svelte", () => ({ default: function MockOnboarding() {} }));
+vi.mock("./lib/TerminalManager.svelte", () => ({
+  default: function MockTerminalManager() {},
+}));
+vi.mock("./lib/Onboarding.svelte", () => ({
+  default: function MockOnboarding() {},
+}));
 vi.mock("./lib/Toast.svelte", () => ({ default: function MockToast() {} }));
-vi.mock("./lib/HotkeyManager.svelte", () => ({ default: function MockHotkeyManager() {} }));
-vi.mock("./lib/HotkeyHelp.svelte", () => ({ default: function MockHotkeyHelp() {} }));
+vi.mock("./lib/HotkeyManager.svelte", () => ({
+  default: function MockHotkeyManager() {},
+}));
+vi.mock("./lib/HotkeyHelp.svelte", () => ({
+  default: function MockHotkeyHelp() {},
+}));
 
-vi.mock("./lib/CreateIssueModal.svelte", () => ({ default: function MockCreateIssueModal() {} }));
+vi.mock("./lib/CreateIssueModal.svelte", () => ({
+  default: function MockCreateIssueModal() {},
+}));
 vi.mock("./lib/IssuePickerModal.svelte", async () => ({
   default: (await import("./test/IssuePickerModalMock.svelte")).default,
 }));
 
 import App from "./App.svelte";
+
+function projectScan(projectList: Project[]) {
+  return { projects: projectList, corrupt_entries: [] };
+}
 
 const baseProject: Project = {
   id: "proj-1",
@@ -88,10 +102,11 @@ describe("App screenshot flow", () => {
     vi.mocked(invoke).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "capture_app_screenshot") return "/tmp/the-controller-screenshot.png";
+      if (cmd === "capture_app_screenshot")
+        return "/tmp/the-controller-screenshot.png";
       if (cmd === "create_session") return "sess-new";
       if (cmd === "list_projects") {
-        return [
+        return projectScan([
           {
             ...baseProject,
             sessions: [
@@ -108,7 +123,7 @@ describe("App screenshot flow", () => {
               },
             ],
           },
-        ];
+        ]);
       }
       return;
     });
@@ -120,12 +135,19 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
-      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
-        kind: "claude",
-        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
-      }));
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", {
+        cropped: false,
+      });
+      expect(invoke).toHaveBeenCalledWith(
+        "create_session",
+        expect.objectContaining({
+          projectId: "proj-1",
+          kind: "claude",
+          initialPrompt: expect.stringContaining(
+            "/tmp/the-controller-screenshot.png",
+          ),
+        }),
+      );
     });
 
     expect(mocks.openPath).not.toHaveBeenCalled();
@@ -137,8 +159,12 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", preview: true });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
-      expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", {
+        cropped: false,
+      });
+      expect(mocks.openPath).toHaveBeenCalledWith(
+        "/tmp/the-controller-screenshot.png",
+      );
     });
   });
 
@@ -148,7 +174,9 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", cropped: true });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", {
+        cropped: true,
+      });
     });
 
     expect(mocks.openPath).not.toHaveBeenCalled();
@@ -157,11 +185,19 @@ describe("App screenshot flow", () => {
   it("Cmd+Shift+D: captures cropped screenshot with preview", async () => {
     setupMocks();
     render(App);
-    hotkeyAction.set({ type: "screenshot-to-session", preview: true, cropped: true });
+    hotkeyAction.set({
+      type: "screenshot-to-session",
+      preview: true,
+      cropped: true,
+    });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
-      expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
+      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", {
+        cropped: true,
+      });
+      expect(mocks.openPath).toHaveBeenCalledWith(
+        "/tmp/the-controller-screenshot.png",
+      );
     });
   });
 });
@@ -176,7 +212,15 @@ describe("Window title updates on staging", () => {
     // @ts-expect-error compile-time constants injected in app builds
     globalThis.__DEV_PORT__ = "1420";
 
-    projects.set([{ ...baseProject, staged_session: null, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [] }]);
+    projects.set([
+      {
+        ...baseProject,
+        staged_session: null,
+        maintainer: { enabled: false, interval_minutes: 60 },
+        auto_worker: { enabled: false },
+        prompts: [],
+      },
+    ]);
     activeSessionId.set(null);
     focusTarget.set(null);
     hotkeyAction.set(null);
@@ -215,21 +259,25 @@ describe("Window title updates on staging", () => {
     render(App);
 
     // Stage a session by updating the projects store
-    projects.set([{
-      ...baseProject,
-      staged_session: {
-        session_id: "sess-1",
-        original_branch: "master",
-        staging_branch: "staging/fix-foo",
+    projects.set([
+      {
+        ...baseProject,
+        staged_session: {
+          session_id: "sess-1",
+          original_branch: "master",
+          staging_branch: "staging/fix-foo",
+        },
+        maintainer: { enabled: false, interval_minutes: 60 },
+        auto_worker: { enabled: false },
+        prompts: [],
+        sessions: [],
       },
-      maintainer: { enabled: false, interval_minutes: 60 },
-      auto_worker: { enabled: false },
-      prompts: [],
-      sessions: [],
-    }]);
+    ]);
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("get_repo_head", { repoPath: "/tmp/the-controller" });
+      expect(invoke).toHaveBeenCalledWith("get_repo_head", {
+        repoPath: "/tmp/the-controller",
+      });
       expect(mocks.setTitle).toHaveBeenCalledWith(
         "The Controller (abc1234, staging/fix-foo, localhost:1420)",
       );
@@ -247,18 +295,20 @@ describe("Window title updates on staging", () => {
     render(App);
 
     // Stage
-    projects.set([{
-      ...baseProject,
-      staged_session: {
-        session_id: "sess-1",
-        original_branch: "master",
-        staging_branch: "staging/fix-foo",
+    projects.set([
+      {
+        ...baseProject,
+        staged_session: {
+          session_id: "sess-1",
+          original_branch: "master",
+          staging_branch: "staging/fix-foo",
+        },
+        maintainer: { enabled: false, interval_minutes: 60 },
+        auto_worker: { enabled: false },
+        prompts: [],
+        sessions: [],
       },
-      maintainer: { enabled: false, interval_minutes: 60 },
-      auto_worker: { enabled: false },
-      prompts: [],
-      sessions: [],
-    }]);
+    ]);
 
     await waitFor(() => {
       expect(mocks.setTitle).toHaveBeenCalledWith(
@@ -268,14 +318,16 @@ describe("Window title updates on staging", () => {
 
     // Unstage
     mocks.setTitle.mockClear();
-    projects.set([{
-      ...baseProject,
-      staged_session: null,
-      maintainer: { enabled: false, interval_minutes: 60 },
-      auto_worker: { enabled: false },
-      prompts: [],
-      sessions: [],
-    }]);
+    projects.set([
+      {
+        ...baseProject,
+        staged_session: null,
+        maintainer: { enabled: false, interval_minutes: 60 },
+        auto_worker: { enabled: false },
+        prompts: [],
+        sessions: [],
+      },
+    ]);
 
     await waitFor(() => {
       expect(mocks.setTitle).toHaveBeenCalledWith(
@@ -295,7 +347,15 @@ describe("App issue picker flow", () => {
     // @ts-expect-error compile-time constants injected in app builds
     globalThis.__DEV_PORT__ = "1420";
 
-    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null }]);
+    projects.set([
+      {
+        ...baseProject,
+        maintainer: { enabled: false, interval_minutes: 60 },
+        auto_worker: { enabled: false },
+        prompts: [],
+        staged_session: null,
+      },
+    ]);
     activeSessionId.set(null);
     focusTarget.set({ type: "project", projectId: "proj-1" });
     hotkeyAction.set(null);
@@ -311,7 +371,17 @@ describe("App issue picker flow", () => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       if (cmd === "create_session") return "sess-new";
-      if (cmd === "list_projects") return [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null, sessions: [] }];
+      if (cmd === "list_projects")
+        return projectScan([
+          {
+            ...baseProject,
+            maintainer: { enabled: false, interval_minutes: 60 },
+            auto_worker: { enabled: false },
+            prompts: [],
+            staged_session: null,
+            sessions: [],
+          },
+        ]);
       return;
     });
   });
@@ -330,12 +400,15 @@ describe("App issue picker flow", () => {
     await fireEvent.click(await screen.findByTestId("mock-issue-select"));
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
-        githubIssue: expect.objectContaining({ number: 42 }),
-        kind: "codex",
-        background: true,
-      }));
+      expect(invoke).toHaveBeenCalledWith(
+        "create_session",
+        expect.objectContaining({
+          projectId: "proj-1",
+          githubIssue: expect.objectContaining({ number: 42 }),
+          kind: "codex",
+          background: true,
+        }),
+      );
     });
   });
 });

@@ -139,7 +139,12 @@ mod tests {
 
     #[test]
     fn build_issue_prompt_without_background() {
-        let prompt = build_issue_prompt(42, "Fix the bug", "https://github.com/foo/bar/issues/42", false);
+        let prompt = build_issue_prompt(
+            42,
+            "Fix the bug",
+            "https://github.com/foo/bar/issues/42",
+            false,
+        );
         assert!(prompt.contains("GitHub issue #42: Fix the bug"));
         assert!(prompt.contains("closes #42"));
         assert!(!prompt.contains("autonomous background worker"));
@@ -147,7 +152,12 @@ mod tests {
 
     #[test]
     fn build_issue_prompt_with_background() {
-        let prompt = build_issue_prompt(42, "Fix the bug", "https://github.com/foo/bar/issues/42", true);
+        let prompt = build_issue_prompt(
+            42,
+            "Fix the bug",
+            "https://github.com/foo/bar/issues/42",
+            true,
+        );
         assert!(prompt.contains("GitHub issue #42: Fix the bug"));
         assert!(prompt.contains("closes #42"));
         assert!(prompt.contains("autonomous background worker"));

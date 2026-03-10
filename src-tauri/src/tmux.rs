@@ -66,7 +66,13 @@ impl TmuxManager {
         continue_session: bool,
         initial_prompt: Option<&str>,
     ) -> Result<(), String> {
-        let args = Self::build_create_args(session_id, working_dir, command, continue_session, initial_prompt);
+        let args = Self::build_create_args(
+            session_id,
+            working_dir,
+            command,
+            continue_session,
+            initial_prompt,
+        );
         let name = Self::session_name(session_id);
         let output = Command::new(TMUX_BIN)
             .args(&args)
@@ -145,7 +151,13 @@ impl TmuxManager {
     pub fn session_size(session_id: Uuid) -> Option<(u16, u16)> {
         let name = Self::session_name(session_id);
         let output = Command::new(TMUX_BIN)
-            .args(["display-message", "-t", &name, "-p", "#{window_width} #{window_height}"])
+            .args([
+                "display-message",
+                "-t",
+                &name,
+                "-p",
+                "#{window_width} #{window_height}",
+            ])
             .output()
             .ok()?;
         if !output.status.success() {
@@ -213,7 +225,9 @@ mod tests {
         let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let args = TmuxManager::build_create_args(id, "/tmp", "claude", false, None);
 
-        let e_idx = args.iter().position(|a| a == "-e")
+        let e_idx = args
+            .iter()
+            .position(|a| a == "-e")
             .expect("-e flag must be present in tmux new-session args");
         let env_val = &args[e_idx + 1];
         assert_eq!(
@@ -225,7 +239,10 @@ mod tests {
         // -e must appear before the shell command (which is the first
         // positional arg after all flags)
         let cmd_idx = args.iter().position(|a| a == "claude").unwrap();
-        assert!(e_idx < cmd_idx, "-e flag must come before the shell command");
+        assert!(
+            e_idx < cmd_idx,
+            "-e flag must come before the shell command"
+        );
     }
 
     #[test]

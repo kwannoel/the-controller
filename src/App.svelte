@@ -20,7 +20,7 @@
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import NotesEditor from "./lib/NotesEditor.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { applyProjectScan, appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type ProjectScanResult, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
@@ -85,8 +85,8 @@
         enabled: newEnabled,
         intervalMinutes: project.maintainer.interval_minutes,
       });
-      const result: Project[] = await invoke("list_projects");
-      projects.set(result);
+      const result = await invoke<ProjectScanResult>("list_projects");
+      applyProjectScan(result);
       showToast(`Maintainer ${newEnabled ? "enabled" : "disabled"}`, "info");
     } catch (e) {
       showToast(String(e), "error");
@@ -104,8 +104,8 @@
         projectId: project.id,
         enabled: newEnabled,
       });
-      const result: Project[] = await invoke("list_projects");
-      projects.set(result);
+      const result = await invoke<ProjectScanResult>("list_projects");
+      applyProjectScan(result);
       showToast(`Auto-worker ${newEnabled ? "enabled" : "disabled"}`, "info");
     } catch (e) {
       showToast(String(e), "error");
@@ -200,7 +200,7 @@
       return next;
     });
     activeSessionId.set(sessionId);
-    projects.set(await invoke<Project[]>("list_projects"));
+    applyProjectScan(await invoke<ProjectScanResult>("list_projects"));
     expandedProjects.update((s: Set<string>) => {
       const next = new Set(s);
       next.add(projectId);
