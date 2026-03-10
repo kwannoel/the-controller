@@ -368,6 +368,7 @@
   async function loadArchivedProjects() {
     try {
       const result = await invoke<ProjectScanResult>("list_archived_projects");
+      projectMetadataErrors.set(result.corrupt_entries);
       archivedProjects.set(result.projects);
     } catch (err) {
       showToast(String(err), "error");

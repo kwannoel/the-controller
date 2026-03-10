@@ -65,6 +65,26 @@ struct ActiveSession {
 
 pub struct AutoWorkerScheduler;
 
+fn projects_for_auto_worker(
+    storage: &crate::storage::Storage,
+    context: &str,
+) -> Option<Vec<crate::models::Project>> {
+    match storage.scan_projects() {
+        Ok(scan) => {
+            for entry in &scan.corrupt_entries {
+                eprintln!(
+                    "{}: corrupt project metadata at {}: {}",
+                    context,
+                    entry.path.display(),
+                    entry.error
+                );
+            }
+            Some(scan.projects)
+        }
+        Err(_) => None,
+    }
+}
+
 impl AutoWorkerScheduler {
     /// Remove stale `in-progress` labels from all enabled projects.
     /// Called on startup before any sessions exist — any `in-progress` label
@@ -81,18 +101,9 @@ impl AutoWorkerScheduler {
                 Ok(s) => s,
                 Err(_) => return,
             };
-            match storage.scan_projects() {
-                Ok(scan) => {
-                    for entry in &scan.corrupt_entries {
-                        eprintln!(
-                            "auto-worker cleanup: corrupt project metadata at {}: {}",
-                            entry.path.display(),
-                            entry.error
-                        );
-                    }
-                    scan.projects
-                }
-                Err(_) => return,
+            match projects_for_auto_worker(&storage, "auto-worker cleanup") {
+                Some(projects) => projects,
+                None => return,
             }
         };
 
@@ -130,18 +141,9 @@ impl AutoWorkerScheduler {
                 Ok(s) => s,
                 Err(_) => return,
             };
-            match storage.scan_projects() {
-                Ok(scan) => {
-                    for entry in &scan.corrupt_entries {
-                        eprintln!(
-                            "auto-worker migration: corrupt project metadata at {}: {}",
-                            entry.path.display(),
-                            entry.error
-                        );
-                    }
-                    scan.projects
-                }
-                Err(_) => return,
+            match projects_for_auto_worker(&storage, "auto-worker migration") {
+                Some(projects) => projects,
+                None => return,
             }
         };
 
@@ -297,18 +299,9 @@ impl AutoWorkerScheduler {
                         Ok(s) => s,
                         Err(_) => continue,
                     };
-                    match storage.scan_projects() {
-                        Ok(scan) => {
-                            for entry in &scan.corrupt_entries {
-                                eprintln!(
-                                    "auto-worker scheduler: corrupt project metadata at {}: {}",
-                                    entry.path.display(),
-                                    entry.error
-                                );
-                            }
-                            scan.projects
-                        }
-                        Err(_) => continue,
+                    match projects_for_auto_worker(&storage, "auto-worker scheduler") {
+                        Some(projects) => projects,
+                        None => continue,
                     }
                 };
 
@@ -789,7 +782,11 @@ pub fn pick_eligible_issue(issues: &[GithubIssue]) -> Option<&GithubIssue> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::GithubLabel;
+    use crate::models::{
+        AutoWorkerConfig, GithubLabel, MaintainerConfig, Project, SessionConfig,
+    };
+    use crate::storage::Storage;
+    use tempfile::TempDir;
 
     fn make_issue(labels: &[&str]) -> GithubIssue {
         GithubIssue {
@@ -803,6 +800,32 @@ mod tests {
                     name: l.to_string(),
                 })
                 .collect(),
+        }
+    }
+
+    fn make_project(name: &str, enabled: bool) -> Project {
+        Project {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            repo_path: format!("/tmp/{}", name),
+            created_at: "2026-03-10T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig { enabled },
+            prompts: vec![],
+            sessions: vec![SessionConfig {
+                id: Uuid::new_v4(),
+                label: "main".to_string(),
+                worktree_path: None,
+                worktree_branch: None,
+                archived: false,
+                kind: "claude".to_string(),
+                github_issue: None,
+                initial_prompt: None,
+                done_commits: vec![],
+                auto_worker_session: false,
+            }],
+            staged_session: None,
         }
     }
 
@@ -875,6 +898,28 @@ mod tests {
             make_issue(&["in-progress", "priority:high", "complexity:simple"]),
         ];
         assert!(pick_eligible_issue(&issues).is_none());
+    }
+
+    #[test]
+    fn projects_for_auto_worker_keeps_valid_projects_when_scan_has_corruption() {
+        let tmp = TempDir::new().unwrap();
+        let storage = Storage::new(tmp.path().to_path_buf());
+        storage.ensure_dirs().unwrap();
+
+        let valid = make_project("valid-auto-worker", true);
+        storage.save_project(&valid).unwrap();
+
+        let corrupt_dir = tmp
+            .path()
+            .join("projects")
+            .join(Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&corrupt_dir).unwrap();
+        std::fs::write(corrupt_dir.join("project.json"), "{ invalid json").unwrap();
+
+        let projects = projects_for_auto_worker(&storage, "test").expect("scan should succeed");
+
+        assert_eq!(projects.len(), 1);
+        assert_eq!(projects[0].id, valid.id);
     }
 
     #[test]

@@ -129,4 +129,34 @@ describe("Sidebar provider indicator", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("updates corruption warnings when archive-only loads return corrupt entries", async () => {
+    render(Sidebar);
+
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_projects") {
+        return { projects: [], corrupt_entries: [] };
+      }
+      if (cmd === "list_archived_projects") {
+        return {
+          projects: [],
+          corrupt_entries: [
+            {
+              path: "/tmp/projects/archive-only/project.json",
+              error: "expected value at line 1 column 1",
+            },
+          ],
+        };
+      }
+      return;
+    });
+
+    archiveView.set(true);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("/tmp/projects/archive-only/project.json"),
+      ).toBeInTheDocument();
+    });
+  });
 });

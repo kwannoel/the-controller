@@ -328,8 +328,9 @@ pub fn load_project(
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
-    // Return existing project if one with the same repo_path exists
-    let existing = require_clean_project_scan(&storage, "load_project")?;
+    // Return existing project if one with the same repo_path exists.
+    // Exact repo matches remain safe even when unrelated project metadata is corrupt.
+    let existing = scan_projects(&storage, "load_project")?;
     if let Some(project) = existing.projects.iter().find(|p| p.repo_path == repo_path) {
         if project.archived {
             // Unarchive the project so it becomes active again
@@ -342,6 +343,14 @@ pub fn load_project(
         }
         return Ok(project.clone());
     }
+
+    if !existing.corrupt_entries.is_empty() {
+        return Err(format!(
+            "Cannot continue because corrupt project metadata was detected: {}",
+            existing.corruption_summary()
+        ));
+    }
+
     // Reject duplicate project names when creating new (skip archived projects)
     if existing
         .projects
@@ -2346,6 +2355,52 @@ mod tests {
             err.contains("corrupt project metadata"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn test_load_project_allows_existing_repo_match_with_unrelated_corrupt_metadata() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+
+        let existing_repo = projects_root.path().join("existing");
+        fs::create_dir_all(existing_repo.join(".git")).unwrap();
+
+        let existing = Project {
+            id: Uuid::new_v4(),
+            name: "existing".to_string(),
+            repo_path: existing_repo.to_string_lossy().to_string(),
+            created_at: "2026-03-10T00:00:00Z".to_string(),
+            archived: true,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
+            sessions: vec![],
+            staged_session: None,
+        };
+        app_state
+            .storage
+            .lock()
+            .unwrap()
+            .save_project(&existing)
+            .expect("save existing project");
+
+        let corrupt_dir = base_dir
+            .path()
+            .join("projects")
+            .join(Uuid::new_v4().to_string());
+        fs::create_dir_all(&corrupt_dir).unwrap();
+        fs::write(corrupt_dir.join("project.json"), "{ invalid json").unwrap();
+
+        let loaded = load_project(
+            state_from_ref(&app_state),
+            "existing".to_string(),
+            existing_repo.to_string_lossy().to_string(),
+        )
+        .expect("existing repo should still load");
+
+        assert_eq!(loaded.id, existing.id);
+        assert!(!loaded.archived, "matching project should be unarchived");
     }
 
     // --- validate_maintainer_interval tests ---
