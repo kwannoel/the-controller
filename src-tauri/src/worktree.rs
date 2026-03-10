@@ -10,6 +10,37 @@ pub enum MergeResult {
     RebaseConflicts,
 }
 
+/// Touch files that differ between two commits to trigger file system watchers.
+/// After `git2::checkout_tree`, macOS FSEvents may not reliably notify editors
+/// and Vite HMR. Explicitly touching changed files generates fresh events.
+fn touch_changed_files(
+    repo: &Repository,
+    from: &git2::Commit,
+    to: &git2::Commit,
+    repo_path: &str,
+) {
+    let Ok(old_tree) = from.tree() else { return };
+    let Ok(new_tree) = to.tree() else { return };
+    let Ok(diff) = repo.diff_tree_to_tree(Some(&old_tree), Some(&new_tree), None) else {
+        return;
+    };
+
+    let paths: Vec<PathBuf> = diff
+        .deltas()
+        .filter_map(|delta| {
+            let path = delta.new_file().path()?;
+            let full = Path::new(repo_path).join(path);
+            full.exists().then_some(full)
+        })
+        .collect();
+
+    if !paths.is_empty() {
+        let _ = Command::new("touch")
+            .args(&paths)
+            .output();
+    }
+}
+
 pub struct WorktreeManager;
 
 impl WorktreeManager {
@@ -308,6 +339,9 @@ impl WorktreeManager {
             .ok_or("HEAD is not on a branch")?
             .to_string();
 
+        // Save original commit OID for touch_changed_files
+        let original_oid = head.peel_to_commit().ok().map(|c| c.id());
+
         // Refuse if working tree is dirty
         let statuses = repo
             .statuses(Some(
@@ -350,6 +384,13 @@ impl WorktreeManager {
         repo.set_head(&refname)
             .map_err(|e| format!("failed to set HEAD: {}", e))?;
 
+        // Touch changed files so editors and Vite HMR detect the checkout
+        if let Some(oid) = original_oid {
+            if let Ok(from) = repo.find_commit(oid) {
+                touch_changed_files(&repo, &from, &commit, repo_path);
+            }
+        }
+
         Ok(original_branch)
     }
 
@@ -363,15 +404,32 @@ impl WorktreeManager {
         let repo =
             Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
 
+        // Save staging commit OID before we delete the branch
+        let staging_oid = repo
+            .find_branch(staging_branch, git2::BranchType::Local)
+            .ok()
+            .and_then(|b| b.get().target());
+
         // Checkout the original branch
         let refname = format!("refs/heads/{}", original_branch);
         let obj = repo
             .revparse_single(&refname)
             .map_err(|e| format!("failed to find original branch '{}': {}", original_branch, e))?;
+        let original_oid = obj.id();
         repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().force()))
             .map_err(|e| format!("failed to checkout original branch: {}", e))?;
         repo.set_head(&refname)
             .map_err(|e| format!("failed to set HEAD: {}", e))?;
+
+        // Touch changed files so editors and Vite HMR detect the checkout
+        if let Some(staging_oid) = staging_oid {
+            if let (Ok(from), Ok(to)) = (
+                repo.find_commit(staging_oid),
+                repo.find_commit(original_oid),
+            ) {
+                touch_changed_files(&repo, &from, &to, repo_path);
+            }
+        }
 
         // Clean up staging branch
         if let Ok(mut branch) = repo.find_branch(staging_branch, git2::BranchType::Local) {
