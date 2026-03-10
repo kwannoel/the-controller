@@ -5,9 +5,6 @@
   import {
     projects,
     activeSessionId,
-    jumpMode,
-    generateJumpLabels,
-    JUMP_KEYS,
     sidebarVisible,
 
     workspaceMode,
@@ -31,11 +28,6 @@
   let lastEscapeTime = 0;
 
   const DOUBLE_ESCAPE_MS = 300;
-
-  // Jump navigation state
-  let jumpActive = $state(false);
-  let jumpBuffer = $state("");
-  let jumpLabels: string[] = $state([]);
 
   // Toggle mode state (o prefix)
   let toggleModeActive = $state(false);
@@ -103,58 +95,6 @@
 
   function dispatchAction(action: NonNullable<HotkeyAction>) {
     dispatchHotkeyAction(action);
-  }
-
-  function getJumpProjects(): Project[] {
-    return isArchiveView ? archivedProjectList : projectList;
-  }
-
-  function enterJumpMode() {
-    const list = getJumpProjects();
-    if (list.length === 0) return;
-    jumpActive = true;
-    jumpBuffer = "";
-    jumpLabels = generateJumpLabels(list.length);
-    jumpMode.set({ phase: "project" });
-  }
-
-  function exitJumpMode() {
-    jumpActive = false;
-    jumpBuffer = "";
-    jumpLabels = [];
-    jumpMode.set(null);
-  }
-
-  function handleJumpKey(key: string) {
-    if (key === "Escape") {
-      exitJumpMode();
-      return;
-    }
-
-    if (!JUMP_KEYS.includes(key)) {
-      exitJumpMode();
-      return;
-    }
-
-    jumpBuffer += key;
-
-    // Check for exact match
-    const matchIndex = jumpLabels.indexOf(jumpBuffer);
-    if (matchIndex !== -1) {
-      const list = getJumpProjects();
-      const project = list[matchIndex];
-      if (project) {
-        focusTarget.set({ type: "project", projectId: project.id });
-      }
-      exitJumpMode();
-      return;
-    }
-
-    // Check if buffer is a valid prefix of any label
-    const isPrefix = jumpLabels.some((l) => l.startsWith(jumpBuffer));
-    if (!isPrefix) {
-      exitJumpMode();
-    }
   }
 
   function handleToggleKey(key: string) {
@@ -353,9 +293,6 @@
       case "navigate-project-prev":
         navigateProject(-1);
         return true;
-      case "jump-mode":
-        enterJumpMode();
-        return true;
       case "fuzzy-finder":
         dispatchAction({ type: "open-fuzzy-finder" });
         return true;
@@ -528,15 +465,6 @@
       e.preventDefault();
       selectedSessionProvider.update((provider) => provider === "claude" ? "codex" : "claude");
       pushKeystroke("⌘T");
-      return;
-    }
-
-    // Jump mode intercepts all keys
-    if (jumpActive) {
-      e.stopPropagation();
-      e.preventDefault();
-      handleJumpKey(e.key);
-      pushKeystroke(e.key);
       return;
     }
 

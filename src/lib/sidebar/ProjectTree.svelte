@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { FocusTarget, JumpPhase, Project, SessionStatus } from "../stores";
+  import type { FocusTarget, Project, SessionStatus } from "../stores";
 
   interface Props {
     projects: Project[];
@@ -7,8 +7,6 @@
     expandedProjectSet: Set<string>;
     activeSession: string | null;
     currentFocus: FocusTarget;
-    jumpState: JumpPhase;
-    projectJumpLabels: string[];
     getSessionStatus: (sessionId: string) => SessionStatus;
     onToggleProject: (projectId: string) => void;
     onProjectFocus: (projectId: string) => void;
@@ -22,8 +20,6 @@
     expandedProjectSet,
     activeSession,
     currentFocus,
-    jumpState,
-    projectJumpLabels,
     getSessionStatus,
     onToggleProject,
     onProjectFocus,
@@ -59,9 +55,6 @@
           {expandedProjectSet.has(project.id) ? "\u25BC" : "\u25B6"}
         </button>
         <span class="project-name">{project.name}</span>
-        {#if jumpState?.phase === "project" && projectJumpLabels[i]}
-          <kbd class="jump-label">{projectJumpLabels[i]}</kbd>
-        {/if}
         <span class="session-count">{visibleSessions.length}</span>
       </div>
 
@@ -256,20 +249,6 @@
     white-space: nowrap;
     flex-shrink: 0;
   }
-
-  .jump-label {
-    background: #fab387;
-    color: #1e1e2e;
-    padding: 0 5px;
-    border-radius: 3px;
-    font-family: monospace;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 16px;
-    flex-shrink: 0;
-    margin-left: auto;
-  }
-
 
   .empty-state {
     padding: 24px 16px;

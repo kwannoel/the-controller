@@ -75,6 +75,7 @@ describe("command registry", () => {
     expect(map.get("l")).toBe("expand-collapse");
     expect(map.get("Enter")).toBe("expand-collapse");
     expect(map.get("?")).toBe("toggle-help");
+    expect(map.has("g")).toBe(false);
   });
 
   it("buildKeyMap for development includes dev commands but not agents commands", () => {
@@ -122,7 +123,7 @@ describe("command registry", () => {
   it("help sections have correct entry counts for development mode", () => {
     const sections = getHelpSections("development");
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(7);
+    expect(nav.entries).toHaveLength(6);
 
     const sess = sections.find(s => s.label === "Sessions")!;
     expect(sess.entries).toHaveLength(9);
@@ -141,7 +142,7 @@ describe("command registry", () => {
   it("help sections have correct entry counts for agents mode", () => {
     const sections = getHelpSections("agents");
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(7);
+    expect(nav.entries).toHaveLength(6);
 
     const sess = sections.find(s => s.label === "Sessions")!;
     expect(sess.entries).toHaveLength(3);
@@ -156,7 +157,7 @@ describe("command registry", () => {
   it("help sections have correct entry counts for notes mode", () => {
     const sections = getHelpSections("notes");
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(7);
+    expect(nav.entries).toHaveLength(6);
 
     const sess = sections.find(s => s.label === "Sessions")!;
     expect(sess.entries).toHaveLength(3);
@@ -174,6 +175,7 @@ describe("command registry", () => {
 
   it("removed commands are not in the registry", () => {
     const ids = commands.map(c => c.id);
+    expect(ids).not.toContain("jump-mode");
     expect(ids).not.toContain("toggle-maintainer-panel");
     expect(ids).not.toContain("trigger-maintainer-check");
     expect(ids).not.toContain("clear-maintainer-reports");

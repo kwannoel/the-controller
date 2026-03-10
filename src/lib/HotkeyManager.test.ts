@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { command } from '$lib/backend';
-import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 function makeSession(id: string, label: string, kind = 'claude'): SessionConfig {
@@ -84,7 +84,6 @@ describe('HotkeyManager', () => {
     activeSessionId.set('sess-1');
     hotkeyAction.set(null);
     focusTarget.set(null);
-    jumpMode.set(null);
     sidebarVisible.set(true);
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
     workspaceMode.set("development");
@@ -360,83 +359,16 @@ describe('HotkeyManager', () => {
     });
   });
 
-  // ── Jump mode (g) ──
-
-  describe('jump mode', () => {
-    it('g enters jump mode (project phase)', () => {
-      pressKey('g');
-      expect(get(jumpMode)).toEqual({ phase: 'project' });
-    });
-
-    it('g then z focuses first project and exits jump mode', () => {
-      pressKey('g');
-      pressKey('z');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('g then x focuses second project and exits jump mode', () => {
+  describe('removed g hotkey', () => {
+    it('g does not start a navigation prefix or change focus', () => {
       projects.set([testProject, testProject2]);
+      focusTarget.set({ type: 'project', projectId: 'proj-2' });
+
       pressKey('g');
-      pressKey('x');
+      pressKey('z');
+
       expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('g then Escape cancels jump mode', () => {
-      pressKey('g');
-      expect(get(jumpMode)).toEqual({ phase: 'project' });
-      pressKey('Escape');
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('g then unrecognized key cancels jump mode', () => {
-      pressKey('g');
-      expect(get(jumpMode)).toEqual({ phase: 'project' });
-      pressKey('q');
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('two-char labels work for >6 projects', () => {
-      const manyProjects: Project[] = Array.from({ length: 7 }, (_, i) =>
-        makeProject(`proj-${i}`, `project-${i}`, `/tmp/p${i}`, [
-          makeSession(`sess-${i}`, 'session-1'),
-        ]),
-      );
-      projects.set(manyProjects);
-
-      pressKey('g');
-      expect(get(jumpMode)).toEqual({ phase: 'project' });
-
-      // 'z' is a prefix of 'zz', 'zx', etc — should stay in jump mode
-      pressKey('z');
-      expect(get(jumpMode)).toEqual({ phase: 'project' });
-
-      // 'zz' matches first project
-      pressKey('z');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-0' });
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('two-char label second key selects correct project', () => {
-      const manyProjects: Project[] = Array.from({ length: 7 }, (_, i) =>
-        makeProject(`proj-${i}`, `project-${i}`, `/tmp/p${i}`, [
-          makeSession(`sess-${i}`, 'session-1'),
-        ]),
-      );
-      projects.set(manyProjects);
-
-      pressKey('g');
-      pressKey('z');
-      pressKey('x');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-      expect(get(jumpMode)).toBeNull();
-    });
-
-    it('g with no projects does nothing', () => {
-      projects.set([]);
-      pressKey('g');
-      expect(get(jumpMode)).toBeNull();
+      expect(get(hotkeyAction)).toBeNull();
     });
   });
 
@@ -460,7 +392,6 @@ describe('HotkeyManager', () => {
       pressKey('f');
       expect(get(activeSessionId)).toBe(initial);
       expect(get(hotkeyAction)).toBeNull();
-      expect(get(jumpMode)).toBeNull();
     });
 
     it('Escape sets focusTarget to active session', () => {
@@ -485,14 +416,20 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('Escape then g enters jump mode', () => {
+    it('Escape then g remains inert in ambient mode', () => {
       pressKey('Escape');
 
       removeTerminalFocus(xtermEl);
       xtermEl = document.createElement('div');
 
       pressKey('g');
-      expect(get(jumpMode)).toEqual({ phase: 'project' });
+      pressKey('z');
+      expect(get(focusTarget)).toEqual({
+        type: 'session',
+        sessionId: 'sess-1',
+        projectId: 'proj-1',
+      });
+      expect(get(hotkeyAction)).toBeNull();
     });
 
     it('double Escape forwards Escape to PTY', () => {

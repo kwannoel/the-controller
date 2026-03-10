@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render } from "@testing-library/svelte";
-import type { Project, FocusTarget, JumpPhase, SessionStatus, SessionConfig } from "../stores";
+import type { Project, FocusTarget, SessionStatus, SessionConfig } from "../stores";
 
 import ProjectTree from "./ProjectTree.svelte";
 
@@ -74,8 +74,6 @@ describe("ProjectTree", () => {
       expandedProjectSet: new Set(["proj-1"]),
       activeSession: "sess-1",
       currentFocus: focus,
-      jumpState: { phase: "project" } as JumpPhase,
-      projectJumpLabels: ["z"],
       getSessionStatus: (id: string) => statuses.get(id) ?? "idle",
       onToggleProject,
       onProjectFocus,

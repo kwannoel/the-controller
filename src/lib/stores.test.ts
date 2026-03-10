@@ -9,12 +9,9 @@ import {
   showKeyHints,
   appConfig,
   onboardingComplete,
-  jumpMode,
   archiveView,
   focusTarget,
   sidebarVisible,
-  generateJumpLabels,
-  JUMP_KEYS,
   workspaceMode,
   workspaceModePickerVisible,
 } from './stores';
@@ -77,10 +74,6 @@ describe('stores', () => {
     expect(get(onboardingComplete)).toBe(false);
   });
 
-  it('jumpMode defaults to null', () => {
-    expect(get(jumpMode)).toBeNull();
-  });
-
   it('archiveView defaults to false', () => {
     expect(get(archiveView)).toBe(false);
   });
@@ -114,34 +107,6 @@ describe('stores', () => {
 
     it('picker starts hidden', () => {
       expect(get(workspaceModePickerVisible)).toBe(false);
-    });
-  });
-
-  describe('generateJumpLabels', () => {
-    it('returns empty array for 0 items', () => {
-      expect(generateJumpLabels(0)).toEqual([]);
-    });
-
-    it('returns single-char labels for ≤6 items', () => {
-      expect(generateJumpLabels(3)).toEqual(['z', 'x', 'c']);
-      expect(generateJumpLabels(6)).toEqual(['z', 'x', 'c', 'b', 'n', 'm']);
-    });
-
-    it('returns two-char labels for >6 items', () => {
-      const labels = generateJumpLabels(7);
-      expect(labels.length).toBe(7);
-      expect(labels[0]).toBe('zz');
-      expect(labels[1]).toBe('zx');
-      expect(labels[6]).toBe('xz');
-    });
-
-    it('generates enough labels for large counts', () => {
-      const labels = generateJumpLabels(36);
-      expect(labels.length).toBe(36);
-      // All unique
-      expect(new Set(labels).size).toBe(36);
-      // All two chars
-      expect(labels.every(l => l.length === 2)).toBe(true);
     });
   });
 });
