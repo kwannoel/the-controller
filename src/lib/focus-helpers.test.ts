@@ -1,6 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { focusAfterSessionDelete, focusAfterProjectDelete, focusForModeSwitch } from "./focus-helpers";
-import type { Project } from "./stores";
+import type { Project, SessionConfig } from "./stores";
+
+function makeSession(id: string): SessionConfig {
+  return {
+    id,
+    label: `session-${id}`,
+    worktree_path: null,
+    worktree_branch: null,
+    archived: false,
+    kind: "claude",
+    github_issue: null,
+    initial_prompt: null,
+    auto_worker_session: false,
+  };
+}
 
 function makeProject(id: string, sessionIds: string[]): Project {
   return {
@@ -9,16 +23,11 @@ function makeProject(id: string, sessionIds: string[]): Project {
     repo_path: `/tmp/${id}`,
     created_at: "2026-01-01",
     archived: false,
-    sessions: sessionIds.map(sid => ({
-      id: sid,
-      label: `session-${sid}`,
-      worktree_path: null,
-      worktree_branch: null,
-      archived: false,
-      kind: 'claude',
-      github_issue: null,
-      auto_worker_session: false,
-    })),
+    maintainer: { enabled: false, interval_minutes: 60 },
+    auto_worker: { enabled: false },
+    sessions: sessionIds.map(makeSession),
+    prompts: [],
+    staged_session: null,
   };
 }
 

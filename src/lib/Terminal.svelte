@@ -9,7 +9,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
-  import { activeSessionId, projects } from "./stores";
+  import { activeSessionId, projects, type Project } from "./stores";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {

@@ -1,8 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { render } from "@testing-library/svelte";
-import type { Project, FocusTarget, JumpPhase, SessionStatus } from "../stores";
+import type { Project, FocusTarget, JumpPhase, SessionStatus, SessionConfig } from "../stores";
 
 import ProjectTree from "./ProjectTree.svelte";
+
+function makeSession(overrides: Partial<SessionConfig>): SessionConfig {
+  return {
+    id: "sess-default",
+    label: "session-default",
+    worktree_path: null,
+    worktree_branch: null,
+    archived: false,
+    kind: "claude",
+    github_issue: null,
+    initial_prompt: null,
+    auto_worker_session: false,
+    ...overrides,
+  };
+}
 
 const baseProjects: Project[] = [
   {
@@ -12,48 +27,40 @@ const baseProjects: Project[] = [
     created_at: "2026-01-01",
     archived: false,
     maintainer: { enabled: false, interval_minutes: 60 },
+    auto_worker: { enabled: false },
+    prompts: [],
+    staged_session: null,
     sessions: [
-      {
+      makeSession({
         id: "sess-1",
         label: "session-1",
-        worktree_path: null,
-        worktree_branch: null,
-        archived: false,
-        kind: "claude",
         github_issue: { number: 42, title: "Issue", url: "https://example.com", labels: [] },
-        initial_prompt: null,
-        auto_worker_session: false,
-      },
-      {
+      }),
+      makeSession({
         id: "sess-2",
         label: "session-2",
-        worktree_path: null,
-        worktree_branch: null,
         archived: true,
-        kind: "claude",
         github_issue: null,
-        initial_prompt: null,
-        auto_worker_session: false,
-      },
+      }),
     ],
   },
 ];
 
 describe("ProjectTree", () => {
-  let onToggleProjectSpy: ReturnType<typeof vi.fn>;
-  let onProjectFocusSpy: ReturnType<typeof vi.fn>;
-  let onSessionFocusSpy: ReturnType<typeof vi.fn>;
-  let onSessionSelectSpy: ReturnType<typeof vi.fn>;
+  let onToggleProjectSpy: Mock<(projectId: string) => void>;
+  let onProjectFocusSpy: Mock<(projectId: string) => void>;
+  let onSessionFocusSpy: Mock<(sessionId: string, projectId: string) => void>;
+  let onSessionSelectSpy: Mock<(sessionId: string, projectId: string) => void>;
   let onToggleProject: (projectId: string) => void;
   let onProjectFocus: (projectId: string) => void;
   let onSessionFocus: (sessionId: string, projectId: string) => void;
   let onSessionSelect: (sessionId: string, projectId: string) => void;
 
   beforeEach(() => {
-    onToggleProjectSpy = vi.fn();
-    onProjectFocusSpy = vi.fn();
-    onSessionFocusSpy = vi.fn();
-    onSessionSelectSpy = vi.fn();
+    onToggleProjectSpy = vi.fn<(projectId: string) => void>();
+    onProjectFocusSpy = vi.fn<(projectId: string) => void>();
+    onSessionFocusSpy = vi.fn<(sessionId: string, projectId: string) => void>();
+    onSessionSelectSpy = vi.fn<(sessionId: string, projectId: string) => void>();
     onToggleProject = (projectId: string) => onToggleProjectSpy(projectId);
     onProjectFocus = (projectId: string) => onProjectFocusSpy(projectId);
     onSessionFocus = (sessionId: string, projectId: string) => onSessionFocusSpy(sessionId, projectId);

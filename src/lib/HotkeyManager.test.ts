@@ -2,36 +2,57 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
-const testProject = {
-  id: 'proj-1',
-  name: 'test-project',
-  repo_path: '/tmp/test',
-  created_at: '2026-01-01',
-  archived: false,
-  maintainer: { enabled: false, interval_minutes: 60 },
-  auto_worker: { enabled: false },
-  sessions: [
-    { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
-    { id: 'sess-2', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
-  ],
-};
+function makeSession(id: string, label: string, kind = 'claude'): SessionConfig {
+  return {
+    id,
+    label,
+    worktree_path: null,
+    worktree_branch: null,
+    archived: false,
+    kind,
+    github_issue: null,
+    initial_prompt: null,
+    auto_worker_session: false,
+  };
+}
 
-const testProject2 = {
-  id: 'proj-2',
-  name: 'other-project',
-  repo_path: '/tmp/other',
-  created_at: '2026-01-01',
-  archived: false,
-  maintainer: { enabled: false, interval_minutes: 60 },
-  auto_worker: { enabled: false },
-  sessions: [
-    { id: 'sess-3', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
-    { id: 'sess-4', label: 'session-2', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
+function makeProject(id: string, name: string, repoPath: string, sessions: SessionConfig[]): Project {
+  return {
+    id,
+    name,
+    repo_path: repoPath,
+    created_at: '2026-01-01',
+    archived: false,
+    maintainer: { enabled: false, interval_minutes: 60 },
+    auto_worker: { enabled: false },
+    sessions,
+    prompts: [],
+    staged_session: null,
+  };
+}
+
+const testProject = makeProject(
+  'proj-1',
+  'test-project',
+  '/tmp/test',
+  [
+    makeSession('sess-1', 'session-1'),
+    makeSession('sess-2', 'session-2'),
   ],
-};
+);
+
+const testProject2 = makeProject(
+  'proj-2',
+  'other-project',
+  '/tmp/other',
+  [
+    makeSession('sess-3', 'session-1'),
+    makeSession('sess-4', 'session-2'),
+  ],
+);
 
 function pressKey(key: string) {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
@@ -377,18 +398,11 @@ describe('HotkeyManager', () => {
     });
 
     it('two-char labels work for >6 projects', () => {
-      const manyProjects = Array.from({ length: 7 }, (_, i) => ({
-        id: `proj-${i}`,
-        name: `project-${i}`,
-        repo_path: `/tmp/p${i}`,
-        created_at: '2026-01-01',
-        archived: false,
-        maintainer: { enabled: false, interval_minutes: 60 },
-        auto_worker: { enabled: false },
-        sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
-        ],
-      }));
+      const manyProjects: Project[] = Array.from({ length: 7 }, (_, i) =>
+        makeProject(`proj-${i}`, `project-${i}`, `/tmp/p${i}`, [
+          makeSession(`sess-${i}`, 'session-1'),
+        ]),
+      );
       projects.set(manyProjects);
 
       pressKey('g');
@@ -405,18 +419,11 @@ describe('HotkeyManager', () => {
     });
 
     it('two-char label second key selects correct project', () => {
-      const manyProjects = Array.from({ length: 7 }, (_, i) => ({
-        id: `proj-${i}`,
-        name: `project-${i}`,
-        repo_path: `/tmp/p${i}`,
-        created_at: '2026-01-01',
-        archived: false,
-        maintainer: { enabled: false, interval_minutes: 60 },
-        auto_worker: { enabled: false },
-        sessions: [
-          { id: `sess-${i}`, label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
-        ],
-      }));
+      const manyProjects: Project[] = Array.from({ length: 7 }, (_, i) =>
+        makeProject(`proj-${i}`, `project-${i}`, `/tmp/p${i}`, [
+          makeSession(`sess-${i}`, 'session-1'),
+        ]),
+      );
       projects.set(manyProjects);
 
       pressKey('g');

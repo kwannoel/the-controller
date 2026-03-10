@@ -1,17 +1,44 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
-import { projects, activeSessionId, focusTarget, type FocusTarget } from './stores';
+import { projects, activeSessionId, focusTarget, type FocusTarget, type Project, type SessionConfig } from './stores';
 
 // Mock Terminal.svelte to avoid xterm.js dependency
 vi.mock('./Terminal.svelte', () => {
-  // Return a minimal mock component
-  const { mount } = require('svelte');
   return {
     default: function MockTerminal() {},
   };
 });
 
 import TerminalManager from './TerminalManager.svelte';
+
+function makeSession(id: string): SessionConfig {
+  return {
+    id,
+    label: `session-${id}`,
+    worktree_path: null,
+    worktree_branch: null,
+    archived: false,
+    kind: 'claude',
+    github_issue: null,
+    initial_prompt: null,
+    auto_worker_session: false,
+  };
+}
+
+function makeProject(sessionIds: string[]): Project {
+  return {
+    id: 'proj-1',
+    name: 'test',
+    repo_path: '/tmp/test',
+    created_at: '2026-01-01',
+    archived: false,
+    maintainer: { enabled: false, interval_minutes: 60 },
+    auto_worker: { enabled: false },
+    sessions: sessionIds.map(makeSession),
+    prompts: [],
+    staged_session: null,
+  };
+}
 
 describe('TerminalManager', () => {
   beforeEach(() => {
@@ -33,16 +60,7 @@ describe('TerminalManager', () => {
   });
 
   it('hides empty state when a session is active', () => {
-    projects.set([{
-      id: 'proj-1',
-      name: 'test',
-      repo_path: '/tmp/test',
-      created_at: '2026-01-01',
-      archived: false,
-      sessions: [
-        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
-      ],
-    }]);
+    projects.set([makeProject(['sess-1'])]);
     activeSessionId.set('sess-1');
 
     render(TerminalManager);
@@ -50,16 +68,7 @@ describe('TerminalManager', () => {
   });
 
   it('sets focusTarget with projectId when terminal receives focus', async () => {
-    projects.set([{
-      id: 'proj-1',
-      name: 'test',
-      repo_path: '/tmp/test',
-      created_at: '2026-01-01',
-      archived: false,
-      sessions: [
-        { id: 'sess-1', label: 'session-1', worktree_path: null, worktree_branch: null, archived: false, kind: 'claude', github_issue: null, auto_worker_session: false },
-      ],
-    }]);
+    projects.set([makeProject(['sess-1'])]);
     activeSessionId.set('sess-1');
 
     const { container } = render(TerminalManager);

@@ -25,10 +25,10 @@ Scheduler triggers run
 | Label | Purpose |
 |-------|---------|
 | `filed-by-maintainer` | Identifies maintainer-filed issues |
-| `priority:low` | Low priority finding |
-| `priority:high` | High priority finding |
-| `complexity:simple` | Easy fix |
-| `complexity:high` | Significant effort |
+| `priority: low` | Low priority finding |
+| `priority: high` | High priority finding |
+| `complexity: low` | Easy fix |
+| `complexity: high` | Significant effort |
 
 ## GitHub Repo Resolution
 

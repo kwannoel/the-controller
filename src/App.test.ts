@@ -13,7 +13,7 @@ import {
   sessionStatuses,
   showKeyHints,
   sidebarVisible,
-
+  type Project,
 } from "./lib/stores";
 
 const mocks = vi.hoisted(() => ({
@@ -47,13 +47,17 @@ vi.mock("./lib/IssuePickerModal.svelte", async () => ({
 
 import App from "./App.svelte";
 
-const baseProject = {
+const baseProject: Project = {
   id: "proj-1",
   name: "the-controller",
   repo_path: "/tmp/the-controller",
   created_at: "2026-01-01",
   archived: false,
+  maintainer: { enabled: false, interval_minutes: 60 },
+  auto_worker: { enabled: false },
   sessions: [],
+  prompts: [],
+  staged_session: null,
 };
 
 describe("App screenshot flow", () => {

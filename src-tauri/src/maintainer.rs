@@ -11,6 +11,10 @@ use crate::state::AppState;
 
 const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.6;
 const MIN_FINGERPRINT_TOKENS: usize = 3;
+const PRIORITY_LOW_LABEL: &str = "priority: low";
+const PRIORITY_HIGH_LABEL: &str = "priority: high";
+const COMPLEXITY_LOW_LABEL: &str = "complexity: low";
+const COMPLEXITY_HIGH_LABEL: &str = "complexity: high";
 
 const STOPWORDS: &[&str] = &[
     "a",
@@ -208,7 +212,7 @@ For each finding, provide:
 - `title`: short actionable issue title
 - `body`: markdown body with concrete evidence and remediation
 - `priority`: `high` or `low` (see criteria below)
-- `complexity`: `high` or `simple`
+- `complexity`: `high` or `low`
 - `affected_files`: list of file paths (when applicable)
 - `symptom_type`: short invariant symptom phrase (e.g. `startup panic`, `missing coverage`)
 - `keywords`: stable semantic keywords (e.g. `appstate`, `filesystem`, `initialization`)
@@ -228,7 +232,7 @@ Return ONLY this JSON object:
       "title": "<title>",
       "body": "<markdown body>",
       "priority": "low",
-      "complexity": "simple",
+      "complexity": "low",
       "affected_files": ["<path>"],
       "symptom_type": "<symptom>",
       "keywords": ["<keyword>"]
@@ -331,16 +335,22 @@ fn normalize_complexity(complexity: &str) -> String {
     if c.contains("high") {
         "high".to_string()
     } else {
-        "simple".to_string()
+        "low".to_string()
     }
 }
 
 fn normalize_priority_label(priority: &str) -> String {
-    format!("priority:{}", normalize_priority(priority))
+    match normalize_priority(priority).as_str() {
+        "high" => PRIORITY_HIGH_LABEL.to_string(),
+        _ => PRIORITY_LOW_LABEL.to_string(),
+    }
 }
 
 fn normalize_complexity_label(complexity: &str) -> String {
-    format!("complexity:{}", normalize_complexity(complexity))
+    match normalize_complexity(complexity).as_str() {
+        "high" => COMPLEXITY_HIGH_LABEL.to_string(),
+        _ => COMPLEXITY_LOW_LABEL.to_string(),
+    }
 }
 
 fn normalize_tokens(input: &str) -> Vec<String> {
@@ -562,10 +572,10 @@ fn ensure_labels_exist(repo_path: &str, github_repo: Option<&str>) -> Result<(),
             "Issue filed by maintainer agent",
             "6c7086",
         ),
-        ("priority:low", "Low priority", "a6e3a1"),
-        ("priority:high", "High priority", "f38ba8"),
-        ("complexity:simple", "Simple fix", "89b4fa"),
-        ("complexity:high", "Significant effort", "f9e2af"),
+        (PRIORITY_LOW_LABEL, "Low priority", "a6e3a1"),
+        (PRIORITY_HIGH_LABEL, "High priority", "f38ba8"),
+        (COMPLEXITY_LOW_LABEL, "Low complexity", "89b4fa"),
+        (COMPLEXITY_HIGH_LABEL, "High complexity", "f9e2af"),
     ];
 
     for (label, description, color) in labels {
@@ -906,6 +916,21 @@ mod tests {
         assert!(prompt.contains("/tmp/my-project"));
         assert!(prompt.contains("Return ONLY this JSON object"));
         assert!(prompt.contains("Do NOT run any `gh issue create`"));
+        assert!(prompt.contains("`complexity`: `high` or `low`"));
+        assert!(!prompt.contains("`complexity`: `high` or `simple`"));
+    }
+
+    #[test]
+    fn test_normalize_complexity_maps_non_high_values_to_low() {
+        assert_eq!(normalize_complexity("high"), "high");
+        assert_eq!(normalize_complexity("simple"), "low");
+        assert_eq!(normalize_complexity("low"), "low");
+    }
+
+    #[test]
+    fn test_normalize_priority_label_uses_spaced_canonical_labels() {
+        assert_eq!(normalize_priority_label("high"), "priority: high");
+        assert_eq!(normalize_priority_label("low"), "priority: low");
     }
 
     #[test]
@@ -923,7 +948,7 @@ mod tests {
       "title": "AppState startup panic",
       "body": "Startup panics when storage init fails.",
       "priority": "high",
-      "complexity": "simple",
+      "complexity": "low",
       "affected_files": ["src-tauri/src/state.rs"],
       "symptom_type": "startup panic",
       "keywords": ["appstate", "filesystem", "initialization"]
@@ -936,7 +961,7 @@ mod tests {
         let parsed = parse_findings_output(output).expect("should parse");
         assert_eq!(parsed.findings.len(), 1);
         assert_eq!(parsed.findings[0].priority, "high");
-        assert_eq!(parsed.findings[0].complexity, "simple");
+        assert_eq!(parsed.findings[0].complexity, "low");
         assert_eq!(parsed.summary, "Found one issue");
     }
 
@@ -948,7 +973,7 @@ mod tests {
               "title": "",
               "body": "",
               "priority": "high",
-              "complexity": "simple",
+              "complexity": "low",
               "affected_files": [],
               "symptom_type": "",
               "keywords": []
@@ -1192,6 +1217,7 @@ mod tests {
 
     #[test]
     fn test_labels_to_remove_replaces_conflicting_priority_and_complexity() {
+        // Legacy labels should be removed if they still appear on an issue.
         let existing = vec![
             "filed-by-maintainer".to_string(),
             "priority:low".to_string(),
@@ -1200,8 +1226,8 @@ mod tests {
         ];
         let desired = vec![
             "filed-by-maintainer".to_string(),
-            "priority:high".to_string(),
-            "complexity:high".to_string(),
+            "priority: high".to_string(),
+            COMPLEXITY_HIGH_LABEL.to_string(),
         ];
 
         let remove = labels_to_remove(&existing, &desired);

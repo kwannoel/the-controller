@@ -1,8 +1,8 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -523,10 +523,9 @@
     focusTerminalSoon();
 
     // Listen for intermediate staging status events
-    let unlistenStatus: (() => void) | null = null;
-    listen<string>("staging-status", (event) => {
+    const unlistenStatus = await listen<string>("staging-status", (event) => {
       showToast(event.payload, "info");
-    }).then(fn => { unlistenStatus = fn; });
+    });
 
     try {
       await invoke("stage_session_inplace", { projectId, sessionId });
@@ -560,10 +559,9 @@
     focusTerminalSoon();
 
     // Listen for intermediate merge status events
-    let unlistenStatus: (() => void) | null = null;
-    listen<string>("merge-status", (event) => {
+    const unlistenStatus = await listen<string>("merge-status", (event) => {
       showToast(event.payload, "info");
-    }).then(fn => { unlistenStatus = fn; });
+    });
 
     try {
       const result: { type: string; url?: string } = await invoke("merge_session_branch", { projectId, sessionId });
