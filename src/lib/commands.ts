@@ -100,7 +100,7 @@ export const commands: CommandDef[] = [
   { id: "toggle-sidebar", key: "s", section: "Panels", description: "Toggle sidebar" },
   { id: "toggle-mode", key: "o", section: "Panels", description: "Toggle: (m)aintainer / (w)orker", mode: "development" },
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
-  { id: "switch-workspace", key: "Space", section: "Panels", description: "Switch workspace mode", handledExternally: true },
+  { id: "switch-workspace", key: "␣", section: "Panels", description: "Switch workspace mode", handledExternally: true },
   { id: "keystroke-visualizer", key: "⌘k", section: "Panels", description: "Toggle keystroke visualizer", handledExternally: true },
 
   // ── Agents ──
