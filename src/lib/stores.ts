@@ -67,7 +67,29 @@ export interface MaintainerRunLog {
   issues_filed: IssueSummary[];
   issues_updated: IssueSummary[];
   issues_unchanged: number;
+  issues_skipped: number;
   summary: string;
+}
+
+export interface MaintainerIssue {
+  number: number;
+  title: string;
+  state: string;
+  url: string;
+  labels: { name: string }[];
+  createdAt: string;
+  closedAt: string | null;
+}
+
+export interface MaintainerIssueDetail {
+  number: number;
+  title: string;
+  state: string;
+  body: string;
+  url: string;
+  labels: { name: string }[];
+  createdAt: string;
+  closedAt: string | null;
 }
 
 export type MaintainerStatus = "idle" | "running" | "error";
@@ -162,6 +184,8 @@ export type HotkeyAction =
   | { type: "pick-prompt-for-session"; projectId: string }
   | { type: "stage-session-inplace"; sessionId: string; projectId: string }
   | { type: "unstage-session-inplace"; projectId: string }
+  | { type: "toggle-maintainer-view" }
+  | { type: "open-issue-in-browser" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);

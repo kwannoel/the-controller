@@ -142,7 +142,7 @@ describe("command registry", () => {
     expect(panels.entries).toHaveLength(3);
 
     const agents = sections.find(s => s.label === "Agents")!;
-    expect(agents.entries).toHaveLength(3);
+    expect(agents.entries).toHaveLength(4);
   });
 
   it("help sections have correct entry counts for notes mode", () => {
@@ -172,5 +172,10 @@ describe("command registry", () => {
     expect(ids).toContain("toggle-agent");
     expect(ids).toContain("trigger-agent-check");
     expect(ids).toContain("clear-agent-reports");
+  });
+
+  it("includes toggle-maintainer-view command in agents mode", () => {
+    const keyMap = buildKeyMap("agents");
+    expect(keyMap.get("t")).toBe("toggle-maintainer-view");
   });
 });

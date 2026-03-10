@@ -1523,6 +1523,41 @@ pub async fn clear_maintainer_reports(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn get_maintainer_issues(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::MaintainerIssue>, String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let (repo_path, github_repo) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+        (
+            project.repo_path.clone(),
+            project.maintainer.github_repo.clone(),
+        )
+    };
+    github::get_maintainer_issues(repo_path, github_repo).await
+}
+
+#[tauri::command]
+pub async fn get_maintainer_issue_detail(
+    state: State<'_, AppState>,
+    project_id: String,
+    issue_number: u32,
+) -> Result<crate::models::MaintainerIssueDetail, String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let (repo_path, github_repo) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(project_id).map_err(|e| e.to_string())?;
+        (
+            project.repo_path.clone(),
+            project.maintainer.github_repo.clone(),
+        )
+    };
+    github::get_maintainer_issue_detail(repo_path, github_repo, issue_number).await
+}
+
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     for name in &["refs/heads/master", "refs/heads/main"] {
         if let Ok(reference) = repo.find_reference(name) {

@@ -2,7 +2,8 @@
   import { fromStore } from "svelte/store";
   import { untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
-  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
+  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail } from "./stores";
   import { showToast } from "./toast";
 
   let runLogs: MaintainerRunLog[] = $state([]);
@@ -13,6 +14,22 @@
   let selectedIndex = $state(0);
   let openLogIndex: number | null = $state(null);
   let detailBlockIndex = $state(0);
+
+  // View mode: "runs" or "issues"
+  type MaintainerViewMode = "runs" | "issues";
+  let viewMode: MaintainerViewMode = $state("runs");
+
+  // Issues view state
+  let issuesList: MaintainerIssue[] = $state([]);
+  let issuesLoading = $state(false);
+  let issueDetail: MaintainerIssueDetail | null = $state(null);
+  let issueDetailLoading = $state(false);
+  let issueSelectedIndex = $state(0);
+
+  let openIssues = $derived(issuesList.filter(i => i.state === "OPEN"));
+  let closedIssues = $derived(issuesList.filter(i => i.state === "CLOSED"));
+  // Flat list: open issues first, then closed
+  let allSortedIssues = $derived([...openIssues, ...closedIssues]);
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -53,6 +70,9 @@
       openLogIndex = null;
       detailBlockIndex = 0;
       runLogs = [];
+      issuesList = [];
+      issueDetail = null;
+      issueSelectedIndex = 0;
 
       const pid = untrack(() => project?.id ?? null);
       if (pid && focusedAgent?.agentKind === "maintainer") {
@@ -75,13 +95,84 @@
         triggerCheck();
       } else if (action.type === "clear-maintainer-reports") {
         clearRunLogs();
+      } else if (action.type === "toggle-maintainer-view") {
+        toggleViewMode();
+      } else if (action.type === "open-issue-in-browser") {
+        openSelectedIssueInBrowser();
       }
     });
     return unsub;
   });
 
+  function toggleViewMode() {
+    if (focusedAgent?.agentKind !== "maintainer") return;
+    if (viewMode === "runs") {
+      viewMode = "issues";
+      issueDetail = null;
+      issueSelectedIndex = 0;
+      if (project) fetchIssues(project.id);
+    } else {
+      viewMode = "runs";
+    }
+  }
+
+  async function fetchIssues(projectId: string) {
+    issuesLoading = true;
+    try {
+      const result = await invoke<MaintainerIssue[]>("get_maintainer_issues", { projectId });
+      issuesList = result;
+    } catch {
+      issuesList = [];
+    } finally {
+      issuesLoading = false;
+    }
+  }
+
+  async function fetchIssueDetail(projectId: string, issueNumber: number) {
+    issueDetailLoading = true;
+    try {
+      const result = await invoke<MaintainerIssueDetail>("get_maintainer_issue_detail", { projectId, issueNumber });
+      issueDetail = result;
+    } catch (e) {
+      showToast(String(e), "error");
+      issueDetail = null;
+    } finally {
+      issueDetailLoading = false;
+    }
+  }
+
+  function refreshIssues() {
+    if (project) fetchIssues(project.id);
+  }
+
+  function openSelectedIssueInBrowser() {
+    if (focusedAgent?.agentKind !== "maintainer") return;
+    if (viewMode === "issues") {
+      if (issueDetail) {
+        openUrl(issueDetail.url);
+      } else if (allSortedIssues.length > 0) {
+        const issue = allSortedIssues[issueSelectedIndex];
+        if (issue) openUrl(issue.url);
+      }
+    } else if (viewMode === "runs" && openLog && openLogIssues.length > 0 && detailBlockIndex > 0) {
+      const issue = openLogIssues[detailBlockIndex - 1];
+      if (issue) openUrl(issue.url);
+    }
+  }
+
   function handleNavigate(direction: 1 | -1) {
     if (focusedAgent?.agentKind !== "maintainer") return;
+
+    if (viewMode === "issues") {
+      if (issueDetail) {
+        // In detail popup, no navigation; just scroll
+        return;
+      }
+      if (allSortedIssues.length === 0) return;
+      issueSelectedIndex = Math.max(0, Math.min(allSortedIssues.length - 1, issueSelectedIndex + direction));
+      scrollIssueIntoView();
+      return;
+    }
 
     if (openLogIndex !== null) {
       // Detail view: scroll through issue blocks
@@ -98,6 +189,17 @@
 
   function handleSelect() {
     if (focusedAgent?.agentKind !== "maintainer") return;
+
+    if (viewMode === "issues") {
+      if (issueDetail) return; // already viewing detail
+      if (allSortedIssues.length === 0) return;
+      const issue = allSortedIssues[issueSelectedIndex];
+      if (issue && project) {
+        fetchIssueDetail(project.id, issue.number);
+      }
+      return;
+    }
+
     if (openLogIndex !== null) return;
     if (runLogs.length === 0) return;
     openLogIndex = selectedIndex;
@@ -105,6 +207,14 @@
   }
 
   function handleEscape() {
+    if (viewMode === "issues") {
+      if (issueDetail) {
+        issueDetail = null;
+        return;
+      }
+      // Fall through to default escape behavior
+    }
+
     if (openLogIndex !== null) {
       openLogIndex = null;
       detailBlockIndex = 0;
@@ -123,6 +233,13 @@
   function scrollReportIntoView() {
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-report-index="${selectedIndex}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  function scrollIssueIntoView() {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-issue-index="${issueSelectedIndex}"]`);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   }
@@ -221,8 +338,16 @@
     return new Date(ts).toLocaleString();
   }
 
+  function formatDate(ts: string): string {
+    return new Date(ts).toLocaleDateString();
+  }
+
   function actionColor(action: string): string {
     return action === "filed" ? "#a6e3a1" : "#89b4fa";
+  }
+
+  function stateColor(state: string): string {
+    return state === "OPEN" ? "#a6e3a1" : "#cba6f7";
   }
 </script>
 
@@ -314,84 +439,191 @@
       {/if}
     </section>
 
-    <section class="section report-section">
-      {#if loading}
-        <div class="section-body">
-          <p class="muted">Loading...</p>
-        </div>
-      {:else if openLog}
-        <div class="detail-view">
-          <div class="detail-header">
-            <span class="detail-back">Run logs</span>
-            <span class="detail-timestamp">{formatTimestamp(openLog.timestamp)}</span>
-            <span class="detail-summary">{openLog.summary}</span>
+    <!-- View toggle tabs -->
+    <div class="view-tabs">
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <span class="view-tab" class:active={viewMode === "runs"} onclick={() => { viewMode = "runs"; }}>Runs</span>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <span class="view-tab" class:active={viewMode === "issues"} onclick={() => { viewMode = "issues"; issueDetail = null; issueSelectedIndex = 0; if (project) fetchIssues(project.id); }}>Issues</span>
+      <span class="view-tab-hint">(t) toggle</span>
+    </div>
+
+    {#if viewMode === "runs"}
+      <section class="section report-section">
+        {#if loading}
+          <div class="section-body">
+            <p class="muted">Loading...</p>
           </div>
-          <div class="detail-blocks">
-            <div
-              class="detail-block"
-              class:block-focused={panelFocused && detailBlockIndex === 0}
-              data-block-index="0"
-            >
-              <div class="run-summary">
-                <span class="summary-stat">{openLog.issues_filed.length} filed</span>
-                <span class="summary-stat">{openLog.issues_updated.length} updated</span>
-                <span class="summary-stat">{openLog.issues_unchanged} unchanged</span>
-              </div>
+        {:else if openLog}
+          <div class="detail-view">
+            <div class="detail-header">
+              <span class="detail-back">Run logs</span>
+              <span class="detail-timestamp">{formatTimestamp(openLog.timestamp)}</span>
+              <span class="detail-summary">{openLog.summary}</span>
             </div>
-            {#each openLogIssues as issue, i}
+            <div class="detail-blocks">
               <div
                 class="detail-block"
-                class:block-focused={panelFocused && detailBlockIndex === i + 1}
-                data-block-index={i + 1}
+                class:block-focused={panelFocused && detailBlockIndex === 0}
+                data-block-index="0"
               >
-                <div class="issue-item">
-                  <span class="issue-action" style="color: {actionColor(issue.action)}">{issue.action}</span>
-                  <span class="issue-number">#{issue.issue_number}</span>
-                  <span class="issue-title">{issue.title}</span>
-                  <div class="issue-labels">
-                    {#each issue.labels.filter(l => l !== "filed-by-maintainer") as label}
-                      <span class="issue-label">{label}</span>
-                    {/each}
-                  </div>
+                <div class="run-summary">
+                  <span class="summary-stat">{openLog.issues_filed.length} filed</span>
+                  <span class="summary-stat">{openLog.issues_updated.length} updated</span>
+                  <span class="summary-stat">{openLog.issues_unchanged} unchanged</span>
+                  {#if openLog.issues_skipped > 0}
+                    <span class="summary-stat skipped">{openLog.issues_skipped} skipped (closed)</span>
+                  {/if}
                 </div>
               </div>
-            {/each}
+              {#each openLogIssues as issue, i}
+                <div
+                  class="detail-block"
+                  class:block-focused={panelFocused && detailBlockIndex === i + 1}
+                  data-block-index={i + 1}
+                >
+                  <div class="issue-item">
+                    <span class="issue-action" style="color: {actionColor(issue.action)}">{issue.action}</span>
+                    <span class="issue-number">#{issue.issue_number}</span>
+                    <span class="issue-title">{issue.title}</span>
+                    <div class="issue-labels">
+                      {#each issue.labels.filter(l => l !== "filed-by-maintainer") as label}
+                        <span class="issue-label">{label}</span>
+                      {/each}
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
           </div>
-        </div>
-      {:else}
-        <div class="report-list">
-          {#if runLogs.length === 0}
-            <div class="section-body">
-              <p class="muted">No run logs yet</p>
-              {#if project.maintainer.enabled}
-                <button class="btn" onclick={triggerCheck} disabled={triggerLoading}>
-                  {triggerLoading ? "Running..." : "(r) Run check now"}
-                </button>
+        {:else}
+          <div class="report-list">
+            {#if runLogs.length === 0}
+              <div class="section-body">
+                <p class="muted">No run logs yet</p>
+                {#if project.maintainer.enabled}
+                  <button class="btn" onclick={triggerCheck} disabled={triggerLoading}>
+                    {triggerLoading ? "Running..." : "(r) Run check now"}
+                  </button>
+                {/if}
+              </div>
+            {:else}
+              {#each runLogs as log, i}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <div
+                  class="report-item"
+                  class:selected={panelFocused && selectedIndex === i}
+                  data-report-index={i}
+                  onclick={() => { selectedIndex = i; openLogIndex = i; detailBlockIndex = 0; }}
+                >
+                  <span class="log-dot"></span>
+                  <span class="report-timestamp">{formatTimestamp(log.timestamp)}</span>
+                  <span class="report-summary-preview">{log.summary}</span>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </section>
+    {:else}
+      <!-- Issues view -->
+      <section class="section report-section">
+        {#if issuesLoading}
+          <div class="section-body">
+            <p class="muted">Loading issues...</p>
+          </div>
+        {:else if issueDetail}
+          <div class="issue-detail-popup">
+            <div class="issue-detail-header">
+              <span class="issue-detail-number">#{issueDetail.number}</span>
+              <span class="issue-detail-state" style="color: {stateColor(issueDetail.state)}">{issueDetail.state}</span>
+              <span class="issue-detail-hint">(o) open in browser / (Esc) back</span>
+            </div>
+            <h3 class="issue-detail-title">{issueDetail.title}</h3>
+            <div class="issue-detail-meta">
+              <span>Created: {formatDate(issueDetail.createdAt)}</span>
+              {#if issueDetail.closedAt}
+                <span>Closed: {formatDate(issueDetail.closedAt)}</span>
               {/if}
             </div>
-          {:else}
-            {#each runLogs as log, i}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <div
-                class="report-item"
-                class:selected={panelFocused && selectedIndex === i}
-                data-report-index={i}
-                onclick={() => { selectedIndex = i; openLogIndex = i; detailBlockIndex = 0; }}
-              >
-                <span class="log-dot"></span>
-                <span class="report-timestamp">{formatTimestamp(log.timestamp)}</span>
-                <span class="report-summary-preview">{log.summary}</span>
+            {#if issueDetail.labels.length > 0}
+              <div class="issue-detail-labels">
+                {#each issueDetail.labels.filter(l => l.name !== "filed-by-maintainer") as label}
+                  <span class="issue-label">{label.name}</span>
+                {/each}
               </div>
-            {/each}
-          {/if}
-        </div>
-      {/if}
-    </section>
+            {/if}
+            {#if issueDetail.body}
+              <div class="issue-detail-body">{issueDetail.body}</div>
+            {/if}
+          </div>
+        {:else}
+          <div class="issues-list">
+            {#if allSortedIssues.length === 0}
+              <div class="section-body">
+                <p class="muted">No maintainer issues found</p>
+                <button class="btn" onclick={refreshIssues}>Refresh</button>
+              </div>
+            {:else}
+              {#if openIssues.length > 0}
+                <div class="issues-section-label">Open ({openIssues.length})</div>
+              {/if}
+              {#each openIssues as issue, i}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <div
+                  class="issues-item"
+                  class:selected={panelFocused && issueSelectedIndex === i}
+                  data-issue-index={i}
+                  onclick={() => { issueSelectedIndex = i; if (project) fetchIssueDetail(project.id, issue.number); }}
+                >
+                  <span class="issues-state open-dot"></span>
+                  <span class="issues-number">#{issue.number}</span>
+                  <span class="issues-title">{issue.title}</span>
+                  <div class="issues-item-labels">
+                    {#each issue.labels.filter(l => l.name !== "filed-by-maintainer") as label}
+                      <span class="issue-label">{label.name}</span>
+                    {/each}
+                  </div>
+                  <span class="issues-date">{formatDate(issue.createdAt)}</span>
+                </div>
+              {/each}
+              {#if closedIssues.length > 0}
+                <div class="issues-section-label">Closed ({closedIssues.length})</div>
+              {/if}
+              {#each closedIssues as issue, ci}
+                {@const idx = openIssues.length + ci}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <div
+                  class="issues-item closed"
+                  class:selected={panelFocused && issueSelectedIndex === idx}
+                  data-issue-index={idx}
+                  onclick={() => { issueSelectedIndex = idx; if (project) fetchIssueDetail(project.id, issue.number); }}
+                >
+                  <span class="issues-state closed-dot"></span>
+                  <span class="issues-number">#{issue.number}</span>
+                  <span class="issues-title">{issue.title}</span>
+                  <div class="issues-item-labels">
+                    {#each issue.labels.filter(l => l.name !== "filed-by-maintainer") as label}
+                      <span class="issue-label">{label.name}</span>
+                    {/each}
+                  </div>
+                  <span class="issues-date">{formatDate(issue.createdAt)}</span>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </section>
+    {/if}
 
     {#if !panelFocused}
       <div class="panel-hint">
-        <span class="muted">Press <kbd>l</kbd> to browse run logs</span>
+        <span class="muted">Press <kbd>l</kbd> to browse {viewMode === "runs" ? "run logs" : "issues"}</span>
       </div>
     {/if}
   {/if}
@@ -425,6 +657,13 @@
   .btn { background: #313244; border: none; color: #cdd6f4; padding: 6px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; box-shadow: none; margin-top: 8px; }
   .btn:hover { background: #45475a; }
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* View tabs */
+  .view-tabs { display: flex; align-items: center; gap: 0; border-bottom: 1px solid #313244; padding: 0 24px; }
+  .view-tab { padding: 8px 16px; font-size: 12px; color: #6c7086; cursor: pointer; border-bottom: 2px solid transparent; transition: color 0.15s, border-color 0.15s; }
+  .view-tab:hover { color: #cdd6f4; }
+  .view-tab.active { color: #89b4fa; border-bottom-color: #89b4fa; }
+  .view-tab-hint { font-size: 10px; color: #45475a; margin-left: auto; }
 
   /* Run log list */
   .report-section { border-bottom: none; flex: 1; }
@@ -465,8 +704,9 @@
   .detail-block { border-radius: 6px; transition: outline-color 0.15s; outline: 2px solid transparent; outline-offset: 2px; }
   .detail-block.block-focused { outline-color: rgba(137, 180, 250, 0.5); }
 
-  .run-summary { padding: 12px; border-radius: 6px; background: rgba(49, 50, 68, 0.3); display: flex; gap: 16px; border-left: 3px solid #89b4fa; }
+  .run-summary { padding: 12px; border-radius: 6px; background: rgba(49, 50, 68, 0.3); display: flex; gap: 16px; border-left: 3px solid #89b4fa; flex-wrap: wrap; }
   .summary-stat { font-size: 13px; color: #cdd6f4; }
+  .summary-stat.skipped { color: #6c7086; }
 
   .issue-item { padding: 8px 12px; background: rgba(49, 50, 68, 0.2); border-radius: 4px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
   .issue-action { font-weight: 600; font-size: 11px; text-transform: uppercase; }
@@ -488,4 +728,42 @@
   .error-message { color: #bac2de; word-break: break-word; }
 
   .panel-hint { padding: 12px 24px; }
+
+  /* Issues list */
+  .issues-list { display: flex; flex-direction: column; }
+  .issues-section-label { padding: 6px 24px; font-size: 11px; font-weight: 600; color: #6c7086; text-transform: uppercase; background: rgba(49, 50, 68, 0.2); border-bottom: 1px solid rgba(49, 50, 68, 0.3); }
+  .issues-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 24px;
+    cursor: pointer;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(49, 50, 68, 0.3);
+  }
+  .issues-item:hover { background: rgba(49, 50, 68, 0.3); }
+  .issues-item.selected {
+    background: rgba(137, 180, 250, 0.1);
+    outline: 1px solid rgba(137, 180, 250, 0.4);
+    outline-offset: -1px;
+  }
+  .issues-item.closed { opacity: 0.6; }
+  .issues-state { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .open-dot { background: #a6e3a1; }
+  .closed-dot { background: #cba6f7; }
+  .issues-number { color: #6c7086; font-size: 11px; flex-shrink: 0; }
+  .issues-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cdd6f4; }
+  .issues-item-labels { display: flex; gap: 4px; flex-wrap: nowrap; flex-shrink: 0; }
+  .issues-date { color: #45475a; font-size: 10px; flex-shrink: 0; white-space: nowrap; }
+
+  /* Issue detail popup */
+  .issue-detail-popup { padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+  .issue-detail-header { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .issue-detail-number { color: #6c7086; font-weight: 600; }
+  .issue-detail-state { font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .issue-detail-hint { font-size: 10px; color: #45475a; margin-left: auto; }
+  .issue-detail-title { font-size: 15px; font-weight: 600; margin: 0; color: #cdd6f4; }
+  .issue-detail-meta { display: flex; gap: 16px; font-size: 11px; color: #6c7086; }
+  .issue-detail-labels { display: flex; gap: 4px; flex-wrap: wrap; }
+  .issue-detail-body { font-size: 12px; color: #bac2de; white-space: pre-wrap; word-break: break-word; padding: 12px; background: rgba(49, 50, 68, 0.2); border-radius: 6px; max-height: 400px; overflow-y: auto; line-height: 1.6; }
 </style>

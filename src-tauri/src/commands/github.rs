@@ -309,6 +309,76 @@ pub(crate) async fn remove_github_label(
     Ok(())
 }
 
+pub(crate) async fn get_maintainer_issues(
+    repo_path: String,
+    github_repo: Option<String>,
+) -> Result<Vec<crate::models::MaintainerIssue>, String> {
+    let nwo = match github_repo {
+        Some(ref repo) if !repo.is_empty() => repo.clone(),
+        _ => extract_github_repo_async(repo_path).await?,
+    };
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "list",
+            "--repo",
+            &nwo,
+            "--label",
+            "filed-by-maintainer",
+            "--state",
+            "all",
+            "--json",
+            "number,title,state,url,labels,createdAt,closedAt",
+            "--limit",
+            "100",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue list failed: {}", stderr));
+    }
+
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse gh output: {}", e))
+}
+
+pub(crate) async fn get_maintainer_issue_detail(
+    repo_path: String,
+    github_repo: Option<String>,
+    issue_number: u32,
+) -> Result<crate::models::MaintainerIssueDetail, String> {
+    let nwo = match github_repo {
+        Some(ref repo) if !repo.is_empty() => repo.clone(),
+        _ => extract_github_repo_async(repo_path).await?,
+    };
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "view",
+            &issue_number.to_string(),
+            "--repo",
+            &nwo,
+            "--json",
+            "number,title,state,body,url,labels,createdAt,closedAt",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue view failed: {}", stderr));
+    }
+
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse gh output: {}", e))
+}
+
 pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue>, String> {
     let nwo = extract_github_repo_async(repo_path).await?;
 
