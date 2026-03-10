@@ -10,3 +10,4 @@ vite.config.ts.timestamp-*
 # e2e test artifacts
 wdio-logs/
 e2e/screenshots/
+e2e/results/

@@ -269,9 +269,13 @@
   }
 
   function updateWindowTitle(branch: string, commit: string) {
-    getCurrentWindow().setTitle(
-      `The Controller (${commit}, ${branch}, localhost:${__DEV_PORT__})`,
-    );
+    try {
+      getCurrentWindow().setTitle(
+        `The Controller (${commit}, ${branch}, localhost:${__DEV_PORT__})`,
+      );
+    } catch {
+      // Browser mode — no Tauri window API available
+    }
   }
 
   // Reactively update title when staging state changes
