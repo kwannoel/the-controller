@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -26,6 +26,74 @@ pub fn parse_status_message(msg: &str) -> Option<(&str, Uuid)> {
         }
         _ => None,
     }
+}
+
+#[derive(Debug)]
+enum SocketMessage {
+    Status { status: String, session_id: Uuid },
+    SecureEnv(crate::secure_env::SecureEnvRequest),
+}
+
+fn parse_socket_message(msg: &str) -> Result<SocketMessage, String> {
+    if let Some((status, session_id)) = parse_status_message(msg) {
+        return Ok(SocketMessage::Status {
+            status: status.to_string(),
+            session_id,
+        });
+    }
+
+    let secure_env = msg
+        .strip_prefix("secure-env:")
+        .ok_or_else(|| "Unknown socket message".to_string())?;
+    let request = crate::secure_env::parse_secure_env_request(secure_env)?;
+    Ok(SocketMessage::SecureEnv(request))
+}
+
+fn write_socket_response(stream: &mut UnixStream, response: &crate::secure_env::SecureEnvResponse) {
+    let line = format!("{}\n", crate::secure_env::format_secure_env_response(response));
+    if let Err(err) = stream.write_all(line.as_bytes()) {
+        eprintln!("Failed to write socket response: {}", err);
+    }
+}
+
+fn dispatch_secure_env_request(
+    state: &AppState,
+    emitter: &Arc<dyn EventEmitter>,
+    request: crate::secure_env::SecureEnvRequest,
+    response_tx: std::sync::mpsc::SyncSender<crate::secure_env::SecureEnvResponse>,
+) -> Result<(), crate::secure_env::SecureEnvResponse> {
+    let pending = crate::secure_env::begin_secure_env_request_with_response(
+        state,
+        &request.project_selector,
+        &request.key,
+        &request.request_id,
+        Some(response_tx),
+    )
+    .map_err(|err| crate::secure_env::SecureEnvResponse {
+        kind: crate::secure_env::SecureEnvResponseKind::Error,
+        status: match err.as_str() {
+            "A secure env request is already active" => "busy".to_string(),
+            _ if err.starts_with("Unknown project:") => "unknown-project".to_string(),
+            _ => "invalid-request".to_string(),
+        },
+        request_id: request.request_id.clone(),
+    })?;
+
+    let payload = serde_json::json!({
+        "requestId": pending.request_id,
+        "projectId": pending.project_id,
+        "projectName": pending.project_name,
+        "key": pending.key,
+    })
+    .to_string();
+
+    emitter
+        .emit("secure-env-requested", &payload)
+        .map_err(|_| crate::secure_env::SecureEnvResponse {
+            kind: crate::secure_env::SecureEnvResponseKind::Error,
+            status: "emit-failed".to_string(),
+            request_id: request.request_id,
+        })
 }
 
 /// Start the Unix domain socket listener.
@@ -83,24 +151,78 @@ pub fn start_listener(app_handle: AppHandle) {
 }
 
 fn handle_connection(stream: UnixStream, app_handle: &AppHandle, emitter: &Arc<dyn EventEmitter>) {
+    let mut writer = match stream.try_clone() {
+        Ok(stream) => stream,
+        Err(err) => {
+            eprintln!("Failed to clone status socket stream: {}", err);
+            return;
+        }
+    };
     let reader = BufReader::new(stream);
     for line in reader.lines() {
         match line {
             Ok(msg) => {
                 let msg = msg.trim();
-                if let Some((status, session_id)) = parse_status_message(msg) {
-                    if status == "cleanup" {
-                        handle_cleanup(app_handle, session_id);
-                        return; // close connection immediately
-                    } else {
+                match parse_socket_message(msg) {
+                    Ok(SocketMessage::Status { status, session_id }) => {
+                        if status == "cleanup" {
+                            handle_cleanup(app_handle, session_id);
+                            return;
+                        }
                         let event_name = format!("session-status-hook:{}", session_id);
-                        if let Err(e) = emitter.emit(&event_name, status) {
+                        if let Err(e) = emitter.emit(&event_name, &status) {
                             eprintln!("Failed to emit {}: {}", event_name, e);
                         }
                         if status == "idle" {
                             crate::auto_worker::notify_session_idle(session_id);
                         }
                     }
+                    Ok(SocketMessage::SecureEnv(request)) => {
+                        let Some(state) = app_handle.try_state::<AppState>() else {
+                            write_socket_response(
+                                &mut writer,
+                                &crate::secure_env::SecureEnvResponse {
+                                    kind: crate::secure_env::SecureEnvResponseKind::Error,
+                                    status: "app-state-unavailable".to_string(),
+                                    request_id: request.request_id,
+                                },
+                            );
+                            return;
+                        };
+
+                        let (response_tx, response_rx) = std::sync::mpsc::sync_channel(1);
+                        match dispatch_secure_env_request(&state, emitter, request, response_tx) {
+                            Ok(()) => match response_rx.recv() {
+                                Ok(response) => write_socket_response(&mut writer, &response),
+                                Err(err) => {
+                                    eprintln!("Failed to receive secure env response: {}", err);
+                                    write_socket_response(
+                                        &mut writer,
+                                        &crate::secure_env::SecureEnvResponse {
+                                            kind: crate::secure_env::SecureEnvResponseKind::Error,
+                                            status: "response-channel-closed".to_string(),
+                                            request_id: "unknown".to_string(),
+                                        },
+                                    );
+                                }
+                            },
+                            Err(response) => write_socket_response(&mut writer, &response),
+                        }
+                        return;
+                    }
+                    Err(err) if msg.starts_with("secure-env:") => {
+                        eprintln!("Invalid secure env socket message: {}", err);
+                        write_socket_response(
+                            &mut writer,
+                            &crate::secure_env::SecureEnvResponse {
+                                kind: crate::secure_env::SecureEnvResponseKind::Error,
+                                status: "invalid-request".to_string(),
+                                request_id: "unknown".to_string(),
+                            },
+                        );
+                        return;
+                    }
+                    Err(_) => {}
                 }
             }
             Err(e) => {
@@ -224,6 +346,63 @@ pub fn cleanup() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    use tempfile::TempDir;
+    use uuid::Uuid;
+
+    use crate::emitter::EventEmitter;
+    use crate::models::{AutoWorkerConfig, MaintainerConfig, Project};
+    use crate::secure_env::{
+        ActiveSecureEnvRequest, PendingSecureEnvRequest, SecureEnvResponse, SecureEnvResponseKind,
+    };
+    use crate::state::AppState;
+    use crate::storage::Storage;
+
+    struct RecordingEmitter {
+        events: Mutex<Vec<(String, String)>>,
+    }
+
+    impl RecordingEmitter {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                events: Mutex::new(Vec::new()),
+            })
+        }
+    }
+
+    impl EventEmitter for RecordingEmitter {
+        fn emit(&self, event: &str, payload: &str) -> Result<(), String> {
+            self.events
+                .lock()
+                .unwrap()
+                .push((event.to_string(), payload.to_string()));
+            Ok(())
+        }
+    }
+
+    fn make_app_state(tmp: &TempDir) -> AppState {
+        AppState::from_storage(Storage::new(tmp.path().to_path_buf()), crate::emitter::NoopEmitter::new())
+            .unwrap()
+    }
+
+    fn save_project(state: &AppState, name: &str, repo_path: PathBuf) {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            repo_path: repo_path.to_string_lossy().to_string(),
+            created_at: "2026-03-10T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
+            sessions: vec![],
+            staged_session: None,
+        };
+
+        state.storage.lock().unwrap().save_project(&project).unwrap();
+    }
 
     #[test]
     fn test_parse_status_message_working() {
@@ -342,5 +521,85 @@ mod tests {
         assert!(result.is_some());
         let (status, _) = result.unwrap();
         assert_eq!(status, "working");
+    }
+
+    #[test]
+    fn parses_secure_env_message() {
+        let message = parse_socket_message("secure-env:set|demo-project|OPENAI_API_KEY|req-123")
+            .unwrap();
+
+        match message {
+            SocketMessage::SecureEnv(request) => {
+                assert_eq!(request.project_selector, "demo-project");
+                assert_eq!(request.key, "OPENAI_API_KEY");
+                assert_eq!(request.request_id, "req-123");
+            }
+            other => panic!("expected secure env request, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dispatches_secure_env_request_and_emits_frontend_event() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path);
+        let emitter = RecordingEmitter::new();
+        let (tx, _rx) = std::sync::mpsc::sync_channel(1);
+        let request = crate::secure_env::parse_secure_env_request(
+            "set|demo-project|OPENAI_API_KEY|req-123",
+        )
+        .unwrap();
+
+        dispatch_secure_env_request(&state, &(emitter.clone() as Arc<dyn EventEmitter>), request, tx)
+            .unwrap();
+
+        let events = emitter.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0, "secure-env-requested");
+        assert!(events[0].1.contains("\"projectName\":\"demo-project\""));
+        assert!(events[0].1.contains("\"key\":\"OPENAI_API_KEY\""));
+        assert!(state.secure_env_request.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn returns_busy_error_response_for_second_secure_env_request() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path);
+        let emitter = RecordingEmitter::new();
+        let (tx, _rx) = std::sync::mpsc::sync_channel(1);
+
+        *state.secure_env_request.lock().unwrap() = Some(ActiveSecureEnvRequest {
+            pending: PendingSecureEnvRequest {
+                request_id: "req-000".to_string(),
+                project_id: Uuid::new_v4(),
+                project_name: "demo-project".to_string(),
+                env_path: tmp.path().join("demo-project/.env"),
+                key: "OPENAI_API_KEY".to_string(),
+            },
+            response_tx: None,
+        });
+
+        let request = crate::secure_env::parse_secure_env_request(
+            "set|demo-project|ANTHROPIC_API_KEY|req-123",
+        )
+        .unwrap();
+
+        let response =
+            dispatch_secure_env_request(&state, &(emitter as Arc<dyn EventEmitter>), request, tx)
+                .unwrap_err();
+
+        assert_eq!(
+            response,
+            SecureEnvResponse {
+                kind: SecureEnvResponseKind::Error,
+                status: "busy".to_string(),
+                request_id: "req-123".to_string(),
+            }
+        );
     }
 }

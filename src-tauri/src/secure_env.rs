@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::SyncSender;
 
 use uuid::Uuid;
 
@@ -18,6 +19,13 @@ pub(crate) struct PendingSecureEnvRequest {
     pub(crate) project_name: String,
     pub(crate) env_path: PathBuf,
     pub(crate) key: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub(crate) struct ActiveSecureEnvRequest {
+    pub(crate) pending: PendingSecureEnvRequest,
+    pub(crate) response_tx: Option<SyncSender<SecureEnvResponse>>,
 }
 
 #[allow(dead_code)]
@@ -99,6 +107,17 @@ pub(crate) fn begin_secure_env_request(
     key: &str,
     request_id: &str,
 ) -> Result<PendingSecureEnvRequest, String> {
+    begin_secure_env_request_with_response(state, project_selector, key, request_id, None)
+}
+
+#[allow(dead_code)]
+pub(crate) fn begin_secure_env_request_with_response(
+    state: &AppState,
+    project_selector: &str,
+    key: &str,
+    request_id: &str,
+    response_tx: Option<SyncSender<SecureEnvResponse>>,
+) -> Result<PendingSecureEnvRequest, String> {
     validate_env_key(key)?;
 
     let project = {
@@ -126,7 +145,10 @@ pub(crate) fn begin_secure_env_request(
     if active.is_some() {
         return Err("A secure env request is already active".to_string());
     }
-    *active = Some(pending.clone());
+    *active = Some(ActiveSecureEnvRequest {
+        pending: pending.clone(),
+        response_tx,
+    });
 
     Ok(pending)
 }
@@ -138,8 +160,16 @@ pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> R
         .lock()
         .map_err(|err| err.to_string())?;
     match active.as_ref() {
-        Some(request) if request.request_id == request_id => {
+        Some(request) if request.pending.request_id == request_id => {
+            let response_tx = request.response_tx.clone();
             *active = None;
+            if let Some(response_tx) = response_tx {
+                let _ = response_tx.send(SecureEnvResponse {
+                    kind: SecureEnvResponseKind::Error,
+                    status: "cancelled".to_string(),
+                    request_id: request_id.to_string(),
+                });
+            }
             Ok(())
         }
         Some(_) => Err(format!("Unknown secure env request: {request_id}")),
@@ -159,7 +189,7 @@ pub(crate) fn submit_secure_env_value(
             .lock()
             .map_err(|err| err.to_string())?;
         match active.as_ref() {
-            Some(request) if request.request_id == request_id => request.clone(),
+            Some(request) if request.pending.request_id == request_id => request.pending.clone(),
             Some(_) => return Err(format!("Unknown secure env request: {request_id}")),
             None => return Err("No active secure env request".to_string()),
         }
@@ -171,11 +201,25 @@ pub(crate) fn submit_secure_env_value(
         .secure_env_request
         .lock()
         .map_err(|err| err.to_string())?;
+    let response_tx = active.as_ref().and_then(|request| {
+        (request.pending.request_id == request_id).then(|| request.response_tx.clone())
+    }).flatten();
     if active
         .as_ref()
-        .is_some_and(|request| request.request_id == request_id)
+        .is_some_and(|request| request.pending.request_id == request_id)
     {
         *active = None;
+    }
+    if let Some(response_tx) = response_tx {
+        let _ = response_tx.send(SecureEnvResponse {
+            kind: SecureEnvResponseKind::Ok,
+            status: if result.created {
+                "created".to_string()
+            } else {
+                "updated".to_string()
+            },
+            request_id: request_id.to_string(),
+        });
     }
 
     Ok(result)
