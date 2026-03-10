@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
-  import { command } from "$lib/backend";
+  import { command, listen } from "$lib/backend";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
@@ -13,6 +13,7 @@
   import CreateIssueModal from "./lib/CreateIssueModal.svelte";
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import PromptPickerModal from "./lib/PromptPickerModal.svelte";
+  import SecureEnvModal from "./lib/SecureEnvModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
   import AssignedIssuesPanel from "./lib/AssignedIssuesPanel.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
@@ -29,6 +30,7 @@
   let triagePanelOpen: TriageCategory | null = $state(null);
   let assignedIssuesPanelOpen = $state(false);
   let promptPickerTarget: { projectId: string } | null = $state(null);
+  let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const controllerChatVisibleState = fromStore(controllerChatVisible);
@@ -298,23 +300,69 @@
     }
   });
 
-  onMount(async () => {
-    updateWindowTitle(__BUILD_BRANCH__, __BUILD_COMMIT__);
+  onMount(() => {
+    const unlistenSecureEnv = listen<string>("secure-env-requested", (payload) => {
+      try {
+        secureEnvRequest = JSON.parse(payload);
+      } catch (e) {
+        showToast(`Invalid secure env request payload: ${e}`, "error");
+      }
+    });
+
+    void (async () => {
+      updateWindowTitle(__BUILD_BRANCH__, __BUILD_COMMIT__);
+
+      try {
+        // Re-spawn PTY sessions for persisted active sessions
+        await command("restore_sessions");
+
+        const config = await command<Config | null>("check_onboarding");
+        if (config) {
+          appConfig.set(config);
+          onboardingComplete.set(true);
+        }
+      } catch (e) {
+        // Config check failed, show onboarding
+      }
+      ready = true;
+    })();
+
+    return () => {
+      unlistenSecureEnv();
+    };
+  });
+
+  async function submitSecureEnvValue(value: string) {
+    if (!secureEnvRequest) return;
+
+    const target = secureEnvRequest;
+    secureEnvRequest = null;
 
     try {
-      // Re-spawn PTY sessions for persisted active sessions
-      await command("restore_sessions");
-
-      const config = await command<Config | null>("check_onboarding");
-      if (config) {
-        appConfig.set(config);
-        onboardingComplete.set(true);
-      }
+      await command("submit_secure_env_value", {
+        requestId: target.requestId,
+        value,
+      });
+      showToast(`Saved ${target.key} for ${target.projectName}`, "info");
     } catch (e) {
-      // Config check failed, show onboarding
+      showToast(String(e), "error");
     }
-    ready = true;
-  });
+  }
+
+  async function cancelSecureEnvRequest() {
+    if (!secureEnvRequest) return;
+
+    const target = secureEnvRequest;
+    secureEnvRequest = null;
+
+    try {
+      await command("cancel_secure_env_request", {
+        requestId: target.requestId,
+      });
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
 </script>
 
 {#if ready}
@@ -362,6 +410,14 @@
         projectId={promptPickerTarget.projectId}
         onSelect={handlePromptPicked}
         onClose={() => { promptPickerTarget = null; }}
+      />
+    {/if}
+    {#if secureEnvRequest}
+      <SecureEnvModal
+        projectName={secureEnvRequest.projectName}
+        envKey={secureEnvRequest.key}
+        onSubmit={submitSecureEnvValue}
+        onClose={cancelSecureEnvRequest}
       />
     {/if}
     {#if triagePanelOpen}

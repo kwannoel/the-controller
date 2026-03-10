@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { command } from "$lib/backend";
+import { command, listen } from "$lib/backend";
 import {
   activeSessionId,
   appConfig,
@@ -447,6 +447,95 @@ describe("App issue creation flow", () => {
         issueNumber: 77,
         label: "complexity:low",
       }));
+    });
+  });
+});
+
+describe("App secure env flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_COMMIT__ = "test-commit";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_BRANCH__ = "test-branch";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__DEV_PORT__ = "1420";
+
+    projects.set([baseProject]);
+    activeSessionId.set(null);
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+    hotkeyAction.set(null);
+    showKeyHints.set(false);
+    sidebarVisible.set(true);
+    selectedSessionProvider.set("claude");
+    onboardingComplete.set(true);
+    appConfig.set({ projects_root: "/tmp/projects" });
+    sessionStatuses.set(new Map());
+    expandedProjects.set(new Set());
+
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "submit_secure_env_value") return "created";
+      if (cmd === "cancel_secure_env_request") return;
+      return;
+    });
+  });
+
+  it("opens the secure env modal from the backend event and submits without leaking the secret to toast text", async () => {
+    let secureEnvHandler: ((payload: string) => void) | undefined;
+    vi.mocked(listen).mockImplementation((event: string, handler: (payload: string) => void) => {
+      if (event === "secure-env-requested") secureEnvHandler = handler;
+      return () => {};
+    });
+
+    render(App);
+
+    secureEnvHandler?.(JSON.stringify({
+      requestId: "req-123",
+      projectId: "proj-1",
+      projectName: "demo-project",
+      key: "OPENAI_API_KEY",
+    }));
+
+    const input = await screen.findByLabelText("Secret value");
+    await fireEvent.input(input, { target: { value: "new-secret" } });
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("submit_secure_env_value", {
+        requestId: "req-123",
+        value: "new-secret",
+      });
+    });
+
+    const { showToast } = await import("./lib/toast");
+    expect(showToast).toHaveBeenCalledWith("Saved OPENAI_API_KEY for demo-project", "info");
+    expect(showToast).not.toHaveBeenCalledWith(expect.stringContaining("new-secret"), expect.anything());
+  });
+
+  it("cancels the secure env request from the modal", async () => {
+    let secureEnvHandler: ((payload: string) => void) | undefined;
+    vi.mocked(listen).mockImplementation((event: string, handler: (payload: string) => void) => {
+      if (event === "secure-env-requested") secureEnvHandler = handler;
+      return () => {};
+    });
+
+    render(App);
+
+    secureEnvHandler?.(JSON.stringify({
+      requestId: "req-123",
+      projectId: "proj-1",
+      projectName: "demo-project",
+      key: "OPENAI_API_KEY",
+    }));
+
+    await fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("cancel_secure_env_request", {
+        requestId: "req-123",
+      });
     });
   });
 });
