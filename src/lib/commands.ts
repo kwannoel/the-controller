@@ -36,7 +36,8 @@ export type CommandId =
   | "toggle-note-preview"
   | "save-prompt"
   | "load-prompt"
-  | "stage-inplace";
+  | "stage-inplace"
+  | "toggle-maintainer-view";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -104,6 +105,7 @@ export const commands: CommandDef[] = [
   { id: "toggle-agent", key: "o", section: "Agents", description: "Toggle focused agent on/off", mode: "agents" },
   { id: "trigger-agent-check", key: "r", section: "Agents", description: "Run maintainer check for focused project", mode: "agents" },
   { id: "clear-agent-reports", key: "c", section: "Agents", description: "Clear maintainer reports for focused project", mode: "agents" },
+  { id: "toggle-maintainer-view", key: "t", section: "Agents", description: "Toggle between Runs / Issues view", mode: "agents" },
 
   // ── Notes ──
   { id: "create-note", key: "n", section: "Notes", description: "Create new note", mode: "notes" },

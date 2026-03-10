@@ -179,7 +179,36 @@ pub struct MaintainerRunLog {
     pub issues_filed: Vec<IssueSummary>,
     pub issues_updated: Vec<IssueSummary>,
     pub issues_unchanged: u32,
+    #[serde(default)]
+    pub issues_skipped: u32,
     pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerIssue {
+    pub number: u32,
+    pub title: String,
+    pub state: String,
+    pub url: String,
+    pub labels: Vec<GithubLabel>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "closedAt")]
+    pub closed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaintainerIssueDetail {
+    pub number: u32,
+    pub title: String,
+    pub state: String,
+    pub body: String,
+    pub url: String,
+    pub labels: Vec<GithubLabel>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "closedAt")]
+    pub closed_at: Option<String>,
 }
 
 #[cfg(test)]
@@ -481,6 +510,7 @@ mod tests {
             }],
             issues_updated: vec![],
             issues_unchanged: 3,
+            issues_skipped: 0,
             summary: "Filed 1 issue, 3 unchanged".to_string(),
         };
         let json = serde_json::to_string(&run_log).expect("serialize");
@@ -635,5 +665,80 @@ mod tests {
         let staged = deserialized.staged_session.unwrap();
         assert_eq!(staged.original_branch, "master");
         assert_eq!(staged.staging_branch, "staging/session-1-abc123");
+    }
+
+    #[test]
+    fn test_run_log_includes_issues_skipped_field() {
+        let run_log = MaintainerRunLog {
+            id: Uuid::new_v4(),
+            project_id: Uuid::new_v4(),
+            timestamp: "2026-03-09T00:00:00Z".to_string(),
+            issues_filed: vec![],
+            issues_updated: vec![],
+            issues_unchanged: 2,
+            issues_skipped: 5,
+            summary: "Skipped 5 closed issues".to_string(),
+        };
+        let json = serde_json::to_string(&run_log).expect("serialize");
+        let deserialized: MaintainerRunLog = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.issues_skipped, 5);
+        assert_eq!(deserialized.issues_unchanged, 2);
+
+        // Also verify that issues_skipped defaults to 0 when absent
+        let json_without_skipped = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "project_id": "550e8400-e29b-41d4-a716-446655440001",
+            "timestamp": "2026-03-09T00:00:00Z",
+            "issues_filed": [],
+            "issues_updated": [],
+            "issues_unchanged": 3,
+            "summary": "test"
+        }"#;
+        let from_old: MaintainerRunLog =
+            serde_json::from_str(json_without_skipped).expect("deserialize without skipped");
+        assert_eq!(from_old.issues_skipped, 0);
+    }
+
+    #[test]
+    fn test_maintainer_issue_serialization_roundtrip() {
+        let issue = MaintainerIssue {
+            number: 42,
+            title: "Test issue".to_string(),
+            state: "OPEN".to_string(),
+            url: "https://github.com/owner/repo/issues/42".to_string(),
+            labels: vec![GithubLabel {
+                name: "filed-by-maintainer".to_string(),
+            }],
+            created_at: "2026-03-09T00:00:00Z".to_string(),
+            closed_at: None,
+        };
+        let json = serde_json::to_string(&issue).expect("serialize");
+        let deserialized: MaintainerIssue = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.number, 42);
+        assert_eq!(deserialized.state, "OPEN");
+        assert!(deserialized.closed_at.is_none());
+    }
+
+    #[test]
+    fn test_maintainer_issue_detail_serialization_roundtrip() {
+        let detail = MaintainerIssueDetail {
+            number: 10,
+            title: "Detail issue".to_string(),
+            state: "CLOSED".to_string(),
+            body: "Issue body here".to_string(),
+            url: "https://github.com/owner/repo/issues/10".to_string(),
+            labels: vec![],
+            created_at: "2026-03-01T00:00:00Z".to_string(),
+            closed_at: Some("2026-03-05T00:00:00Z".to_string()),
+        };
+        let json = serde_json::to_string(&detail).expect("serialize");
+        let deserialized: MaintainerIssueDetail = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.number, 10);
+        assert_eq!(deserialized.state, "CLOSED");
+        assert_eq!(deserialized.body, "Issue body here");
+        assert_eq!(
+            deserialized.closed_at.as_deref(),
+            Some("2026-03-05T00:00:00Z")
+        );
     }
 }

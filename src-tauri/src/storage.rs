@@ -430,6 +430,7 @@ mod tests {
             }],
             issues_updated: vec![],
             issues_unchanged: 0,
+            issues_skipped: 0,
             summary: "Filed 1 issue".to_string(),
         }
     }

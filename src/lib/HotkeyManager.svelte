@@ -490,6 +490,9 @@
       case "toggle-note-preview":
         dispatchAction({ type: "toggle-note-preview" });
         return true;
+      case "toggle-maintainer-view":
+        dispatchAction({ type: "toggle-maintainer-view" });
+        return true;
       default: {
         const _exhaustive: never = id;
         return false;
@@ -648,6 +651,13 @@
         e.stopPropagation();
         e.preventDefault();
         dispatchAction({ type: "agent-panel-select" });
+        pushKeystroke(e.key);
+        return;
+      }
+      if (e.key === "o") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "open-issue-in-browser" });
         pushKeystroke(e.key);
         return;
       }

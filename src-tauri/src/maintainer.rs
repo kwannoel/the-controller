@@ -614,6 +614,40 @@ fn list_open_maintainer_issues(
         .collect())
 }
 
+fn list_closed_maintainer_issues(
+    repo_path: &str,
+    github_repo: Option<&str>,
+) -> Result<Vec<ExistingIssue>, String> {
+    let mut cmd = gh_command(repo_path, github_repo);
+    cmd.args([
+        "issue",
+        "list",
+        "--label",
+        "filed-by-maintainer",
+        "--state",
+        "closed",
+        "--json",
+        "number,title,body,url,labels",
+        "--limit",
+        "200",
+    ]);
+
+    let output = run_gh_checked(cmd, "gh issue list (closed) failed")?;
+    let raw_issues: Vec<RawExistingIssue> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse gh issue list output: {}", e))?;
+
+    Ok(raw_issues
+        .into_iter()
+        .map(|raw| ExistingIssue {
+            number: raw.number,
+            title: raw.title,
+            body: raw.body,
+            url: raw.url,
+            labels: raw.labels.into_iter().map(|l| l.name).collect(),
+        })
+        .collect())
+}
+
 fn parse_issue_number_from_url(url: &str) -> Result<u32, String> {
     let trimmed = url.trim().trim_end_matches('/');
     let last = trimmed
@@ -753,16 +787,24 @@ pub fn run_maintainer_check(
     ensure_labels_exist(repo_path, github_repo)?;
 
     let mut existing_issues = list_open_maintainer_issues(repo_path, github_repo)?;
+    let closed_issues = list_closed_maintainer_issues(repo_path, github_repo)?;
     let existing_issue_count = existing_issues.len();
 
     let mut issues_filed = Vec::new();
     let mut issues_updated = Vec::new();
     let mut updated_issue_numbers = HashSet::new();
+    let mut issues_skipped: u32 = 0;
 
     for finding in &findings_output.findings {
         let fingerprint = build_finding_fingerprint(finding);
         let labels = dedup_labels_for_finding(finding);
         let body = format_issue_body(finding, &fingerprint);
+
+        // Skip findings that match a closed issue (already resolved)
+        if find_duplicate_issue(finding, &closed_issues, DEDUP_SIMILARITY_THRESHOLD).is_some() {
+            issues_skipped += 1;
+            continue;
+        }
 
         if let Some(duplicate_match) =
             find_duplicate_issue(finding, &existing_issues, DEDUP_SIMILARITY_THRESHOLD)
@@ -825,12 +867,15 @@ pub fn run_maintainer_check(
             findings_output.summary
         }
     } else {
-        format!(
-            "Filed {} issue(s), updated {} issue(s), unchanged {}",
-            issues_filed.len(),
-            issues_updated.len(),
-            issues_unchanged
-        )
+        let mut parts = vec![
+            format!("Filed {} issue(s)", issues_filed.len()),
+            format!("updated {} issue(s)", issues_updated.len()),
+            format!("unchanged {}", issues_unchanged),
+        ];
+        if issues_skipped > 0 {
+            parts.push(format!("skipped {} (closed)", issues_skipped));
+        }
+        parts.join(", ")
     };
 
     Ok(MaintainerRunLog {
@@ -840,6 +885,7 @@ pub fn run_maintainer_check(
         issues_filed,
         issues_updated,
         issues_unchanged,
+        issues_skipped,
         summary,
     })
 }
@@ -938,6 +984,7 @@ mod tests {
             }],
             issues_updated: vec![],
             issues_unchanged: 0,
+            issues_skipped: 0,
             summary: "s".to_string(),
         };
         assert!(has_changes(&log));
@@ -952,6 +999,7 @@ mod tests {
             issues_filed: vec![],
             issues_updated: vec![],
             issues_unchanged: 3,
+            issues_skipped: 0,
             summary: "s".to_string(),
         };
         assert!(!has_changes(&log));
