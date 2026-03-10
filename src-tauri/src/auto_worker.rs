@@ -34,6 +34,7 @@ const LABEL_COMPLEXITY_HIGH_OLD: &str = "complexity: high";
 const LABEL_COMPLEXITY_SIMPLE: &str = "complexity:simple";
 const LABEL_COMPLEXITY_HIGH: &str = "complexity:high";
 const LABEL_IN_PROGRESS: &str = "in-progress";
+const LABEL_ASSIGNED_TO_AUTO_WORKER: &str = "assigned-to-auto-worker";
 const LABEL_FINISHED_BY_WORKER: &str = "finished-by-worker";
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -45,6 +46,60 @@ struct LabelMigration {
 impl LabelMigration {
     fn is_empty(&self) -> bool {
         self.add.is_empty() && self.remove.is_empty()
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct WorkerLabelPlan {
+    add: Vec<&'static str>,
+    remove: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LabelDefinition {
+    description: &'static str,
+    color: &'static str,
+}
+
+fn worker_claim_label_plan() -> WorkerLabelPlan {
+    WorkerLabelPlan {
+        add: vec![LABEL_IN_PROGRESS, LABEL_ASSIGNED_TO_AUTO_WORKER],
+        remove: vec![],
+    }
+}
+
+fn worker_cleanup_label_plan(issue_closed: Option<bool>) -> WorkerLabelPlan {
+    let mut remove = vec![LABEL_IN_PROGRESS];
+    if issue_closed == Some(false) {
+        remove.push(LABEL_ASSIGNED_TO_AUTO_WORKER);
+    }
+    WorkerLabelPlan { add: vec![], remove }
+}
+
+fn label_definition(label: &str) -> Option<LabelDefinition> {
+    match label {
+        LABEL_IN_PROGRESS => Some(LabelDefinition {
+            description: "Issue is being worked on in a session",
+            color: "F9E2AF",
+        }),
+        LABEL_ASSIGNED_TO_AUTO_WORKER => Some(LabelDefinition {
+            description: "Issue has been handled by the auto-worker",
+            color: "94E2D5",
+        }),
+        LABEL_FINISHED_BY_WORKER => Some(LabelDefinition {
+            description: "Issue was completed by the auto-worker",
+            color: "A6E3A1",
+        }),
+        _ => None,
+    }
+}
+
+fn apply_worker_label_plan_sync(state: &AppState, repo_path: &str, issue_number: u64, plan: &WorkerLabelPlan) {
+    for label in &plan.add {
+        let _ = add_label_sync(state, repo_path, issue_number, label);
+    }
+    for label in &plan.remove {
+        let _ = remove_label_sync(state, repo_path, issue_number, label);
     }
 }
 
@@ -303,7 +358,12 @@ impl AutoWorkerScheduler {
 
                     match spawn_auto_worker_session(&state, &app_handle, project, &eligible) {
                         Ok(session_id) => {
-                            let _ = add_label_sync(state.inner(), &project.repo_path, eligible.number, LABEL_IN_PROGRESS);
+                            apply_worker_label_plan_sync(
+                                state.inner(),
+                                &project.repo_path,
+                                eligible.number,
+                                &worker_claim_label_plan(),
+                            );
                             emit_status(&app_handle, project.id, "working", None, Some(eligible.number), Some(&eligible.title));
                             active_sessions.insert(project.id, ActiveSession {
                                 session_id,
@@ -539,6 +599,24 @@ where
 }
 
 fn edit_label_sync(repo_path: &str, issue_number: u64, mode: &str, label: &str) -> Result<(), String> {
+    if mode == "--add-label" {
+        if let Some(definition) = label_definition(label) {
+            let _ = Command::new("gh")
+                .args([
+                    "label",
+                    "create",
+                    label,
+                    "--description",
+                    definition.description,
+                    "--color",
+                    definition.color,
+                    "--force",
+                ])
+                .current_dir(repo_path)
+                .output();
+        }
+    }
+
     let output = Command::new("gh")
         .args(["issue", "edit", &issue_number.to_string(), mode, label])
         .current_dir(repo_path)
@@ -558,6 +636,24 @@ fn add_label_sync(state: &AppState, repo_path: &str, issue_number: u64, label: &
 
 fn remove_label_sync(state: &AppState, repo_path: &str, issue_number: u64, label: &str) -> Result<(), String> {
     finish_label_edit(state, repo_path, || edit_label_sync(repo_path, issue_number, "--remove-label", label))
+}
+
+fn issue_is_closed_sync(repo_path: &str, issue_number: u64) -> Result<bool, String> {
+    let output = Command::new("gh")
+        .args(["issue", "view", &issue_number.to_string(), "--json", "state"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue view failed: {}", stderr));
+    }
+
+    let raw: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+
+    Ok(raw["state"].as_str() == Some("CLOSED"))
 }
 
 fn ensure_standard_labels_exist_sync(repo_path: &str) -> Result<(), String> {
@@ -802,16 +898,31 @@ fn close_issue_sync(repo_path: &str, issue_number: u64) -> Result<(), String> {
 }
 
 fn mark_issue_finished(state: &AppState, session: &ActiveSession) {
-    let _ = remove_label_sync(state, &session.repo_path, session.issue_number, LABEL_IN_PROGRESS);
-    if has_merged_pr_sync(&session.repo_path, session.issue_number) {
+    let mut issue_closed = issue_is_closed_sync(&session.repo_path, session.issue_number).ok();
+
+    if issue_closed != Some(true) && has_merged_pr_sync(&session.repo_path, session.issue_number) {
+        if close_issue_sync(&session.repo_path, session.issue_number).is_ok() {
+            issue_closed = Some(true);
+        }
+    }
+
+    apply_worker_label_plan_sync(
+        state,
+        &session.repo_path,
+        session.issue_number,
+        &worker_cleanup_label_plan(issue_closed),
+    );
+
+    if issue_closed == Some(true) {
         let _ = add_label_sync(state, &session.repo_path, session.issue_number, LABEL_FINISHED_BY_WORKER);
-        let _ = close_issue_sync(&session.repo_path, session.issue_number);
-        eprintln!("Auto-worker: closed #{} (merged PR verified)", session.issue_number);
+        eprintln!("Auto-worker: finalized #{} as completed", session.issue_number);
+    } else if issue_closed == Some(false) {
+        let _ = remove_label_sync(state, &session.repo_path, session.issue_number, LABEL_FINISHED_BY_WORKER);
+        eprintln!("Auto-worker: #{} exited while still open", session.issue_number);
     } else {
-        eprintln!("Auto-worker: #{} exited without merged PR, not closing", session.issue_number);
+        eprintln!("Auto-worker: #{} cleanup could not confirm issue state", session.issue_number);
     }
 }
-
 fn cleanup_startup_worker(
     state: &AppState,
     candidate: &StartupWorkerCandidate,
@@ -858,6 +969,7 @@ pub fn is_eligible(issue: &GithubIssue) -> bool {
         && labels.contains(&LABEL_COMPLEXITY_SIMPLE)
         && !labels.contains(&LABEL_IN_PROGRESS)
         && !labels.contains(&LABEL_FINISHED_BY_WORKER)
+        && !labels.contains(&LABEL_ASSIGNED_TO_AUTO_WORKER)
 }
 
 /// Pick the first eligible issue from a list.
@@ -1053,6 +1165,49 @@ mod tests {
         assert_eq!(error, "boom");
         let cache = state.issue_cache.lock().unwrap();
         assert!(cache.get(repo_path).is_some());
+    }
+
+    #[test]
+    fn worker_claim_label_plan_adds_assigned_to_auto_worker() {
+        let plan = worker_claim_label_plan();
+
+        assert!(plan.add.contains(&LABEL_IN_PROGRESS));
+        assert!(plan.add.contains(&LABEL_ASSIGNED_TO_AUTO_WORKER));
+    }
+
+    #[test]
+    fn worker_cleanup_label_plan_keeps_assignment_when_issue_closed() {
+        let plan = worker_cleanup_label_plan(Some(true));
+
+        assert!(plan.remove.contains(&LABEL_IN_PROGRESS));
+        assert!(!plan.remove.contains(&LABEL_ASSIGNED_TO_AUTO_WORKER));
+    }
+
+    #[test]
+    fn worker_cleanup_label_plan_removes_assignment_when_issue_still_open() {
+        let plan = worker_cleanup_label_plan(Some(false));
+
+        assert!(plan.remove.contains(&LABEL_IN_PROGRESS));
+        assert!(plan.remove.contains(&LABEL_ASSIGNED_TO_AUTO_WORKER));
+    }
+
+    #[test]
+    fn worker_cleanup_label_plan_preserves_assignment_when_issue_state_unknown() {
+        let plan = worker_cleanup_label_plan(None);
+
+        assert!(plan.remove.contains(&LABEL_IN_PROGRESS));
+        assert!(!plan.remove.contains(&LABEL_ASSIGNED_TO_AUTO_WORKER));
+    }
+
+    #[test]
+    fn label_definition_includes_assigned_to_auto_worker() {
+        assert_eq!(
+            label_definition(LABEL_ASSIGNED_TO_AUTO_WORKER),
+            Some(LabelDefinition {
+                description: "Issue has been handled by the auto-worker",
+                color: "94E2D5",
+            })
+        );
     }
 
     #[test]

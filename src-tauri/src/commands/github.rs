@@ -11,6 +11,9 @@ pub struct WorkerReport {
     pub updated_at: String,
 }
 
+const WORKER_REPORT_FALLBACK_BODY: &str = "No worker report was posted for this issue.";
+const LABEL_ASSIGNED_TO_AUTO_WORKER: &str = "assigned-to-auto-worker";
+
 /// Parse a GitHub remote URL into an "owner/repo" string.
 /// Handles SSH (git@github.com:owner/repo.git), HTTPS, and HTTP URLs.
 fn parse_github_nwo(url: &str) -> Result<String, String> {
@@ -429,9 +432,9 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
         .args([
             "issue", "list",
             "--repo", &nwo,
-            "--label", "finished-by-worker",
+            "--label", LABEL_ASSIGNED_TO_AUTO_WORKER,
             "--state", "all",
-            "--json", "number,title,comments,updatedAt",
+            "--json", "number,title,state,comments,updatedAt",
             "--limit", "50",
         ])
         .output()
@@ -446,9 +449,17 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
     let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)
         .map_err(|e| format!("Failed to parse gh output: {}", e))?;
 
-    let reports: Vec<WorkerReport> = raw
-        .into_iter()
+    let reports = parse_worker_reports(raw);
+
+    Ok(reports)
+}
+
+fn parse_worker_reports(raw: Vec<serde_json::Value>) -> Vec<WorkerReport> {
+    raw.into_iter()
         .filter_map(|issue| {
+            if issue["state"].as_str() != Some("CLOSED") {
+                return None;
+            }
             let number = issue["number"].as_u64()?;
             let title = issue["title"].as_str()?.to_string();
             let updated_at = issue["updatedAt"].as_str().unwrap_or("").to_string();
@@ -460,7 +471,7 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
                         text.contains("<!-- auto-worker-report -->").then_some(text)
                     })
                 })
-                .unwrap_or("")
+                .unwrap_or(WORKER_REPORT_FALLBACK_BODY)
                 .to_string();
             Some(WorkerReport {
                 issue_number: number,
@@ -469,9 +480,7 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
                 updated_at,
             })
         })
-        .collect();
-
-    Ok(reports)
+        .collect()
 }
 
 #[cfg(test)]
@@ -570,5 +579,41 @@ mod tests {
     #[test]
     fn test_parse_github_issue_url_empty() {
         assert!(parse_github_issue_url("").is_err());
+    }
+
+    #[test]
+    fn parse_worker_reports_excludes_open_issues() {
+        let reports = parse_worker_reports(vec![
+            serde_json::json!({
+                "number": 42,
+                "title": "Closed worker issue",
+                "state": "CLOSED",
+                "updatedAt": "2026-03-10T00:00:00Z",
+                "comments": [],
+            }),
+            serde_json::json!({
+                "number": 43,
+                "title": "Open worker issue",
+                "state": "OPEN",
+                "updatedAt": "2026-03-10T00:00:00Z",
+                "comments": [],
+            }),
+        ]);
+
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].issue_number, 42);
+    }
+
+    #[test]
+    fn parse_worker_reports_uses_fallback_body_when_report_comment_missing() {
+        let reports = parse_worker_reports(vec![serde_json::json!({
+            "number": 42,
+            "title": "Closed worker issue",
+            "state": "CLOSED",
+            "updatedAt": "2026-03-10T00:00:00Z",
+            "comments": [],
+        })]);
+
+        assert_eq!(reports[0].comment_body, WORKER_REPORT_FALLBACK_BODY);
     }
 }

@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-const BACKGROUND_WORKFLOW_SUFFIX: &str = "\n\nYou are an autonomous background worker. Complete the following workflow end-to-end without waiting for user input:\n1. **Design** — Analyze the issue and plan the approach\n2. **Implement** — Write the code changes\n3. **Review** — Self-review the changes for correctness and quality\n4. **Push PR** — Create and push a pull request\n5. **Merge** — Merge the PR once checks pass\n6. **Report** — If step 5 succeeded, post a report comment on the GitHub issue (use the issue number from above) via `gh issue comment <issue_number> --body \"...\"`. Start the comment body with the marker `<!-- auto-worker-report -->` on its own line, then summarize what was changed, include the PR URL, and confirm the merge succeeded. Skip this step if the merge did not succeed.\n7. **Sync local master** — After merging, sync master in the main repo (where master is always checked out) by running: `git -C \"$(git worktree list | head -1 | awk '{print $1}')\" pull`\n\nCOMMIT TAGGING: Every commit you create MUST include the trailer `Contributed-by: auto-worker` at the end of the commit message body. This is how we identify worker contributions. Example:\n```\nfix: resolve parsing edge case\n\nHandles the null input scenario.\n\nContributed-by: auto-worker\n```\n\nCRITICAL: Never ask questions. Never wait for confirmation or user input. If you are uncertain about anything, make your best judgment and proceed. You must complete the entire workflow autonomously.";
+const BACKGROUND_WORKFLOW_SUFFIX: &str = "\n\nYou are an autonomous background worker. Complete the following workflow end-to-end without waiting for user input:\n1. **Design** — Analyze the issue and plan the approach\n2. **Implement** — Write the code changes\n3. **Review** — Self-review the changes for correctness and quality\n4. **Push PR** — Create and push a pull request\n5. **Merge** — Merge the PR once checks pass\n6. **Report** — If step 5 succeeded, post a report comment on the GitHub issue (use the issue number from above) via `gh issue comment <issue_number> --body \"...\"`. Start the comment body with the marker `<!-- auto-worker-report -->` on its own line, then summarize what was changed, include the PR URL, and confirm the merge succeeded. Skip this step if the merge did not succeed.\n7. **Finalize issue state** — Before syncing local master, update the GitHub issue to reflect the final worker outcome. Remove `in-progress`. If the issue is now closed, keep or add `assigned-to-auto-worker`. If the issue is still open, remove `assigned-to-auto-worker` so the issue can be retried cleanly.\n8. **Sync local master** — After the GitHub issue state is finalized, sync master in the main repo (where master is always checked out) by running: `git -C \"$(git worktree list | head -1 | awk '{print $1}')\" pull`\n\nCOMMIT TAGGING: Every commit you create MUST include the trailer `Contributed-by: auto-worker` at the end of the commit message body. This is how we identify worker contributions. Example:\n```\nfix: resolve parsing edge case\n\nHandles the null input scenario.\n\nContributed-by: auto-worker\n```\n\nCRITICAL: Never ask questions. Never wait for confirmation or user input. If you are uncertain about anything, make your best judgment and proceed. You must complete the entire workflow autonomously.";
 
 /// Build the initial prompt injected into a session from a GitHub issue.
 /// When `background` is true, appends the autonomous workflow instructions.
@@ -158,9 +158,19 @@ mod tests {
         assert!(prompt.contains("Report"));
         assert!(prompt.contains("gh issue comment"));
         assert!(prompt.contains("auto-worker-report"));
+        assert!(prompt.contains("Finalize issue state"));
         assert!(prompt.contains("Sync local master"));
         assert!(prompt.contains("Never ask questions"));
         assert!(prompt.contains("Contributed-by: auto-worker"));
+    }
+
+    #[test]
+    fn build_issue_prompt_finalizes_issue_before_syncing_local_master() {
+        let prompt = build_issue_prompt(42, "Fix the bug", "https://github.com/foo/bar/issues/42", true);
+        let finalize_index = prompt.find("Finalize issue state").unwrap();
+        let sync_index = prompt.find("Sync local master").unwrap();
+
+        assert!(finalize_index < sync_index);
     }
 
     #[test]

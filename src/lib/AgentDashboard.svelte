@@ -458,7 +458,7 @@
           <span class="policy-label">Excluded</span>
           <div class="policy-labels">
             <span class="policy-tag excluded">in-progress</span>
-            <span class="policy-tag excluded">finished-by-worker</span>
+            <span class="policy-tag excluded">assigned-to-auto-worker</span>
           </div>
         </div>
       </div>
