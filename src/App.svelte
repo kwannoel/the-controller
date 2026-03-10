@@ -236,11 +236,10 @@
   }
 
   async function screenshotToNewSession(preview: boolean, cropped: boolean) {
-    // Screenshot sessions always spawn in "the-controller" project
-    const projectId = projectsState.current.find((p) => p.name === "the-controller")?.id;
+    const project = getTargetProject();
 
-    if (!projectId) {
-      showToast("\"the-controller\" project not found", "error");
+    if (!project) {
+      showToast("Select a project before starting a screenshot session", "error");
       return;
     }
 
@@ -257,12 +256,12 @@
       // 2. Create a new session with initial prompt referencing the screenshot file.
       // Tell Claude to share the path and wait for further instructions.
       const sessionId: string = await invoke("create_session", {
-        projectId,
+        projectId: project.id,
         kind: "claude",
         initialPrompt: `I just took a screenshot of the app. The screenshot is saved at: ${screenshotPath}\nPlease read the screenshot image and share what you see, but wait for further prompts before taking any action.`,
       });
 
-      await activateNewSession(sessionId, projectId);
+      await activateNewSession(sessionId, project.id);
       focusTerminalSoon();
     } catch (e) {
       showToast(String(e), "error");
