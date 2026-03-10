@@ -33,7 +33,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">Keyboard Shortcuts</div>
-    <p class="subtitle">Mode: {workspaceModeState.current === "agents" ? "Agents" : "Development"} — Press Space to switch</p>
+    <p class="subtitle">Mode: {workspaceModeState.current === "agents" ? "Agents" : workspaceModeState.current === "notes" ? "Notes" : "Development"} — Press <kbd>␣</kbd> to switch</p>
     <div class="sections-grid">
       {#each sections as section}
         <div class="section">

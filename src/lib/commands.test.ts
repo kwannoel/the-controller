@@ -127,7 +127,7 @@ describe("command registry", () => {
     expect(proj.entries).toHaveLength(8);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(4);
+    expect(panels.entries).toHaveLength(5);
   });
 
   it("help sections have correct entry counts for agents mode", () => {
@@ -139,7 +139,7 @@ describe("command registry", () => {
     expect(sess.entries).toHaveLength(3);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(3);
+    expect(panels.entries).toHaveLength(4);
 
     const agents = sections.find(s => s.label === "Agents")!;
     expect(agents.entries).toHaveLength(4);
@@ -154,7 +154,7 @@ describe("command registry", () => {
     expect(sess.entries).toHaveLength(3);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(3);
+    expect(panels.entries).toHaveLength(4);
 
     const notes = sections.find(s => s.label === "Notes")!;
     expect(notes.entries).toHaveLength(4);
