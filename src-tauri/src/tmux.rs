@@ -80,12 +80,6 @@ impl TmuxManager {
             return Err(format!("tmux new-session failed: {}", stderr.trim()));
         }
 
-        // Enable mouse passthrough so wheel/scroll events reach the inner
-        // application (Claude Code) instead of being swallowed by tmux.
-        let _ = Command::new(TMUX_BIN)
-            .args(["set-option", "-t", &name, "mouse", "on"])
-            .output();
-
         // Enable extended keys so modifier combos (e.g. Shift+Enter) pass through.
         // Use csi-u format (kitty keyboard protocol) so Claude Code's crossterm can parse them.
         let _ = Command::new(TMUX_BIN)
@@ -122,16 +116,6 @@ impl TmuxManager {
             return Err(format!("tmux send-keys failed: {}", stderr.trim()));
         }
 
-        Ok(())
-    }
-
-    /// Ensure mouse passthrough is enabled on a tmux session.
-    /// Idempotent — safe to call on sessions that already have it set.
-    pub fn ensure_mouse_on(session_id: Uuid) -> Result<(), String> {
-        let name = Self::session_name(session_id);
-        let _ = Command::new(TMUX_BIN)
-            .args(["set-option", "-t", &name, "mouse", "on"])
-            .output();
         Ok(())
     }
 

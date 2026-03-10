@@ -168,9 +168,6 @@ impl PtyManager {
     ) -> Result<(), String> {
         let tmux_name = TmuxManager::session_name(session_id);
 
-        // Ensure mouse passthrough is enabled (may be missing on older sessions)
-        let _ = TmuxManager::ensure_mouse_on(session_id);
-
         // Use the tmux session's current dimensions so the attach doesn't
         // force a resize (which causes TUI glitches like garbled input).
         let (cols, rows) = TmuxManager::session_size(session_id).unwrap_or((80, 24));

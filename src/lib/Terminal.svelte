@@ -149,6 +149,18 @@
       ),
     );
 
+    // Suppress xterm.js default wheel-to-arrow-key conversion in alternate
+    // screen mode. Without this, scrolling sends Up/Down arrows through tmux
+    // to Claude Code, which interprets them as input history navigation
+    // ("panning to older inputs") instead of scrolling.
+    term.attachCustomWheelEventHandler((ev: WheelEvent) => {
+      if (term!.buffer.active.type === 'alternate') {
+        ev.preventDefault();
+        return false;
+      }
+      return true;
+    });
+
     // Connect user input to PTY (gated until initialization settles)
     term.onData((data: string) => {
       if (!inputReady) return;
