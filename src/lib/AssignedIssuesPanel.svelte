@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { focusTarget, projects, type AssignedIssue, type Project, type FocusTarget } from "./stores";
 
   interface Props {
@@ -36,7 +36,7 @@
     loading = true;
     error = null;
     try {
-      issues = await invoke<AssignedIssue[]>("list_assigned_issues", { repoPath: path });
+      issues = await command<AssignedIssue[]>("list_assigned_issues", { repoPath: path });
       // Sort by updatedAt ascending (stalest first)
       issues.sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     } catch (e) {

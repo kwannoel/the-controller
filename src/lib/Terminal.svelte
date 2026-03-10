@@ -5,8 +5,7 @@
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { invoke } from "@tauri-apps/api/core";
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
@@ -26,9 +25,9 @@
   let termOpened = false; // tracks whether term.open() produced valid measurements
   let resizeObserver: ResizeObserver | undefined;
   let mutationObserver: MutationObserver | undefined;
-  let unlistenOutput: UnlistenFn | undefined;
-  let unlistenStatus: UnlistenFn | undefined;
-  let unlistenDragDrop: UnlistenFn | undefined;
+  let unlistenOutput: (() => void) | undefined;
+  let unlistenStatus: (() => void) | undefined;
+  let unlistenDragDrop: (() => void) | undefined;
 
   // Gate: suppress onData forwarding during initialization to prevent
   // xterm.js auto-responses to terminal queries (DA, DSR) from being
@@ -77,7 +76,7 @@
     ).find((x) => x.session.id === sessionId);
     if (!match || match.session.initial_prompt != null) return;
 
-    invoke("set_initial_prompt", {
+    command("set_initial_prompt", {
       projectId: match.projectId,
       sessionId,
       prompt,
@@ -121,7 +120,7 @@
     term.open(containerEl);
 
     const writeToPty = (data: string) =>
-      invoke("write_to_pty", { sessionId, data });
+      command("write_to_pty", { sessionId, data });
 
     // Handle keys that xterm.js doesn't natively support.
     // Only intercept paste for Claude sessions (image paste is Claude Code-specific).
@@ -139,7 +138,7 @@
       makeCustomKeyHandler(
         (data) => {
           if (!inputReady) return;
-          invoke("send_raw_to_pty", { sessionId, data });
+          command("send_raw_to_pty", { sessionId, data });
         },
         keyHandlerOptions,
       ),
@@ -159,7 +158,7 @@
           // Button 64 = scroll up, 65 = scroll down
           const button = ev.deltaY < 0 ? 64 : 65;
           const seq = `\x1b[<${button};1;1M`;
-          invoke("send_raw_to_pty", { sessionId, data: seq }).catch(() => {});
+          command("send_raw_to_pty", { sessionId, data: seq }).catch(() => {});
         }
         return false;
       }
@@ -206,9 +205,9 @@
     // race where early output (including the alternate-screen escape sequence)
     // is emitted before the handler exists, causing xterm.js to miss the
     // screen-buffer switch and break trackpad scrolling.
-    unlistenOutput = await listen<string>(`pty-output:${sessionId}`, (event) => {
+    unlistenOutput = listen<string>(`pty-output:${sessionId}`, (payload) => {
       if (term) {
-        const bytes = Uint8Array.from(atob(event.payload), (c) =>
+        const bytes = Uint8Array.from(atob(payload), (c) =>
           c.charCodeAt(0),
         );
         term.write(bytes);
@@ -226,7 +225,7 @@
       // Connect PTY at the measured size to avoid intermediate resizes
       // that cause extra newlines on restart.
       connected = true;
-      invoke("connect_session", {
+      command("connect_session", {
         sessionId,
         rows: term.rows,
         cols: term.cols,
@@ -236,31 +235,27 @@
     }
 
     // Listen for session status changes
-    listen<string>(`session-status-changed:${sessionId}`, () => {
+    unlistenStatus = listen<string>(`session-status-changed:${sessionId}`, () => {
       if (term) {
         term.writeln("\r\n\x1b[90m[Session ended]\x1b[0m");
       }
-    }).then((fn) => {
-      unlistenStatus = fn;
     });
 
     // Listen for drag-and-drop file events (from Finder).
     // Gate on active session — this is a window-level event so all
     // mounted Terminal instances receive it; only the active one should act.
-    listen<{ paths: string[] }>("tauri://drag-drop", async (event) => {
+    unlistenDragDrop = listen<{ paths: string[] }>("tauri://drag-drop", async (payload) => {
       if (get(activeSessionId) !== sessionId) return;
 
-      const imagePath = event.payload.paths.find(isImageFile);
+      const imagePath = payload.paths.find(isImageFile);
       if (imagePath) {
         try {
-          await invoke("copy_image_file_to_clipboard", { path: imagePath });
+          await command("copy_image_file_to_clipboard", { path: imagePath });
           await writeToPty("\x1b[200~\x1b[201~");
         } catch (err) {
           console.error("Failed to handle dropped image:", err);
         }
       }
-    }).then((fn) => {
-      unlistenDragDrop = fn;
     });
 
     // Handle resize
@@ -282,7 +277,7 @@
         // Guard against bogus dimensions from bad cell measurements
         if (term.cols < 10) return;
 
-        invoke("resize_pty", {
+        command("resize_pty", {
           sessionId,
           rows: term.rows,
           cols: term.cols,
@@ -312,7 +307,7 @@
         // Connect PTY if this terminal was hidden on mount
         if (!connected) {
           connected = true;
-          invoke("connect_session", {
+          command("connect_session", {
             sessionId,
             rows: term.rows,
             cols: term.cols,
@@ -326,7 +321,7 @@
         // Scroll to bottom so the user sees the latest output / input area
         term.scrollToBottom();
         // Notify PTY of dimensions so the program gets SIGWINCH and redraws its TUI
-        invoke("resize_pty", {
+        command("resize_pty", {
           sessionId,
           rows: term.rows,
           cols: term.cols,

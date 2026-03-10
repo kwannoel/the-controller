@@ -1,7 +1,7 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
   import { untrack } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail, type WorkerReport } from "./stores";
   import { showToast } from "./toast";
@@ -131,7 +131,7 @@
   async function fetchIssues(projectId: string) {
     issuesLoading = true;
     try {
-      const result = await invoke<MaintainerIssue[]>("get_maintainer_issues", { projectId });
+      const result = await command<MaintainerIssue[]>("get_maintainer_issues", { projectId });
       issuesList = result;
     } catch {
       issuesList = [];
@@ -143,7 +143,7 @@
   async function fetchIssueDetail(projectId: string, issueNumber: number) {
     issueDetailLoading = true;
     try {
-      const result = await invoke<MaintainerIssueDetail>("get_maintainer_issue_detail", { projectId, issueNumber });
+      const result = await command<MaintainerIssueDetail>("get_maintainer_issue_detail", { projectId, issueNumber });
       issueDetail = result;
     } catch (e) {
       showToast(String(e), "error");
@@ -284,7 +284,7 @@
   async function fetchHistory(projectId: string) {
     loading = true;
     try {
-      const result = await invoke<MaintainerRunLog[]>("get_maintainer_history", { projectId });
+      const result = await command<MaintainerRunLog[]>("get_maintainer_history", { projectId });
       if (prevAgentKey === `${projectId}:maintainer`) {
         runLogs = result;
       }
@@ -304,7 +304,7 @@
     if (!proj) return;
     workerLoading = true;
     try {
-      const result = await invoke<WorkerReport[]>("get_worker_reports", { repoPath: proj.repo_path });
+      const result = await command<WorkerReport[]>("get_worker_reports", { repoPath: proj.repo_path });
       if (prevAgentKey === `${projectId}:auto-worker`) {
         workerReports = result;
       }
@@ -323,8 +323,8 @@
     if (!project) return;
     triggerLoading = true;
     try {
-      await invoke<MaintainerRunLog>("trigger_maintainer_check", { projectId: project.id });
-      runLogs = await invoke<MaintainerRunLog[]>("get_maintainer_history", { projectId: project.id });
+      await command<MaintainerRunLog>("trigger_maintainer_check", { projectId: project.id });
+      runLogs = await command<MaintainerRunLog[]>("get_maintainer_history", { projectId: project.id });
       showToast("Maintainer check complete", "info");
     } catch (e) {
       showToast(String(e), "error");
@@ -336,7 +336,7 @@
   async function clearRunLogs() {
     if (!project) return;
     try {
-      await invoke("clear_maintainer_reports", { projectId: project.id });
+      await command("clear_maintainer_reports", { projectId: project.id });
       runLogs = [];
       openLogIndex = null;
       selectedIndex = 0;

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
@@ -272,16 +271,15 @@
 
   $effect(() => {
     const unlisteners: (() => void)[] = [];
-    let cancelled = false;
 
     for (const project of projectList) {
       for (const session of project.sessions) {
-        listen<string>(`session-status-changed:${session.id}`, () => {
+        unlisteners.push(listen<string>(`session-status-changed:${session.id}`, () => {
           markSession(session.id, "exited");
-        }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+        }));
 
         // Cleanup: backend already deleted the session and worktree, just refresh.
-        listen<string>(`session-cleanup:${session.id}`, () => {
+        unlisteners.push(listen<string>(`session-cleanup:${session.id}`, () => {
           const nextFocus = focusAfterSessionDelete(projectList, project.id, session.id, isArchiveView);
           clearSessionTracking(session.id);
           activeSessionId.update(current => {
@@ -291,13 +289,13 @@
           });
           focusTarget.set(nextFocus);
           refreshProjectLists();
-        }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+        }));
 
         // Hook-based status: precise idle/working from Claude Code hooks.
         // Debounce idle transitions to avoid flickering between tool calls
         // (Stop hook fires after each assistant turn, even mid-task).
-        listen<string>(`session-status-hook:${session.id}`, (event) => {
-          const status = event.payload as SessionStatus;
+        unlisteners.push(listen<string>(`session-status-hook:${session.id}`, (payload) => {
+          const status = payload as SessionStatus;
           if (status === "working") {
             const pending = idleTimers.get(session.id);
             if (pending) { clearTimeout(pending); idleTimers.delete(session.id); }
@@ -310,47 +308,46 @@
               markSession(session.id, "idle");
             }, IDLE_DEBOUNCE_MS));
           }
-        }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+        }));
       }
 
-      listen<string>(`maintainer-status:${project.id}`, (event) => {
+      unlisteners.push(listen<string>(`maintainer-status:${project.id}`, (payload) => {
         maintainerStatuses.update(m => {
           const next = new Map(m);
-          next.set(project.id, event.payload as MaintainerStatus);
+          next.set(project.id, payload as MaintainerStatus);
           return next;
         });
         // Clear error when status changes to non-error
-        if (event.payload !== "error") {
+        if (payload !== "error") {
           maintainerErrors.update(m => {
             const next = new Map(m);
             next.delete(project.id);
             return next;
           });
         }
-      }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+      }));
 
-      listen<string>(`maintainer-error:${project.id}`, (event) => {
+      unlisteners.push(listen<string>(`maintainer-error:${project.id}`, (payload) => {
         maintainerErrors.update(m => {
           const next = new Map(m);
-          next.set(project.id, event.payload);
+          next.set(project.id, payload);
           return next;
         });
-      }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+      }));
 
-      listen<string>(`auto-worker-status:${project.id}`, (event) => {
+      unlisteners.push(listen<string>(`auto-worker-status:${project.id}`, (payload) => {
         try {
-          const status = JSON.parse(event.payload);
+          const status = JSON.parse(payload);
           autoWorkerStatuses.update(m => {
             const next = new Map(m);
             next.set(project.id, status);
             return next;
           });
         } catch { /* ignore parse errors */ }
-      }).then(unlisten => { if (!cancelled) unlisteners.push(unlisten); else unlisten(); });
+      }));
     }
 
     return () => {
-      cancelled = true;
       unlisteners.forEach(fn => fn());
       // Don't clear idle timers here — pending idle transitions must complete.
       // Individual session timers are cleaned up by clearSessionTracking().
@@ -368,7 +365,7 @@
 
   async function loadArchivedProjects() {
     try {
-      const result = await invoke<ProjectInventory>("list_archived_projects");
+      const result = await command<ProjectInventory>("list_archived_projects");
       archivedProjects.set(result.projects);
       surfaceCorruptProjectWarnings(result.corrupt_entries);
     } catch (err) {
@@ -404,7 +401,7 @@
 
   async function unarchiveProject(projectId: string) {
     try {
-      await invoke("unarchive_project", { projectId });
+      await command("unarchive_project", { projectId });
       await loadArchivedProjects();
       await loadProjects();
     } catch (err) {
@@ -424,7 +421,7 @@
 
   async function createSession(projectId: string, kind?: string) {
     try {
-      const sessionId: string = await invoke("create_session", {
+      const sessionId: string = await command("create_session", {
         projectId,
         kind: kind ?? currentSessionProvider,
       });
@@ -451,7 +448,7 @@
     const project = list.find((p) => p.id === projectId);
     const session = project?.sessions.find((s) => s.id === sessionId);
     if (session?.github_issue && project) {
-      invoke("remove_github_label", {
+      command("remove_github_label", {
         repoPath: project.repo_path,
         issueNumber: session.github_issue.number,
         label: "in-progress",
@@ -484,7 +481,7 @@
 
       await maybeRemoveInProgressLabel(projectId, sessionId, isArchiveView);
 
-      await invoke("close_session", { projectId, sessionId, deleteWorktree });
+      await command("close_session", { projectId, sessionId, deleteWorktree });
       clearSessionTracking(sessionId);
       activeSessionId.update(current => {
         if (current !== sessionId) return current;
@@ -508,7 +505,7 @@
 
       await maybeRemoveInProgressLabel(projectId, sessionId);
 
-      await invoke("archive_session", { projectId, sessionId });
+      await command("archive_session", { projectId, sessionId });
       clearSessionTracking(sessionId);
       activeSessionId.update(current => current === sessionId ? (prevSession?.id ?? null) : current);
       if (prevSession) {
@@ -524,7 +521,7 @@
 
   async function unarchiveSession(projectId: string, sessionId: string) {
     try {
-      await invoke("unarchive_session", { projectId, sessionId });
+      await command("unarchive_session", { projectId, sessionId });
       markSession(sessionId, "working");
       activeSessionId.set(sessionId);
       await refreshProjectLists();
@@ -535,7 +532,7 @@
 
   async function archiveProject(projectId: string) {
     try {
-      await invoke("archive_project", { projectId });
+      await command("archive_project", { projectId });
       activeSessionId.update(current => {
         const project = projectList.find(p => p.id === projectId);
         if (project?.sessions.some(s => s.id === current)) return null;
@@ -553,12 +550,12 @@
     focusTerminalSoon();
 
     // Listen for intermediate staging status events
-    const unlistenStatus = await listen<string>("staging-status", (event) => {
-      showToast(event.payload, "info");
+    const unlistenStatus = listen<string>("staging-status", (payload) => {
+      showToast(payload, "info");
     });
 
     try {
-      await invoke("stage_session_inplace", { projectId, sessionId });
+      await command("stage_session_inplace", { projectId, sessionId });
       await loadProjects();
       const session = projectList
         .find((p) => p.id === projectId)
@@ -573,7 +570,7 @@
 
   async function unstageSessionInplace(projectId: string) {
     try {
-      await invoke("unstage_session_inplace", { projectId });
+      await command("unstage_session_inplace", { projectId });
       await loadProjects();
       showToast("Unstaged — restored original branch", "info");
     } catch (e) {
@@ -589,12 +586,12 @@
     focusTerminalSoon();
 
     // Listen for intermediate merge status events
-    const unlistenStatus = await listen<string>("merge-status", (event) => {
-      showToast(event.payload, "info");
+    const unlistenStatus = listen<string>("merge-status", (payload) => {
+      showToast(payload, "info");
     });
 
     try {
-      const result: { type: string; url?: string } = await invoke("merge_session_branch", { projectId, sessionId });
+      const result: { type: string; url?: string } = await command("merge_session_branch", { projectId, sessionId });
       if (result.type === "pr_created") {
         showToast(`PR created: ${result.url}`, "info");
       }
@@ -615,9 +612,9 @@
     if (!project) return;
     showNewNoteModal = false;
     try {
-      const filename: string = await invoke("create_note", { projectName: project.name, title });
+      const filename: string = await command("create_note", { projectName: project.name, title });
       // Refresh notes list
-      const notes = await invoke<NoteEntry[]>("list_notes", { projectName: project.name });
+      const notes = await command<NoteEntry[]>("list_notes", { projectName: project.name });
       noteEntries.update(m => { const next = new Map(m); next.set(project.id, notes); return next; });
       // Expand project and open note
       expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
@@ -632,8 +629,8 @@
     const project = projectList.find(p => p.id === projectId);
     if (!project) return;
     try {
-      await invoke("delete_note", { projectName: project.name, filename });
-      const notes = await invoke<NoteEntry[]>("list_notes", { projectName: project.name });
+      await command("delete_note", { projectName: project.name, filename });
+      const notes = await command<NoteEntry[]>("list_notes", { projectName: project.name });
       noteEntries.update(m => { const next = new Map(m); next.set(project.id, notes); return next; });
       const an = activeNoteState.current;
       if (an?.projectId === projectId && an?.filename === filename) {
@@ -650,8 +647,8 @@
     const project = projectList.find(p => p.id === projectId);
     if (!project) return;
     try {
-      const newFilename: string = await invoke("rename_note", { projectName: project.name, oldName, newName });
-      const notes = await invoke<NoteEntry[]>("list_notes", { projectName: project.name });
+      const newFilename: string = await command("rename_note", { projectName: project.name, oldName, newName });
+      const notes = await command<NoteEntry[]>("list_notes", { projectName: project.name });
       noteEntries.update(m => { const next = new Map(m); next.set(project.id, notes); return next; });
       const an = activeNoteState.current;
       if (an?.projectId === projectId && an?.filename === oldName) {
@@ -761,7 +758,7 @@
       onSelect={async (entry) => {
         showFuzzyFinder = false;
         try {
-          const project = await invoke<Project>("load_project", { name: entry.name, repoPath: entry.path });
+          const project = await command<Project>("load_project", { name: entry.name, repoPath: entry.path });
           await loadProjects();
           expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
           focusTarget.set({ type: "project", projectId: project.id });
@@ -858,7 +855,7 @@
       onConfirm={async () => {
         if (finishBranchTarget) {
           const { sessionId, kind } = finishBranchTarget;
-          await sendFinishBranchPrompt(invoke, sessionId, kind);
+          await sendFinishBranchPrompt(command, sessionId, kind);
         }
         finishBranchTarget = null;
       }}

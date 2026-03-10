@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/svelte";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "$lib/backend";
 import { tick } from "svelte";
 import NotesEditor from "./NotesEditor.svelte";
 import {
@@ -49,7 +49,7 @@ describe("NotesEditor", () => {
     const noteARequest = deferred<string>();
     const noteBRequest = deferred<string>();
 
-    vi.mocked(invoke).mockImplementation((command: string, args?: unknown) => {
+    vi.mocked(command).mockImplementation((command: string, args?: unknown) => {
       if (command === "read_note") {
         const filename = (args as { filename?: string } | undefined)?.filename;
         if (filename === "a.md") return noteARequest.promise;
@@ -66,7 +66,7 @@ describe("NotesEditor", () => {
     render(NotesEditor);
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("read_note", {
+      expect(command).toHaveBeenCalledWith("read_note", {
         projectName: "Project Alpha",
         filename: "a.md",
       });
@@ -75,7 +75,7 @@ describe("NotesEditor", () => {
     activeNote.set({ projectId: "project-1", filename: "b.md" });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("read_note", {
+      expect(command).toHaveBeenCalledWith("read_note", {
         projectName: "Project Alpha",
         filename: "b.md",
       });

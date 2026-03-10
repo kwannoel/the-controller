@@ -1,7 +1,6 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
-  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { command, listen } from "$lib/backend";
   import { projects, archivedProjects, sessionStatuses, type Project, type SessionStatus } from "./stores";
 
   interface Props {
@@ -33,7 +32,7 @@
 
   function fetchCommits() {
     if (!session) return;
-    invoke<CommitInfo[]>("get_session_commits", {
+    command<CommitInfo[]>("get_session_commits", {
       projectId: session.projectId,
       sessionId: session.id,
     }).then((result) => {
@@ -59,15 +58,14 @@
   });
 
   // Also listen for status hook events to catch transitions
-  let unlistenHook: UnlistenFn | undefined;
   $effect(() => {
-    listen<string>(`session-status-hook:${sessionId}`, (event) => {
-      if (event.payload === "idle") {
+    const unlisten = listen<string>(`session-status-hook:${sessionId}`, (payload) => {
+      if (payload === "idle") {
         setTimeout(fetchCommits, 1000);
       }
-    }).then((fn) => { unlistenHook = fn; });
+    });
 
-    return () => { unlistenHook?.(); };
+    return () => { unlisten(); };
   });
 </script>
 

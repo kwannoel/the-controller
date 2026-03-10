@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "$lib/backend";
 import {
   activeSessionId,
   appConfig,
@@ -85,7 +85,7 @@ describe("App screenshot flow", () => {
   });
 
   function setupMocks() {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       if (cmd === "capture_app_screenshot") return "/tmp/the-controller-screenshot.png";
@@ -123,8 +123,8 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
-      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
+      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
         projectId: "proj-1",
         kind: "claude",
         initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
@@ -173,7 +173,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", preview: true });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
       expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
     });
   });
@@ -184,7 +184,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", cropped: true });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
     });
 
     expect(mocks.openPath).not.toHaveBeenCalled();
@@ -196,7 +196,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", preview: true, cropped: true });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
       expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
     });
   });
@@ -225,7 +225,7 @@ describe("Window title updates on staging", () => {
   });
 
   it("shows build-time info in title when no session is staged", async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       return;
@@ -241,7 +241,7 @@ describe("Window title updates on staging", () => {
   });
 
   it("updates title with repo HEAD when a session is staged", async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       if (cmd === "get_repo_head") return ["staging/fix-foo", "abc1234"];
@@ -265,7 +265,7 @@ describe("Window title updates on staging", () => {
     }]);
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("get_repo_head", { repoPath: "/tmp/the-controller" });
+      expect(command).toHaveBeenCalledWith("get_repo_head", { repoPath: "/tmp/the-controller" });
       expect(mocks.setTitle).toHaveBeenCalledWith(
         "The Controller (abc1234, staging/fix-foo, localhost:1420)",
       );
@@ -273,7 +273,7 @@ describe("Window title updates on staging", () => {
   });
 
   it("reverts title when session is unstaged", async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       if (cmd === "get_repo_head") return ["staging/fix-foo", "abc1234"];
@@ -343,7 +343,7 @@ describe("App issue picker flow", () => {
     sessionStatuses.set(new Map());
     expandedProjects.set(new Set());
 
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       if (cmd === "create_session") return "sess-new";
@@ -371,7 +371,7 @@ describe("App issue picker flow", () => {
     await fireEvent.click(await screen.findByTestId("mock-issue-select"));
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
+      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
         projectId: "proj-1",
         githubIssue: expect.objectContaining({ number: 42 }),
         kind: "codex",

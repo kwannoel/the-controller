@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Opt out of the global $lib/backend mock so we can test the real implementation.
+vi.unmock("$lib/backend");
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));

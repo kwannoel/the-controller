@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { onMount } from "svelte";
   import { showToast } from "./toast";
   import type { DirEntry } from "./stores";
@@ -25,7 +25,7 @@
 
   onMount(async () => {
     try {
-      entries = await invoke<DirEntry[]>("list_root_directories");
+      entries = await command<DirEntry[]>("list_root_directories");
     } catch (e) {
       showToast(String(e), "error");
     }

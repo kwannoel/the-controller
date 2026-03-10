@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { onMount } from "svelte";
   import { showToast } from "./toast";
   import type { Project } from "./stores";
@@ -23,7 +23,7 @@
     if (!name.trim() || loading) return;
     loading = true;
     try {
-      const project = await invoke<Project>("scaffold_project", {
+      const project = await command<Project>("scaffold_project", {
         name: name.trim(),
       });
       onCreated(project);

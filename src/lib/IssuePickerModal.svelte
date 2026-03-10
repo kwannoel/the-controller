@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import type { GithubIssue } from "./stores";
 
   interface Props {
@@ -45,7 +45,7 @@
 
     (async () => {
       try {
-        const allIssues = await invoke<GithubIssue[]>("list_github_issues", { repoPath });
+        const allIssues = await command<GithubIssue[]>("list_github_issues", { repoPath });
         issues = allIssues
           .filter(issue => !issue.labels.some(l => l.name === "in-progress"))
           .sort((a, b) => {

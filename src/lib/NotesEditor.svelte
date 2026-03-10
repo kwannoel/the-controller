@@ -1,7 +1,7 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
   import { untrack } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { activeNote, notePreviewMode, projects, focusTarget, hotkeyAction, type Project, type FocusTarget } from "./stores";
   import { renderMarkdown } from "./markdown";
 
@@ -59,7 +59,7 @@
           const prevFilename = rest.join(":");
           const prevProjectName = untrack(() => projectList.find(p => p.id === prevProjectId)?.name);
           if (prevProjectName && prevFilename) {
-            invoke("write_note", { projectName: prevProjectName, filename: prevFilename, content: prevContent }).catch(() => {});
+            command("write_note", { projectName: prevProjectName, filename: prevFilename, content: prevContent }).catch(() => {});
           }
         }
       }
@@ -96,7 +96,7 @@
   async function loadNote(pName: string, filename: string, requestKey: string) {
     loading = true;
     try {
-      const text = await invoke<string>("read_note", { projectName: pName, filename });
+      const text = await command<string>("read_note", { projectName: pName, filename });
       if (prevNoteKey === requestKey) {
         content = text;
         savedContent = text;
@@ -127,7 +127,7 @@
     }
     if (!currentNote || !projectName || content === savedContent) return;
     try {
-      await invoke("write_note", { projectName, filename: currentNote.filename, content });
+      await command("write_note", { projectName, filename: currentNote.filename, content });
       savedContent = content;
     } catch {
       // silently fail — user will see unsaved indicator

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
-import { invoke } from '@tauri-apps/api/core';
+import { command } from '$lib/backend';
 import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
@@ -173,7 +173,7 @@ describe('HotkeyManager', () => {
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('m');
       expect(captured).toEqual({ type: 'finish-branch', sessionId: 'sess-1', kind: 'claude' });
-      expect(invoke).not.toHaveBeenCalled();
+      expect(command).not.toHaveBeenCalled();
       unsub();
     });
 
@@ -192,7 +192,7 @@ describe('HotkeyManager', () => {
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('m');
       expect(captured).toEqual({ type: 'finish-branch', sessionId: 'sess-1', kind: 'codex' });
-      expect(invoke).not.toHaveBeenCalled();
+      expect(command).not.toHaveBeenCalled();
       unsub();
     });
 
@@ -504,7 +504,7 @@ describe('HotkeyManager', () => {
       vi.spyOn(Date, 'now').mockReturnValue(now + 50);
       pressKey('Escape');
 
-      expect(invoke).toHaveBeenCalledWith('write_to_pty', {
+      expect(command).toHaveBeenCalledWith('write_to_pty', {
         sessionId: 'sess-1',
         data: '\x1b',
       });
@@ -521,7 +521,7 @@ describe('HotkeyManager', () => {
       vi.spyOn(Date, 'now').mockReturnValue(now + 500);
       pressKey('Escape');
 
-      expect(invoke).not.toHaveBeenCalledWith('write_to_pty', expect.anything());
+      expect(command).not.toHaveBeenCalledWith('write_to_pty', expect.anything());
 
       vi.restoreAllMocks();
     });
