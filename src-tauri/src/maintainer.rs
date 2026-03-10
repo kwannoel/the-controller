@@ -207,11 +207,17 @@ IMPORTANT:
 For each finding, provide:
 - `title`: short actionable issue title
 - `body`: markdown body with concrete evidence and remediation
-- `priority`: `high` or `low`
+- `priority`: `high` or `low` (see criteria below)
 - `complexity`: `high` or `simple`
 - `affected_files`: list of file paths (when applicable)
 - `symptom_type`: short invariant symptom phrase (e.g. `startup panic`, `missing coverage`)
 - `keywords`: stable semantic keywords (e.g. `appstate`, `filesystem`, `initialization`)
+
+PRIORITY CRITERIA — most findings should be low priority:
+- `high`: Affects correctness, reliability, or data integrity. Examples: logic bugs, panics, race conditions, data loss, security vulnerabilities, broken core functionality.
+- `low`: Everything else. Examples: missing tests, style issues, documentation gaps, minor code quality improvements, refactoring opportunities, non-critical TODOs.
+
+When in doubt, use `low`. Reserve `high` for issues that could cause wrong behavior or failures in production.
 
 Return ONLY this JSON object:
 
@@ -221,7 +227,7 @@ Return ONLY this JSON object:
     {{
       "title": "<title>",
       "body": "<markdown body>",
-      "priority": "high",
+      "priority": "low",
       "complexity": "simple",
       "affected_files": ["<path>"],
       "symptom_type": "<symptom>",
