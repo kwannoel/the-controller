@@ -30,22 +30,6 @@ pub struct ControllerChatItem {
     pub text: String,
 }
 
-impl ControllerChatItem {
-    pub fn user(text: impl Into<String>) -> Self {
-        Self {
-            kind: ControllerChatItemKind::User,
-            text: text.into(),
-        }
-    }
-
-    pub fn assistant(text: impl Into<String>) -> Self {
-        Self {
-            kind: ControllerChatItemKind::Assistant,
-            text: text.into(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ControllerChatSession {
     pub focus: ControllerFocus,
@@ -54,16 +38,7 @@ pub struct ControllerChatSession {
 }
 
 impl ControllerChatSession {
-    pub fn update_focus(&mut self, update: ControllerFocusUpdate) -> Result<(), String> {
-        let has_changes = update.project_id.is_some()
-            || update.project_name.is_some()
-            || update.session_id.is_some()
-            || update.note_filename.is_some()
-            || update.workspace_mode.is_some();
-        if !has_changes {
-            return Err("controller focus update must include at least one field".to_string());
-        }
-
+    pub fn update_focus(&mut self, update: ControllerFocusUpdate) {
         if let Some(project_id) = update.project_id {
             self.focus.project_id = Some(project_id);
         }
@@ -79,8 +54,6 @@ impl ControllerChatSession {
         if let Some(workspace_mode) = update.workspace_mode {
             self.focus.workspace_mode = Some(workspace_mode);
         }
-
-        Ok(())
     }
 
     pub fn push_item(&mut self, item: ControllerChatItem) {
@@ -119,8 +92,7 @@ mod tests {
                 session_id: Some(session_id),
                 note_filename: None,
                 workspace_mode: Some("notes".to_string()),
-            })
-            .unwrap();
+            });
 
         session
             .update_focus(ControllerFocusUpdate {
@@ -129,8 +101,7 @@ mod tests {
                 session_id: None,
                 note_filename: Some("issue-123.md".to_string()),
                 workspace_mode: None,
-            })
-            .unwrap();
+            });
 
         assert_eq!(session.focus.project_id, Some(project_id));
         assert_eq!(session.focus.project_name.as_deref(), Some("proj"));
@@ -143,10 +114,14 @@ mod tests {
     fn test_controller_chat_appends_items_in_order() {
         let mut session = ControllerChatSession::default();
 
-        session.push_item(ControllerChatItem::user("Fetch issue 123"));
-        session.push_item(ControllerChatItem::assistant(
-            "Fetched the issue and wrote it to a note",
-        ));
+        session.push_item(ControllerChatItem {
+            kind: ControllerChatItemKind::User,
+            text: "Fetch issue 123".to_string(),
+        });
+        session.push_item(ControllerChatItem {
+            kind: ControllerChatItemKind::Assistant,
+            text: "Fetched the issue and wrote it to a note".to_string(),
+        });
 
         assert_eq!(session.items.len(), 2);
         assert_eq!(session.items[0].kind, ControllerChatItemKind::User);
