@@ -1085,11 +1085,11 @@ mod tests {
 
         let existing = vec![
             ExistingIssue {
-                number: 285,
+                number: 277,
                 title: "AppState::new() panics on startup when storage init fails".to_string(),
                 body: "Summary: startup panic in AppState::new during filesystem initialization."
                     .to_string(),
-                url: "https://github.com/owner/repo/issues/285".to_string(),
+                url: "https://github.com/owner/repo/issues/277".to_string(),
                 labels: vec!["filed-by-maintainer".to_string()],
             },
             ExistingIssue {
@@ -1104,7 +1104,7 @@ mod tests {
         let duplicate = find_duplicate_issue(&finding, &existing, 0.6);
         assert!(duplicate.is_some());
         let duplicate = duplicate.unwrap();
-        assert_eq!(duplicate.issue.number, 285);
+        assert_eq!(duplicate.issue.number, 277);
         assert!(duplicate.similarity >= 0.6);
     }
 
@@ -1149,10 +1149,10 @@ mod tests {
         };
 
         let existing = vec![ExistingIssue {
-            number: 285,
+            number: 277,
             title: "Startup panic in AppState::new".to_string(),
             body: "Summary panic during startup.".to_string(),
-            url: "https://github.com/owner/repo/issues/285".to_string(),
+            url: "https://github.com/owner/repo/issues/277".to_string(),
             labels: vec!["filed-by-maintainer".to_string()],
         }];
 
