@@ -515,6 +515,16 @@
   }
 
   async function stageSessionInplace(projectId: string, sessionId: string) {
+    // Focus the terminal so user can watch Claude commit/resolve conflicts
+    activeSessionId.set(sessionId);
+    focusTerminalSoon();
+
+    // Listen for intermediate staging status events
+    let unlistenStatus: (() => void) | null = null;
+    listen<string>("staging-status", (event) => {
+      showToast(event.payload, "info");
+    }).then(fn => { unlistenStatus = fn; });
+
     try {
       await invoke("stage_session_inplace", { projectId, sessionId });
       await loadProjects();
@@ -524,6 +534,8 @@
       showToast(`Staged ${session?.label ?? "session"} in main repo`, "info");
     } catch (e) {
       showToast(String(e), "error");
+    } finally {
+      unlistenStatus?.();
     }
   }
 
