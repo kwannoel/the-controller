@@ -411,7 +411,7 @@
           dispatchHotkeyAction({ type: "unstage-session-inplace", projectId: stageProj.id });
         } else if (activeId) {
           const proj2 = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
-          if (proj2) {
+          if (proj2 && proj2.name === "the-controller") {
             dispatchHotkeyAction({ type: "stage-session-inplace", sessionId: activeId, projectId: proj2.id });
           }
         }

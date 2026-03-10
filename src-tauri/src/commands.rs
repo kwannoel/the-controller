@@ -603,6 +603,10 @@ pub async fn stage_session_inplace(
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let project = storage.load_project(project_uuid).map_err(|e| e.to_string())?;
 
+        if project.name != "the-controller" {
+            return Err("Staging is only supported for the-controller".to_string());
+        }
+
         if project.staged_session.is_some() {
             return Err("A session is already staged — unstage it first".to_string());
         }
