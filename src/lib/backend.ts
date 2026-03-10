@@ -1,4 +1,4 @@
-const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI__;
+const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
 
 let sharedWs: WebSocket | null = null;
 
