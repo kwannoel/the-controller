@@ -3,7 +3,7 @@
   import { untrack } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail, type WorkerReport } from "./stores";
   import { showToast } from "./toast";
 
   let runLogs: MaintainerRunLog[] = $state([]);
@@ -30,6 +30,12 @@
   let closedIssues = $derived(issuesList.filter(i => i.state === "CLOSED"));
   // Flat list: open issues first, then closed
   let allSortedIssues = $derived([...openIssues, ...closedIssues]);
+
+  // Worker report state
+  let workerReports: WorkerReport[] = $state([]);
+  let workerLoading = $state(false);
+  let workerOpenIndex: number | null = $state(null);
+  let workerSelectedIndex = $state(0);
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -73,10 +79,16 @@
       issuesList = [];
       issueDetail = null;
       issueSelectedIndex = 0;
+      workerReports = [];
+      workerOpenIndex = null;
+      workerSelectedIndex = 0;
 
       const pid = untrack(() => project?.id ?? null);
       if (pid && focusedAgent?.agentKind === "maintainer") {
         fetchHistory(pid);
+      }
+      if (pid && focusedAgent?.agentKind === "auto-worker") {
+        fetchWorkerReports(pid);
       }
     }
   });
@@ -161,6 +173,13 @@
   }
 
   function handleNavigate(direction: 1 | -1) {
+    if (focusedAgent?.agentKind === "auto-worker") {
+      if (workerOpenIndex !== null) return; // no sub-navigation in detail view
+      if (workerReports.length === 0) return;
+      workerSelectedIndex = Math.max(0, Math.min(workerReports.length - 1, workerSelectedIndex + direction));
+      return;
+    }
+
     if (focusedAgent?.agentKind !== "maintainer") return;
 
     if (viewMode === "issues") {
@@ -188,6 +207,12 @@
   }
 
   function handleSelect() {
+    if (focusedAgent?.agentKind === "auto-worker") {
+      if (workerOpenIndex !== null) return;
+      if (workerReports.length === 0) return;
+      workerOpenIndex = workerSelectedIndex;
+      return;
+    }
     if (focusedAgent?.agentKind !== "maintainer") return;
 
     if (viewMode === "issues") {
@@ -207,6 +232,10 @@
   }
 
   function handleEscape() {
+    if (focusedAgent?.agentKind === "auto-worker" && workerOpenIndex !== null) {
+      workerOpenIndex = null;
+      return;
+    }
     if (viewMode === "issues") {
       if (issueDetail) {
         issueDetail = null;
@@ -258,6 +287,26 @@
     } finally {
       if (prevAgentKey === `${projectId}:maintainer`) {
         loading = false;
+      }
+    }
+  }
+
+  async function fetchWorkerReports(projectId: string) {
+    const proj = projectList.find((p) => p.id === projectId);
+    if (!proj) return;
+    workerLoading = true;
+    try {
+      const result = await invoke<WorkerReport[]>("get_worker_reports", { repoPath: proj.repo_path });
+      if (prevAgentKey === `${projectId}:auto-worker`) {
+        workerReports = result;
+      }
+    } catch {
+      if (prevAgentKey === `${projectId}:auto-worker`) {
+        workerReports = [];
+      }
+    } finally {
+      if (prevAgentKey === `${projectId}:auto-worker`) {
+        workerLoading = false;
       }
     }
   }
@@ -407,6 +456,57 @@
         </div>
       </div>
     </section>
+
+    <section class="section report-section">
+      {#if workerLoading}
+        <div class="section-body">
+          <p class="muted">Loading reports...</p>
+        </div>
+      {:else if workerOpenIndex !== null && workerReports[workerOpenIndex]}
+        {@const report = workerReports[workerOpenIndex]}
+        <div class="detail-view">
+          <div class="detail-header">
+            <span class="detail-back">Reports</span>
+            <span class="detail-timestamp">{formatTimestamp(report.updated_at)}</span>
+            <span class="detail-summary">#{report.issue_number} {report.title}</span>
+          </div>
+          <div class="detail-blocks">
+            <div class="detail-block">
+              <div class="worker-report-body">{report.comment_body}</div>
+            </div>
+          </div>
+        </div>
+      {:else}
+        <div class="report-list">
+          {#if workerReports.length === 0}
+            <div class="section-body">
+              <p class="muted">No completed work yet</p>
+            </div>
+          {:else}
+            {#each workerReports as report, i}
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
+              <div
+                class="report-item"
+                class:selected={panelFocused && workerSelectedIndex === i}
+                data-report-index={i}
+                onclick={() => { workerSelectedIndex = i; workerOpenIndex = i; }}
+              >
+                <span class="log-dot"></span>
+                <span class="report-timestamp">{formatTimestamp(report.updated_at)}</span>
+                <span class="report-summary-preview">#{report.issue_number} {report.title}</span>
+              </div>
+            {/each}
+          {/if}
+        </div>
+      {/if}
+    </section>
+
+    {#if !panelFocused && workerReports.length > 0}
+      <div class="panel-hint">
+        <span class="muted">Press <kbd>l</kbd> to browse reports</span>
+      </div>
+    {/if}
   {:else if focusedAgent.agentKind === "maintainer"}
     <div class="dashboard-header">
       <h2>{project.name}</h2>
@@ -726,6 +826,8 @@
   .error-banner { padding: 8px 24px; background: rgba(243, 139, 168, 0.1); border-bottom: 1px solid rgba(243, 139, 168, 0.2); display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
   .error-label { color: #f38ba8; font-weight: 600; font-size: 11px; text-transform: uppercase; flex-shrink: 0; }
   .error-message { color: #bac2de; word-break: break-word; }
+
+  .worker-report-body { padding: 12px; font-size: 12px; color: #cdd6f4; white-space: pre-wrap; word-break: break-word; background: rgba(49, 50, 68, 0.2); border-radius: 4px; border-left: 3px solid #a6e3a1; }
 
   .panel-hint { padding: 12px 24px; }
 
