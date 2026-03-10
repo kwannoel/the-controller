@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::Write as IoWrite;
 use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -60,6 +61,18 @@ struct ActiveSession {
     last_nudge_at: Option<Instant>,
 }
 
+fn diag(msg: &str) {
+    let timestamp = chrono::Local::now().format("%H:%M:%S%.3f");
+    let line = format!("[{}] {}\n", timestamp, msg);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/auto-worker-diag.log")
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 pub struct AutoWorkerScheduler;
 
 impl AutoWorkerScheduler {
@@ -107,14 +120,35 @@ impl AutoWorkerScheduler {
 
     pub fn start(app_handle: AppHandle) {
         std::thread::spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Self::run_scheduler(app_handle);
+            }));
+            if let Err(e) = result {
+                let msg = if let Some(s) = e.downcast_ref::<String>() {
+                    s.clone()
+                } else if let Some(s) = e.downcast_ref::<&str>() {
+                    s.to_string()
+                } else {
+                    format!("{:?}", e)
+                };
+                diag(&format!("PANIC: {}", msg));
+                eprintln!("Auto-worker: PANIC: {}", msg);
+            }
+        });
+    }
+
+    fn run_scheduler(app_handle: AppHandle) {
             let mut active_sessions: HashMap<Uuid, ActiveSession> = HashMap::new();
 
             // On startup, clean up stale `in-progress` labels from any previous run.
             // No sessions are active yet, so any `in-progress` label is orphaned.
+            diag("scheduler started, running cleanup_stale_labels");
             Self::cleanup_stale_labels(&app_handle);
+            diag("cleanup_stale_labels done, entering main loop");
 
             loop {
                 std::thread::sleep(Duration::from_secs(POLL_INTERVAL_SECS));
+                diag("--- poll cycle start ---");
 
                 // Drain idle notifications from status socket
                 if let Ok(rx) = IDLE_CHANNEL.1.lock() {
@@ -129,7 +163,10 @@ impl AutoWorkerScheduler {
 
                 let state = match app_handle.try_state::<AppState>() {
                     Some(s) => s,
-                    None => continue,
+                    None => {
+                        diag("AppState not available, skipping cycle");
+                        continue;
+                    }
                 };
 
                 // 1. Check timed-out sessions
@@ -206,42 +243,67 @@ impl AutoWorkerScheduler {
                 let projects = {
                     let storage = match state.storage.lock() {
                         Ok(s) => s,
-                        Err(_) => continue,
+                        Err(e) => {
+                            diag(&format!("storage lock poisoned: {}", e));
+                            continue;
+                        }
                     };
                     match storage.list_projects() {
                         Ok(p) => p,
-                        Err(_) => continue,
+                        Err(e) => {
+                            diag(&format!("list_projects failed: {}", e));
+                            continue;
+                        }
                     }
                 };
+
+                diag(&format!("found {} projects", projects.len()));
 
                 for project in &projects {
                     if !project.auto_worker.enabled || project.archived {
                         continue;
                     }
                     if active_sessions.contains_key(&project.id) {
+                        diag(&format!("{}: already has active session", project.name));
                         continue;
                     }
 
+                    diag(&format!("{}: fetching issues from {}", project.name, project.repo_path));
+
                     let mut issues = match fetch_issues_sync(&project.repo_path) {
-                        Ok(issues) => issues,
+                        Ok(issues) => {
+                            diag(&format!("{}: fetched {} issues", project.name, issues.len()));
+                            issues
+                        }
                         Err(e) => {
+                            diag(&format!("{}: fetch_issues FAILED: {}", project.name, e));
                             eprintln!("Auto-worker: failed to fetch issues for {}: {}", project.name, e);
                             continue;
                         }
                     };
 
                     if let Err(e) = migrate_issues_sync(&project.repo_path, &mut issues) {
+                        diag(&format!("{}: migrate_issues FAILED: {}", project.name, e));
                         eprintln!("Auto-worker: failed to migrate issue labels for {}: {}", project.name, e);
                         continue;
                     }
+                    diag(&format!("{}: migration done", project.name));
 
                     let eligible = match pick_eligible_issue(&issues) {
-                        Some(issue) => issue.clone(),
-                        None => continue,
+                        Some(issue) => {
+                            diag(&format!("{}: eligible issue #{} - {}", project.name, issue.number, issue.title));
+                            issue.clone()
+                        }
+                        None => {
+                            diag(&format!("{}: no eligible issues", project.name));
+                            continue;
+                        }
                     };
 
+                    diag(&format!("{}: spawning session for #{}", project.name, eligible.number));
                     match spawn_auto_worker_session(&state, &app_handle, project, &eligible) {
                         Ok(session_id) => {
+                            diag(&format!("{}: spawn OK, session_id={}", project.name, session_id));
                             let _ = add_label_sync(&project.repo_path, eligible.number, LABEL_IN_PROGRESS);
                             emit_status(&app_handle, project.id, "working", None, Some(eligible.number), Some(&eligible.title));
                             active_sessions.insert(project.id, ActiveSession {
@@ -257,12 +319,12 @@ impl AutoWorkerScheduler {
                             });
                         }
                         Err(e) => {
+                            diag(&format!("{}: spawn FAILED for #{}: {}", project.name, eligible.number, e));
                             eprintln!("Auto-worker: failed to spawn session for #{}: {}", eligible.number, e);
                         }
                     }
                 }
             }
-        });
     }
 }
 
