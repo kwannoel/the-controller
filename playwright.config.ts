@@ -2,10 +2,11 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./e2e/specs",
+  testIgnore: ["**/merge-codex.spec.ts"], // WebdriverIO spec — will be rewritten in Task 6
   timeout: 300_000, // 5 minutes for slow Codex workflows
   use: {
     baseURL: "http://localhost:1420",
-    video: "on",
+    video: "retain-on-failure",
   },
   webServer: [
     {
