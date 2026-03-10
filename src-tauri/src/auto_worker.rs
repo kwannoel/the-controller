@@ -41,9 +41,52 @@ struct ActiveSession {
 pub struct AutoWorkerScheduler;
 
 impl AutoWorkerScheduler {
+    /// Remove stale `in-progress` labels from all enabled projects.
+    /// Called on startup before any sessions exist — any `in-progress` label
+    /// is orphaned from a previous run and must be cleaned up so the issue
+    /// becomes eligible again.
+    fn cleanup_stale_labels(app_handle: &AppHandle) {
+        let state = match app_handle.try_state::<AppState>() {
+            Some(s) => s,
+            None => return,
+        };
+
+        let projects = {
+            let storage = match state.storage.lock() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            match storage.list_projects() {
+                Ok(p) => p,
+                Err(_) => return,
+            }
+        };
+
+        for project in &projects {
+            if !project.auto_worker.enabled || project.archived {
+                continue;
+            }
+            let issues = match fetch_issues_sync(&project.repo_path) {
+                Ok(issues) => issues,
+                Err(_) => continue,
+            };
+            for issue in &issues {
+                let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
+                if labels.contains(&"in-progress") {
+                    eprintln!("Auto-worker: removing stale in-progress label from #{}", issue.number);
+                    let _ = remove_label_sync(&project.repo_path, issue.number, "in-progress");
+                }
+            }
+        }
+    }
+
     pub fn start(app_handle: AppHandle) {
         std::thread::spawn(move || {
             let mut active_sessions: HashMap<Uuid, ActiveSession> = HashMap::new();
+
+            // On startup, clean up stale `in-progress` labels from any previous run.
+            // No sessions are active yet, so any `in-progress` label is orphaned.
+            Self::cleanup_stale_labels(&app_handle);
 
             loop {
                 std::thread::sleep(Duration::from_secs(POLL_INTERVAL_SECS));
@@ -370,11 +413,29 @@ fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
     }
 }
 
+fn close_issue_sync(repo_path: &str, issue_number: u64) -> Result<(), String> {
+    let output = Command::new("gh")
+        .args(["issue", "close", &issue_number.to_string()])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue close failed: {}", stderr));
+    }
+    Ok(())
+}
+
 fn mark_issue_finished(session: &ActiveSession) {
+    let _ = remove_label_sync(&session.repo_path, session.issue_number, "in-progress");
     if has_merged_pr_sync(&session.repo_path, session.issue_number) {
         let _ = add_label_sync(&session.repo_path, session.issue_number, "finished-by-worker");
+        let _ = close_issue_sync(&session.repo_path, session.issue_number);
+        eprintln!("Auto-worker: closed #{} (merged PR verified)", session.issue_number);
+    } else {
+        eprintln!("Auto-worker: #{} exited without merged PR, not closing", session.issue_number);
     }
-    let _ = remove_label_sync(&session.repo_path, session.issue_number, "in-progress");
 }
 
 fn cleanup_session(state: &AppState, session: &ActiveSession) {
