@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -35,6 +35,9 @@
   let currentMode = $derived(workspaceModeState.current);
   const archivedProjectsState = fromStore(archivedProjects);
   let archivedProjectList: Project[] = $derived(archivedProjectsState.current);
+  const selectedSessionProviderState = fromStore(selectedSessionProvider);
+  let currentSessionProvider = $derived(selectedSessionProviderState.current);
+  let currentSessionProviderLabel = $derived(currentSessionProvider === "codex" ? "Codex" : "Claude");
   let deleteNoteTarget: { projectId: string; filename: string } | null = $state(null);
   let renameNoteTarget: { projectId: string; filename: string } | null = $state(null);
   let showNewNoteModal = $state(false);
@@ -393,7 +396,7 @@
     try {
       const sessionId: string = await invoke("create_session", {
         projectId,
-        kind: kind ?? "claude",
+        kind: kind ?? currentSessionProvider,
       });
       markSession(sessionId, "working");
       activeSessionId.set(sessionId);
@@ -698,20 +701,25 @@
   </div>
 
   <div class="sidebar-footer">
-    {#if currentMode !== "agents" && currentMode !== "notes"}
-      <button
-        class="footer-tab"
-        class:active={!isArchiveView}
-        onclick={() => archiveView.set(false)}
-      >Active</button>
-      <button
-        class="footer-tab"
-        class:active={isArchiveView}
-        onclick={() => archiveView.set(true)}
-      >Archives</button>
-    {:else}
-      <div class="footer-spacer"></div>
-    {/if}
+    <div class="footer-left">
+      {#if currentMode !== "agents" && currentMode !== "notes"}
+        <div class="footer-tabs">
+          <button
+            class="footer-tab"
+            class:active={!isArchiveView}
+            onclick={() => archiveView.set(false)}
+          >Active</button>
+          <button
+            class="footer-tab"
+            class:active={isArchiveView}
+            onclick={() => archiveView.set(true)}
+          >Archives</button>
+        </div>
+      {:else}
+        <div class="footer-spacer"></div>
+      {/if}
+      <div class="provider-indicator">Provider: {currentSessionProviderLabel}</div>
+    </div>
     <button
       class="btn-help"
       class:active={showKeyHintsState.current}
@@ -933,7 +941,18 @@
     padding: 0;
   }
 
-  .footer-spacer { flex: 1; }
+  .footer-left {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .footer-tabs {
+    display: flex;
+  }
+
+  .footer-spacer {
+    min-height: 31px;
+  }
 
   .footer-tab {
     flex: 1;
@@ -955,6 +974,15 @@
   .footer-tab.active {
     color: #cdd6f4;
     border-bottom: 2px solid #89b4fa;
+  }
+
+  .provider-indicator {
+    border-top: 1px solid #313244;
+    color: #a6adc8;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    padding: 6px 12px 7px;
+    text-transform: uppercase;
   }
 
   .btn-help {

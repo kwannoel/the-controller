@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { invoke } from '@tauri-apps/api/core';
-import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, jumpMode, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 const testProject = {
@@ -37,6 +37,10 @@ function pressKey(key: string) {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
 }
 
+function pressMetaKey(key: string) {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey: true, bubbles: true }));
+}
+
 /** Create a fake xterm element and focus it to simulate terminal focus. */
 function simulateTerminalFocus(): HTMLElement {
   const xterm = document.createElement('div');
@@ -64,6 +68,7 @@ describe('HotkeyManager', () => {
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
     workspaceMode.set("development");
     workspaceModePickerVisible.set(false);
+    selectedSessionProvider.set("claude");
     vi.clearAllMocks();
     render(HotkeyManager);
   });
@@ -569,12 +574,12 @@ describe('HotkeyManager', () => {
       expect(get(hotkeyAction)).toBeNull();
     });
 
-    it('c on project dispatches pick-issue-for-session', () => {
+    it('c on project dispatches pick-issue-for-session for the selected provider', () => {
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
+      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'claude' });
       unsub();
     });
 
@@ -583,24 +588,16 @@ describe('HotkeyManager', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
+      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'claude' });
       unsub();
     });
 
-    it('x on project dispatches pick-issue-for-session with kind codex', () => {
+    it('c uses codex after provider toggle', () => {
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      selectedSessionProvider.set('codex');
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('x');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'codex' });
-      unsub();
-    });
-
-    it('x on session dispatches pick-issue-for-session with kind codex for that project', () => {
-      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('x');
+      pressKey('c');
       expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'codex' });
       unsub();
     });
@@ -610,6 +607,24 @@ describe('HotkeyManager', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('x');
+      expect(captured).toBeNull();
+      unsub();
+    });
+
+    it('X with no focus does nothing', () => {
+      focusTarget.set(null);
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('X');
+      expect(captured).toBeNull();
+      unsub();
+    });
+
+    it('C with no focus does nothing', () => {
+      focusTarget.set(null);
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('C');
       expect(captured).toBeNull();
       unsub();
     });
@@ -673,8 +688,27 @@ describe('HotkeyManager', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test' });
+      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'claude' });
       unsub();
+    });
+
+    it('Cmd+T toggles the selected provider', () => {
+      expect(get(selectedSessionProvider)).toBe('claude');
+      pressMetaKey('t');
+      expect(get(selectedSessionProvider)).toBe('codex');
+      pressMetaKey('t');
+      expect(get(selectedSessionProvider)).toBe('claude');
+    });
+
+    it('Cmd+T does not toggle while typing in an input', () => {
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      input.focus();
+
+      pressMetaKey('t');
+      expect(get(selectedSessionProvider)).toBe('claude');
+
+      input.remove();
     });
   });
 

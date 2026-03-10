@@ -125,6 +125,8 @@ export interface NoteEntry {
 export type WorkspaceMode = "development" | "agents" | "notes";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
+export type SessionProvider = "claude" | "codex";
+export const selectedSessionProvider = writable<SessionProvider>("claude");
 
 export const activeNote = writable<{ projectId: string; filename: string } | null>(null);
 export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());

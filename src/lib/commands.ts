@@ -14,10 +14,7 @@ export type CommandId =
   | "delete"
   | "archive"
   | "toggle-archive-view"
-  | "create-session-claude"
-  | "create-session-codex"
-  | "background-worker-claude"
-  | "background-worker-codex"
+  | "create-session"
   | "finish-branch"
   | "toggle-sidebar"
   | "create-issue"
@@ -44,6 +41,7 @@ export type ExternalCommandId =
   | "screenshot"
   | "screenshot-cropped"
   | "screenshot-preview"
+  | "toggle-session-provider"
   | "keystroke-visualizer"
   | "switch-workspace"
   | "escape-focus"
@@ -74,10 +72,7 @@ export const commands: CommandDef[] = [
   { id: "escape-forward", key: "Esc Esc", section: "Navigation", description: "Forward escape to terminal", handledExternally: true },
 
   // ── Sessions ──
-  { id: "create-session-claude", key: "c", section: "Sessions", description: "Create Claude session with issue", mode: "development" },
-  { id: "create-session-codex", key: "x", section: "Sessions", description: "Create Codex session with issue", mode: "development" },
-  { id: "background-worker-claude", key: "C", section: "Sessions", description: "Background worker: Claude (autonomous)", mode: "development" },
-  { id: "background-worker-codex", key: "X", section: "Sessions", description: "Background worker: Codex (autonomous)", mode: "development" },
+  { id: "create-session", key: "c", section: "Sessions", description: "Create session with issue", mode: "development" },
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)", mode: "development" },
   { id: "save-prompt", key: "P", section: "Sessions", description: "Save focused session's prompt", mode: "development" },
   { id: "load-prompt", key: "p", section: "Sessions", description: "Load saved prompt into new session", mode: "development" },
@@ -85,6 +80,7 @@ export const commands: CommandDef[] = [
   { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
   { id: "screenshot-preview", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot with preview before sending", handledExternally: true },
+  { id: "toggle-session-provider", key: "⌘t", section: "Sessions", description: "Toggle session provider", handledExternally: true, mode: "development" },
 
   // ── Projects ──
   { id: "new-project", key: "n", section: "Projects", description: "New project", mode: "development" },

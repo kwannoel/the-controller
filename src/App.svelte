@@ -20,7 +20,7 @@
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import NotesEditor from "./lib/NotesEditor.svelte";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
@@ -37,6 +37,8 @@
   const projectsState = fromStore(projects);
   const activeSessionIdState = fromStore(activeSessionId);
   const focusTargetState = fromStore(focusTarget);
+  const selectedSessionProviderState = fromStore(selectedSessionProvider);
+  let currentSessionProvider = $derived(selectedSessionProviderState.current);
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
@@ -165,7 +167,11 @@
   function handleIssuePickerSkip() {
     const target = issuePickerTarget!;
     issuePickerTarget = null;
-    dispatchHotkeyAction({ type: "create-session", projectId: target.projectId, kind: target.kind });
+    dispatchHotkeyAction({
+      type: "create-session",
+      projectId: target.projectId,
+      kind: target.kind ?? currentSessionProvider,
+    });
   }
 
   async function handlePromptPicked(prompt: SavedPrompt) {
@@ -207,7 +213,7 @@
       const sessionId: string = await invoke("create_session", {
         projectId,
         githubIssue: issue,
-        kind: kind ?? "claude",
+        kind: background ? "codex" : (kind ?? currentSessionProvider),
         background: background ?? false,
       });
       // Post comment on the issue (fire and forget)

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, waitFor } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 import { invoke } from "@tauri-apps/api/core";
 import {
   activeSessionId,
@@ -9,6 +9,7 @@ import {
   hotkeyAction,
   onboardingComplete,
   projects,
+  selectedSessionProvider,
   sessionStatuses,
   showKeyHints,
   sidebarVisible,
@@ -40,7 +41,9 @@ vi.mock("./lib/HotkeyManager.svelte", () => ({ default: function MockHotkeyManag
 vi.mock("./lib/HotkeyHelp.svelte", () => ({ default: function MockHotkeyHelp() {} }));
 
 vi.mock("./lib/CreateIssueModal.svelte", () => ({ default: function MockCreateIssueModal() {} }));
-vi.mock("./lib/IssuePickerModal.svelte", () => ({ default: function MockIssuePickerModal() {} }));
+vi.mock("./lib/IssuePickerModal.svelte", async () => ({
+  default: (await import("./test/IssuePickerModalMock.svelte")).default,
+}));
 
 import App from "./App.svelte";
 
@@ -69,6 +72,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set(null);
     showKeyHints.set(false);
     sidebarVisible.set(true);
+    selectedSessionProvider.set("claude");
 
     onboardingComplete.set(true);
     appConfig.set({ projects_root: "/tmp/projects" });
@@ -273,6 +277,61 @@ describe("Window title updates on staging", () => {
       expect(mocks.setTitle).toHaveBeenCalledWith(
         "The Controller (test-commit, test-branch, localhost:1420)",
       );
+    });
+  });
+});
+
+describe("App issue picker flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_COMMIT__ = "test-commit";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_BRANCH__ = "test-branch";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__DEV_PORT__ = "1420";
+
+    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null }]);
+    activeSessionId.set(null);
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+    hotkeyAction.set(null);
+    showKeyHints.set(false);
+    sidebarVisible.set(true);
+    selectedSessionProvider.set("claude");
+    onboardingComplete.set(true);
+    appConfig.set({ projects_root: "/tmp/projects" });
+    sessionStatuses.set(new Map());
+    expandedProjects.set(new Set());
+
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "create_session") return "sess-new";
+      if (cmd === "list_projects") return [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null, sessions: [] }];
+      return;
+    });
+  });
+
+  it("creates background issue sessions with codex even when the requested kind is claude", async () => {
+    render(App);
+
+    hotkeyAction.set({
+      type: "pick-issue-for-session",
+      projectId: "proj-1",
+      repoPath: "/tmp/the-controller",
+      kind: "claude",
+      background: true,
+    });
+
+    await fireEvent.click(await screen.findByTestId("mock-issue-select"));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_session", expect.objectContaining({
+        projectId: "proj-1",
+        githubIssue: expect.objectContaining({ number: 42 }),
+        kind: "codex",
+        background: true,
+      }));
     });
   });
 });

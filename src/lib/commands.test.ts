@@ -79,7 +79,11 @@ describe("command registry", () => {
 
   it("buildKeyMap for development includes dev commands but not agents commands", () => {
     const map = buildKeyMap("development");
-    expect(map.has("c")).toBe(true); // create-session-claude (dev)
+    expect(map.has("c")).toBe(true); // create-session (dev)
+    expect(map.get("c")).toBe("create-session");
+    expect(map.has("x")).toBe(false);
+    expect(map.has("X")).toBe(false);
+    expect(map.has("C")).toBe(false);
     expect(map.has("j")).toBe(true); // global nav
     expect(map.has("o")).toBe(true); // toggle-mode (dev)
     expect(map.get("o")).toBe("toggle-mode");
@@ -104,7 +108,7 @@ describe("command registry", () => {
     expect(map.get("r")).toBe("rename-note");
     expect(map.has("p")).toBe(true);  // toggle-note-preview (notes)
     expect(map.get("p")).toBe("toggle-note-preview");
-    expect(map.has("c")).toBe(false); // create-session-claude is dev-only
+    expect(map.has("c")).toBe(false); // create-session is dev-only
     expect(map.has("o")).toBe(false); // toggle-mode is dev-only, toggle-agent is agents-only
   });
 
@@ -121,7 +125,11 @@ describe("command registry", () => {
     expect(nav.entries).toHaveLength(7);
 
     const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(11);
+    expect(sess.entries).toHaveLength(9);
+    expect(sess.entries.map(entry => entry.key)).toContain("⌘t");
+    expect(sess.entries.map(entry => entry.key)).not.toContain("x");
+    expect(sess.entries.map(entry => entry.key)).not.toContain("X");
+    expect(sess.entries.map(entry => entry.key)).not.toContain("C");
 
     const proj = sections.find(s => s.label === "Projects")!;
     expect(proj.entries).toHaveLength(8);
@@ -172,6 +180,14 @@ describe("command registry", () => {
     expect(ids).toContain("toggle-agent");
     expect(ids).toContain("trigger-agent-check");
     expect(ids).toContain("clear-agent-reports");
+  });
+
+  it("removed session-provider split commands are not in the registry", () => {
+    const ids = commands.map(c => c.id);
+    expect(ids).not.toContain("create-session-claude");
+    expect(ids).not.toContain("create-session-codex");
+    expect(ids).not.toContain("background-worker-claude");
+    expect(ids).not.toContain("background-worker-codex");
   });
 
   it("includes toggle-maintainer-view command in agents mode", () => {

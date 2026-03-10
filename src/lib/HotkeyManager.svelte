@@ -12,6 +12,7 @@
 
     workspaceMode,
     workspaceModePickerVisible,
+    selectedSessionProvider,
     archiveView,
     archivedProjects,
     focusTarget,
@@ -59,6 +60,8 @@
   let keyMap = $derived(buildKeyMap(currentMode));
   const noteEntriesState = fromStore(noteEntries);
   let noteEntriesMap = $derived(noteEntriesState.current);
+  const selectedSessionProviderState = fromStore(selectedSessionProvider);
+  let currentSessionProvider = $derived(selectedSessionProviderState.current);
 
   // Detect if a terminal (xterm) has focus
   function isTerminalFocused(): boolean {
@@ -315,7 +318,7 @@
     }
   }
 
-  function dispatchIssuePicker(opts?: { kind?: string; background?: boolean }) {
+  function dispatchIssuePicker(opts?: { kind?: "claude" | "codex"; background?: boolean }) {
     const project = getFocusedProject();
     if (!project) return;
     dispatchAction({
@@ -368,17 +371,8 @@
       case "toggle-archive-view":
         dispatchAction({ type: "toggle-archive-view" });
         return true;
-      case "create-session-claude":
-        dispatchIssuePicker();
-        return true;
-      case "create-session-codex":
-        dispatchIssuePicker({ kind: "codex" });
-        return true;
-      case "background-worker-claude":
-        dispatchIssuePicker({ background: true });
-        return true;
-      case "background-worker-codex":
-        dispatchIssuePicker({ kind: "codex", background: true });
+      case "create-session":
+        dispatchIssuePicker({ kind: currentSessionProvider });
         return true;
       case "finish-branch":
         if (activeId) {
@@ -523,6 +517,17 @@
       e.stopPropagation();
       e.preventDefault();
       toggleKeystrokeVisualizer();
+      return;
+    }
+
+    // Cmd+T: toggle foreground session provider
+    if (e.metaKey && e.key === "t") {
+      if (isDialogOpen()) return;
+      if (isEditableElementFocused() && !isTerminalFocused()) return;
+      e.stopPropagation();
+      e.preventDefault();
+      selectedSessionProvider.update((provider) => provider === "claude" ? "codex" : "claude");
+      pushKeystroke("⌘T");
       return;
     }
 
