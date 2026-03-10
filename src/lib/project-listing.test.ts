@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { get } from "svelte/store";
-import { corruptProjectEntries, projects } from "./stores";
+import { projects } from "./stores";
 import { refreshProjectsFromBackend } from "./project-listing";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -12,10 +12,9 @@ describe("refreshProjectsFromBackend", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     projects.set([]);
-    corruptProjectEntries.set([]);
   });
 
-  it("applies projects and corrupt entries from the list_projects response", async () => {
+  it("applies projects and returns corrupt entries from the list_projects response", async () => {
     vi.mocked(invoke).mockResolvedValue({
       projects: [
         {
@@ -40,12 +39,12 @@ describe("refreshProjectsFromBackend", () => {
       ],
     });
 
-    await refreshProjectsFromBackend();
+    const result = await refreshProjectsFromBackend();
 
     expect(invoke).toHaveBeenCalledWith("list_projects");
     expect(get(projects)).toHaveLength(1);
     expect(get(projects)[0].name).toBe("test-project");
-    expect(get(corruptProjectEntries)).toEqual([
+    expect(result.corrupt_entries).toEqual([
       {
         project_dir: "/tmp/.the-controller/projects/bad",
         project_file: "/tmp/.the-controller/projects/bad/project.json",
