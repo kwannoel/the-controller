@@ -42,12 +42,13 @@ Do NOT present a design without a feeling statement.
 
 You MUST follow these steps in order:
 
-1. **Define the feeling** — One sentence. What should this feel like to use? This is the north star that every subsequent decision is measured against.
+1. **Define the feeling** — One sentence. What should this feel like to use? This is the north star that every subsequent decision is measured against. The feeling must be emotional, not functional. "Calm awareness" is a feeling. "Situational awareness with quick access" is a product requirement — rewrite it.
 
 2. **Research** — Find 2-3 apps/tools that solve a similar UX problem. Use web search. For each:
    - What it is and what problem it solves
-   - What works well and why
-   - What doesn't work or wouldn't fit The Controller
+   - What works well and why — be specific about the design choices, not just "it looks clean"
+   - What doesn't work or wouldn't fit The Controller — and what you'd change
+   - What design lesson you're taking from it into your design
 
 3. **Derive the design** — From feeling + research, make specific decisions about:
    - Layout and spatial relationships
@@ -61,7 +62,8 @@ You MUST follow these steps in order:
    - Is there a simpler way?
    - What would you remove and still have it work?
    - Does it feel cohesive with the rest of the app?
-   Revise until every decision survives.
+   - Apply design lenses explicitly: call out eye movement, negative space, glance test, etc. by name.
+   Revise until every decision survives. The critique MUST result in at least one thing being removed or simplified. If nothing was cut, you weren't critical enough — go again.
 
 5. **Present design** — Walk through section by section, get user approval.
 
@@ -158,8 +160,12 @@ Scaled to complexity.
 ## Red Flags — STOP and Revise
 
 - Designing without a feeling statement
+- Feeling statement describes a capability, not a feeling ("quick access to status" vs "calm awareness")
 - No research references cited
+- Research that just lists apps without analyzing specific design choices
 - Vague specs ("good spacing", "clean layout", "nice colors")
 - Skipping states (empty, error, loading)
 - No critique section in the design doc
+- Critique where nothing was removed — you weren't critical enough
+- Design lenses not explicitly applied by name
 - Copying a reference wholesale instead of synthesizing
