@@ -83,6 +83,74 @@ pub fn render_agents_md(name: &str) -> String {
     DEFAULT_AGENTS_MD.replace("{name}", name)
 }
 
+fn rollback_scaffold_dir(repo_path: &Path, error: String) -> String {
+    match std::fs::remove_dir_all(repo_path) {
+        Ok(_) => error,
+        Err(cleanup_error) => format!("{} (cleanup failed: {})", error, cleanup_error),
+    }
+}
+
+fn parse_github_nwo(url: &str) -> Result<String, String> {
+    if let Some(rest) = url.strip_prefix("git@github.com:") {
+        return Ok(rest.trim_end_matches(".git").to_string());
+    }
+    if let Some(rest) = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("http://github.com/"))
+    {
+        return Ok(rest.trim_end_matches(".git").to_string());
+    }
+
+    Err(format!("Not a GitHub remote URL: {}", url))
+}
+
+fn github_cli_command() -> std::process::Command {
+    std::process::Command::new(
+        std::env::var("THE_CONTROLLER_GH_BIN").unwrap_or_else(|_| "gh".to_string()),
+    )
+}
+
+fn git_cli_command() -> std::process::Command {
+    std::process::Command::new(
+        std::env::var("THE_CONTROLLER_GIT_BIN").unwrap_or_else(|_| "git".to_string()),
+    )
+}
+
+fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
+    let mut cleanup_errors = Vec::new();
+
+    if let Ok(repo) = git2::Repository::open(repo_path) {
+        if let Ok(remote) = repo.find_remote("origin") {
+            if let Some(url) = remote.url() {
+                if let Ok(nwo) = parse_github_nwo(url) {
+                    match github_cli_command()
+                        .args(["repo", "delete", &nwo, "--yes"])
+                        .output()
+                    {
+                        Ok(output) if output.status.success() => {}
+                        Ok(output) => cleanup_errors.push(format!(
+                            "remote cleanup failed: {}",
+                            String::from_utf8_lossy(&output.stderr).trim()
+                        )),
+                        Err(e) => cleanup_errors
+                            .push(format!("remote cleanup failed: {}", e)),
+                    }
+                }
+            }
+        }
+    }
+
+    if let Err(cleanup_error) = std::fs::remove_dir_all(repo_path) {
+        cleanup_errors.push(format!("local cleanup failed: {}", cleanup_error));
+    }
+
+    if cleanup_errors.is_empty() {
+        error
+    } else {
+        format!("{} ({})", error, cleanup_errors.join("; "))
+    }
+}
+
 /// Run storage migrations on startup (worktree path format, etc.).
 /// PTY connections are deferred to `connect_session` so each terminal
 /// can attach at the correct size.
@@ -1101,9 +1169,10 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
 
     // Create directory
     std::fs::create_dir_all(&repo_path).map_err(|e| e.to_string())?;
+    let rollback_dir = |error: String| rollback_scaffold_dir(&repo_path, error);
 
     // Git init
-    let repo = git2::Repository::init(&repo_path).map_err(|e| e.to_string())?;
+    let repo = git2::Repository::init(&repo_path).map_err(|e| rollback_dir(e.to_string()))?;
     let sig = repo
         .signature()
         .unwrap_or_else(|_| git2::Signature::now("The Controller", "noreply@controller").unwrap());
@@ -1111,49 +1180,62 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     // Write template files to disk
     let agents_content = render_agents_md(&name);
     std::fs::write(repo_path.join("agents.md"), &agents_content)
-        .map_err(|e| format!("failed to write agents.md: {}", e))?;
-    ensure_claude_md_symlink(&repo_path)?;
+        .map_err(|e| rollback_dir(format!("failed to write agents.md: {}", e)))?;
+    ensure_claude_md_symlink(&repo_path).map_err(rollback_dir)?;
     let plans_dir = repo_path.join("docs").join("plans");
     std::fs::create_dir_all(&plans_dir)
-        .map_err(|e| format!("failed to create docs/plans: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to create docs/plans: {}", e)))?;
     std::fs::write(plans_dir.join(".gitkeep"), "")
-        .map_err(|e| format!("failed to write .gitkeep: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to write .gitkeep: {}", e)))?;
 
     // Build git tree with template files
     let mut index = repo
         .index()
-        .map_err(|e| format!("failed to get index: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to get index: {}", e)))?;
     index
         .add_path(std::path::Path::new("agents.md"))
-        .map_err(|e| format!("failed to add agents.md to index: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to add agents.md to index: {}", e)))?;
     index
         .add_path(std::path::Path::new("CLAUDE.md"))
-        .map_err(|e| format!("failed to add CLAUDE.md to index: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to add CLAUDE.md to index: {}", e)))?;
     index
         .add_path(std::path::Path::new("docs/plans/.gitkeep"))
-        .map_err(|e| format!("failed to add .gitkeep to index: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to add .gitkeep to index: {}", e)))?;
     index
         .write()
-        .map_err(|e| format!("failed to write index: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to write index: {}", e)))?;
     let tree_id = index
         .write_tree()
-        .map_err(|e| format!("failed to write tree: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to write tree: {}", e)))?;
     let tree = repo
         .find_tree(tree_id)
-        .map_err(|e| format!("failed to find tree: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to find tree: {}", e)))?;
 
     repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
-        .map_err(|e| format!("failed to create initial commit: {}", e))?;
+        .map_err(|e| rollback_dir(format!("failed to create initial commit: {}", e)))?;
 
-    // Create GitHub remote — required for worktree push/PR workflows
-    let gh_output = std::process::Command::new("gh")
-        .args(["repo", "create", &name, "--private", "--source=.", "--push"])
+    // Create GitHub remote, then push separately so failed pushes can roll back the remote.
+    let gh_output = github_cli_command()
+        .args(["repo", "create", &name, "--private", "--source=.", "--remote=origin"])
         .current_dir(&repo_path)
         .output()
-        .map_err(|e| format!("Failed to run gh CLI: {}. Is gh installed?", e))?;
+        .map_err(|e| rollback_dir(format!("Failed to run gh CLI: {}. Is gh installed?", e)))?;
     if !gh_output.status.success() {
         let stderr = String::from_utf8_lossy(&gh_output.stderr);
-        return Err(format!("Failed to create GitHub repo: {}", stderr.trim()));
+        return Err(rollback_dir(format!("Failed to create GitHub repo: {}", stderr.trim())));
+    }
+
+    let push_output = git_cli_command()
+        .args(["push", "--set-upstream", "origin", "HEAD"])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| rollback_scaffold_state(&repo_path, format!("Failed to run git push: {}", e)))?;
+    if !push_output.status.success() {
+        let stderr = String::from_utf8_lossy(&push_output.stderr);
+        return Err(rollback_scaffold_state(
+            &repo_path,
+            format!("Failed to push initial commit: {}", stderr.trim()),
+        ));
     }
 
     // Create project entry
@@ -1667,8 +1749,89 @@ fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Config, save_config};
     use crate::models::SessionConfig;
+    use crate::pty_manager::PtyManager;
+    use crate::state::{AppState, IssueCache};
+    use crate::storage::Storage;
+    use once_cell::sync::Lazy;
+    use std::env;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+    use std::sync::{Arc, Mutex};
+    use tempfile::TempDir;
     use uuid::Uuid;
+
+    static ENV_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+
+    fn make_test_state(base_dir: &Path, projects_root: &Path) -> AppState {
+        let storage = Storage::new(base_dir.to_path_buf());
+        storage.ensure_dirs().expect("ensure_dirs");
+        save_config(
+            base_dir,
+            &Config {
+                projects_root: projects_root.to_string_lossy().to_string(),
+            },
+        )
+        .expect("save_config");
+
+        AppState {
+            storage: Mutex::new(storage),
+            pty_manager: Arc::new(Mutex::new(PtyManager::new())),
+            issue_cache: Arc::new(Mutex::new(IssueCache::new())),
+        }
+    }
+
+    fn state_from_ref<T: Send + Sync + 'static>(value: &T) -> tauri::State<'_, T> {
+        unsafe { std::mem::transmute(value) }
+    }
+
+    fn real_git_path() -> String {
+        let output = std::process::Command::new("which")
+            .arg("git")
+            .output()
+            .expect("locate git");
+        assert!(output.status.success(), "which git should succeed");
+        String::from_utf8(output.stdout).expect("utf8 git path").trim().to_string()
+    }
+
+    fn write_fake_command(path: &Path, body: &str) {
+        fs::write(path, format!("#!/bin/sh\n{}\n", body)).expect("write fake command");
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(path).expect("stat fake command").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(path, perms).expect("chmod fake command");
+        }
+    }
+
+    fn with_fake_cli_bins<T>(f: impl FnOnce(&Path, &Path, &Path) -> T) -> T {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let bin_dir = TempDir::new().expect("temp fake cli dir");
+        let state_dir = TempDir::new().expect("temp scaffold state dir");
+        let gh_path = bin_dir.path().join("gh");
+        let git_path = bin_dir.path().join("git");
+        let original_gh = env::var_os("THE_CONTROLLER_GH_BIN");
+        let original_git = env::var_os("THE_CONTROLLER_GIT_BIN");
+
+        env::set_var("THE_CONTROLLER_GH_BIN", &gh_path);
+        env::set_var("THE_CONTROLLER_GIT_BIN", &git_path);
+
+        let result = f(&gh_path, &git_path, state_dir.path());
+
+        match original_gh {
+            Some(path) => env::set_var("THE_CONTROLLER_GH_BIN", path),
+            None => env::remove_var("THE_CONTROLLER_GH_BIN"),
+        }
+        match original_git {
+            Some(path) => env::set_var("THE_CONTROLLER_GIT_BIN", path),
+            None => env::remove_var("THE_CONTROLLER_GIT_BIN"),
+        }
+
+        result
+    }
 
     // --- validate_project_name tests ---
 
@@ -1901,6 +2064,80 @@ mod tests {
     #[test]
     fn test_project_name_single_char() {
         assert!(validate_project_name("a").is_ok());
+    }
+
+    #[test]
+    fn test_scaffold_project_rolls_back_remote_and_local_state_when_initial_push_fails() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let repo_path = projects_root.path().join("rollback-test");
+        let real_git = real_git_path();
+
+        with_fake_cli_bins(|gh_path, git_path, state_dir| {
+            let state_dir_display = state_dir.display().to_string();
+            write_fake_command(
+                gh_path,
+                &format!(
+                    "if [ \"$1\" = \"repo\" ] && [ \"$2\" = \"create\" ]; then\n  \"{real_git}\" -C \"$PWD\" remote add origin git@github.com:test-owner/rollback-test.git\n  touch \"{state_dir_display}/remote-created\"\n  exit 0\nfi\nif [ \"$1\" = \"repo\" ] && [ \"$2\" = \"delete\" ]; then\n  if [ \"$3\" != \"test-owner/rollback-test\" ]; then\n    echo \"unexpected repo delete target: $3\" >&2\n    exit 1\n  fi\n  rm -f \"{state_dir_display}/remote-created\"\n  touch \"{state_dir_display}/remote-deleted\"\n  exit 0\nfi\necho \"unexpected gh invocation: $*\" >&2\nexit 1"
+                ),
+            );
+            write_fake_command(
+                git_path,
+                &format!(
+                    "if [ -f \"{state_dir_display}/push-fails\" ]; then\n  echo \"push failed\" >&2\n  exit 1\nfi\nexit 0"
+                ),
+            );
+            fs::write(state_dir.join("push-fails"), "").expect("mark first push as failed");
+
+            let error = scaffold_project(state_from_ref(&app_state), "rollback-test".to_string())
+                .expect_err("push failure should bubble up");
+            assert!(error.contains("Failed to push initial commit"));
+            assert!(
+                !repo_path.exists(),
+                "repo directory should be removed after push failure"
+            );
+            assert!(
+                state_dir.join("remote-deleted").exists(),
+                "remote repo created during scaffold should be deleted on push failure"
+            );
+
+            let stored = app_state
+                .storage
+                .lock()
+                .unwrap()
+                .list_projects()
+                .expect("list projects after failed scaffold");
+            assert!(
+                stored.is_empty(),
+                "failed scaffold should not persist project state"
+            );
+
+            fs::remove_file(state_dir.join("push-fails")).expect("allow retry push");
+            fs::remove_file(state_dir.join("remote-deleted")).expect("clear previous delete marker");
+
+            let project = scaffold_project(state_from_ref(&app_state), "rollback-test".to_string())
+                .expect("retry should succeed after rollback");
+            assert_eq!(project.name, "rollback-test");
+            assert!(repo_path.exists(), "retry should recreate repo directory");
+            assert!(
+                state_dir.join("remote-created").exists(),
+                "successful retry should recreate the remote"
+            );
+
+            let stored = app_state
+                .storage
+                .lock()
+                .unwrap()
+                .list_projects()
+                .expect("list projects after successful retry");
+            assert_eq!(
+                stored.len(),
+                1,
+                "successful retry should persist exactly one project"
+            );
+            assert_eq!(stored[0].repo_path, repo_path.to_string_lossy());
+        });
     }
 
     // --- validate_maintainer_interval tests ---
