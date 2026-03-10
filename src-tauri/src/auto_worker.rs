@@ -122,7 +122,7 @@ impl AutoWorkerScheduler {
                     .unwrap_or(false);
                 if labels.contains(&LABEL_IN_PROGRESS) && !protected {
                     eprintln!("Auto-worker: removing stale in-progress label from #{}", issue.number);
-                    let _ = remove_label_sync(&project.repo_path, issue.number, LABEL_IN_PROGRESS);
+                    let _ = remove_label_sync(state.inner(), &project.repo_path, issue.number, LABEL_IN_PROGRESS);
                 }
             }
         }
@@ -158,7 +158,7 @@ impl AutoWorkerScheduler {
                 Ok(issues) => issues,
                 Err(_) => continue,
             };
-            if let Err(e) = migrate_issues_sync(&project.repo_path, &mut issues) {
+            if let Err(e) = migrate_issues_sync(state.inner(), &project.repo_path, &mut issues) {
                 eprintln!("Auto-worker: label migration failed for {}: {}", project.name, e);
             }
         }
@@ -252,7 +252,7 @@ impl AutoWorkerScheduler {
                     if let Some(session) = active_sessions.remove(&project_id) {
                         eprintln!("Auto-worker: session completed for #{}", session.issue_number);
                         let (issue_number, issue_title) = session_issue_context(&session);
-                        mark_issue_finished(&session);
+                        mark_issue_finished(state.inner(), &session);
                         cleanup_session(&state, &session);
                         emit_status(
                             &app_handle,
@@ -303,7 +303,7 @@ impl AutoWorkerScheduler {
 
                     match spawn_auto_worker_session(&state, &app_handle, project, &eligible) {
                         Ok(session_id) => {
-                            let _ = add_label_sync(&project.repo_path, eligible.number, LABEL_IN_PROGRESS);
+                            let _ = add_label_sync(state.inner(), &project.repo_path, eligible.number, LABEL_IN_PROGRESS);
                             emit_status(&app_handle, project.id, "working", None, Some(eligible.number), Some(&eligible.title));
                             active_sessions.insert(project.id, ActiveSession {
                                 session_id,
@@ -525,9 +525,22 @@ fn fetch_issues_sync(repo_path: &str) -> Result<Vec<GithubIssue>, String> {
         .map_err(|e| format!("Failed to parse gh output: {}", e))
 }
 
-fn add_label_sync(repo_path: &str, issue_number: u64, label: &str) -> Result<(), String> {
+fn finish_label_edit<F>(state: &AppState, repo_path: &str, edit: F) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    edit()?;
+
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.invalidate(repo_path);
+    }
+
+    Ok(())
+}
+
+fn edit_label_sync(repo_path: &str, issue_number: u64, mode: &str, label: &str) -> Result<(), String> {
     let output = Command::new("gh")
-        .args(["issue", "edit", &issue_number.to_string(), "--add-label", label])
+        .args(["issue", "edit", &issue_number.to_string(), mode, label])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run gh: {}", e))?;
@@ -539,18 +552,12 @@ fn add_label_sync(repo_path: &str, issue_number: u64, label: &str) -> Result<(),
     Ok(())
 }
 
-fn remove_label_sync(repo_path: &str, issue_number: u64, label: &str) -> Result<(), String> {
-    let output = Command::new("gh")
-        .args(["issue", "edit", &issue_number.to_string(), "--remove-label", label])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+fn add_label_sync(state: &AppState, repo_path: &str, issue_number: u64, label: &str) -> Result<(), String> {
+    finish_label_edit(state, repo_path, || edit_label_sync(repo_path, issue_number, "--add-label", label))
+}
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue edit failed: {}", stderr));
-    }
-    Ok(())
+fn remove_label_sync(state: &AppState, repo_path: &str, issue_number: u64, label: &str) -> Result<(), String> {
+    finish_label_edit(state, repo_path, || edit_label_sync(repo_path, issue_number, "--remove-label", label))
 }
 
 fn ensure_standard_labels_exist_sync(repo_path: &str) -> Result<(), String> {
@@ -637,7 +644,7 @@ fn apply_issue_migration(issue: &mut GithubIssue, migration: &LabelMigration) {
 }
 
 /// Migrate legacy labels on all issues. Returns the number of issues migrated.
-fn migrate_issues_sync(repo_path: &str, issues: &mut [GithubIssue]) -> Result<usize, String> {
+fn migrate_issues_sync(state: &AppState, repo_path: &str, issues: &mut [GithubIssue]) -> Result<usize, String> {
     ensure_standard_labels_exist_sync(repo_path)?;
 
     let mut count = 0;
@@ -648,10 +655,10 @@ fn migrate_issues_sync(repo_path: &str, issues: &mut [GithubIssue]) -> Result<us
         }
 
         for label in &migration.add {
-            add_label_sync(repo_path, issue.number, label)?;
+            add_label_sync(state, repo_path, issue.number, label)?;
         }
         for label in &migration.remove {
-            remove_label_sync(repo_path, issue.number, label)?;
+            remove_label_sync(state, repo_path, issue.number, label)?;
         }
 
         apply_issue_migration(issue, &migration);
@@ -742,7 +749,7 @@ fn kill_session(state: &AppState, session: &ActiveSession) {
     if let Ok(mut pty_manager) = state.pty_manager.lock() {
         let _ = pty_manager.close_session(session.session_id);
     }
-    mark_issue_finished(session);
+    mark_issue_finished(state, session);
     cleanup_session(state, session);
 }
 
@@ -794,10 +801,10 @@ fn close_issue_sync(repo_path: &str, issue_number: u64) -> Result<(), String> {
     Ok(())
 }
 
-fn mark_issue_finished(session: &ActiveSession) {
-    let _ = remove_label_sync(&session.repo_path, session.issue_number, LABEL_IN_PROGRESS);
+fn mark_issue_finished(state: &AppState, session: &ActiveSession) {
+    let _ = remove_label_sync(state, &session.repo_path, session.issue_number, LABEL_IN_PROGRESS);
     if has_merged_pr_sync(&session.repo_path, session.issue_number) {
-        let _ = add_label_sync(&session.repo_path, session.issue_number, LABEL_FINISHED_BY_WORKER);
+        let _ = add_label_sync(state, &session.repo_path, session.issue_number, LABEL_FINISHED_BY_WORKER);
         let _ = close_issue_sync(&session.repo_path, session.issue_number);
         eprintln!("Auto-worker: closed #{} (merged PR verified)", session.issue_number);
     } else {
@@ -821,7 +828,7 @@ fn cleanup_startup_worker(
 
     let session = startup_candidate_to_active_session(candidate);
     if !preserve_label {
-        mark_issue_finished(&session);
+        mark_issue_finished(state, &session);
     }
     cleanup_session(state, &session);
 }
@@ -862,6 +869,8 @@ pub fn pick_eligible_issue(issues: &[GithubIssue]) -> Option<&GithubIssue> {
 mod tests {
     use super::*;
     use crate::models::GithubLabel;
+    use crate::storage::Storage;
+    use tempfile::TempDir;
 
     fn make_issue(labels: &[&str]) -> GithubIssue {
         GithubIssue {
@@ -1009,6 +1018,41 @@ mod tests {
     #[test]
     fn json_has_results_invalid_json() {
         assert!(!json_has_results("not json"));
+    }
+
+    #[test]
+    fn successful_label_edit_invalidates_issue_cache() {
+        let tmp = TempDir::new().unwrap();
+        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf())).unwrap();
+        let repo_path = "/tmp/repo";
+
+        {
+            let mut cache = state.issue_cache.lock().unwrap();
+            cache.insert(repo_path.to_string(), vec![make_issue(&["in-progress"])]);
+        }
+
+        finish_label_edit(&state, repo_path, || Ok(())).unwrap();
+
+        let cache = state.issue_cache.lock().unwrap();
+        assert!(cache.get(repo_path).is_none());
+    }
+
+    #[test]
+    fn failed_label_edit_keeps_issue_cache() {
+        let tmp = TempDir::new().unwrap();
+        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf())).unwrap();
+        let repo_path = "/tmp/repo";
+
+        {
+            let mut cache = state.issue_cache.lock().unwrap();
+            cache.insert(repo_path.to_string(), vec![make_issue(&["in-progress"])]);
+        }
+
+        let error = finish_label_edit(&state, repo_path, || Err("boom".to_string())).unwrap_err();
+
+        assert_eq!(error, "boom");
+        let cache = state.issue_cache.lock().unwrap();
+        assert!(cache.get(repo_path).is_some());
     }
 
     #[test]
