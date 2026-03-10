@@ -452,9 +452,12 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
             let number = issue["number"].as_u64()?;
             let title = issue["title"].as_str()?.to_string();
             let updated_at = issue["updatedAt"].as_str().unwrap_or("").to_string();
-            let comments = issue["comments"].as_array()?;
-            let last_comment = comments.last()?;
-            let body = last_comment["body"].as_str().unwrap_or("").to_string();
+            let body = issue["comments"]
+                .as_array()
+                .and_then(|c| c.last())
+                .and_then(|c| c["body"].as_str())
+                .unwrap_or("")
+                .to_string();
             Some(WorkerReport {
                 issue_number: number,
                 title,
