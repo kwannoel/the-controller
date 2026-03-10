@@ -26,7 +26,7 @@ struct ServerState {
 #[tokio::main]
 async fn main() {
     let (emitter, ws_tx) = WsBroadcastEmitter::new();
-    let app_state = AppState::new(emitter);
+    let app_state = AppState::new(emitter).expect("Failed to initialize app state");
 
     let state = Arc::new(ServerState {
         app: app_state,
