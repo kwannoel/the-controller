@@ -1,54 +1,60 @@
-import { testRepo, seededProject } from "../../wdio.conf.js";
-import { SANDBOX_REPO } from "../helpers/repo-setup.js";
+import { test, expect } from "@playwright/test";
+import { setupTestRepo, cleanupTestRepo, SANDBOX_REPO, type TestRepo } from "../helpers/repo-setup";
+import { seedProject, cleanupSeededProject, type SeededProject } from "../helpers/project-seed";
 import { execSync } from "node:child_process";
 
-describe("merge codex session branch", () => {
-  it("should create a PR when triggering finish-branch on a codex session", async () => {
-    if (!testRepo || !seededProject) {
-      throw new Error("Test repo or seeded project not initialized — check wdio.conf.ts onPrepare");
-    }
+let repo: TestRepo;
+let seeded: SeededProject;
 
-    // Wait for app to load and show our seeded project
-    await browser.pause(5_000);
+test.beforeAll(() => {
+  repo = setupTestRepo();
+  seeded = seedProject(repo.localPath, repo.branchName);
+});
 
-    // Click on the session in the sidebar to focus it
-    const sessionEl = await $(
-      `//*[contains(@class, 'session-label') and contains(text(), '${testRepo.branchName}')]`
-    );
-    await sessionEl.waitForExist({ timeout: 15_000 });
-    await sessionEl.click();
+test.afterAll(() => {
+  if (repo) cleanupTestRepo(repo);
+  if (seeded) cleanupSeededProject(seeded);
+});
 
-    // Press 'm' to trigger finish-branch
-    await browser.keys("m");
+test("merge codex session branch creates a PR", async ({ page }) => {
+  await page.goto("/");
 
-    // ConfirmModal should appear with "Confirm Merge"
-    const modal = await $(".modal-header=Confirm Merge");
-    await modal.waitForExist({ timeout: 5_000 });
+  // Wait for sidebar to render with our seeded project
+  const sessionEl = page.locator(`.session-label`, { hasText: repo.branchName });
+  await expect(sessionEl).toBeVisible({ timeout: 15_000 });
 
-    // Press 'y' to confirm
-    await browser.keys("y");
+  // Click to focus the session
+  await sessionEl.click();
 
-    // Wait for the skill to be written to PTY and Codex to execute the merge.
-    // We poll GitHub for the PR instead of waiting for a UI toast,
-    // since the toast might be transient.
-    let prUrl = "";
-    const maxWaitMs = 180_000; // 3 minutes
-    const pollIntervalMs = 5_000;
-    const startTime = Date.now();
+  // Press 'm' to trigger finish-branch
+  await page.keyboard.press("m");
 
-    while (Date.now() - startTime < maxWaitMs) {
-      try {
-        prUrl = execSync(
-          `gh pr view ${testRepo.branchName} --repo ${SANDBOX_REPO} --json url -q .url`,
-          { encoding: "utf-8" }
-        ).trim();
-        if (prUrl) break;
-      } catch {
-        // PR doesn't exist yet, keep polling
-      }
-      await browser.pause(pollIntervalMs);
-    }
-
-    expect(prUrl).toMatch(/github\.com/);
+  // ConfirmModal should appear
+  await expect(page.locator(".modal-header", { hasText: "Confirm Merge" })).toBeVisible({
+    timeout: 5_000,
   });
+
+  // Press 'y' to confirm
+  await page.keyboard.press("y");
+
+  // Poll GitHub for the PR
+  let prUrl = "";
+  const maxWaitMs = 180_000;
+  const pollIntervalMs = 5_000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      prUrl = execSync(
+        `gh pr view ${repo.branchName} --repo ${SANDBOX_REPO} --json url -q .url`,
+        { encoding: "utf-8" },
+      ).trim();
+      if (prUrl) break;
+    } catch {
+      // Not yet
+    }
+    await page.waitForTimeout(pollIntervalMs);
+  }
+
+  expect(prUrl).toMatch(/github\.com/);
 });
