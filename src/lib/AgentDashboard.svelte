@@ -177,6 +177,7 @@
       if (workerOpenIndex !== null) return; // no sub-navigation in detail view
       if (workerReports.length === 0) return;
       workerSelectedIndex = Math.max(0, Math.min(workerReports.length - 1, workerSelectedIndex + direction));
+      scrollWorkerReportIntoView();
       return;
     }
 
@@ -269,6 +270,13 @@
   function scrollIssueIntoView() {
     requestAnimationFrame(() => {
       const el = document.querySelector(`[data-issue-index="${issueSelectedIndex}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  function scrollWorkerReportIntoView() {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-worker-report-index="${workerSelectedIndex}"]`);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   }
@@ -489,7 +497,7 @@
               <div
                 class="report-item"
                 class:selected={panelFocused && workerSelectedIndex === i}
-                data-report-index={i}
+                data-worker-report-index={i}
                 onclick={() => { workerSelectedIndex = i; workerOpenIndex = i; }}
               >
                 <span class="log-dot"></span>
