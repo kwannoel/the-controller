@@ -75,6 +75,9 @@ impl ControllerChatSession {
             .project_id
             .is_some_and(|project_id| self.focus.project_id != Some(project_id));
 
+        if project_changed && update.project_name.is_none() {
+            self.focus.project_name = None;
+        }
         if project_changed || project_focus_update {
             self.focus.session_id = None;
         }
@@ -697,6 +700,31 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("invalid note filename"));
+    }
+
+    #[test]
+    fn test_execute_bridge_actions_rejects_stale_project_name_after_project_change() {
+        let tmp = TempDir::new().unwrap();
+        let mut session = focused_session("proj-a");
+
+        session.update_focus(ControllerFocusUpdate {
+            project_id: Some(Uuid::from_u128(77)),
+            project_name: None,
+            session_id: None,
+            note_filename: None,
+            workspace_mode: None,
+        });
+
+        let error = execute_bridge_actions(
+            tmp.path(),
+            &mut session,
+            vec![ControllerBridgeAction::CreateNote {
+                filename: "issue-777.md".to_string(),
+            }],
+        )
+        .unwrap_err();
+
+        assert!(error.contains("missing project_name"));
     }
 
     #[test]
