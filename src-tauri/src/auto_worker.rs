@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::process::Command;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -60,6 +60,25 @@ struct ActiveSession {
     last_nudge_at: Option<Instant>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StartupWorkerCandidate {
+    session_id: Uuid,
+    project_id: Uuid,
+    issue_number: u64,
+    issue_title: String,
+    repo_path: String,
+    session_dir: String,
+    kind: String,
+    ordinal: usize,
+    live_tmux: bool,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct StartupReconciliation {
+    restore: Vec<StartupWorkerCandidate>,
+    cleanup: Vec<StartupWorkerCandidate>,
+}
+
 pub struct AutoWorkerScheduler;
 
 impl AutoWorkerScheduler {
@@ -67,7 +86,7 @@ impl AutoWorkerScheduler {
     /// Called on startup before any sessions exist — any `in-progress` label
     /// is orphaned from a previous run and must be cleaned up so the issue
     /// becomes eligible again.
-    fn cleanup_stale_labels(app_handle: &AppHandle) {
+    fn cleanup_stale_labels(app_handle: &AppHandle, protected_issues: &HashMap<String, HashSet<u64>>) {
         let state = match app_handle.try_state::<AppState>() {
             Some(s) => s,
             None => return,
@@ -97,7 +116,11 @@ impl AutoWorkerScheduler {
             };
             for issue in &issues {
                 let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
-                if labels.contains(&LABEL_IN_PROGRESS) {
+                let protected = protected_issues
+                    .get(&project.repo_path)
+                    .map(|issues| issues.contains(&issue.number))
+                    .unwrap_or(false);
+                if labels.contains(&LABEL_IN_PROGRESS) && !protected {
                     eprintln!("Auto-worker: removing stale in-progress label from #{}", issue.number);
                     let _ = remove_label_sync(&project.repo_path, issue.number, LABEL_IN_PROGRESS);
                 }
@@ -143,11 +166,7 @@ impl AutoWorkerScheduler {
 
     pub fn start(app_handle: AppHandle) {
         std::thread::spawn(move || {
-            let mut active_sessions: HashMap<Uuid, ActiveSession> = HashMap::new();
-
-            // On startup, clean up stale `in-progress` labels from any previous run.
-            // No sessions are active yet, so any `in-progress` label is orphaned.
-            Self::cleanup_stale_labels(&app_handle);
+            let mut active_sessions = Self::restore_startup_state(&app_handle);
 
             // Migrate legacy labels in a background thread so the poll loop
             // can start immediately. Migration is slow (~2-5s per issue via
@@ -306,6 +325,105 @@ impl AutoWorkerScheduler {
             }
         });
     }
+
+    fn restore_startup_state(app_handle: &AppHandle) -> HashMap<Uuid, ActiveSession> {
+        let state = match app_handle.try_state::<AppState>() {
+            Some(s) => s,
+            None => return HashMap::new(),
+        };
+
+        let projects = {
+            let storage = match state.storage.lock() {
+                Ok(s) => s,
+                Err(_) => return HashMap::new(),
+            };
+            match storage.list_projects() {
+                Ok(p) => p,
+                Err(_) => return HashMap::new(),
+            }
+        };
+
+        let mut candidates = Vec::new();
+
+        for project in &projects {
+            if !project.auto_worker.enabled || project.archived {
+                continue;
+            }
+
+            for (ordinal, session) in project.sessions.iter().enumerate() {
+                if !session.auto_worker_session {
+                    continue;
+                }
+                let issue = match &session.github_issue {
+                    Some(issue) => issue,
+                    None => continue,
+                };
+                let session_dir = session
+                    .worktree_path
+                    .clone()
+                    .unwrap_or_else(|| project.repo_path.clone());
+
+                candidates.push(StartupWorkerCandidate {
+                    session_id: session.id,
+                    project_id: project.id,
+                    issue_number: issue.number,
+                    issue_title: issue.title.clone(),
+                    repo_path: project.repo_path.clone(),
+                    session_dir,
+                    kind: session.kind.clone(),
+                    ordinal,
+                    live_tmux: crate::tmux::TmuxManager::has_session(session.id),
+                });
+            }
+        }
+
+        let mut active_sessions = HashMap::new();
+        let mut attached_session_ids = HashSet::new();
+
+        let reconciliation = reconcile_startup_workers(candidates);
+
+        for candidate in &reconciliation.restore {
+            let restored = startup_candidate_to_active_session(&candidate);
+            let attach_result = {
+                let mut pty_manager = match state.pty_manager.lock() {
+                    Ok(manager) => manager,
+                    Err(_) => continue,
+                };
+                pty_manager.spawn_session(
+                    candidate.session_id,
+                    &candidate.session_dir,
+                    &candidate.kind,
+                    app_handle.clone(),
+                    true,
+                    None,
+                    24,
+                    80,
+                )
+            };
+
+            if let Err(error) = attach_result {
+                eprintln!(
+                    "Auto-worker: failed to restore session {} for #{}: {}",
+                    candidate.session_id, candidate.issue_number, error
+                );
+                continue;
+            }
+
+            attached_session_ids.insert(candidate.session_id);
+            active_sessions.insert(candidate.project_id, restored);
+        }
+
+        let finalized = finalize_startup_restoration(reconciliation, &attached_session_ids);
+        let protected_issues = protected_issue_numbers_by_repo(&finalized.restore);
+
+        Self::cleanup_stale_labels(app_handle, &protected_issues);
+
+        for candidate in &finalized.cleanup {
+            cleanup_startup_worker(&state, candidate, &protected_issues);
+        }
+
+        active_sessions
+    }
 }
 
 fn emit_status(app_handle: &AppHandle, project_id: Uuid, status: &str, message: Option<&str>, issue_number: Option<u64>, issue_title: Option<&str>) {
@@ -320,6 +438,75 @@ fn emit_status(app_handle: &AppHandle, project_id: Uuid, status: &str, message: 
 
 fn session_issue_context(session: &ActiveSession) -> (Option<u64>, Option<&str>) {
     (Some(session.issue_number), Some(session.issue_title.as_str()))
+}
+
+fn startup_candidate_to_active_session(candidate: &StartupWorkerCandidate) -> ActiveSession {
+    ActiveSession {
+        session_id: candidate.session_id,
+        project_id: candidate.project_id,
+        issue_number: candidate.issue_number,
+        issue_title: candidate.issue_title.clone(),
+        repo_path: candidate.repo_path.clone(),
+        spawned_at: Instant::now(),
+        nudge_count: 0,
+        last_idle_at: None,
+        last_nudge_at: None,
+    }
+}
+
+fn reconcile_startup_workers(candidates: Vec<StartupWorkerCandidate>) -> StartupReconciliation {
+    let mut keep_live_by_project: HashMap<Uuid, usize> = HashMap::new();
+
+    for (idx, candidate) in candidates.iter().enumerate() {
+        if candidate.live_tmux {
+            keep_live_by_project.insert(candidate.project_id, idx);
+        }
+    }
+
+    let mut reconciliation = StartupReconciliation::default();
+
+    for (idx, candidate) in candidates.into_iter().enumerate() {
+        if candidate.live_tmux && keep_live_by_project.get(&candidate.project_id) == Some(&idx) {
+            reconciliation.restore.push(candidate);
+        } else {
+            reconciliation.cleanup.push(candidate);
+        }
+    }
+
+    reconciliation
+}
+
+fn finalize_startup_restoration(
+    reconciliation: StartupReconciliation,
+    attached_session_ids: &HashSet<Uuid>,
+) -> StartupReconciliation {
+    let mut finalized = StartupReconciliation {
+        restore: Vec::new(),
+        cleanup: reconciliation.cleanup,
+    };
+
+    for candidate in reconciliation.restore {
+        if attached_session_ids.contains(&candidate.session_id) {
+            finalized.restore.push(candidate);
+        } else {
+            finalized.cleanup.push(candidate);
+        }
+    }
+
+    finalized
+}
+
+fn protected_issue_numbers_by_repo(candidates: &[StartupWorkerCandidate]) -> HashMap<String, HashSet<u64>> {
+    let mut protected = HashMap::new();
+
+    for candidate in candidates {
+        protected
+            .entry(candidate.repo_path.clone())
+            .or_insert_with(HashSet::new)
+            .insert(candidate.issue_number);
+    }
+
+    protected
 }
 
 fn fetch_issues_sync(repo_path: &str) -> Result<Vec<GithubIssue>, String> {
@@ -618,6 +805,27 @@ fn mark_issue_finished(session: &ActiveSession) {
     }
 }
 
+fn cleanup_startup_worker(
+    state: &AppState,
+    candidate: &StartupWorkerCandidate,
+    protected_issues: &HashMap<String, HashSet<u64>>,
+) {
+    if let Ok(mut pty_manager) = state.pty_manager.lock() {
+        let _ = pty_manager.close_session(candidate.session_id);
+    }
+
+    let preserve_label = protected_issues
+        .get(&candidate.repo_path)
+        .map(|issues| issues.contains(&candidate.issue_number))
+        .unwrap_or(false);
+    if !preserve_label {
+        let _ = remove_label_sync(&candidate.repo_path, candidate.issue_number, LABEL_IN_PROGRESS);
+    }
+
+    let session = startup_candidate_to_active_session(candidate);
+    cleanup_session(state, &session);
+}
+
 fn cleanup_session(state: &AppState, session: &ActiveSession) {
     if let Ok(storage) = state.storage.lock() {
         if let Ok(mut project) = storage.load_project(session.project_id) {
@@ -801,5 +1009,67 @@ mod tests {
     #[test]
     fn json_has_results_invalid_json() {
         assert!(!json_has_results("not json"));
+    }
+
+    #[test]
+    fn startup_restoration_keeps_one_live_worker_and_cleans_stale_duplicates() {
+        let project_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let repo_path = "/tmp/the-controller".to_string();
+
+        let reconciliation = reconcile_startup_workers(vec![
+            StartupWorkerCandidate {
+                session_id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
+                project_id,
+                issue_number: 328,
+                issue_title: "Already finished duplicate".to_string(),
+                repo_path: repo_path.clone(),
+                session_dir: "/tmp/the-controller/session-46".to_string(),
+                kind: "codex".to_string(),
+                ordinal: 0,
+                live_tmux: false,
+            },
+            StartupWorkerCandidate {
+                session_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+                project_id,
+                issue_number: 327,
+                issue_title: "Current live task".to_string(),
+                repo_path: repo_path.clone(),
+                session_dir: "/tmp/the-controller/session-51".to_string(),
+                kind: "codex".to_string(),
+                ordinal: 1,
+                live_tmux: true,
+            },
+        ]);
+
+        assert_eq!(reconciliation.restore.len(), 1);
+        assert_eq!(reconciliation.restore[0].issue_number, 327);
+
+        assert_eq!(reconciliation.cleanup.len(), 1);
+        assert_eq!(reconciliation.cleanup[0].issue_number, 328);
+    }
+
+    #[test]
+    fn startup_restoration_failed_attach_moves_worker_to_cleanup() {
+        let project_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let candidate = StartupWorkerCandidate {
+            session_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+            project_id,
+            issue_number: 327,
+            issue_title: "Current live task".to_string(),
+            repo_path: "/tmp/the-controller".to_string(),
+            session_dir: "/tmp/the-controller/session-51".to_string(),
+            kind: "codex".to_string(),
+            ordinal: 1,
+            live_tmux: true,
+        };
+        let reconciliation = StartupReconciliation {
+            restore: vec![candidate.clone()],
+            cleanup: vec![],
+        };
+
+        let finalized = finalize_startup_restoration(reconciliation, &HashSet::new());
+
+        assert!(finalized.restore.is_empty());
+        assert_eq!(finalized.cleanup, vec![candidate]);
     }
 }
