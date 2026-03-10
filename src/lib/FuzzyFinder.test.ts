@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/svelte';
 import userEvent from '@testing-library/user-event';
-import { invoke } from '@tauri-apps/api/core';
+import { command } from '$lib/backend';
 import FuzzyFinder from './FuzzyFinder.svelte';
 
 const mockEntries = [
@@ -16,7 +16,7 @@ describe('FuzzyFinder', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(invoke).mockResolvedValue(mockEntries);
+    vi.mocked(command).mockResolvedValue(mockEntries);
   });
 
   it('renders search input', () => {
@@ -109,7 +109,7 @@ describe('FuzzyFinder', () => {
   it('invokes list_root_directories on mount', async () => {
     render(FuzzyFinder, { props: { onSelect, onClose } });
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith('list_root_directories');
+      expect(command).toHaveBeenCalledWith('list_root_directories');
     });
   });
 });

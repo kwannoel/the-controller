@@ -1,6 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { execSync } from "child_process";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -18,6 +22,12 @@ function git(cmd: string): string {
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [svelte()],
+
+  resolve: {
+    alias: {
+      "$lib": path.resolve(__dirname, "src/lib"),
+    },
+  },
 
   define: {
     __BUILD_COMMIT__: JSON.stringify(git("rev-parse --short HEAD")),
@@ -44,6 +54,13 @@ export default defineConfig(async () => ({
     watch: {
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
+    },
+    proxy: {
+      "/api": "http://localhost:3001",
+      "/ws": {
+        target: "ws://localhost:3001",
+        ws: true,
+      },
     },
   },
 }));

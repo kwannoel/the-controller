@@ -1,8 +1,10 @@
 use std::io::{BufRead, BufReader};
 use std::os::unix::net::{UnixListener, UnixStream};
-use tauri::{AppHandle, Emitter, Manager};
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
+use crate::emitter::EventEmitter;
 use crate::state::AppState;
 use crate::worktree::WorktreeManager;
 
@@ -54,13 +56,22 @@ pub fn start_listener(app_handle: AppHandle) {
         }
     };
 
+    let emitter: Arc<dyn EventEmitter> = match app_handle.try_state::<AppState>() {
+        Some(s) => s.emitter.clone(),
+        None => {
+            eprintln!("status_socket: AppState not available");
+            return;
+        }
+    };
+
     std::thread::spawn(move || {
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
                     let app_handle = app_handle.clone();
+                    let emitter = emitter.clone();
                     std::thread::spawn(move || {
-                        handle_connection(stream, &app_handle);
+                        handle_connection(stream, &app_handle, &emitter);
                     });
                 }
                 Err(e) => {
@@ -71,7 +82,7 @@ pub fn start_listener(app_handle: AppHandle) {
     });
 }
 
-fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
+fn handle_connection(stream: UnixStream, app_handle: &AppHandle, emitter: &Arc<dyn EventEmitter>) {
     let reader = BufReader::new(stream);
     for line in reader.lines() {
         match line {
@@ -83,7 +94,7 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle) {
                         return; // close connection immediately
                     } else {
                         let event_name = format!("session-status-hook:{}", session_id);
-                        if let Err(e) = app_handle.emit(&event_name, status) {
+                        if let Err(e) = emitter.emit(&event_name, status) {
                             eprintln!("Failed to emit {}: {}", event_name, e);
                         }
                         if status == "idle" {
@@ -150,7 +161,7 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
 
     // Tell the frontend to refresh its project list
     let event_name = format!("session-cleanup:{}", session_id);
-    if let Err(e) = app_handle.emit(&event_name, "cleanup") {
+    if let Err(e) = state.emitter.emit(&event_name, "cleanup") {
         eprintln!("Failed to emit {}: {}", event_name, e);
     }
 }

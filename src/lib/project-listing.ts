@@ -1,8 +1,8 @@
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "$lib/backend";
 import { projects, type ProjectInventory } from "./stores";
 
 export async function refreshProjectsFromBackend() {
-  const result = await invoke<ProjectInventory>("list_projects");
+  const result = await command<ProjectInventory>("list_projects");
   projects.set(result.projects);
   return result;
 }

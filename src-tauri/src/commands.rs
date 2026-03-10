@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::config;
@@ -359,7 +359,7 @@ pub fn restore_sessions(state: State<AppState>) -> Result<(), String> {
 #[tauri::command]
 pub async fn connect_session(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     session_id: String,
     rows: u16,
     cols: u16,
@@ -399,9 +399,10 @@ pub async fn connect_session(
     // pty-output events immediately, and the main thread must be free to
     // deliver them to the webview (especially the smcup/alternate-screen escape).
     let pty_manager = state.pty_manager.clone();
+    let emitter = state.emitter.clone();
     tokio::task::spawn_blocking(move || {
         let mut mgr = pty_manager.lock().map_err(|e| e.to_string())?;
-        mgr.spawn_session(id, &session_dir, &kind, app_handle, true, None, rows, cols)
+        mgr.spawn_session(id, &session_dir, &kind, emitter, true, None, rows, cols)
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))?
@@ -611,7 +612,7 @@ pub fn list_archived_projects(state: State<AppState>) -> Result<ProjectInventory
 #[tauri::command]
 pub fn unarchive_project(
     state: State<AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     project_id: String,
 ) -> Result<(), String> {
     let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -649,7 +650,7 @@ pub fn unarchive_project(
             session_id,
             &session_dir,
             &kind,
-            app_handle.clone(),
+            state.emitter.clone(),
             true,
             None,
             24,
@@ -684,7 +685,7 @@ pub fn update_agents_md(
 #[tauri::command]
 pub fn create_session(
     state: State<AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     project_id: String,
     kind: Option<String>,
     github_issue: Option<crate::models::GithubIssue>,
@@ -774,7 +775,7 @@ pub fn create_session(
                 session_id,
                 &session_dir,
                 &kind,
-                app_handle,
+                state.emitter.clone(),
                 false,
                 initial_prompt.as_deref(),
                 24,
@@ -864,7 +865,7 @@ const MAX_REBASE_WAIT_SECS: u64 = 360; // 6 minutes
 #[tauri::command]
 pub async fn stage_session_inplace(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     project_id: String,
     session_id: String,
 ) -> Result<(), String> {
@@ -923,7 +924,7 @@ pub async fn stage_session_inplace(
                 let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
             }
 
-            let _ = app_handle.emit("staging-status", "Waiting for commit...");
+            let _ = state.emitter.emit("staging-status", "Waiting for commit...");
 
             let max_polls = MAX_COMMIT_WAIT_SECS / COMMIT_POLL_INTERVAL_SECS;
             let mut committed = false;
@@ -984,7 +985,7 @@ pub async fn stage_session_inplace(
                 }
 
                 let _ =
-                    app_handle.emit("staging-status", "Rebase conflicts. Claude is resolving...");
+                    state.emitter.emit("staging-status", "Rebase conflicts. Claude is resolving...");
 
                 // Poll until rebase is no longer in progress
                 let max_polls = MAX_REBASE_WAIT_SECS / REBASE_POLL_INTERVAL_SECS;
@@ -1184,7 +1185,7 @@ pub fn archive_session(
 #[tauri::command]
 pub fn unarchive_session(
     state: State<AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     project_id: String,
     session_id: String,
 ) -> Result<(), String> {
@@ -1219,7 +1220,7 @@ pub fn unarchive_session(
                 session_uuid,
                 &session_dir,
                 &kind,
-                app_handle,
+                state.emitter.clone(),
                 true,
                 None,
                 24,
@@ -1275,10 +1276,10 @@ pub fn close_session(
 }
 
 #[tauri::command]
-pub fn start_claude_login(state: State<AppState>, app_handle: AppHandle) -> Result<String, String> {
+pub fn start_claude_login(state: State<AppState>, _app_handle: AppHandle) -> Result<String, String> {
     let session_id = Uuid::new_v4();
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.spawn_command(session_id, "claude", &["login"], app_handle)?;
+    pty_manager.spawn_command(session_id, "claude", &["login"], state.emitter.clone())?;
     Ok(session_id.to_string())
 }
 
@@ -1530,7 +1531,7 @@ const MAX_MERGE_REBASE_WAIT_SECS: u64 = 600; // 10 minutes
 #[tauri::command]
 pub async fn merge_session_branch(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     project_id: String,
     session_id: String,
 ) -> Result<crate::models::MergeResponse, String> {
@@ -1587,9 +1588,9 @@ pub async fn merge_session_branch(
                 }
 
                 // Emit status event so frontend can show progress
-                let _ = app_handle.emit(
+                let _ = state.emitter.emit(
                     "merge-status",
-                    format!(
+                    &format!(
                         "Rebase conflicts (attempt {}/{}). Claude is resolving...",
                         attempt + 1,
                         MAX_MERGE_RETRIES
@@ -1796,7 +1797,7 @@ pub async fn get_maintainer_history(
 #[tauri::command]
 pub async fn trigger_maintainer_check(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     project_id: String,
 ) -> Result<crate::models::MaintainerRunLog, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1812,7 +1813,7 @@ pub async fn trigger_maintainer_check(
         )
     };
 
-    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "running");
+    let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "running");
 
     let log = match crate::maintainer::run_maintainer_check(
         &repo_path,
@@ -1821,8 +1822,8 @@ pub async fn trigger_maintainer_check(
     ) {
         Ok(log) => log,
         Err(e) => {
-            let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "error");
-            let _ = app_handle.emit(&format!("maintainer-error:{}", project_id), e.to_string());
+            let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "error");
+            let _ = state.emitter.emit(&format!("maintainer-error:{}", project_id), &e.to_string());
             return Err(e);
         }
     };
@@ -1834,7 +1835,7 @@ pub async fn trigger_maintainer_check(
             .map_err(|e| e.to_string())?;
     }
 
-    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "idle");
+    let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "idle");
 
     Ok(log)
 }
@@ -1842,7 +1843,7 @@ pub async fn trigger_maintainer_check(
 #[tauri::command]
 pub async fn clear_maintainer_reports(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     project_id: String,
 ) -> Result<(), String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1850,7 +1851,7 @@ pub async fn clear_maintainer_reports(
     storage
         .clear_maintainer_run_logs(project_id)
         .map_err(|e| e.to_string())?;
-    let _ = app_handle.emit(&format!("maintainer-status:{}", project_id), "idle");
+    let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "idle");
     Ok(())
 }
 
@@ -1943,6 +1944,7 @@ mod tests {
             storage: Mutex::new(storage),
             pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
+            emitter: crate::emitter::NoopEmitter::new(),
         }
     }
 

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
@@ -81,7 +81,7 @@
     if (!project) return;
     const newEnabled = !project.maintainer.enabled;
     try {
-      await invoke("configure_maintainer", {
+      await command("configure_maintainer", {
         projectId: project.id,
         enabled: newEnabled,
         intervalMinutes: project.maintainer.interval_minutes,
@@ -100,7 +100,7 @@
     if (!project) return;
     const newEnabled = !project.auto_worker.enabled;
     try {
-      await invoke("configure_auto_worker", {
+      await command("configure_auto_worker", {
         projectId: project.id,
         enabled: newEnabled,
       });
@@ -113,7 +113,7 @@
 
   async function saveSessionPrompt(projectId: string, sessionId: string) {
     try {
-      await invoke("save_session_prompt", { projectId, sessionId });
+      await command("save_session_prompt", { projectId, sessionId });
       showToast("Prompt saved", "info");
     } catch (e) {
       showToast(String(e), "error");
@@ -126,16 +126,16 @@
 
     try {
       showToast("Generating issue description...", "info");
-      const body = await invoke<string>("generate_issue_body", { title });
+      const body = await command<string>("generate_issue_body", { title });
 
       showToast("Creating issue...", "info");
-      const issue = await invoke<GithubIssue>("create_github_issue", {
+      const issue = await command<GithubIssue>("create_github_issue", {
         repoPath,
         title,
         body,
       });
 
-      invoke("add_github_label", {
+      command("add_github_label", {
         repoPath,
         issueNumber: issue.number,
         label: `priority:${priority}`,
@@ -143,7 +143,7 @@
         color: priority === "high" ? "F38BA8" : "A6E3A1",
       }).catch((e: unknown) => showToast(`Failed to add priority label: ${e}`, "error"));
 
-      invoke("add_github_label", {
+      command("add_github_label", {
         repoPath,
         issueNumber: issue.number,
         label: complexity === "high" ? "complexity:high" : "complexity:simple",
@@ -180,7 +180,7 @@
     const wrappedPrompt = `You are a prompt engineer, here is a prompt, your goal is to collaborate with me to make it better:\n\n<prompt>\n${prompt.text}\n</prompt>`;
 
     try {
-      const sessionId: string = await invoke("create_session", {
+      const sessionId: string = await command("create_session", {
         projectId: target.projectId,
         kind: "claude",
         initialPrompt: wrappedPrompt,
@@ -209,20 +209,20 @@
 
   async function createSessionWithIssue(projectId: string, repoPath: string, issue: GithubIssue, kind?: string, background?: boolean) {
     try {
-      const sessionId: string = await invoke("create_session", {
+      const sessionId: string = await command("create_session", {
         projectId,
         githubIssue: issue,
         kind: background ? "codex" : (kind ?? currentSessionProvider),
         background: background ?? false,
       });
       // Post comment on the issue (fire and forget)
-      invoke("post_github_comment", {
+      command("post_github_comment", {
         repoPath,
         issueNumber: issue.number,
         body: `Working on this in session \`${sessionId.substring(0, 8)}\``,
       }).catch((e: unknown) => showToast(`Failed to post comment: ${e}`, "error"));
       // Add in-progress label (fire and forget)
-      invoke("add_github_label", {
+      command("add_github_label", {
         repoPath,
         issueNumber: issue.number,
         label: "in-progress",
@@ -246,7 +246,7 @@
     try {
       // 1. Capture screenshot
       showToast(cropped ? "Select area to capture..." : "Capturing screenshot...", "info");
-      const screenshotPath: string = await invoke("capture_app_screenshot", { cropped });
+      const screenshotPath: string = await command("capture_app_screenshot", { cropped });
 
       // Open in Preview only when preview is requested
       if (preview) {
@@ -255,7 +255,7 @@
 
       // 2. Create a new session with initial prompt referencing the screenshot file.
       // Tell Claude to share the path and wait for further instructions.
-      const sessionId: string = await invoke("create_session", {
+      const sessionId: string = await command("create_session", {
         projectId: project.id,
         kind: currentSessionProvider,
         initialPrompt: `I just took a screenshot of the app. The screenshot is saved at: ${screenshotPath}\nPlease read the screenshot image and share what you see, but wait for further prompts before taking any action.`,
@@ -269,16 +269,20 @@
   }
 
   function updateWindowTitle(branch: string, commit: string) {
-    getCurrentWindow().setTitle(
-      `The Controller (${commit}, ${branch}, localhost:${__DEV_PORT__})`,
-    );
+    try {
+      getCurrentWindow().setTitle(
+        `The Controller (${commit}, ${branch}, localhost:${__DEV_PORT__})`,
+      );
+    } catch {
+      // Browser mode — no Tauri window API available
+    }
   }
 
   // Reactively update title when staging state changes
   $effect(() => {
     const stagedProject = projectsState.current.find((p) => p.staged_session);
     if (stagedProject) {
-      invoke<[string, string]>("get_repo_head", { repoPath: stagedProject.repo_path })
+      command<[string, string]>("get_repo_head", { repoPath: stagedProject.repo_path })
         .then(([branch, commit]) => updateWindowTitle(branch, commit))
         .catch(() => {
           // Fallback to staged_session info
@@ -294,9 +298,9 @@
 
     try {
       // Re-spawn PTY sessions for persisted active sessions
-      await invoke("restore_sessions");
+      await command("restore_sessions");
 
-      const config = await invoke<Config | null>("check_onboarding");
+      const config = await command<Config | null>("check_onboarding");
       if (config) {
         appConfig.set(config);
         onboardingComplete.set(true);

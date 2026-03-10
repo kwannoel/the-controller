@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { onMount } from "svelte";
   import { showToast } from "./toast";
 
@@ -19,7 +19,7 @@
     if (loading) return;
     loading = true;
     try {
-      await invoke("delete_project", { projectId, deleteRepo });
+      await command("delete_project", { projectId, deleteRepo });
       onDeleted();
     } catch (e) {
       showToast(String(e), "error");

@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "$lib/backend";
 import { get } from "svelte/store";
 import { projects } from "./stores";
 import { refreshProjectsFromBackend } from "./project-listing";
 
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+vi.mock("$lib/backend", () => ({
+  command: vi.fn(),
+  listen: vi.fn(() => () => {}),
 }));
 
 describe("refreshProjectsFromBackend", () => {
@@ -15,7 +16,7 @@ describe("refreshProjectsFromBackend", () => {
   });
 
   it("applies projects and returns corrupt entries from the list_projects response", async () => {
-    vi.mocked(invoke).mockResolvedValue({
+    vi.mocked(command).mockResolvedValue({
       projects: [
         {
           id: "proj-1",
@@ -41,7 +42,7 @@ describe("refreshProjectsFromBackend", () => {
 
     const result = await refreshProjectsFromBackend();
 
-    expect(invoke).toHaveBeenCalledWith("list_projects");
+    expect(command).toHaveBeenCalledWith("list_projects");
     expect(get(projects)).toHaveLength(1);
     expect(get(projects)[0].name).toBe("test-project");
     expect(result.corrupt_entries).toEqual([

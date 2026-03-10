@@ -1,3 +1,4 @@
+use crate::emitter::EventEmitter;
 use crate::models::{GithubIssue, GithubLabel};
 use crate::pty_manager::PtyManager;
 use crate::storage::Storage;
@@ -81,20 +82,22 @@ pub struct AppState {
     pub storage: Mutex<Storage>,
     pub pty_manager: Arc<Mutex<PtyManager>>,
     pub issue_cache: Arc<Mutex<IssueCache>>,
+    pub emitter: Arc<dyn EventEmitter>,
 }
 
 impl AppState {
-    pub fn from_storage(storage: Storage) -> std::io::Result<Self> {
+    pub fn from_storage(storage: Storage, emitter: Arc<dyn EventEmitter>) -> std::io::Result<Self> {
         storage.ensure_dirs()?;
         Ok(Self {
             storage: Mutex::new(storage),
             pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
+            emitter,
         })
     }
 
-    pub fn new() -> std::io::Result<Self> {
-        Self::from_storage(Storage::with_default_path()?)
+    pub fn new(emitter: Arc<dyn EventEmitter>) -> std::io::Result<Self> {
+        Self::from_storage(Storage::with_default_path()?, emitter)
     }
 }
 
@@ -252,7 +255,8 @@ mod tests {
         let file_path = tmp.path().join("blocked-base-dir");
         fs::write(&file_path, "not a directory").unwrap();
 
-        let error = AppState::from_storage(Storage::new(file_path))
+        let emitter = crate::emitter::NoopEmitter::new();
+        let error = AppState::from_storage(Storage::new(file_path), emitter)
             .err()
             .expect("app state init should fail when storage dirs cannot be created");
 

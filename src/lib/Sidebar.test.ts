@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/svelte";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "$lib/backend";
 import { showToast } from "./toast";
 import {
   activeSessionId,
@@ -74,7 +74,7 @@ describe("Sidebar provider indicator", () => {
     hotkeyAction.set(null);
     selectedSessionProvider.set("claude");
 
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "list_projects") return { projects: [], corrupt_entries: [] };
       if (cmd === "list_archived_projects")
         return { projects: [], corrupt_entries: [] };
@@ -101,7 +101,7 @@ describe("Sidebar provider indicator", () => {
   });
 
   it("surfaces corrupt project metadata returned by list_projects", async () => {
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "list_projects") {
         return {
           projects: [

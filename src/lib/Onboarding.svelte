@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { onMount, onDestroy } from "svelte";
   import { appConfig, onboardingComplete, type DirEntry } from "./stores";
   import { showToast } from "./toast";
@@ -30,8 +30,8 @@
   onMount(async () => {
     try {
       const homeDir =
-        (await invoke<string | null>("home_dir")) ?? "/Users";
-      entries = await invoke<DirEntry[]>("list_directories_at", {
+        (await command<string | null>("home_dir")) ?? "/Users";
+      entries = await command<DirEntry[]>("list_directories_at", {
         path: homeDir,
       });
     } catch (e) {
@@ -43,7 +43,7 @@
   onDestroy(async () => {
     if (loginSessionId) {
       try {
-        await invoke("stop_claude_login", { sessionId: loginSessionId });
+        await command("stop_claude_login", { sessionId: loginSessionId });
       } catch (_) {}
     }
   });
@@ -69,7 +69,7 @@
   async function selectDirectory(entry: DirEntry) {
     projectsRoot = entry.path;
     step = "cli-check";
-    invoke("save_onboarding_config", { projectsRoot: entry.path }).catch((e) =>
+    command("save_onboarding_config", { projectsRoot: entry.path }).catch((e) =>
       showToast(String(e), "error"),
     );
     checkClaude();
@@ -78,7 +78,7 @@
   async function checkClaude() {
     claudeStatus = "checking";
     try {
-      const status = await invoke<string>("check_claude_cli");
+      const status = await command<string>("check_claude_cli");
       claudeStatus = status as typeof claudeStatus;
 
       if (status === "authenticated") {
@@ -94,7 +94,7 @@
 
   async function startLogin() {
     try {
-      loginSessionId = await invoke<string>("start_claude_login");
+      loginSessionId = await command<string>("start_claude_login");
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -104,7 +104,7 @@
     // Clean up login PTY
     if (loginSessionId) {
       try {
-        await invoke("stop_claude_login", { sessionId: loginSessionId });
+        await command("stop_claude_login", { sessionId: loginSessionId });
       } catch (_) {}
       loginSessionId = null;
     }

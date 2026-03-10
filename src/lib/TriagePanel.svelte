@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { showToast } from "./toast";
   import { focusTarget, projects, type GithubIssue, type Project, type FocusTarget, type TriageCategory } from "./stores";
 
@@ -66,7 +66,7 @@
     loading = true;
     error = null;
     try {
-      const allIssues = await invoke<GithubIssue[]>("list_github_issues", { repoPath: path });
+      const allIssues = await command<GithubIssue[]>("list_github_issues", { repoPath: path });
       // Filter based on triage category
       issues = allIssues.filter(issue => {
         if (issue.labels.some(l => l.name === "in-progress")) return false;
@@ -116,7 +116,7 @@
 
     // Fire and forget label assignments
     if (priority) {
-      invoke("add_github_label", {
+      command("add_github_label", {
         repoPath: path,
         issueNumber: issue.number,
         label: `priority:${priority}`,
@@ -126,7 +126,7 @@
     }
 
     if (complexity) {
-      invoke("add_github_label", {
+      command("add_github_label", {
         repoPath: path,
         issueNumber: issue.number,
         label: complexity === "low" ? "complexity:simple" : "complexity:high",
@@ -136,7 +136,7 @@
     }
 
     // Mark issue as triaged
-    invoke("add_github_label", {
+    command("add_github_label", {
       repoPath: path,
       issueNumber: issue.number,
       label: "triaged",

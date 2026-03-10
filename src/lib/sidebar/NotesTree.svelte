@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import { fromStore } from "svelte/store";
   import { noteEntries, type NoteEntry, type Project, type FocusTarget } from "../stores";
 
@@ -41,7 +41,7 @@
   }
 
   function fetchNotes(project: Project) {
-    invoke<NoteEntry[]>("list_notes", { projectName: project.name }).then((entries) => {
+    command<NoteEntry[]>("list_notes", { projectName: project.name }).then((entries) => {
       noteEntries.update((map) => {
         const next = new Map(map);
         next.set(project.id, entries);

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import type { SavedPrompt } from "./stores";
 
   interface Props {
@@ -21,7 +21,7 @@
 
     (async () => {
       try {
-        prompts = await invoke<SavedPrompt[]>("list_project_prompts", { projectId });
+        prompts = await command<SavedPrompt[]>("list_project_prompts", { projectId });
       } catch (e) {
         error = String(e);
       } finally {

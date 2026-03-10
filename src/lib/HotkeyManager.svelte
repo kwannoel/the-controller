@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore, get } from "svelte/store";
-  import { invoke } from "@tauri-apps/api/core";
+  import { command } from "$lib/backend";
   import {
     projects,
     activeSessionId,
@@ -86,7 +86,7 @@
 
   function forwardEscape() {
     if (activeId) {
-      invoke("write_to_pty", { sessionId: activeId, data: "\x1b" });
+      command("write_to_pty", { sessionId: activeId, data: "\x1b" });
     }
   }
 
