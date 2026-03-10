@@ -116,7 +116,9 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
     // the lock ordering used by Tauri commands (storage → pty_manager).
     // Reversed order causes deadlock.
     if let Ok(storage) = state.storage.lock() {
-        if let Ok(mut projects) = storage.list_projects() {
+        if let Ok(inventory) = storage.list_projects() {
+            inventory.warn_if_corrupt("status socket cleanup");
+            let mut projects = inventory.projects;
             for project in &mut projects {
                 if let Some(pos) = project.sessions.iter().position(|s| s.id == session_id) {
                     let session = project.sessions.remove(pos);

@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::config;
 use crate::models::{CommitInfo, Project, SessionConfig};
 use crate::state::AppState;
+use crate::storage::ProjectInventory;
 use crate::worktree::WorktreeManager;
 
 mod github;
@@ -157,9 +158,10 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
 #[tauri::command]
 pub fn restore_sessions(state: State<AppState>) -> Result<(), String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let projects = storage.list_projects().map_err(|e| e.to_string())?;
+    let inventory = storage.list_projects().map_err(|e| e.to_string())?;
+    inventory.warn_if_corrupt("restore_sessions");
     // Migrate worktree paths from UUID-based to name-based directories
-    for project in &projects {
+    for project in &inventory.projects {
         if let Err(e) = storage.migrate_worktree_paths(project) {
             eprintln!(
                 "Failed to migrate worktrees for project '{}': {}",
@@ -198,8 +200,10 @@ pub async fn connect_session(
     // Find session config from storage
     let (session_dir, kind) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let projects = storage.list_projects().map_err(|e| e.to_string())?;
-        projects
+        let inventory = storage.list_projects().map_err(|e| e.to_string())?;
+        inventory.warn_if_corrupt("connect_session");
+        inventory
+            .projects
             .iter()
             .flat_map(|p| p.sessions.iter().map(move |s| (p, s)))
             .find(|(_, s)| s.id == id)
@@ -240,7 +244,8 @@ pub fn create_project(
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
     // Reject duplicate project names (skip archived projects)
-    if let Ok(existing) = storage.list_projects() {
+    if let Ok(inventory) = storage.list_projects() {
+        let existing = inventory.projects;
         if existing.iter().any(|p| p.name == name && !p.archived) {
             return Err(format!("A project named '{}' already exists", name));
         }
@@ -295,7 +300,8 @@ pub fn load_project(
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
     // Return existing project if one with the same repo_path exists
-    if let Ok(existing) = storage.list_projects() {
+    if let Ok(inventory) = storage.list_projects() {
+        let existing = inventory.projects;
         if let Some(project) = existing.iter().find(|p| p.repo_path == repo_path) {
             if project.archived {
                 // Unarchive the project so it becomes active again
@@ -344,10 +350,10 @@ pub fn load_project(
 }
 
 #[tauri::command]
-pub fn list_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
+pub fn list_projects(state: State<AppState>) -> Result<ProjectInventory, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects.into_iter().filter(|p| !p.archived).collect())
+    let inventory = storage.list_projects().map_err(|e| e.to_string())?;
+    Ok(inventory.filter_projects(|project| !project.archived))
 }
 
 #[tauri::command]
@@ -413,13 +419,12 @@ pub fn delete_project(
 }
 
 #[tauri::command]
-pub fn list_archived_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
+pub fn list_archived_projects(state: State<AppState>) -> Result<ProjectInventory, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let projects = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(projects
-        .into_iter()
-        .filter(|p| p.archived || p.sessions.iter().any(|s| s.archived))
-        .collect())
+    let inventory = storage.list_projects().map_err(|e| e.to_string())?;
+    Ok(inventory.filter_projects(|project| {
+        project.archived || project.sessions.iter().any(|session| session.archived)
+    }))
 }
 
 #[tauri::command]
@@ -1153,7 +1158,8 @@ pub fn scaffold_project(state: State<AppState>, name: String) -> Result<Project,
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
     // Reject duplicate project names (skip archived projects)
-    if let Ok(existing) = storage.list_projects() {
+    if let Ok(inventory) = storage.list_projects() {
+        let existing = inventory.projects;
         if existing.iter().any(|p| p.name == name && !p.archived) {
             return Err(format!("A project named '{}' already exists", name));
         }
@@ -2109,7 +2115,7 @@ mod tests {
                 .list_projects()
                 .expect("list projects after failed scaffold");
             assert!(
-                stored.is_empty(),
+                stored.projects.is_empty(),
                 "failed scaffold should not persist project state"
             );
 
@@ -2132,11 +2138,86 @@ mod tests {
                 .list_projects()
                 .expect("list projects after successful retry");
             assert_eq!(
-                stored.len(),
+                stored.projects.len(),
                 1,
                 "successful retry should persist exactly one project"
             );
-            assert_eq!(stored[0].repo_path, repo_path.to_string_lossy());
+            assert_eq!(stored.projects[0].repo_path, repo_path.to_string_lossy());
+        });
+    }
+
+    #[test]
+    fn test_create_project_succeeds_with_corrupt_sibling_metadata() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let repo_dir = TempDir::new().unwrap();
+
+        let corrupt_dir = base_dir.path().join("projects").join(Uuid::new_v4().to_string());
+        fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
+        fs::write(corrupt_dir.join("project.json"), "{ invalid json").expect("write corrupt json");
+
+        let project = create_project(
+            state_from_ref(&app_state),
+            "fresh-project".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect("create project should ignore corrupt sibling metadata");
+
+        assert_eq!(project.name, "fresh-project");
+    }
+
+    #[test]
+    fn test_load_project_succeeds_with_corrupt_sibling_metadata() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let repo_dir = TempDir::new().unwrap();
+        git2::Repository::init(repo_dir.path()).expect("init git repo");
+
+        let corrupt_dir = base_dir.path().join("projects").join(Uuid::new_v4().to_string());
+        fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
+        fs::write(corrupt_dir.join("project.json"), "{ invalid json").expect("write corrupt json");
+
+        let project = load_project(
+            state_from_ref(&app_state),
+            "imported-project".to_string(),
+            repo_dir.path().to_string_lossy().to_string(),
+        )
+        .expect("load project should ignore corrupt sibling metadata");
+
+        assert_eq!(project.name, "imported-project");
+    }
+
+    #[test]
+    fn test_scaffold_project_succeeds_with_corrupt_sibling_metadata() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let repo_path = projects_root.path().join("scaffold-with-corrupt-sibling");
+        let real_git = real_git_path();
+
+        let corrupt_dir = base_dir.path().join("projects").join(Uuid::new_v4().to_string());
+        fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
+        fs::write(corrupt_dir.join("project.json"), "{ invalid json").expect("write corrupt json");
+
+        with_fake_cli_bins(|gh_path, git_path, _state_dir| {
+            write_fake_command(
+                gh_path,
+                &format!(
+                    "if [ \"$1\" = \"repo\" ] && [ \"$2\" = \"create\" ]; then\n  \"{real_git}\" -C \"$PWD\" remote add origin git@github.com:test-owner/scaffold-with-corrupt-sibling.git\n  exit 0\nfi\necho \"unexpected gh invocation: $*\" >&2\nexit 1"
+                ),
+            );
+            write_fake_command(git_path, "exit 0");
+
+            let project = scaffold_project(
+                state_from_ref(&app_state),
+                "scaffold-with-corrupt-sibling".to_string(),
+            )
+            .expect("scaffold should ignore corrupt sibling metadata");
+
+            assert_eq!(project.name, "scaffold-with-corrupt-sibling");
+            assert!(repo_path.exists(), "repo should be created");
         });
     }
 

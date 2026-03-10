@@ -113,6 +113,17 @@ export interface Project {
   staged_session: StagedSession | null;
 }
 
+export interface CorruptProjectEntry {
+  project_dir: string;
+  project_file: string;
+  error: string;
+}
+
+export interface ProjectInventory {
+  projects: Project[];
+  corrupt_entries: CorruptProjectEntry[];
+}
+
 export interface Config {
   projects_root: string;
 }
@@ -128,7 +139,10 @@ export const workspaceModePickerVisible = writable<boolean>(false);
 export type SessionProvider = "claude" | "codex";
 export const selectedSessionProvider = writable<SessionProvider>("claude");
 
-export const activeNote = writable<{ projectId: string; filename: string } | null>(null);
+export const activeNote = writable<{
+  projectId: string;
+  filename: string;
+} | null>(null);
 export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
 export const notePreviewMode = writable<boolean>(false);
 
@@ -138,7 +152,9 @@ export type SessionStatus = "working" | "idle" | "exited";
 export const sessionStatuses = writable<Map<string, SessionStatus>>(new Map());
 export const appConfig = writable<Config | null>(null);
 export const onboardingComplete = writable<boolean>(false);
-export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(new Map());
+export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(
+  new Map(),
+);
 export const maintainerErrors = writable<Map<string, string>>(new Map());
 export type AutoWorkerStatus = {
   status: "idle" | "working";
@@ -146,7 +162,9 @@ export type AutoWorkerStatus = {
   issue_number?: number;
   issue_title?: string;
 };
-export const autoWorkerStatuses = writable<Map<string, AutoWorkerStatus>>(new Map());
+export const autoWorkerStatuses = writable<Map<string, AutoWorkerStatus>>(
+  new Map(),
+);
 
 export interface WorkerReport {
   issue_number: number;
@@ -172,7 +190,13 @@ export type HotkeyAction =
   | { type: "unarchive-project"; projectId: string }
   | { type: "toggle-archive-view" }
   | { type: "create-issue"; projectId: string; repoPath: string }
-  | { type: "pick-issue-for-session"; projectId: string; repoPath: string; kind?: string; background?: boolean }
+  | {
+      type: "pick-issue-for-session";
+      projectId: string;
+      repoPath: string;
+      kind?: string;
+      background?: boolean;
+    }
   | { type: "merge-session"; sessionId: string; projectId: string }
   | { type: "finish-branch"; sessionId: string; kind?: string }
   | { type: "screenshot-to-session"; preview?: boolean; cropped?: boolean }
@@ -229,9 +253,7 @@ export type FocusTarget =
 export const focusTarget = writable<FocusTarget>(null);
 
 // Jump navigation
-export type JumpPhase =
-  | { phase: "project" }
-  | null;
+export type JumpPhase = { phase: "project" } | null;
 
 export const jumpMode = writable<JumpPhase>(null);
 

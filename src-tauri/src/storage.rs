@@ -1,8 +1,88 @@
+use serde::{Deserialize, Serialize};
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use uuid::Uuid;
 
 use crate::models::{MaintainerRunLog, Project};
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CorruptProjectEntry {
+    pub project_dir: PathBuf,
+    pub project_file: PathBuf,
+    pub error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProjectInventory {
+    pub projects: Vec<Project>,
+    pub corrupt_entries: Vec<CorruptProjectEntry>,
+}
+
+impl ProjectInventory {
+    pub fn filter_projects<F>(self, mut predicate: F) -> Self
+    where
+        F: FnMut(&Project) -> bool,
+    {
+        Self {
+            projects: self.projects.into_iter().filter(|project| predicate(project)).collect(),
+            corrupt_entries: self.corrupt_entries,
+        }
+    }
+
+    pub fn warn_if_corrupt(&self, context: &str) {
+        for entry in &self.corrupt_entries {
+            eprintln!(
+                "Warning: {}: failed to parse {}: {}",
+                context,
+                entry.project_file.display(),
+                entry.error
+            );
+        }
+    }
+
+}
+
+impl Deref for ProjectInventory {
+    type Target = Vec<Project>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.projects
+    }
+}
+
+impl DerefMut for ProjectInventory {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.projects
+    }
+}
+
+impl IntoIterator for ProjectInventory {
+    type Item = Project;
+    type IntoIter = std::vec::IntoIter<Project>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.projects.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ProjectInventory {
+    type Item = &'a Project;
+    type IntoIter = std::slice::Iter<'a, Project>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.projects.iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a mut ProjectInventory {
+    type Item = &'a mut Project;
+    type IntoIter = std::slice::IterMut<'a, Project>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.projects.iter_mut()
+    }
+}
 
 pub struct Storage {
     base_dir: PathBuf,
@@ -55,24 +135,30 @@ impl Storage {
     }
 
     /// List all projects by reading every `project.json` in the projects directory.
-    pub fn list_projects(&self) -> std::io::Result<Vec<Project>> {
+    pub fn list_projects(&self) -> std::io::Result<ProjectInventory> {
         let projects_dir = self.base_dir.join("projects");
         if !projects_dir.exists() {
-            return Ok(Vec::new());
+            return Ok(ProjectInventory::default());
         }
 
-        let mut projects = Vec::new();
+        let mut inventory = ProjectInventory::default();
         for entry in fs::read_dir(&projects_dir)? {
             let entry = entry?;
-            let project_file = entry.path().join("project.json");
+            let project_dir = entry.path();
+            let project_file = project_dir.join("project.json");
             if project_file.exists() {
                 let json = fs::read_to_string(&project_file)?;
-                if let Ok(project) = serde_json::from_str::<Project>(&json) {
-                    projects.push(project);
+                match serde_json::from_str::<Project>(&json) {
+                    Ok(project) => inventory.projects.push(project),
+                    Err(error) => inventory.corrupt_entries.push(CorruptProjectEntry {
+                        project_dir,
+                        project_file,
+                        error: error.to_string(),
+                    }),
                 }
             }
         }
-        Ok(projects)
+        Ok(inventory)
     }
 
     /// Migrate worktree directories from UUID-based to name-based paths.
@@ -285,8 +371,29 @@ mod tests {
         storage.save_project(&p1).expect("save p1");
         storage.save_project(&p2).expect("save p2");
 
-        let projects = storage.list_projects().expect("list");
-        assert_eq!(projects.len(), 2);
+        let inventory = storage.list_projects().expect("list");
+        assert_eq!(inventory.projects.len(), 2);
+        assert!(inventory.corrupt_entries.is_empty());
+    }
+
+    #[test]
+    fn test_list_projects_reports_corrupt_project_json() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+
+        let valid = make_project("valid-project", "/tmp/repo-valid");
+        storage.save_project(&valid).expect("save valid");
+
+        let corrupt_dir = storage.project_dir(Uuid::new_v4());
+        fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
+        let corrupt_file = corrupt_dir.join("project.json");
+        fs::write(&corrupt_file, "{ invalid json").expect("write corrupt project.json");
+
+        let inventory = storage.list_projects().expect("list");
+        assert_eq!(inventory.projects.len(), 1);
+        assert_eq!(inventory.projects[0].name, "valid-project");
+        assert_eq!(inventory.corrupt_entries.len(), 1);
+        assert_eq!(inventory.corrupt_entries[0].project_file, corrupt_file);
     }
 
     #[test]
@@ -294,8 +401,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let storage = make_storage(&tmp);
 
-        let projects = storage.list_projects().expect("list");
-        assert!(projects.is_empty());
+        let inventory = storage.list_projects().expect("list");
+        assert!(inventory.projects.is_empty());
+        assert!(inventory.corrupt_entries.is_empty());
     }
 
     #[test]
