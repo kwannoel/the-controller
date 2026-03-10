@@ -924,7 +924,9 @@ pub async fn stage_session_inplace(
                 let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
             }
 
-            let _ = state.emitter.emit("staging-status", "Waiting for commit...");
+            let _ = state
+                .emitter
+                .emit("staging-status", "Waiting for commit...");
 
             let max_polls = MAX_COMMIT_WAIT_SECS / COMMIT_POLL_INTERVAL_SECS;
             let mut committed = false;
@@ -984,8 +986,9 @@ pub async fn stage_session_inplace(
                     let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
                 }
 
-                let _ =
-                    state.emitter.emit("staging-status", "Rebase conflicts. Claude is resolving...");
+                let _ = state
+                    .emitter
+                    .emit("staging-status", "Rebase conflicts. Claude is resolving...");
 
                 // Poll until rebase is no longer in progress
                 let max_polls = MAX_REBASE_WAIT_SECS / REBASE_POLL_INTERVAL_SECS;
@@ -1276,7 +1279,10 @@ pub fn close_session(
 }
 
 #[tauri::command]
-pub fn start_claude_login(state: State<AppState>, _app_handle: AppHandle) -> Result<String, String> {
+pub fn start_claude_login(
+    state: State<AppState>,
+    _app_handle: AppHandle,
+) -> Result<String, String> {
     let session_id = Uuid::new_v4();
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.spawn_command(session_id, "claude", &["login"], state.emitter.clone())?;
@@ -1794,6 +1800,38 @@ pub async fn get_maintainer_history(
         .map_err(|e| e.to_string())
 }
 
+async fn run_maintainer_check_spawn_blocking_with<F>(
+    repo_path: String,
+    project_id: Uuid,
+    github_repo: Option<String>,
+    runner: F,
+) -> Result<crate::models::MaintainerRunLog, String>
+where
+    F: FnOnce(String, Uuid, Option<String>) -> Result<crate::models::MaintainerRunLog, String>
+        + Send
+        + 'static,
+{
+    tokio::task::spawn_blocking(move || runner(repo_path, project_id, github_repo))
+        .await
+        .map_err(|e| format!("Task failed: {e}"))?
+}
+
+async fn run_maintainer_check_spawn_blocking(
+    repo_path: String,
+    project_id: Uuid,
+    github_repo: Option<String>,
+) -> Result<crate::models::MaintainerRunLog, String> {
+    run_maintainer_check_spawn_blocking_with(
+        repo_path,
+        project_id,
+        github_repo,
+        |repo_path, project_id, github_repo| {
+            crate::maintainer::run_maintainer_check(&repo_path, project_id, github_repo.as_deref())
+        },
+    )
+    .await
+}
+
 #[tauri::command]
 pub async fn trigger_maintainer_check(
     state: State<'_, AppState>,
@@ -1813,17 +1851,19 @@ pub async fn trigger_maintainer_check(
         )
     };
 
-    let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "running");
+    let _ = state
+        .emitter
+        .emit(&format!("maintainer-status:{}", project_id), "running");
 
-    let log = match crate::maintainer::run_maintainer_check(
-        &repo_path,
-        project_id,
-        github_repo.as_deref(),
-    ) {
+    let log = match run_maintainer_check_spawn_blocking(repo_path, project_id, github_repo).await {
         Ok(log) => log,
         Err(e) => {
-            let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "error");
-            let _ = state.emitter.emit(&format!("maintainer-error:{}", project_id), &e.to_string());
+            let _ = state
+                .emitter
+                .emit(&format!("maintainer-status:{}", project_id), "error");
+            let _ = state
+                .emitter
+                .emit(&format!("maintainer-error:{}", project_id), &e.to_string());
             return Err(e);
         }
     };
@@ -1835,7 +1875,9 @@ pub async fn trigger_maintainer_check(
             .map_err(|e| e.to_string())?;
     }
 
-    let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "idle");
+    let _ = state
+        .emitter
+        .emit(&format!("maintainer-status:{}", project_id), "idle");
 
     Ok(log)
 }
@@ -1851,7 +1893,9 @@ pub async fn clear_maintainer_reports(
     storage
         .clear_maintainer_run_logs(project_id)
         .map_err(|e| e.to_string())?;
-    let _ = state.emitter.emit(&format!("maintainer-status:{}", project_id), "idle");
+    let _ = state
+        .emitter
+        .emit(&format!("maintainer-status:{}", project_id), "idle");
     Ok(())
 }
 
@@ -1909,7 +1953,7 @@ fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
 mod tests {
     use super::*;
     use crate::config::{save_config, Config};
-    use crate::models::{SavedPrompt, SessionConfig};
+    use crate::models::{MaintainerRunLog, SavedPrompt, SessionConfig};
     use crate::pty_manager::PtyManager;
     use crate::state::{AppState, IssueCache};
     use crate::storage::Storage;
@@ -2961,5 +3005,60 @@ mod tests {
         assert!(validate_maintainer_interval(1440).is_ok());
         assert!(validate_maintainer_interval(0).is_err());
         assert!(validate_maintainer_interval(4).is_err());
+    }
+
+    #[test]
+    fn test_trigger_maintainer_check_uses_spawn_blocking() {
+        let source =
+            fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs"))
+                .expect("read commands source");
+        let start = source
+            .find("pub async fn trigger_maintainer_check")
+            .expect("find trigger_maintainer_check");
+        let rest = &source[start..];
+        let end = rest
+            .find("\n#[tauri::command]")
+            .expect("find end of trigger_maintainer_check");
+        let function_body = &rest[..end];
+
+        assert!(
+            function_body.contains("spawn_blocking"),
+            "trigger_maintainer_check must offload blocking maintainer work with spawn_blocking"
+        );
+    }
+
+    #[test]
+    fn test_run_maintainer_check_spawn_blocking_with_offloads_work() {
+        run_async_test(async {
+            let runtime_thread_id = thread::current().id();
+            let project_id = Uuid::new_v4();
+
+            let log = run_maintainer_check_spawn_blocking_with(
+                "/tmp/project".to_string(),
+                project_id,
+                Some("owner/repo".to_string()),
+                move |repo_path, inner_project_id, github_repo| {
+                    assert_eq!(repo_path, "/tmp/project");
+                    assert_eq!(inner_project_id, project_id);
+                    assert_eq!(github_repo.as_deref(), Some("owner/repo"));
+                    assert_ne!(thread::current().id(), runtime_thread_id);
+
+                    Ok(MaintainerRunLog {
+                        id: Uuid::new_v4(),
+                        project_id: inner_project_id,
+                        timestamp: "2026-03-10T00:00:00Z".to_string(),
+                        issues_filed: vec![],
+                        issues_updated: vec![],
+                        issues_unchanged: 0,
+                        issues_skipped: 0,
+                        summary: "No actionable maintainer issues found".to_string(),
+                    })
+                },
+            )
+            .await
+            .expect("maintainer check should succeed");
+
+            assert_eq!(log.project_id, project_id);
+        });
     }
 }
