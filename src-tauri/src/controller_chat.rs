@@ -67,11 +67,18 @@ pub struct ControllerAgentTurnOutput {
 
 impl ControllerChatSession {
     pub fn update_focus(&mut self, update: ControllerFocusUpdate) {
+        let has_project_scope = update.project_id.is_some();
         let project_changed = update
             .project_id
             .is_some_and(|project_id| self.focus.project_id != Some(project_id));
-        if project_changed {
+
+        if project_changed || (has_project_scope && update.session_id.is_none()) {
             self.focus.session_id = None;
+        }
+        if project_changed
+            || (has_project_scope && update.note_filename.is_none())
+            || (update.session_id.is_some() && update.note_filename.is_none())
+        {
             self.focus.note_filename = None;
         }
 
@@ -507,6 +514,62 @@ mod tests {
         assert_eq!(session.focus.project_id, Some(project_b_id));
         assert_eq!(session.focus.project_name.as_deref(), Some("proj-b"));
         assert!(session.focus.session_id.is_none());
+        assert!(session.focus.note_filename.is_none());
+    }
+
+    #[test]
+    fn test_controller_focus_clears_stale_session_and_note_on_same_project_project_focus() {
+        let mut session = ControllerChatSession::default();
+        let project_id = Uuid::from_u128(10);
+        let session_id = Uuid::from_u128(11);
+
+        session.update_focus(ControllerFocusUpdate {
+            project_id: Some(project_id),
+            project_name: Some("proj".to_string()),
+            session_id: Some(session_id),
+            note_filename: Some("a.md".to_string()),
+            workspace_mode: Some("notes".to_string()),
+        });
+
+        session.update_focus(ControllerFocusUpdate {
+            project_id: Some(project_id),
+            project_name: Some("proj".to_string()),
+            session_id: None,
+            note_filename: None,
+            workspace_mode: None,
+        });
+
+        assert_eq!(session.focus.project_id, Some(project_id));
+        assert_eq!(session.focus.project_name.as_deref(), Some("proj"));
+        assert!(session.focus.session_id.is_none());
+        assert!(session.focus.note_filename.is_none());
+    }
+
+    #[test]
+    fn test_controller_focus_clears_stale_note_on_session_focus_update() {
+        let mut session = ControllerChatSession::default();
+        let project_id = Uuid::from_u128(20);
+        let old_session_id = Uuid::from_u128(21);
+        let new_session_id = Uuid::from_u128(22);
+
+        session.update_focus(ControllerFocusUpdate {
+            project_id: Some(project_id),
+            project_name: Some("proj".to_string()),
+            session_id: Some(old_session_id),
+            note_filename: Some("a.md".to_string()),
+            workspace_mode: Some("notes".to_string()),
+        });
+
+        session.update_focus(ControllerFocusUpdate {
+            project_id: None,
+            project_name: None,
+            session_id: Some(new_session_id),
+            note_filename: None,
+            workspace_mode: None,
+        });
+
+        assert_eq!(session.focus.project_id, Some(project_id));
+        assert_eq!(session.focus.session_id, Some(new_session_id));
         assert!(session.focus.note_filename.is_none());
     }
 
