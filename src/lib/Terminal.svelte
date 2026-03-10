@@ -7,9 +7,10 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
-  import { activeSessionId, projects, type Project, type ProjectInventory } from "./stores";
+  import { activeSessionId, projects, type Project } from "./stores";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {
@@ -80,12 +81,7 @@
       projectId: match.projectId,
       sessionId,
       prompt,
-    }).then(() => {
-      // Refresh the store so SummaryPane picks up the change
-      invoke<ProjectInventory>("list_projects").then((result) => {
-        projects.set(result.projects);
-      });
-    }).catch((err) => {
+    }).then(() => refreshProjectsFromBackend()).catch((err) => {
       console.error("Failed to save initial prompt:", err);
     });
   }
