@@ -65,8 +65,8 @@
       }
       prevNoteKey = key;
 
-      if (currentNote && projectName) {
-        loadNote(projectName, currentNote.filename);
+      if (currentNote && projectName && key) {
+        loadNote(projectName, currentNote.filename, key);
       } else {
         content = "";
         savedContent = "";
@@ -93,22 +93,21 @@
     }
   });
 
-  async function loadNote(pName: string, filename: string) {
+  async function loadNote(pName: string, filename: string, requestKey: string) {
     loading = true;
     try {
       const text = await invoke<string>("read_note", { projectName: pName, filename });
-      // Verify we're still on the same note
-      if (prevNoteKey === `${currentNote?.projectId}:${currentNote?.filename}`) {
+      if (prevNoteKey === requestKey) {
         content = text;
         savedContent = text;
       }
     } catch {
-      if (prevNoteKey === `${currentNote?.projectId}:${currentNote?.filename}`) {
+      if (prevNoteKey === requestKey) {
         content = "";
         savedContent = "";
       }
     } finally {
-      if (prevNoteKey === `${currentNote?.projectId}:${currentNote?.filename}`) {
+      if (prevNoteKey === requestKey) {
         loading = false;
       }
     }
