@@ -10,6 +10,14 @@ use crate::emitter::EventEmitter;
 
 use crate::tmux::TmuxManager;
 
+fn build_tmux_attach_command(tmux_bin: &str, tmux_name: &str) -> CommandBuilder {
+    let mut cmd = CommandBuilder::new(tmux_bin);
+    cmd.arg("attach-session");
+    cmd.arg("-t");
+    cmd.arg(tmux_name);
+    cmd
+}
+
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
@@ -55,7 +63,13 @@ impl PtyManager {
         if TmuxManager::is_available() {
             // Create tmux session if it doesn't already exist
             if !TmuxManager::has_session(session_id) {
-                TmuxManager::create_session(session_id, working_dir, command, continue_session, initial_prompt)?;
+                TmuxManager::create_session(
+                    session_id,
+                    working_dir,
+                    command,
+                    continue_session,
+                    initial_prompt,
+                )?;
             }
             // Pre-resize tmux to the target size so attaching doesn't cause
             // an intermediate resize (which would make claude re-render and
@@ -65,7 +79,15 @@ impl PtyManager {
             self.attach_tmux_session(session_id, emitter)
         } else {
             // No tmux — spawn the command directly in a PTY
-            self.spawn_direct_session(session_id, working_dir, command, emitter, initial_prompt, rows, cols)
+            self.spawn_direct_session(
+                session_id,
+                working_dir,
+                command,
+                emitter,
+                initial_prompt,
+                rows,
+                cols,
+            )
         }
     }
 
@@ -135,8 +157,7 @@ impl PtyManager {
                         break;
                     }
                     Ok(n) => {
-                        let encoded =
-                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
                         let _ = emitter.emit(&output_event, &encoded);
                     }
                     Err(_) => {
@@ -183,10 +204,9 @@ impl PtyManager {
             })
             .map_err(|e| format!("failed to open pty: {}", e))?;
 
-        let mut cmd = CommandBuilder::new("/opt/homebrew/bin/tmux");
-        cmd.arg("attach-session");
-        cmd.arg("-t");
-        cmd.arg(&tmux_name);
+        let tmux_bin =
+            TmuxManager::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
+        let cmd = build_tmux_attach_command(&tmux_bin, &tmux_name);
 
         let _child = pair
             .slave
@@ -223,8 +243,7 @@ impl PtyManager {
                         break;
                     }
                     Ok(n) => {
-                        let encoded =
-                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
                         let _ = emitter.emit(&output_event, &encoded);
                     }
                     Err(_) => {
@@ -309,8 +328,7 @@ impl PtyManager {
                         break;
                     }
                     Ok(n) => {
-                        let encoded =
-                            base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
                         let _ = emitter.emit(&output_event, &encoded);
                     }
                     Err(_) => {
@@ -434,6 +452,7 @@ impl PtyManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
 
     #[test]
     fn test_new_manager_is_empty_and_is_alive_returns_false() {
@@ -482,5 +501,18 @@ mod tests {
         let result = manager.send_raw_to_session(invalid_id, b"hello");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("session not found"));
+    }
+
+    #[test]
+    fn test_build_tmux_attach_command_uses_resolved_tmux_binary() {
+        let cmd = build_tmux_attach_command(
+            "/usr/local/bin/tmux",
+            "ctrl-550e8400-e29b-41d4-a716-446655440000",
+        );
+
+        assert_eq!(
+            cmd.get_argv().first().map(|arg| arg.as_os_str()),
+            Some(OsStr::new("/usr/local/bin/tmux"))
+        );
     }
 }

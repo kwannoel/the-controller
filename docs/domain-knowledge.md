@@ -44,7 +44,7 @@ Key behaviors:
 - Dev restart (process killed): no cleanup runs → tmux sessions survive → app reattaches on restart
 - `CLAUDECODE` env var is removed on `tmux new-session`, not on `tmux attach`
 
-tmux binary: `/opt/homebrew/bin/tmux`. Session naming: `ctrl-{uuid}`.
+tmux binary: resolved at runtime by checking `/opt/homebrew/bin/tmux`, then `/usr/local/bin/tmux`, then `tmux` on `PATH`. Session naming: `ctrl-{uuid}`.
 
 Affected files:
 - `src-tauri/src/tmux.rs` — tmux binary interactions

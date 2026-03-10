@@ -1,7 +1,11 @@
+use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 use std::process::Command;
 use uuid::Uuid;
 
-const TMUX_BIN: &str = "/opt/homebrew/bin/tmux";
+const TMUX_CANDIDATES: [&str; 3] = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "tmux"];
 const SESSION_PREFIX: &str = "ctrl-";
 
 pub struct TmuxManager;
@@ -9,7 +13,11 @@ pub struct TmuxManager;
 impl TmuxManager {
     /// Check whether the tmux binary is available on this system.
     pub fn is_available() -> bool {
-        std::path::Path::new(TMUX_BIN).exists()
+        Self::tmux_binary().is_some()
+    }
+
+    pub fn tmux_binary() -> Option<String> {
+        resolve_tmux_binary()
     }
 
     pub fn session_name(session_id: Uuid) -> String {
@@ -17,8 +25,11 @@ impl TmuxManager {
     }
 
     pub fn has_session(session_id: Uuid) -> bool {
+        let Some(tmux_bin) = Self::tmux_binary() else {
+            return false;
+        };
         let name = Self::session_name(session_id);
-        Command::new(TMUX_BIN)
+        Command::new(&tmux_bin)
             .args(["has-session", "-t", &name])
             .output()
             .map(|o| o.status.success())
@@ -66,9 +77,16 @@ impl TmuxManager {
         continue_session: bool,
         initial_prompt: Option<&str>,
     ) -> Result<(), String> {
-        let args = Self::build_create_args(session_id, working_dir, command, continue_session, initial_prompt);
+        let args = Self::build_create_args(
+            session_id,
+            working_dir,
+            command,
+            continue_session,
+            initial_prompt,
+        );
         let name = Self::session_name(session_id);
-        let output = Command::new(TMUX_BIN)
+        let tmux_bin = Self::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
+        let output = Command::new(&tmux_bin)
             .args(&args)
             .env("THE_CONTROLLER_SESSION_ID", session_id.to_string())
             .env_remove("CLAUDECODE")
@@ -82,10 +100,10 @@ impl TmuxManager {
 
         // Enable extended keys so modifier combos (e.g. Shift+Enter) pass through.
         // Use csi-u format (kitty keyboard protocol) so Claude Code's crossterm can parse them.
-        let _ = Command::new(TMUX_BIN)
+        let _ = Command::new(&tmux_bin)
             .args(["set-option", "-t", &name, "extended-keys", "always"])
             .output();
-        let _ = Command::new(TMUX_BIN)
+        let _ = Command::new(&tmux_bin)
             .args(["set-option", "-t", &name, "extended-keys-format", "csi-u"])
             .output();
 
@@ -97,6 +115,7 @@ impl TmuxManager {
     /// Shift+Enter) that tmux wouldn't recognise from the outer PTY.
     pub fn send_keys_hex(session_id: Uuid, data: &[u8]) -> Result<(), String> {
         let name = Self::session_name(session_id);
+        let tmux_bin = Self::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
         let hex_bytes: Vec<String> = data.iter().map(|b| format!("{:02x}", b)).collect();
         let mut args = vec![
             "send-keys".to_string(),
@@ -106,7 +125,7 @@ impl TmuxManager {
         ];
         args.extend(hex_bytes);
 
-        let output = Command::new(TMUX_BIN)
+        let output = Command::new(&tmux_bin)
             .args(&args)
             .output()
             .map_err(|e| format!("failed to run tmux send-keys: {}", e))?;
@@ -121,7 +140,10 @@ impl TmuxManager {
 
     pub fn kill_session(session_id: Uuid) -> Result<(), String> {
         let name = Self::session_name(session_id);
-        let output = Command::new(TMUX_BIN)
+        let Some(tmux_bin) = Self::tmux_binary() else {
+            return Ok(());
+        };
+        let output = Command::new(&tmux_bin)
             .args(["kill-session", "-t", &name])
             .output()
             .map_err(|e| format!("failed to run tmux: {}", e))?;
@@ -144,8 +166,15 @@ impl TmuxManager {
     /// Returns `(cols, rows)` or `None` if the query fails.
     pub fn session_size(session_id: Uuid) -> Option<(u16, u16)> {
         let name = Self::session_name(session_id);
-        let output = Command::new(TMUX_BIN)
-            .args(["display-message", "-t", &name, "-p", "#{window_width} #{window_height}"])
+        let tmux_bin = Self::tmux_binary()?;
+        let output = Command::new(&tmux_bin)
+            .args([
+                "display-message",
+                "-t",
+                &name,
+                "-p",
+                "#{window_width} #{window_height}",
+            ])
             .output()
             .ok()?;
         if !output.status.success() {
@@ -164,7 +193,8 @@ impl TmuxManager {
 
     pub fn resize_session(session_id: Uuid, cols: u16, rows: u16) -> Result<(), String> {
         let name = Self::session_name(session_id);
-        let output = Command::new(TMUX_BIN)
+        let tmux_bin = Self::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
+        let output = Command::new(&tmux_bin)
             .args([
                 "resize-window",
                 "-t",
@@ -183,6 +213,60 @@ impl TmuxManager {
         }
 
         Ok(())
+    }
+}
+
+fn resolve_tmux_binary() -> Option<String> {
+    resolve_tmux_binary_with(|candidate| {
+        if candidate.contains('/') {
+            is_executable_file(Path::new(candidate)).then(|| candidate.to_string())
+        } else {
+            resolve_tmux_on_path(candidate)
+        }
+    })
+}
+
+fn resolve_tmux_binary_with<F>(mut resolve_candidate: F) -> Option<String>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    for candidate in TMUX_CANDIDATES {
+        if let Some(resolved) = resolve_candidate(candidate) {
+            return Some(resolved);
+        }
+    }
+
+    None
+}
+
+fn resolve_tmux_on_path(binary_name: &str) -> Option<String> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(binary_name);
+        if is_executable_file(&candidate) {
+            return Some(candidate.to_string_lossy().into_owned());
+        }
+    }
+
+    None
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        metadata.permissions().mode() & 0o111 != 0
+    }
+
+    #[cfg(not(unix))]
+    {
+        true
     }
 }
 
@@ -213,7 +297,9 @@ mod tests {
         let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let args = TmuxManager::build_create_args(id, "/tmp", "claude", false, None);
 
-        let e_idx = args.iter().position(|a| a == "-e")
+        let e_idx = args
+            .iter()
+            .position(|a| a == "-e")
             .expect("-e flag must be present in tmux new-session args");
         let env_val = &args[e_idx + 1];
         assert_eq!(
@@ -225,7 +311,10 @@ mod tests {
         // -e must appear before the shell command (which is the first
         // positional arg after all flags)
         let cmd_idx = args.iter().position(|a| a == "claude").unwrap();
-        assert!(e_idx < cmd_idx, "-e flag must come before the shell command");
+        assert!(
+            e_idx < cmd_idx,
+            "-e flag must come before the shell command"
+        );
     }
 
     #[test]
@@ -244,5 +333,25 @@ mod tests {
     fn test_kill_nonexistent_session_is_not_error() {
         let id = Uuid::new_v4();
         assert!(TmuxManager::kill_session(id).is_ok());
+    }
+
+    #[test]
+    fn test_resolve_tmux_binary_checks_usr_local_homebrew_path() {
+        let resolved = resolve_tmux_binary_with(|candidate| match candidate {
+            "/usr/local/bin/tmux" => Some(candidate.to_string()),
+            _ => None,
+        });
+
+        assert_eq!(resolved.as_deref(), Some("/usr/local/bin/tmux"));
+    }
+
+    #[test]
+    fn test_resolve_tmux_binary_falls_back_to_path_lookup() {
+        let resolved = resolve_tmux_binary_with(|candidate| match candidate {
+            "tmux" => Some("/tmp/test-bin/tmux".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(resolved.as_deref(), Some("/tmp/test-bin/tmux"));
     }
 }
