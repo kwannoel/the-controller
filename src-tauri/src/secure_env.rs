@@ -59,16 +59,33 @@ pub(crate) fn validate_env_key(key: &str) -> Result<(), String> {
     if key.contains('=') {
         return Err("Env var key cannot contain '='".to_string());
     }
+    let mut chars = key.chars();
+    let Some(first) = chars.next() else {
+        return Err("Env var key cannot be empty".to_string());
+    };
+    if !(first.is_ascii_alphabetic() || first == '_')
+        || !chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return Err("Env var key must match [A-Za-z_][A-Za-z0-9_]*".to_string());
+    }
     Ok(())
 }
 
 #[allow(dead_code)]
 pub(crate) fn parse_secure_env_request(message: &str) -> Result<SecureEnvRequest, String> {
     let mut parts = message.split('|');
-    let action = parts.next().ok_or_else(|| "Invalid secure env request message".to_string())?;
-    let project_selector = parts.next().ok_or_else(|| "Invalid secure env request message".to_string())?;
-    let key = parts.next().ok_or_else(|| "Invalid secure env request message".to_string())?;
-    let request_id = parts.next().ok_or_else(|| "Invalid secure env request message".to_string())?;
+    let action = parts
+        .next()
+        .ok_or_else(|| "Invalid secure env request message".to_string())?;
+    let project_selector = parts
+        .next()
+        .ok_or_else(|| "Invalid secure env request message".to_string())?;
+    let key = parts
+        .next()
+        .ok_or_else(|| "Invalid secure env request message".to_string())?;
+    let request_id = parts
+        .next()
+        .ok_or_else(|| "Invalid secure env request message".to_string())?;
 
     if parts.next().is_some()
         || project_selector.is_empty()
@@ -126,7 +143,9 @@ pub(crate) fn begin_secure_env_request_with_response(
         inventory
             .projects
             .into_iter()
-            .find(|project| project.name == project_selector || project.id.to_string() == project_selector)
+            .find(|project| {
+                project.name == project_selector || project.id.to_string() == project_selector
+            })
             .ok_or_else(|| format!("Unknown project: {project_selector}"))?
     };
 
@@ -178,38 +197,38 @@ pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> R
 }
 
 #[allow(dead_code)]
-pub(crate) fn submit_secure_env_value(
+pub(crate) fn take_secure_env_submission(
     state: &AppState,
     request_id: &str,
-    value: &str,
-) -> Result<EnvWriteResult, String> {
-    let pending = {
-        let active = state
-            .secure_env_request
-            .lock()
-            .map_err(|err| err.to_string())?;
-        match active.as_ref() {
-            Some(request) if request.pending.request_id == request_id => request.pending.clone(),
-            Some(_) => return Err(format!("Unknown secure env request: {request_id}")),
-            None => return Err("No active secure env request".to_string()),
-        }
-    };
-
-    let result = update_env_file(&pending.env_path, &pending.key, value);
-
+) -> Result<
+    (
+        PendingSecureEnvRequest,
+        Option<SyncSender<SecureEnvResponse>>,
+    ),
+    String,
+> {
     let mut active = state
         .secure_env_request
         .lock()
         .map_err(|err| err.to_string())?;
-    let response_tx = active.as_ref().and_then(|request| {
-        (request.pending.request_id == request_id).then(|| request.response_tx.clone())
-    }).flatten();
-    if active
-        .as_ref()
-        .is_some_and(|request| request.pending.request_id == request_id)
-    {
-        *active = None;
+    match active.as_ref() {
+        Some(request) if request.pending.request_id == request_id => {
+            let pending = request.pending.clone();
+            let response_tx = request.response_tx.clone();
+            *active = None;
+            Ok((pending, response_tx))
+        }
+        Some(_) => Err(format!("Unknown secure env request: {request_id}")),
+        None => Err("No active secure env request".to_string()),
     }
+}
+
+#[allow(dead_code)]
+pub(crate) fn finish_secure_env_submission(
+    request_id: &str,
+    response_tx: Option<SyncSender<SecureEnvResponse>>,
+    result: Result<EnvWriteResult, String>,
+) -> Result<EnvWriteResult, String> {
     match result {
         Ok(result) => {
             if let Some(response_tx) = response_tx {
@@ -236,6 +255,20 @@ pub(crate) fn submit_secure_env_value(
             Err(error)
         }
     }
+}
+
+#[allow(dead_code)]
+pub(crate) fn submit_secure_env_value(
+    state: &AppState,
+    request_id: &str,
+    value: &str,
+) -> Result<EnvWriteResult, String> {
+    let (pending, response_tx) = take_secure_env_submission(state, request_id)?;
+    finish_secure_env_submission(
+        request_id,
+        response_tx,
+        update_env_file(&pending.env_path, &pending.key, value),
+    )
 }
 
 #[allow(dead_code)]
@@ -316,7 +349,12 @@ mod tests {
             staged_session: None,
         };
 
-        state.storage.lock().unwrap().save_project(&project).unwrap();
+        state
+            .storage
+            .lock()
+            .unwrap()
+            .save_project(&project)
+            .unwrap();
         project
     }
 
@@ -378,17 +416,31 @@ mod tests {
 
     #[test]
     fn rejects_invalid_env_keys() {
-        assert_eq!(validate_env_key(""), Err("Env var key cannot be empty".to_string()));
+        assert_eq!(
+            validate_env_key(""),
+            Err("Env var key cannot be empty".to_string())
+        );
         assert_eq!(
             validate_env_key("BAD=KEY"),
             Err("Env var key cannot contain '='".to_string())
+        );
+        assert_eq!(
+            validate_env_key("BAD KEY"),
+            Err("Env var key must match [A-Za-z_][A-Za-z0-9_]*".to_string())
+        );
+        assert_eq!(
+            validate_env_key("BAD\nKEY"),
+            Err("Env var key must match [A-Za-z_][A-Za-z0-9_]*".to_string())
+        );
+        assert_eq!(
+            validate_env_key("1BAD"),
+            Err("Env var key must match [A-Za-z_][A-Za-z0-9_]*".to_string())
         );
     }
 
     #[test]
     fn parses_secure_env_request_message() {
-        let request =
-            parse_secure_env_request("set|demo-project|OPENAI_API_KEY|req-123").unwrap();
+        let request = parse_secure_env_request("set|demo-project|OPENAI_API_KEY|req-123").unwrap();
 
         assert_eq!(request.project_selector, "demo-project");
         assert_eq!(request.key, "OPENAI_API_KEY");
@@ -442,8 +494,7 @@ mod tests {
         let project = save_project(&state, "demo-project", repo_path.clone());
 
         let request =
-            begin_secure_env_request(&state, "demo-project", "OPENAI_API_KEY", "req-123")
-                .unwrap();
+            begin_secure_env_request(&state, "demo-project", "OPENAI_API_KEY", "req-123").unwrap();
 
         assert_eq!(request.project_id, project.id);
         assert_eq!(request.project_name, "demo-project");

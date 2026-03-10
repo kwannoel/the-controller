@@ -767,12 +767,25 @@ pub fn set_initial_prompt(
 }
 
 #[tauri::command]
-pub fn submit_secure_env_value(
-    state: State<AppState>,
+pub async fn submit_secure_env_value(
+    state: State<'_, AppState>,
     request_id: String,
     value: String,
 ) -> Result<String, String> {
-    let result = crate::secure_env::submit_secure_env_value(&state, &request_id, &value)?;
+    let (pending, response_tx) =
+        crate::secure_env::take_secure_env_submission(&state, &request_id)?;
+    let request_id_for_blocking = request_id.clone();
+    let value_for_blocking = value;
+    let result = tokio::task::spawn_blocking(move || {
+        crate::secure_env::update_env_file(&pending.env_path, &pending.key, &value_for_blocking)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {e}"))?;
+    let result = crate::secure_env::finish_secure_env_submission(
+        &request_id_for_blocking,
+        response_tx,
+        result,
+    )?;
     Ok(if result.created {
         "created".to_string()
     } else {
@@ -3168,11 +3181,11 @@ mod tests {
         )
         .expect("begin secure env request");
 
-        let status = submit_secure_env_value(
+        let status = run_async_test(submit_secure_env_value(
             state_from_ref(&app_state),
             "req-123".to_string(),
             "new-secret".to_string(),
-        )
+        ))
         .expect("submit secure env value");
 
         assert_eq!(status, "created");
