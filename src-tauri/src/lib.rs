@@ -77,6 +77,7 @@ pub fn run() {
             commands::get_maintainer_issues,
             commands::get_maintainer_issue_detail,
             commands::configure_auto_worker,
+            commands::get_worker_reports,
             commands::list_notes,
             commands::read_note,
             commands::write_note,
