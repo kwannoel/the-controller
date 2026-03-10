@@ -2,20 +2,23 @@
   import { fromStore } from "svelte/store";
   import { untrack } from "svelte";
   import { command } from "$lib/backend";
-  import { activeNote, notePreviewMode, projects, focusTarget, hotkeyAction, type Project, type FocusTarget } from "./stores";
+  import { activeNote, noteViewMode, projects, focusTarget, hotkeyAction, type NoteViewMode, type Project, type FocusTarget } from "./stores";
+  import CodeMirrorNoteEditor from "./CodeMirrorNoteEditor.svelte";
   import { renderMarkdown } from "./markdown";
 
   let content = $state("");
   let savedContent = $state("");
   let loading = $state(true);
   let saveTimer: ReturnType<typeof setTimeout> | null = $state(null);
-  let textareaEl: HTMLTextAreaElement | undefined = $state(undefined);
+  let lastEditorEscapeAt = $state(0);
 
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
 
-  const previewModeState = fromStore(notePreviewMode);
-  let isPreview = $derived(previewModeState.current);
+  const viewModeState = fromStore(noteViewMode);
+  let currentViewMode: NoteViewMode = $derived(viewModeState.current);
+  let showsEditor = $derived(currentViewMode === "edit" || currentViewMode === "split");
+  let showsPreview = $derived(currentViewMode === "preview" || currentViewMode === "split");
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -80,17 +83,14 @@
     const unsub = hotkeyAction.subscribe((action) => {
       if (!action) return;
       if (action.type === "toggle-note-preview") {
-        notePreviewMode.update((v) => !v);
+        noteViewMode.update((mode) => {
+          if (mode === "edit") return "preview";
+          if (mode === "preview") return "split";
+          return "edit";
+        });
       }
     });
     return unsub;
-  });
-
-  // Auto-focus textarea when focusTarget is notes-editor
-  $effect(() => {
-    if (currentFocus?.type === "notes-editor" && textareaEl && !isPreview) {
-      textareaEl.focus();
-    }
   });
 
   async function loadNote(pName: string, filename: string, requestKey: string) {
@@ -134,38 +134,27 @@
     }
   }
 
-  function handleInput() {
+  function handleEditorChange(nextContent: string) {
+    content = nextContent;
     scheduleSave();
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      saveNow();
-      // Return focus to sidebar note item
+  function handleEditorEscape() {
+    const now = Date.now();
+    if (now - lastEditorEscapeAt < 300) {
+      lastEditorEscapeAt = 0;
+      void saveNow();
       if (currentNote) {
         focusTarget.set({ type: "note", filename: currentNote.filename, projectId: currentNote.projectId });
       }
-    } else if (e.key === "Tab") {
-      e.preventDefault();
-      if (textareaEl) {
-        const start = textareaEl.selectionStart;
-        const end = textareaEl.selectionEnd;
-        content = content.substring(0, start) + "  " + content.substring(end);
-        // Restore cursor after the inserted spaces
-        requestAnimationFrame(() => {
-          if (textareaEl) {
-            textareaEl.selectionStart = start + 2;
-            textareaEl.selectionEnd = start + 2;
-          }
-        });
-        scheduleSave();
-      }
+      return;
     }
+
+    lastEditorEscapeAt = now;
   }
 
-  function togglePreview() {
-    notePreviewMode.update((v) => !v);
+  function setViewMode(mode: NoteViewMode) {
+    noteViewMode.set(mode);
   }
 </script>
 
@@ -185,29 +174,43 @@
       {#if isDirty}
         <span class="unsaved-indicator">unsaved</span>
       {/if}
-      <button
-        class="preview-toggle"
-        class:active={isPreview}
-        onclick={togglePreview}
-      >
-        {isPreview ? "Edit" : "Preview"}
-      </button>
+      <div class="view-mode-controls">
+        <button
+          class="view-mode-button"
+          class:active={currentViewMode === "edit"}
+          onclick={() => setViewMode("edit")}
+        >
+          Edit
+        </button>
+        <button
+          class="view-mode-button"
+          class:active={currentViewMode === "preview"}
+          onclick={() => setViewMode("preview")}
+        >
+          Preview
+        </button>
+        <button
+          class="view-mode-button"
+          class:active={currentViewMode === "split"}
+          onclick={() => setViewMode("split")}
+        >
+          Split
+        </button>
+      </div>
     </div>
-    <div class="editor-body" class:focused={editorFocused}>
-      {#if isPreview}
-        <div class="preview">
+    <div class="editor-body" class:focused={editorFocused} class:split={currentViewMode === "split"}>
+      {#if showsEditor}
+        <CodeMirrorNoteEditor
+          value={content}
+          focused={editorFocused}
+          onChange={handleEditorChange}
+          onEscape={handleEditorEscape}
+        />
+      {/if}
+      {#if showsPreview}
+        <div class="preview" class:split={currentViewMode === "split"}>
           {@html renderedHtml}
         </div>
-      {:else}
-        <textarea
-          bind:this={textareaEl}
-          bind:value={content}
-          oninput={handleInput}
-          onkeydown={handleKeydown}
-          class="editor-textarea"
-          spellcheck="false"
-          placeholder="Start writing..."
-        ></textarea>
       {/if}
     </div>
   {/if}
@@ -272,7 +275,12 @@
     font-weight: 500;
   }
 
-  .preview-toggle {
+  .view-mode-controls {
+    display: flex;
+    gap: 6px;
+  }
+
+  .view-mode-button {
     background: #313244;
     border: none;
     color: #cdd6f4;
@@ -282,11 +290,11 @@
     cursor: pointer;
   }
 
-  .preview-toggle:hover {
+  .view-mode-button:hover {
     background: #45475a;
   }
 
-  .preview-toggle.active {
+  .view-mode-button.active {
     background: #89b4fa;
     color: #1e1e2e;
   }
@@ -297,29 +305,16 @@
     border: 2px solid transparent;
     border-radius: 4px;
     transition: border-color 0.15s;
+    display: flex;
   }
 
   .editor-body.focused {
     border-color: #89b4fa;
   }
 
-  .editor-textarea {
-    width: 100%;
-    height: 100%;
-    background: transparent;
-    color: #cdd6f4;
-    border: none;
-    outline: none;
-    resize: none;
-    padding: 16px;
-    font-family: monospace;
-    font-size: 14px;
-    line-height: 1.6;
-    box-sizing: border-box;
-  }
-
-  .editor-textarea::placeholder {
-    color: #6c7086;
+  .editor-body.split {
+    gap: 1px;
+    background: #313244;
   }
 
   .preview {
@@ -327,6 +322,12 @@
     overflow-y: auto;
     height: 100%;
     box-sizing: border-box;
+    flex: 1;
+    background: #11111b;
+  }
+
+  .preview.split {
+    border-left: 1px solid #313244;
   }
 
   .preview :global(h1) {
