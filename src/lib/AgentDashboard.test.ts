@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { invoke } from "@tauri-apps/api/core";
+import { command } from "$lib/backend";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import AgentDashboard from "./AgentDashboard.svelte";
 import {
@@ -63,7 +63,7 @@ describe("AgentDashboard auto-worker pane", () => {
       },
     ];
 
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "get_worker_reports") return reports;
       return [];
     });
@@ -88,7 +88,7 @@ describe("AgentDashboard auto-worker pane", () => {
       },
     ];
 
-    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "get_worker_reports") return reports;
       return [];
     });
