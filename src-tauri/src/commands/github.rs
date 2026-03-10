@@ -454,8 +454,12 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
             let updated_at = issue["updatedAt"].as_str().unwrap_or("").to_string();
             let body = issue["comments"]
                 .as_array()
-                .and_then(|c| c.last())
-                .and_then(|c| c["body"].as_str())
+                .and_then(|comments| {
+                    comments.iter().rev().find_map(|c| {
+                        let text = c["body"].as_str()?;
+                        text.contains("<!-- auto-worker-report -->").then_some(text)
+                    })
+                })
                 .unwrap_or("")
                 .to_string();
             Some(WorkerReport {
