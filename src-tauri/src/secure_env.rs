@@ -1,9 +1,23 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+use uuid::Uuid;
+
+use crate::state::AppState;
 
 #[allow(dead_code)]
 pub(crate) struct EnvWriteResult {
     pub(crate) created: bool,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingSecureEnvRequest {
+    pub(crate) request_id: String,
+    pub(crate) project_id: Uuid,
+    pub(crate) project_name: String,
+    pub(crate) env_path: PathBuf,
+    pub(crate) key: String,
 }
 
 #[allow(dead_code)]
@@ -79,6 +93,95 @@ pub(crate) fn format_secure_env_response(response: &SecureEnvResponse) -> String
 }
 
 #[allow(dead_code)]
+pub(crate) fn begin_secure_env_request(
+    state: &AppState,
+    project_selector: &str,
+    key: &str,
+    request_id: &str,
+) -> Result<PendingSecureEnvRequest, String> {
+    validate_env_key(key)?;
+
+    let project = {
+        let storage = state.storage.lock().map_err(|err| err.to_string())?;
+        let inventory = storage.list_projects().map_err(|err| err.to_string())?;
+        inventory
+            .projects
+            .into_iter()
+            .find(|project| project.name == project_selector || project.id.to_string() == project_selector)
+            .ok_or_else(|| format!("Unknown project: {project_selector}"))?
+    };
+
+    let pending = PendingSecureEnvRequest {
+        request_id: request_id.to_string(),
+        project_id: project.id,
+        project_name: project.name.clone(),
+        env_path: PathBuf::from(&project.repo_path).join(".env"),
+        key: key.to_string(),
+    };
+
+    let mut active = state
+        .secure_env_request
+        .lock()
+        .map_err(|err| err.to_string())?;
+    if active.is_some() {
+        return Err("A secure env request is already active".to_string());
+    }
+    *active = Some(pending.clone());
+
+    Ok(pending)
+}
+
+#[allow(dead_code)]
+pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> Result<(), String> {
+    let mut active = state
+        .secure_env_request
+        .lock()
+        .map_err(|err| err.to_string())?;
+    match active.as_ref() {
+        Some(request) if request.request_id == request_id => {
+            *active = None;
+            Ok(())
+        }
+        Some(_) => Err(format!("Unknown secure env request: {request_id}")),
+        None => Err("No active secure env request".to_string()),
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn submit_secure_env_value(
+    state: &AppState,
+    request_id: &str,
+    value: &str,
+) -> Result<EnvWriteResult, String> {
+    let pending = {
+        let active = state
+            .secure_env_request
+            .lock()
+            .map_err(|err| err.to_string())?;
+        match active.as_ref() {
+            Some(request) if request.request_id == request_id => request.clone(),
+            Some(_) => return Err(format!("Unknown secure env request: {request_id}")),
+            None => return Err("No active secure env request".to_string()),
+        }
+    };
+
+    let result = update_env_file(&pending.env_path, &pending.key, value)?;
+
+    let mut active = state
+        .secure_env_request
+        .lock()
+        .map_err(|err| err.to_string())?;
+    if active
+        .as_ref()
+        .is_some_and(|request| request.request_id == request_id)
+    {
+        *active = None;
+    }
+
+    Ok(result)
+}
+
+#[allow(dead_code)]
 pub(crate) fn update_env_file(
     env_path: &Path,
     key: &str,
@@ -123,13 +226,42 @@ pub(crate) fn update_env_file(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
 
     use tempfile::TempDir;
+    use uuid::Uuid;
 
     use super::{
-        format_secure_env_response, parse_secure_env_request, update_env_file,
-        validate_env_key, SecureEnvResponse, SecureEnvResponseKind,
+        begin_secure_env_request, cancel_secure_env_request, format_secure_env_response,
+        parse_secure_env_request, submit_secure_env_value, update_env_file, validate_env_key,
+        SecureEnvResponse, SecureEnvResponseKind,
     };
+    use crate::emitter::NoopEmitter;
+    use crate::models::{AutoWorkerConfig, MaintainerConfig, Project};
+    use crate::state::AppState;
+    use crate::storage::Storage;
+
+    fn make_app_state(tmp: &TempDir) -> AppState {
+        AppState::from_storage(Storage::new(tmp.path().to_path_buf()), NoopEmitter::new()).unwrap()
+    }
+
+    fn save_project(state: &AppState, name: &str, repo_path: PathBuf) -> Project {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            repo_path: repo_path.to_string_lossy().to_string(),
+            created_at: "2026-03-10T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
+            sessions: vec![],
+            staged_session: None,
+        };
+
+        state.storage.lock().unwrap().save_project(&project).unwrap();
+        project
+    }
 
     #[test]
     fn updates_existing_env_key_without_touching_other_lines() {
@@ -242,5 +374,82 @@ mod tests {
         };
 
         assert_eq!(format_secure_env_response(&response), "error|busy|req-123");
+    }
+
+    #[test]
+    fn resolves_known_project_for_secure_env_request() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        fs::create_dir_all(&repo_path).unwrap();
+        let project = save_project(&state, "demo-project", repo_path.clone());
+
+        let request =
+            begin_secure_env_request(&state, "demo-project", "OPENAI_API_KEY", "req-123")
+                .unwrap();
+
+        assert_eq!(request.project_id, project.id);
+        assert_eq!(request.project_name, "demo-project");
+        assert_eq!(request.env_path, repo_path.join(".env"));
+        assert_eq!(request.key, "OPENAI_API_KEY");
+    }
+
+    #[test]
+    fn rejects_unknown_project_for_secure_env_request() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+
+        let error =
+            begin_secure_env_request(&state, "missing-project", "OPENAI_API_KEY", "req-123")
+                .unwrap_err();
+
+        assert_eq!(error, "Unknown project: missing-project");
+    }
+
+    #[test]
+    fn rejects_second_active_secure_env_request() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path);
+
+        begin_secure_env_request(&state, "demo-project", "OPENAI_API_KEY", "req-123").unwrap();
+
+        let error =
+            begin_secure_env_request(&state, "demo-project", "ANTHROPIC_API_KEY", "req-456")
+                .unwrap_err();
+
+        assert_eq!(error, "A secure env request is already active");
+    }
+
+    #[test]
+    fn cancel_clears_active_secure_env_request() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path);
+
+        begin_secure_env_request(&state, "demo-project", "OPENAI_API_KEY", "req-123").unwrap();
+        cancel_secure_env_request(&state, "req-123").unwrap();
+
+        assert!(state.secure_env_request.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn submit_writes_env_file_and_clears_active_request() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path.clone());
+
+        begin_secure_env_request(&state, "demo-project", "OPENAI_API_KEY", "req-123").unwrap();
+        submit_secure_env_value(&state, "req-123", "new-secret").unwrap();
+
+        let written = fs::read_to_string(repo_path.join(".env")).unwrap();
+        assert_eq!(written, "OPENAI_API_KEY=new-secret\n");
+        assert!(state.secure_env_request.lock().unwrap().is_none());
     }
 }

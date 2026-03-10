@@ -84,6 +84,7 @@ pub struct AppState {
     pub pty_manager: Arc<Mutex<PtyManager>>,
     pub issue_cache: Arc<Mutex<IssueCache>>,
     pub controller_chat: Arc<Mutex<ControllerChatSession>>,
+    pub(crate) secure_env_request: Mutex<Option<crate::secure_env::ActiveSecureEnvRequest>>,
     pub emitter: Arc<dyn EventEmitter>,
 }
 
@@ -95,6 +96,7 @@ impl AppState {
             pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
             controller_chat: Arc::new(Mutex::new(ControllerChatSession::default())),
+            secure_env_request: Mutex::new(None),
             emitter,
         })
     }
