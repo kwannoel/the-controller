@@ -146,7 +146,10 @@ impl MaintainerScheduler {
                         Err(_) => continue,
                     };
                     match storage.list_projects() {
-                        Ok(p) => p,
+                        Ok(inventory) => {
+                            inventory.warn_if_corrupt("maintainer scheduler");
+                            inventory.projects
+                        }
                         Err(_) => continue,
                     }
                 };

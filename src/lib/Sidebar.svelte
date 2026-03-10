@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type Project, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, jumpMode, generateJumpLabels, archiveView, archivedProjects, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type JumpPhase, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import FuzzyFinder from "./FuzzyFinder.svelte";
@@ -58,6 +58,7 @@
   let statuses: Map<string, SessionStatus> = $derived(sessionStatusesState.current);
   const idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const IDLE_DEBOUNCE_MS = 1500;
+  let surfacedCorruptProjectWarnings = $state(new Set<string>());
 
   const jumpModeState = fromStore(jumpMode);
   let jumpState: JumpPhase = $derived(jumpModeState.current);
@@ -356,8 +357,9 @@
 
   async function loadProjects() {
     try {
-      const result: Project[] = await invoke("list_projects");
-      projects.set(result);
+      const result = await invoke<ProjectInventory>("list_projects");
+      projects.set(result.projects);
+      surfaceCorruptProjectWarnings(result.corrupt_entries);
     } catch (err) {
       showToast(String(err), "error");
     }
@@ -365,11 +367,38 @@
 
   async function loadArchivedProjects() {
     try {
-      const result = await invoke<Project[]>("list_archived_projects");
-      archivedProjects.set(result);
+      const result = await invoke<ProjectInventory>("list_archived_projects");
+      archivedProjects.set(result.projects);
+      surfaceCorruptProjectWarnings(result.corrupt_entries);
     } catch (err) {
       showToast(String(err), "error");
     }
+  }
+
+  function surfaceCorruptProjectWarnings(entries: CorruptProjectEntry[]) {
+    const unseen = entries.filter((entry) => !surfacedCorruptProjectWarnings.has(corruptProjectWarningKey(entry)));
+    if (unseen.length === 0) return;
+
+    const next = new Set(surfacedCorruptProjectWarnings);
+    for (const entry of unseen) {
+      next.add(corruptProjectWarningKey(entry));
+    }
+    surfacedCorruptProjectWarnings = next;
+
+    if (unseen.length === 1) {
+      const entry = unseen[0];
+      showToast(`Detected corrupt project.json: ${entry.project_file} (${entry.error})`, "error");
+      return;
+    }
+
+    showToast(
+      `Detected ${unseen.length} corrupt project.json entries. Example: ${unseen[0].project_file}`,
+      "error",
+    );
+  }
+
+  function corruptProjectWarningKey(entry: CorruptProjectEntry) {
+    return `${entry.project_file}:${entry.error}`;
   }
 
   async function unarchiveProject(projectId: string) {

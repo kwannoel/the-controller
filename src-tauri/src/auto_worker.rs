@@ -79,7 +79,10 @@ impl AutoWorkerScheduler {
                 Err(_) => return,
             };
             match storage.list_projects() {
-                Ok(p) => p,
+                Ok(inventory) => {
+                    inventory.warn_if_corrupt("auto-worker stale label cleanup");
+                    inventory.projects
+                }
                 Err(_) => return,
             }
         };
@@ -116,7 +119,10 @@ impl AutoWorkerScheduler {
                 Err(_) => return,
             };
             match storage.list_projects() {
-                Ok(p) => p,
+                Ok(inventory) => {
+                    inventory.warn_if_corrupt("auto-worker label migration");
+                    inventory.projects
+                }
                 Err(_) => return,
             }
         };
@@ -247,7 +253,10 @@ impl AutoWorkerScheduler {
                         Err(_) => continue,
                     };
                     match storage.list_projects() {
-                        Ok(p) => p,
+                        Ok(inventory) => {
+                            inventory.warn_if_corrupt("auto-worker scheduler");
+                            inventory.projects
+                        }
                         Err(_) => continue,
                     }
                 };

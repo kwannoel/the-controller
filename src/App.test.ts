@@ -91,24 +91,27 @@ describe("App screenshot flow", () => {
       if (cmd === "capture_app_screenshot") return "/tmp/the-controller-screenshot.png";
       if (cmd === "create_session") return "sess-new";
       if (cmd === "list_projects") {
-        return [
-          {
-            ...baseProject,
-            sessions: [
-              {
-                id: "sess-new",
-                label: "session-1",
-                worktree_path: null,
-                worktree_branch: null,
-                archived: false,
-                kind: "claude",
-                github_issue: null,
-                initial_prompt: null,
-                auto_worker_session: false,
-              },
-            ],
-          },
-        ];
+        return {
+          projects: [
+            {
+              ...baseProject,
+              sessions: [
+                {
+                  id: "sess-new",
+                  label: "session-1",
+                  worktree_path: null,
+                  worktree_branch: null,
+                  archived: false,
+                  kind: "claude",
+                  github_issue: null,
+                  initial_prompt: null,
+                  auto_worker_session: false,
+                },
+              ],
+            },
+          ],
+          corrupt_entries: [],
+        };
       }
       return;
     });
@@ -311,7 +314,12 @@ describe("App issue picker flow", () => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       if (cmd === "create_session") return "sess-new";
-      if (cmd === "list_projects") return [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null, sessions: [] }];
+      if (cmd === "list_projects") {
+        return {
+          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null, sessions: [] }],
+          corrupt_entries: [],
+        };
+      }
       return;
     });
   });
