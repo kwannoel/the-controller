@@ -317,11 +317,15 @@ fn generate_architecture_blocking_with_config(
 
 fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, String> {
     let exec_dir = IsolatedExecDir::create()?;
+    let last_message_path = exec_dir.path().join("codex-last-message.txt");
     let mut command = Command::new(&config.binary);
     command
         .arg("exec")
         .arg("--sandbox")
         .arg(CODEX_SANDBOX_MODE)
+        .arg("--skip-git-repo-check")
+        .arg("--output-last-message")
+        .arg(&last_message_path)
         .arg(prompt)
         .current_dir(exec_dir.path())
         .env_remove("CLAUDECODE");
@@ -387,9 +391,21 @@ fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, Stri
         ));
     }
 
+    let stdout = if status.success() {
+        std::fs::read(&last_message_path).map_err(|e| {
+            format!(
+                "Failed to read codex exec last message {}: {}",
+                last_message_path.display(),
+                e
+            )
+        })?
+    } else {
+        stdout.bytes
+    };
+
     Ok(Output {
         status,
-        stdout: stdout.bytes,
+        stdout,
         stderr: stderr.bytes,
     })
 }
@@ -2128,7 +2144,7 @@ That should be enough to render the view."#;
             &bin,
             "fake-codex.sh",
             &format!(
-                "#!/bin/sh\nif [ \"$PWD\" = \"{}\" ]; then\n  echo 'ran inside repo' >&2\n  exit 21\nfi\nif [ \"$3\" = \"danger-full-access\" ]; then\n  echo 'danger sandbox still used' >&2\n  exit 22\nfi\ncat <<'EOF'\n{{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Isolated exec test\"]}}]}}\nEOF\n",
+                "#!/bin/sh\nif [ \"$PWD\" = \"{}\" ]; then\n  echo 'ran inside repo' >&2\n  exit 21\nfi\nif [ \"$1\" != \"exec\" ]; then\n  echo \"expected exec subcommand, got: $1\" >&2\n  exit 22\nfi\nif [ \"$2\" != \"--sandbox\" ] || [ \"$3\" != \"workspace-write\" ]; then\n  echo \"unexpected sandbox args: $2 $3\" >&2\n  exit 23\nfi\nif [ \"$4\" != \"--skip-git-repo-check\" ]; then\n  echo \"missing skip-git-repo-check: $4\" >&2\n  exit 24\nfi\nif [ \"$5\" != \"--output-last-message\" ] || [ -z \"$6\" ]; then\n  echo \"missing output-last-message contract: $5 $6\" >&2\n  exit 25\nfi\ncase \"$7\" in\n  *'Analyze the repository'* ) ;;\n  *)\n    echo 'prompt missing expected architecture instructions' >&2\n    exit 26\n    ;;\nesac\necho 'banner noise that should not be parsed'\nprintf '%s\\n' '{{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Isolated exec test\"]}}]}}' > \"$6\"\n",
                 repo.path().display()
             ),
         );
@@ -2245,7 +2261,7 @@ That should be enough to render the view."#;
         let script = write_executable_script(
             &bin,
             "fake-codex.sh",
-            "#!/bin/sh\ndd if=/dev/zero bs=1024 count=256 2>/dev/null | tr '\\000' 'x' >&2\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Verbose output test\"]}]}\nEOF\n",
+            "#!/bin/sh\ndd if=/dev/zero bs=1024 count=256 2>/dev/null | tr '\\000' 'x' >&2\nif [ \"$5\" != \"--output-last-message\" ] || [ -z \"$6\" ]; then\n  echo 'missing output-last-message contract' >&2\n  exit 18\nfi\nprintf '%s\\n' '{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Verbose output test\"]}]}' > \"$6\"\n",
         );
 
         let result = generate_architecture_blocking_with_config(
@@ -2280,7 +2296,7 @@ That should be enough to render the view."#;
         let script = write_executable_script(
             &bin,
             "fake-codex.sh",
-            "#!/bin/sh\nif [ -n \"${CLAUDECODE+x}\" ]; then\n  echo 'CLAUDECODE still set' >&2\n  exit 17\nfi\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Env strip test\"]}]}\nEOF\n",
+            "#!/bin/sh\nif [ -n \"${CLAUDECODE+x}\" ]; then\n  echo 'CLAUDECODE still set' >&2\n  exit 17\nfi\nif [ \"$5\" != \"--output-last-message\" ] || [ -z \"$6\" ]; then\n  echo 'missing output-last-message contract' >&2\n  exit 18\nfi\nprintf '%s\\n' '{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Env strip test\"]}]}' > \"$6\"\n",
         );
         let _guard = EnvGuard(env::var_os("CLAUDECODE"));
         env::set_var("CLAUDECODE", "nested-session");
