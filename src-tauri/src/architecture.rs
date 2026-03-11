@@ -150,7 +150,9 @@ pub struct ArchitectureComponent {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ArchitectureRelationship {
+    #[serde(default, alias = "target", alias = "target_id", alias = "id")]
     pub component_id: String,
+    #[serde(default)]
     pub summary: String,
 }
 
@@ -286,6 +288,7 @@ Requirements:\n\
 - \"title\" must be a short architecture title.\n\
 - \"mermaid\" must be a valid Mermaid flowchart using stable component ids.\n\
 - \"components\" must be an array of objects with: id, name, summary, contains, incoming_relationships, outgoing_relationships, evidence_paths, evidence_snippets.\n\
+- Each entry in incoming_relationships and outgoing_relationships must be an object with exactly two keys: \"component_id\" (the id of the related component) and \"summary\" (a short description of the relationship).\n\
 - Every component id must appear as a Mermaid node id.\n\
 - evidence_paths and evidence_snippets must cite only the files shown below.\n\
 - Output JSON only. No prose, no markdown fences.\n\n\
@@ -1525,6 +1528,87 @@ That should be enough to render the view."#;
         let error = parse_architecture_output(output).expect_err("missing id should fail");
         assert!(error.contains("component"));
         assert!(error.contains("id"));
+    }
+
+    #[test]
+    fn accepts_relationship_with_target_alias_for_component_id() {
+        let output = r#"{
+          "title": "Aliased relationships",
+          "mermaid": "flowchart TD\napi[API]\nworker[Worker]\napi --> worker",
+          "components": [
+            {
+              "id": "api",
+              "name": "API",
+              "summary": "Handles requests",
+              "contains": [],
+              "incoming_relationships": [],
+              "outgoing_relationships": [
+                {
+                  "target": "worker",
+                  "summary": "Sends jobs"
+                }
+              ],
+              "evidence_paths": [],
+              "evidence_snippets": []
+            },
+            {
+              "id": "worker",
+              "name": "Worker",
+              "summary": "Processes jobs",
+              "contains": [],
+              "incoming_relationships": [
+                {
+                  "target_id": "api",
+                  "summary": "Receives jobs"
+                }
+              ],
+              "outgoing_relationships": [],
+              "evidence_paths": [],
+              "evidence_snippets": []
+            }
+          ]
+        }"#;
+
+        let parsed = parse_architecture_output(output).expect("aliased fields should parse");
+        assert_eq!(parsed.components[0].outgoing_relationships[0].component_id, "worker");
+        assert_eq!(parsed.components[1].incoming_relationships[0].component_id, "api");
+    }
+
+    #[test]
+    fn rejects_relationship_with_missing_component_id_and_no_alias() {
+        let output = r#"{
+          "title": "Missing relationship target",
+          "mermaid": "flowchart TD\napi[API]\nworker[Worker]\napi --> worker",
+          "components": [
+            {
+              "id": "api",
+              "name": "API",
+              "summary": "Handles requests",
+              "contains": [],
+              "incoming_relationships": [],
+              "outgoing_relationships": [
+                {
+                  "summary": "Sends jobs"
+                }
+              ],
+              "evidence_paths": [],
+              "evidence_snippets": []
+            },
+            {
+              "id": "worker",
+              "name": "Worker",
+              "summary": "Processes jobs",
+              "contains": [],
+              "incoming_relationships": [],
+              "outgoing_relationships": [],
+              "evidence_paths": [],
+              "evidence_snippets": []
+            }
+          ]
+        }"#;
+
+        let error = parse_architecture_output(output).expect_err("missing component_id should fail in validation");
+        assert!(error.contains("missing component id"), "error should mention missing component id: {}", error);
     }
 
     #[test]
