@@ -15,6 +15,7 @@ const MAX_SNIPPET_LINES: usize = 24;
 const MAX_SNIPPET_CHARS: usize = 1_200;
 const CODEX_EXEC_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_CAPTURE_BYTES: usize = 256 * 1024;
+const CODEX_SANDBOX_MODE: &str = "workspace-write";
 const DEFAULT_SCAN_LIMITS: ScanLimits = ScanLimits {
     max_entries: 512,
     max_depth: 6,
@@ -35,6 +36,35 @@ struct ScanBudget {
 struct PipeCapture {
     bytes: Vec<u8>,
     overflowed: bool,
+}
+
+struct IsolatedExecDir(PathBuf);
+
+impl IsolatedExecDir {
+    fn create() -> Result<Self, String> {
+        let path = std::env::temp_dir().join(format!(
+            "the-controller-architecture-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&path).map_err(|e| {
+            format!(
+                "Failed to create isolated codex dir {}: {}",
+                path.display(),
+                e
+            )
+        })?;
+        Ok(Self(path))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for IsolatedExecDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 #[cfg(unix)]
@@ -269,8 +299,13 @@ fn generate_architecture_blocking_with_config(
     config: &CodexExecConfig,
 ) -> Result<ArchitectureResult, String> {
     let evidence = collect_repo_evidence(repo_path)?;
+    if evidence.files.is_empty() {
+        return Err(
+            "No usable evidence files were captured for architecture generation".to_string(),
+        );
+    }
     let prompt = build_architecture_prompt(repo_path, &evidence);
-    let output = run_codex_exec(repo_path, &prompt, config)?;
+    let output = run_codex_exec(&prompt, config)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -280,18 +315,15 @@ fn generate_architecture_blocking_with_config(
     parse_architecture_output_with_evidence(&String::from_utf8_lossy(&output.stdout), &evidence)
 }
 
-fn run_codex_exec(
-    repo_path: &Path,
-    prompt: &str,
-    config: &CodexExecConfig,
-) -> Result<Output, String> {
+fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, String> {
+    let exec_dir = IsolatedExecDir::create()?;
     let mut command = Command::new(&config.binary);
     command
         .arg("exec")
         .arg("--sandbox")
-        .arg("danger-full-access")
+        .arg(CODEX_SANDBOX_MODE)
         .arg(prompt)
-        .current_dir(repo_path)
+        .current_dir(exec_dir.path())
         .env_remove("CLAUDECODE");
     #[cfg(unix)]
     command.process_group(0);
@@ -443,6 +475,13 @@ fn sanitize_architecture_result(
         )?);
     }
     validate_component_references(&components)?;
+    if !evidence.files.is_empty()
+        && components.iter().all(|component| {
+            component.evidence_paths.is_empty() && component.evidence_snippets.is_empty()
+        })
+    {
+        return Err("Architecture result must include grounded evidence".to_string());
+    }
 
     Ok(ArchitectureResult {
         title,
@@ -2004,6 +2043,38 @@ That should be enough to render the view."#;
     }
 
     #[test]
+    fn rejects_architecture_results_with_no_grounded_evidence() {
+        let output = r#"{
+          "title": "Architecture",
+          "mermaid": "flowchart TD\napi[API]",
+          "components": [
+            {
+              "id": "api",
+              "name": "API",
+              "summary": "Handles requests",
+              "contains": [],
+              "incoming_relationships": [],
+              "outgoing_relationships": [],
+              "evidence_paths": [],
+              "evidence_snippets": []
+            }
+          ]
+        }"#;
+        let evidence = RepoEvidence {
+            top_level_directories: vec!["src".to_string()],
+            files: vec![RepoEvidenceFile {
+                path: "src/main.rs".to_string(),
+                snippet: "fn main() {}\n".to_string(),
+            }],
+        };
+
+        let error =
+            parse_architecture_output_with_evidence(output, &evidence).expect_err("should fail");
+
+        assert!(error.contains("grounded evidence"));
+    }
+
+    #[test]
     fn generate_architecture_command_uses_spawn_blocking() {
         let commands_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs");
         let source = fs::read_to_string(commands_path).expect("read commands source");
@@ -2045,6 +2116,61 @@ That should be enough to render the view."#;
             "timeout should return promptly"
         );
         assert!(error.contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_runs_codex_outside_repo_with_tighter_sandbox() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        write_repo_file(&repo, "README.md", "# Isolated exec test\n");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            &format!(
+                "#!/bin/sh\nif [ \"$PWD\" = \"{}\" ]; then\n  echo 'ran inside repo' >&2\n  exit 21\nfi\nif [ \"$3\" = \"danger-full-access\" ]; then\n  echo 'danger sandbox still used' >&2\n  exit 22\nfi\ncat <<'EOF'\n{{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Isolated exec test\"]}}]}}\nEOF\n",
+                repo.path().display()
+            ),
+        );
+
+        let result = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_secs(1),
+            },
+        )
+        .expect("codex should run outside the repo with a tighter sandbox");
+
+        assert_eq!(result.title, "Architecture");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_fails_closed_when_no_usable_evidence_exists() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        let marker = repo.path().join("codex-ran.txt");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            &format!("#!/bin/sh\ntouch \"{}\"\nexit 0\n", marker.display()),
+        );
+
+        let error = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_secs(1),
+            },
+        )
+        .expect_err("generation should fail before codex runs when evidence is empty");
+
+        assert!(error.contains("No usable evidence files"));
+        assert!(
+            !marker.exists(),
+            "codex should not run when evidence is missing"
+        );
     }
 
     #[cfg(unix)]
@@ -2119,7 +2245,7 @@ That should be enough to render the view."#;
         let script = write_executable_script(
             &bin,
             "fake-codex.sh",
-            "#!/bin/sh\ndd if=/dev/zero bs=1024 count=256 2>/dev/null | tr '\\000' 'x' >&2\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[],\"evidence_snippets\":[]}]}\nEOF\n",
+            "#!/bin/sh\ndd if=/dev/zero bs=1024 count=256 2>/dev/null | tr '\\000' 'x' >&2\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Verbose output test\"]}]}\nEOF\n",
         );
 
         let result = generate_architecture_blocking_with_config(
@@ -2154,7 +2280,7 @@ That should be enough to render the view."#;
         let script = write_executable_script(
             &bin,
             "fake-codex.sh",
-            "#!/bin/sh\nif [ -n \"${CLAUDECODE+x}\" ]; then\n  echo 'CLAUDECODE still set' >&2\n  exit 17\nfi\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[],\"evidence_snippets\":[]}]}\nEOF\n",
+            "#!/bin/sh\nif [ -n \"${CLAUDECODE+x}\" ]; then\n  echo 'CLAUDECODE still set' >&2\n  exit 17\nfi\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Env strip test\"]}]}\nEOF\n",
         );
         let _guard = EnvGuard(env::var_os("CLAUDECODE"));
         env::set_var("CLAUDECODE", "nested-session");
