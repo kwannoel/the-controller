@@ -3,7 +3,8 @@
   import { untrack } from "svelte";
   import { command } from "$lib/backend";
   import { activeNote, noteViewMode, projects, focusTarget, hotkeyAction, type NoteViewMode, type Project, type FocusTarget } from "./stores";
-  import CodeMirrorNoteEditor, { type VimMode } from "./CodeMirrorNoteEditor.svelte";
+  import CodeMirrorNoteEditor, { type VimMode, type AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
+  import NoteAiPanel from "./NoteAiPanel.svelte";
   import { renderMarkdown } from "./markdown";
 
   let content = $state("");
@@ -11,6 +12,7 @@
   let loading = $state(true);
   let saveTimer: ReturnType<typeof setTimeout> | null = $state(null);
   let editorMode = $state<VimMode | string>("normal");
+  let aiChatRequest = $state<AiChatRequest | null>(null);
 
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
@@ -142,6 +144,10 @@
 
   function handleEditorEscape(mode: VimMode | string) {
     editorMode = mode;
+    if (aiChatRequest) {
+      aiChatRequest = null;
+      return; // consume the escape
+    }
     if (editorMode !== "normal") return;
 
     void saveNow();
@@ -206,6 +212,9 @@
             editorMode = mode;
           }}
           onEscape={handleEditorEscape}
+          onAiChat={(request) => {
+            aiChatRequest = request;
+          }}
         />
       {/if}
       {#if showsPreview}
@@ -214,6 +223,19 @@
         </div>
       {/if}
     </div>
+    {#if aiChatRequest}
+      <NoteAiPanel
+        noteContent={content}
+        request={aiChatRequest}
+        onReplace={(text, from, to) => {
+          content = content.slice(0, from) + text + content.slice(to);
+          scheduleSave();
+        }}
+        onDismiss={() => {
+          aiChatRequest = null;
+        }}
+      />
+    {/if}
   {/if}
 </div>
 
