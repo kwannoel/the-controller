@@ -108,7 +108,7 @@
 
 <style>
   .project-item {
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
   }
 
   .project-header {
@@ -119,11 +119,11 @@
   }
 
   .project-header:hover {
-    background: #313244;
+    background: var(--bg-hover);
   }
 
   .project-header.focus-target {
-    outline: 2px solid #89b4fa;
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
     border-radius: 4px;
   }
@@ -131,7 +131,7 @@
   .btn-expand {
     background: none;
     border: none;
-    color: #6c7086;
+    color: var(--text-secondary);
     cursor: pointer;
     padding: 0;
     font-size: 10px;
@@ -149,8 +149,8 @@
 
   .agent-count {
     font-size: 11px;
-    color: #6c7086;
-    background: #313244;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
     padding: 1px 6px;
     border-radius: 8px;
   }
@@ -170,17 +170,17 @@
   }
 
   .agent-item:hover {
-    background: #313244;
+    background: var(--bg-hover);
   }
 
   .agent-item.focus-target {
-    outline: 2px solid #89b4fa;
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
     border-radius: 4px;
   }
 
   .agent-item.active {
-    background: rgba(137, 180, 250, 0.1);
+    background: rgba(255, 255, 255, 0.06);
   }
 
   .status-dot {
@@ -188,17 +188,17 @@
     height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
-    background: #6c7086;
+    background: var(--text-secondary);
   }
 
-  .status-dot.working { background: #f9e2af; }
-  .status-dot.idle { background: #a6e3a1; }
-  .status-dot.error { background: #f38ba8; }
-  .status-dot.disabled { background: #6c7086; }
+  .status-dot.working { background: var(--status-working); }
+  .status-dot.idle { background: var(--status-idle); }
+  .status-dot.error { background: var(--status-error); }
+  .status-dot.disabled { background: var(--text-secondary); }
 
   .agent-label {
     flex: 1;
-    color: #cdd6f4;
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -208,12 +208,12 @@
     font-size: 10px;
     padding: 1px 6px;
     border-radius: 3px;
-    background: #313244;
-    color: #6c7086;
+    background: var(--bg-hover);
+    color: var(--text-secondary);
     flex-shrink: 0;
   }
 
-  .agent-badge.enabled { background: rgba(166, 227, 161, 0.2); color: #a6e3a1; }
+  .agent-badge.enabled { background: rgba(74, 158, 110, 0.2); color: var(--status-idle); }
 
-  .empty { padding: 16px; color: #6c7086; font-size: 13px; text-align: center; }
+  .empty { padding: 16px; color: var(--text-secondary); font-size: 13px; text-align: center; }
 </style>

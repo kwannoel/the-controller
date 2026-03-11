@@ -154,20 +154,20 @@
     position: fixed;
     width: 400px;
     max-height: 340px;
-    background: #1e1e2e;
-    border: 1px solid #45475a;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     display: flex;
     flex-direction: column;
     z-index: 100;
     font-size: 13px;
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 
   .selected-preview {
     padding: 8px 12px;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
     max-height: 60px;
     overflow: hidden;
   }
@@ -175,10 +175,10 @@
   .selected-preview pre {
     margin: 0;
     font-size: 11px;
-    color: #6c7086;
+    color: var(--text-secondary);
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: monospace;
+    font-family: var(--font-mono);
   }
 
   .conversation {
@@ -196,7 +196,7 @@
   }
 
   .message.user {
-    color: #89b4fa;
+    color: var(--text-emphasis);
   }
 
   .label {
@@ -204,7 +204,7 @@
   }
 
   .ai-response {
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 
   .badge {
@@ -217,16 +217,16 @@
   }
 
   .badge.replace {
-    background: #a6e3a1;
-    color: #1e1e2e;
+    background: var(--status-idle);
+    color: var(--bg-void);
   }
 
   .spinner {
     display: inline-block;
     width: 12px;
     height: 12px;
-    border: 2px solid #45475a;
-    border-top-color: #89b4fa;
+    border: 2px solid var(--bg-active);
+    border-top-color: var(--text-emphasis);
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
   }
@@ -236,27 +236,27 @@
   }
 
   .input-row {
-    border-top: 1px solid #313244;
+    border-top: 1px solid var(--border-default);
     padding: 8px;
   }
 
   .input-row input {
     width: 100%;
-    background: #11111b;
-    border: 1px solid #313244;
+    background: var(--bg-void);
+    border: 1px solid var(--border-default);
     border-radius: 4px;
     padding: 6px 10px;
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 13px;
     outline: none;
     box-sizing: border-box;
   }
 
   .input-row input:focus {
-    border-color: #89b4fa;
+    border-color: var(--text-emphasis);
   }
 
   .input-row input::placeholder {
-    color: #6c7086;
+    color: var(--text-secondary);
   }
 </style>

@@ -737,11 +737,11 @@
     width: 250px;
     min-width: 250px;
     height: 100vh;
-    background: #1e1e2e;
-    border-right: 1px solid #313244;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-default);
     display: flex;
     flex-direction: column;
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 
   .sidebar-header {
@@ -749,7 +749,7 @@
     align-items: center;
     gap: 8px;
     padding: 12px 16px;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
   }
 
   .sidebar-header h2 {
@@ -769,7 +769,7 @@
   .sidebar-footer {
     display: flex;
     align-items: center;
-    border-top: 1px solid #313244;
+    border-top: 1px solid var(--border-default);
     padding: 0;
   }
 
@@ -783,8 +783,8 @@
   }
 
   .provider-indicator {
-    border-top: 1px solid #313244;
-    color: #a6adc8;
+    border-top: 1px solid var(--border-default);
+    color: var(--text-secondary);
     font-size: 11px;
     letter-spacing: 0.02em;
     padding: 6px 12px 7px;
@@ -794,8 +794,8 @@
   .btn-help {
     background: none;
     border: none;
-    border-left: 1px solid #313244;
-    color: #6c7086;
+    border-left: 1px solid var(--border-default);
+    color: var(--text-secondary);
     width: 36px;
     padding: 8px 0;
     cursor: pointer;
@@ -807,11 +807,11 @@
   }
 
   .btn-help:hover {
-    color: #cdd6f4;
-    background: #313244;
+    color: var(--text-primary);
+    background: var(--bg-hover);
   }
 
   .btn-help.active {
-    color: #89b4fa;
+    color: var(--text-emphasis);
   }
 </style>

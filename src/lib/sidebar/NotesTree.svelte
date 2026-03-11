@@ -109,7 +109,7 @@
 
 <style>
   .project-item {
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
   }
 
   .project-header {
@@ -120,11 +120,11 @@
   }
 
   .project-header:hover {
-    background: #313244;
+    background: var(--bg-hover);
   }
 
   .project-header.focus-target {
-    outline: 2px solid #89b4fa;
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
     border-radius: 4px;
   }
@@ -132,7 +132,7 @@
   .btn-expand {
     background: none;
     border: none;
-    color: #6c7086;
+    color: var(--text-secondary);
     cursor: pointer;
     padding: 0;
     font-size: 10px;
@@ -150,8 +150,8 @@
 
   .note-count {
     font-size: 11px;
-    color: #6c7086;
-    background: #313244;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
     padding: 1px 6px;
     border-radius: 8px;
   }
@@ -171,18 +171,18 @@
   }
 
   .note-item:hover {
-    background: #313244;
+    background: var(--bg-hover);
   }
 
   .note-item.focus-target {
-    outline: 2px solid #89b4fa;
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
     border-radius: 4px;
   }
 
   .note-name {
     flex: 1;
-    color: #cdd6f4;
+    color: var(--text-primary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -190,18 +190,18 @@
 
   .empty-notes {
     padding: 12px 16px 12px 40px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 12px;
   }
 
   .empty-notes kbd {
-    background: #313244;
+    background: var(--bg-hover);
     padding: 1px 5px;
     border-radius: 3px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 
-  .empty { padding: 16px; color: #6c7086; font-size: 13px; text-align: center; }
+  .empty { padding: 16px; color: var(--text-secondary); font-size: 13px; text-align: center; }
 </style>

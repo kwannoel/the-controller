@@ -146,23 +146,23 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
-    background: #11111b;
+    background: var(--bg-void);
   }
 
   .note-code-editor :global(.cm-editor) {
     height: 100%;
-    background: #11111b;
-    color: #cdd6f4;
+    background: var(--bg-void);
+    color: var(--text-primary);
   }
 
   .note-code-editor :global(.cm-scroller) {
-    font-family: monospace;
+    font-family: var(--font-mono);
     line-height: 1.6;
   }
 
   .note-code-editor :global(.cm-content) {
     padding: 16px;
-    caret-color: #cdd6f4;
+    caret-color: var(--text-primary);
   }
 
   .note-code-editor :global(.cm-focused) {
@@ -170,11 +170,11 @@
   }
 
   .note-code-editor :global(.cm-cursor) {
-    border-left-color: #cdd6f4;
+    border-left-color: var(--text-primary);
   }
 
   .note-code-editor :global(.cm-selectionBackground) {
-    background: rgba(137, 180, 250, 0.35);
+    background: rgba(255, 255, 255, 0.15);
   }
 
   /* Hide native browser selection — drawSelection() renders its own overlay.

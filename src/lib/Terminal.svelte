@@ -103,10 +103,10 @@
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
       scrollback: 10000,
       theme: {
-        background: "#11111b",
-        foreground: "#cdd6f4",
-        cursor: "#f5e0dc",
-        selectionBackground: "#45475a",
+        background: "#000000",
+        foreground: "#e0e0e0",
+        cursor: "#ffffff",
+        selectionBackground: "#2e2e2e",
       },
     });
 

@@ -194,12 +194,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #11111b;
-    color: #cdd6f4;
+    background: var(--bg-void);
+    color: var(--text-primary);
   }
   .finder {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 500px;
     max-height: 500px;
@@ -214,10 +214,10 @@
     padding: 16px 16px 0;
   }
   .search-input {
-    background: #1e1e2e;
-    color: #cdd6f4;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
     border: none;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
     padding: 14px 16px;
     font-size: 15px;
     outline: none;
@@ -235,34 +235,34 @@
   }
   .result-item:hover,
   .result-item.selected {
-    background: #313244;
+    background: var(--bg-hover);
   }
   .entry-name {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 14px;
   }
   .entry-path {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 12px;
   }
   .empty {
     padding: 20px 16px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
     text-align: center;
   }
   .hint-text {
     padding: 10px 16px;
     margin: 0;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 12px;
-    border-top: 1px solid #313244;
+    border-top: 1px solid var(--border-default);
   }
   .card {
-    background: #1e1e2e;
+    background: var(--bg-elevated);
     padding: 40px;
     border-radius: 12px;
-    border: 1px solid #313244;
+    border: 1px solid var(--border-default);
     max-width: 560px;
     width: 100%;
     display: flex;
@@ -276,7 +276,7 @@
   }
   p {
     margin: 0;
-    color: #a6adc8;
+    color: var(--text-secondary);
     font-size: 14px;
   }
   .selected-path {
@@ -284,13 +284,13 @@
   }
   .login-terminal {
     height: 300px;
-    border: 1px solid #313244;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     overflow: hidden;
   }
   button {
-    background: #89b4fa;
-    color: #1e1e2e;
+    background: var(--text-emphasis);
+    color: var(--bg-void);
     border: none;
     padding: 10px 20px;
     border-radius: 6px;
@@ -310,8 +310,8 @@
   .spinner {
     width: 20px;
     height: 20px;
-    border: 2.5px solid #313244;
-    border-top-color: #89b4fa;
+    border: 2.5px solid var(--border-default);
+    border-top-color: var(--text-emphasis);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -321,16 +321,16 @@
     }
   }
   .success {
-    color: #a6e3a1;
+    color: var(--status-idle);
   }
   .warning {
-    color: #fab387;
+    color: var(--status-working);
   }
   .hint {
     font-size: 13px;
   }
   code {
-    background: #313244;
+    background: var(--bg-hover);
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 13px;

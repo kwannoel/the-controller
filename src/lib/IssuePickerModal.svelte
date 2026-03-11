@@ -152,7 +152,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -160,26 +161,27 @@
     z-index: 100;
   }
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 420px;
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   }
   .modal-header {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-emphasis);
   }
   .status {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
   }
   .status.error {
-    color: #f38ba8;
+    color: var(--status-error);
   }
   .issue-list {
     list-style: none;
@@ -189,7 +191,7 @@
     overflow-y: auto;
   }
   .issue-list li {
-    border-bottom: 1px solid rgba(49, 50, 68, 0.5);
+    border-bottom: 1px solid var(--border-default);
   }
   .issue-list li.group-header {
     border-bottom: none;
@@ -205,7 +207,7 @@
     padding: 10px 8px;
     background: none;
     border: none;
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 13px;
     cursor: pointer;
     text-align: left;
@@ -213,7 +215,7 @@
   }
   .issue-btn:hover,
   .issue-btn.selected {
-    background: #313244;
+    background: var(--bg-hover);
     border-radius: 4px;
   }
   .group-header {
@@ -221,14 +223,14 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #6c7086;
+    color: var(--text-secondary);
     padding: 10px 8px 4px;
   }
   .group-header:first-child {
     padding-top: 4px;
   }
   .issue-number {
-    color: #89b4fa;
+    color: var(--text-emphasis);
     font-weight: 500;
     white-space: nowrap;
     flex-shrink: 0;
@@ -239,10 +241,10 @@
     white-space: nowrap;
   }
   .no-issue {
-    color: #6c7086;
+    color: var(--text-secondary);
   }
   .no-issue.selected,
   .no-issue:hover {
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 </style>

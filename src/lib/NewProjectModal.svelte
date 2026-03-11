@@ -71,7 +71,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -79,24 +80,25 @@
     z-index: 100;
   }
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 380px;
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   }
   .modal-header {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-emphasis);
   }
   .input {
-    background: #313244;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
     padding: 10px 12px;
     border-radius: 6px;
     font-size: 14px;
@@ -105,11 +107,11 @@
     box-sizing: border-box;
   }
   .input:focus {
-    border-color: #89b4fa;
+    border-color: var(--text-emphasis);
   }
   .btn-primary {
-    background: #89b4fa;
-    color: #1e1e2e;
+    background: var(--text-emphasis);
+    color: var(--bg-void);
     border: none;
     padding: 10px;
     border-radius: 6px;

@@ -75,7 +75,7 @@
   }
 
   .terminal-manager.focused {
-    outline: 2px solid #89b4fa;
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
   }
 
@@ -108,23 +108,23 @@
   }
 
   .empty-title {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 16px;
     font-weight: 500;
     margin-bottom: 8px;
   }
 
   .empty-hint {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
   }
 
   .empty-hint kbd {
-    background: #313244;
-    color: #89b4fa;
+    background: var(--bg-hover);
+    color: var(--text-emphasis);
     padding: 1px 6px;
     border-radius: 3px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
 </style>

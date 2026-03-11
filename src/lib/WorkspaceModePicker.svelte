@@ -34,7 +34,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -42,8 +43,8 @@
   }
 
   .picker {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     padding: 20px 24px;
     min-width: 240px;
@@ -52,7 +53,7 @@
   .picker-title {
     font-size: 14px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-primary);
     margin-bottom: 16px;
     text-align: center;
   }
@@ -69,20 +70,20 @@
     gap: 12px;
     padding: 8px 12px;
     border-radius: 6px;
-    color: #a6adc8;
+    color: var(--text-secondary);
   }
 
   .picker-option.active {
-    background: rgba(137, 180, 250, 0.1);
-    color: #cdd6f4;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
   }
 
   kbd {
-    background: #ffffff;
-    color: #1e1e2e;
+    background: var(--text-emphasis);
+    color: var(--bg-void);
     padding: 2px 8px;
     border-radius: 4px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 600;
   }
@@ -94,7 +95,7 @@
 
   .current-badge {
     font-size: 11px;
-    color: #89b4fa;
+    color: var(--text-emphasis);
     font-style: italic;
   }
 </style>

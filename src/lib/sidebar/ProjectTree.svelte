@@ -91,7 +91,7 @@
 
 <style>
   .project-item {
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
   }
 
   .project-header {
@@ -102,11 +102,11 @@
   }
 
   .project-header:hover {
-    background: #313244;
+    background: var(--bg-hover);
   }
 
   .project-header.focus-target {
-    outline: 2px solid #89b4fa;
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
     border-radius: 4px;
   }
@@ -114,7 +114,7 @@
   .btn-expand {
     background: none;
     border: none;
-    color: #6c7086;
+    color: var(--text-secondary);
     cursor: pointer;
     padding: 0;
     font-size: 10px;
@@ -132,8 +132,8 @@
 
   .session-count {
     font-size: 11px;
-    color: #6c7086;
-    background: #313244;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
     padding: 1px 6px;
     border-radius: 8px;
   }
@@ -152,36 +152,36 @@
     width: 100%;
     background: none;
     border: none;
-    color: #cdd6f4;
+    color: var(--text-primary);
     text-align: left;
     box-shadow: none;
   }
 
   .session-item:hover {
-    background: #313244;
+    background: var(--bg-hover);
   }
 
   .session-item.active {
-    background: #45475a;
+    background: var(--bg-active);
   }
 
   .session-item.focus-target {
-    outline: 2px solid #89b4fa;
+    outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
     border-radius: 4px;
   }
 
   .status-dot {
     font-size: 10px;
-    color: #6c7086;
+    color: var(--text-secondary);
   }
 
   .status-dot.idle {
-    color: #a6e3a1;
+    color: var(--status-idle);
   }
 
   .status-dot.working {
-    color: #f9e2af;
+    color: var(--status-working);
   }
 
   .session-label {
@@ -193,8 +193,8 @@
 
   .staged-badge {
     font-size: 9px;
-    color: #f38ba8;
-    background: rgba(243, 139, 168, 0.15);
+    color: var(--status-error);
+    background: rgba(196, 64, 64, 0.15);
     padding: 0 4px;
     border-radius: 3px;
     white-space: nowrap;
@@ -206,8 +206,8 @@
 
   .issue-badge {
     font-size: 10px;
-    color: #89b4fa;
-    background: rgba(137, 180, 250, 0.15);
+    color: var(--text-emphasis);
+    background: rgba(255, 255, 255, 0.08);
     padding: 0 4px;
     border-radius: 3px;
     white-space: nowrap;

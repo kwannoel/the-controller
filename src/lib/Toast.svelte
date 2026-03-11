@@ -28,21 +28,22 @@
   }
 
   .toast {
-    background: #313244;
-    color: #cdd6f4;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
     padding: 10px 16px;
     border-radius: 6px;
     font-size: 13px;
     max-width: 400px;
-    border-left: 3px solid #89b4fa;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-default);
+    border-left: 3px solid var(--text-emphasis);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   }
 
   .toast.error {
-    border-left-color: #f38ba8;
+    border-left-color: var(--status-error);
   }
 
   .toast.info {
-    border-left-color: #89b4fa;
+    border-left-color: var(--text-emphasis);
   }
 </style>

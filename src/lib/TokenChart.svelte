@@ -90,7 +90,7 @@
             y={chartHeight - bar.outputH}
             width={bar.width}
             height={bar.outputH}
-            fill="#a6e3a1"
+            fill="#4a9e6e"
             rx="1"
           />
           <!-- Input tokens (stacked on top) -->
@@ -99,7 +99,7 @@
             y={chartHeight - bar.totalH}
             width={bar.width}
             height={bar.inputH}
-            fill="#89b4fa"
+            fill="#5a9bcf"
             rx="1"
           />
           <title>Turn {i + 1}: {formatTokens(bar.input_tokens)} in, {formatTokens(bar.output_tokens)} out</title>
@@ -123,7 +123,7 @@
   }
 
   .label {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-weight: 600;
     font-size: 15px;
     letter-spacing: 0.75px;
@@ -138,11 +138,11 @@
   }
 
   .input-badge {
-    color: #89b4fa;
+    color: var(--text-emphasis);
   }
 
   .output-badge {
-    color: #a6e3a1;
+    color: var(--status-idle);
   }
 
   .chart-container {

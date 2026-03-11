@@ -548,7 +548,7 @@
     display: flex;
     height: 100vh;
     width: 100vw;
-    background: #11111b;
+    background: var(--bg-void);
     overflow: hidden;
   }
   .terminal-area {

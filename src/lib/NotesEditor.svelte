@@ -245,8 +245,8 @@
     height: 100%;
     display: flex;
     flex-direction: column;
-    background: #11111b;
-    color: #cdd6f4;
+    background: var(--bg-void);
+    color: var(--text-primary);
   }
 
   .empty-state {
@@ -264,16 +264,16 @@
   }
 
   .empty-hint {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
   }
 
   .empty-hint kbd {
-    background: #313244;
-    color: #89b4fa;
+    background: var(--bg-hover);
+    color: var(--text-emphasis);
     padding: 1px 6px;
     border-radius: 3px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
 
@@ -281,7 +281,7 @@
     display: flex;
     align-items: center;
     padding: 10px 16px;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
     gap: 10px;
     flex-shrink: 0;
   }
@@ -294,7 +294,7 @@
 
   .unsaved-indicator {
     font-size: 11px;
-    color: #f9e2af;
+    color: var(--status-working);
     font-weight: 500;
   }
 
@@ -304,9 +304,9 @@
   }
 
   .view-mode-button {
-    background: #313244;
+    background: var(--bg-hover);
     border: none;
-    color: #cdd6f4;
+    color: var(--text-primary);
     padding: 4px 10px;
     border-radius: 4px;
     font-size: 11px;
@@ -314,12 +314,12 @@
   }
 
   .view-mode-button:hover {
-    background: #45475a;
+    background: var(--bg-active);
   }
 
   .view-mode-button.active {
-    background: #89b4fa;
-    color: #1e1e2e;
+    background: var(--text-emphasis);
+    color: var(--bg-void);
   }
 
   .editor-body {
@@ -332,12 +332,12 @@
   }
 
   .editor-body.focused {
-    border-color: #89b4fa;
+    border-color: var(--focus-ring);
   }
 
   .editor-body.split {
     gap: 1px;
-    background: #313244;
+    background: var(--border-default);
   }
 
   .preview {
@@ -346,18 +346,18 @@
     height: 100%;
     box-sizing: border-box;
     flex: 1;
-    background: #11111b;
+    background: var(--bg-void);
   }
 
   .preview.split {
-    border-left: 1px solid #313244;
+    border-left: 1px solid var(--border-default);
   }
 
   .preview :global(h1) {
     font-size: 24px;
     font-weight: 700;
     margin: 0 0 12px;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
     padding-bottom: 8px;
   }
 
@@ -400,7 +400,7 @@
   }
 
   .preview :global(a) {
-    color: #89b4fa;
+    color: var(--text-emphasis);
     text-decoration: none;
   }
 
@@ -409,15 +409,15 @@
   }
 
   .preview :global(code) {
-    background: #1e1e2e;
+    background: var(--bg-surface);
     padding: 2px 5px;
     border-radius: 3px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
   }
 
   .preview :global(pre) {
-    background: #1e1e2e;
+    background: var(--bg-surface);
     padding: 12px 16px;
     border-radius: 6px;
     overflow-x: auto;

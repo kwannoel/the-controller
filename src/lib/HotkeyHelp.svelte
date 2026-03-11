@@ -58,7 +58,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -66,8 +67,8 @@
     z-index: 100;
   }
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 720px;
     max-height: 70vh;
@@ -80,10 +81,10 @@
   .modal-header {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
   .subtitle {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
     margin: 0;
   }
@@ -93,13 +94,13 @@
     gap: 20px;
   }
   .section-label {
-    color: #a6adc8;
+    color: var(--text-secondary);
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     padding: 0 8px 6px;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
     margin-bottom: 2px;
   }
   .shortcut-table {
@@ -110,23 +111,23 @@
     padding: 5px 8px;
   }
   .shortcut-table tr:not(:last-child) td {
-    border-bottom: 1px solid rgba(49, 50, 68, 0.5);
+    border-bottom: 1px solid var(--border-subtle);
   }
   .key-cell {
     width: 80px;
   }
   kbd {
-    background: #ffffff;
-    color: #1e1e2e;
+    background: var(--text-emphasis);
+    color: var(--bg-void);
     padding: 2px 8px;
     border-radius: 4px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
   }
   .desc-cell {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 13px;
   }
 </style>

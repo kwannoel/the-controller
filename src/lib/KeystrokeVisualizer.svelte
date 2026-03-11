@@ -30,13 +30,13 @@
   }
 
   .keystroke-pill {
-    background: rgba(30, 30, 46, 0.95);
-    color: #cdd6f4;
-    border: 1px solid #45475a;
+    background: rgba(28, 28, 28, 0.95);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     padding: 6px 14px;
     font-size: 15px;
-    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-family: var(--font-mono);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     animation: pill-fade ease-out forwards;
   }

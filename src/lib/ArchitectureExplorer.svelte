@@ -113,13 +113,13 @@
             htmlLabels: false,
           },
           themeVariables: {
-            primaryColor: "#1e1e2e",
-            primaryTextColor: "#cdd6f4",
-            primaryBorderColor: "#45475a",
-            lineColor: "#89b4fa",
-            tertiaryColor: "#181825",
-            clusterBkg: "#11111b",
-            clusterBorder: "#45475a",
+            primaryColor: "#141414",
+            primaryTextColor: "#e0e0e0",
+            primaryBorderColor: "#2e2e2e",
+            lineColor: "#ffffff",
+            tertiaryColor: "#0a0a0a",
+            clusterBkg: "#000000",
+            clusterBorder: "#2e2e2e",
           },
         });
 
@@ -294,8 +294,8 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
     height: 100%;
-    color: #cdd6f4;
-    background: #1e1e2e;
+    color: var(--text-primary);
+    background: var(--bg-surface);
   }
 
   .diagram-pane,
@@ -307,7 +307,7 @@
     display: flex;
     flex-direction: column;
     padding: 16px 24px;
-    border-right: 1px solid #313244;
+    border-right: 1px solid var(--border-default);
     gap: 12px;
   }
 
@@ -329,8 +329,8 @@
     padding: 6px 12px;
     border: none;
     border-radius: 4px;
-    background: #313244;
-    color: #cdd6f4;
+    background: var(--bg-hover);
+    color: var(--text-primary);
     font: inherit;
     font-size: 12px;
     cursor: pointer;
@@ -338,7 +338,7 @@
   }
 
   .generate-action:hover:enabled {
-    background: #45475a;
+    background: var(--bg-active);
   }
 
   .generate-action:disabled {
@@ -349,7 +349,7 @@
   .generation-error {
     margin: 0;
     font-size: 12px;
-    color: #f38ba8;
+    color: var(--status-error);
   }
 
   .diagram-surface {
@@ -358,9 +358,9 @@
     min-height: 0;
     overflow: auto;
     padding: 16px;
-    border: 1px solid #313244;
+    border: 1px solid var(--border-default);
     border-radius: 6px;
-    background: #181825;
+    background: var(--bg-base);
     transition: opacity 0.15s;
   }
 
@@ -381,14 +381,14 @@
     gap: 8px;
     margin-top: 12px;
     padding: 8px 12px;
-    border: 1px solid rgba(243, 139, 168, 0.3);
+    border: 1px solid rgba(196, 64, 64, 0.3);
     border-radius: 6px;
-    background: #1e1e2e;
+    background: var(--bg-surface);
     font-size: 12px;
   }
 
   .error-label {
-    color: #f38ba8;
+    color: var(--status-error);
     font-weight: 600;
   }
 
@@ -425,14 +425,14 @@
   .diagram-render :global(g.architecture-node-selected path),
   .diagram-render :global(g.architecture-node-selected circle),
   .diagram-render :global(g.architecture-node-selected ellipse) {
-    stroke: #89b4fa !important;
+    stroke: var(--text-emphasis) !important;
     stroke-width: 2px !important;
   }
 
   .diagram-render :global(g.architecture-node-selected .nodeLabel),
   .diagram-render :global(g.architecture-node-selected text) {
     font-weight: 600;
-    fill: #89b4fa !important;
+    fill: var(--text-emphasis) !important;
   }
 
   .empty-state {
@@ -449,22 +449,22 @@
   .empty-hint {
     font-size: 13px;
     font-weight: 400;
-    color: #6c7086;
+    color: var(--text-secondary);
   }
 
   .empty-hint kbd {
-    background: #313244;
-    color: #89b4fa;
+    background: var(--bg-hover);
+    color: var(--text-emphasis);
     padding: 1px 6px;
     border-radius: 3px;
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
   }
 
   .inspector-rail {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    background: #11111b;
+    background: var(--bg-void);
   }
 
   .component-list-pane,
@@ -475,7 +475,7 @@
   }
 
   .component-list-pane {
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
   }
 
   .section-heading {
@@ -492,15 +492,15 @@
 
   .section-count {
     font-size: 11px;
-    color: #6c7086;
-    background: #313244;
+    color: var(--text-secondary);
+    background: var(--bg-hover);
     padding: 1px 6px;
     border-radius: 3px;
   }
 
   .placeholder-copy {
     font-size: 12px;
-    color: #6c7086;
+    color: var(--text-secondary);
   }
 
   .component-list {
@@ -518,7 +518,7 @@
     border-radius: 4px;
     padding: 8px 12px;
     background: transparent;
-    color: #a6adc8;
+    color: var(--text-secondary);
     font: inherit;
     font-size: 12px;
     text-align: left;
@@ -527,14 +527,14 @@
   }
 
   .component-list button:hover {
-    background: rgba(49, 50, 68, 0.5);
-    color: #cdd6f4;
+    background: var(--border-subtle);
+    color: var(--text-primary);
   }
 
   .component-list button.selected {
-    background: rgba(137, 180, 250, 0.1);
-    color: #cdd6f4;
-    outline: 1px solid rgba(137, 180, 250, 0.4);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    outline: 1px solid rgba(255, 255, 255, 0.15);
     outline-offset: -1px;
   }
 
@@ -547,7 +547,7 @@
   .summary {
     margin: 0 0 12px;
     font-size: 12px;
-    color: #bac2de;
+    color: var(--text-primary);
     line-height: 1.5;
   }
 
@@ -559,7 +559,7 @@
     margin: 0 0 4px;
     font-size: 11px;
     font-weight: 600;
-    color: #6c7086;
+    color: var(--text-secondary);
     text-transform: uppercase;
   }
 
@@ -574,9 +574,9 @@
   }
 
   .detail-group code {
-    font-family: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
-    color: #a6adc8;
+    color: var(--text-secondary);
   }
 
   .evidence-snippets {
@@ -587,12 +587,12 @@
   .evidence-snippets pre {
     margin: 0;
     white-space: pre-wrap;
-    border: 1px solid rgba(49, 50, 68, 0.5);
+    border: 1px solid var(--border-subtle);
     border-radius: 6px;
     padding: 8px 12px;
-    background: #1e1e2e;
-    color: #cdd6f4;
-    font-family: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 11px;
   }
 
@@ -602,7 +602,7 @@
 
   .details-pane .empty-state {
     font-size: 13px;
-    color: #6c7086;
+    color: var(--text-secondary);
   }
 
   @media (max-width: 980px) {
@@ -613,7 +613,7 @@
 
     .diagram-pane {
       border-right: 0;
-      border-bottom: 1px solid #313244;
+      border-bottom: 1px solid var(--border-default);
     }
   }
 </style>

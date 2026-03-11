@@ -140,8 +140,8 @@
   }
 
   .panel-container {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
     border-radius: 12px;
     width: 640px;
     max-height: 80vh;
@@ -158,26 +158,26 @@
   }
 
   .panel-header h2 {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 18px;
     font-weight: 600;
     margin: 0;
   }
 
   .count {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
   }
 
   .status {
     padding: 32px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 14px;
     text-align: center;
   }
 
   .status.error {
-    color: #f38ba8;
+    color: var(--status-error);
   }
 
   .issue-list {
@@ -191,15 +191,15 @@
   .issue-row {
     padding: 10px 12px;
     border-radius: 6px;
-    background: #181825;
+    background: var(--bg-base);
     display: flex;
     flex-direction: column;
     gap: 4px;
   }
 
   .issue-row:hover {
-    background: #1e1e2e;
-    outline: 1px solid #313244;
+    background: var(--bg-surface);
+    outline: 1px solid var(--border-default);
   }
 
   .issue-main {
@@ -209,14 +209,14 @@
   }
 
   .issue-number {
-    color: #89b4fa;
+    color: var(--text-emphasis);
     font-size: 13px;
     font-weight: 600;
     flex-shrink: 0;
   }
 
   .issue-title {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 14px;
     white-space: nowrap;
     overflow: hidden;
@@ -231,7 +231,7 @@
   }
 
   .assignees {
-    color: #a6e3a1;
+    color: var(--status-idle);
   }
 
   .assignee {
@@ -239,7 +239,7 @@
   }
 
   .updated {
-    color: #6c7086;
+    color: var(--text-secondary);
   }
 
   .issue-labels {
@@ -251,8 +251,8 @@
 
   .label {
     font-size: 11px;
-    color: #bac2de;
-    background: #313244;
+    color: var(--text-primary);
+    background: var(--bg-hover);
     padding: 1px 6px;
     border-radius: 4px;
   }
@@ -261,17 +261,17 @@
     display: flex;
     justify-content: center;
     gap: 8px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 12px;
     padding-top: 8px;
-    border-top: 1px solid #313244;
+    border-top: 1px solid var(--border-default);
   }
 
   .panel-footer kbd {
-    background: #313244;
+    background: var(--bg-hover);
     padding: 1px 6px;
     border-radius: 3px;
     font-size: 11px;
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 </style>

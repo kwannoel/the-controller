@@ -137,8 +137,8 @@
     flex-direction: column;
     gap: 6px;
     padding: 12px 18px;
-    background: #181825;
-    border-bottom: 1px solid #313244;
+    background: var(--bg-base);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: 18px;
     flex-shrink: 0;
     max-height: 280px;
@@ -164,7 +164,7 @@
   }
 
   .label {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-weight: 600;
     font-size: 15px;
     letter-spacing: 0.75px;
@@ -173,7 +173,7 @@
   }
 
   .value {
-    color: #cdd6f4;
+    color: var(--text-primary);
     min-width: 0;
   }
 
@@ -183,7 +183,7 @@
   }
 
   .muted {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-style: italic;
   }
 
@@ -202,14 +202,14 @@
   }
 
   .commit-hash {
-    color: #89b4fa;
-    font-family: monospace;
+    color: var(--text-emphasis);
+    font-family: var(--font-mono);
     font-size: 16px;
     flex-shrink: 0;
   }
 
   .commit-msg {
-    color: #cdd6f4;
+    color: var(--text-primary);
     white-space: normal;
     word-wrap: break-word;
   }

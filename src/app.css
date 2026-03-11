@@ -1,3 +1,43 @@
+@import "@fontsource/geist-sans/400.css";
+@import "@fontsource/geist-sans/500.css";
+@import "@fontsource/geist-sans/600.css";
+@import "@fontsource/geist-mono/400.css";
+@import "@fontsource/geist-mono/500.css";
+@import "@fontsource/geist-mono/600.css";
+
+:root {
+  /* Backgrounds — luminance ladder */
+  --bg-void: #000000;
+  --bg-base: #0a0a0a;
+  --bg-surface: #141414;
+  --bg-elevated: #1c1c1c;
+  --bg-hover: #242424;
+  --bg-active: #2e2e2e;
+
+  /* Borders — Godel-style rgba white */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.10);
+
+  /* Text — luminance as hierarchy */
+  --text-emphasis: #ffffff;
+  --text-primary: #e0e0e0;
+  --text-secondary: #777777;
+  --text-tertiary: #4a4a4a;
+
+  /* Status — the ONLY chromatic elements */
+  --status-idle: #4a9e6e;
+  --status-working: #b8a43c;
+  --status-error: #c44040;
+  --status-exited: #555555;
+
+  /* Focus */
+  --focus-ring: #ffffff;
+
+  /* Fonts */
+  --font-sans: "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", "Fira Code", monospace;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,7 +45,8 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #11111b;
+  font-family: var(--font-sans);
+  background: var(--bg-void);
   overflow: hidden;
+  color: var(--text-primary);
 }

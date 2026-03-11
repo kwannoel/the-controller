@@ -291,8 +291,8 @@
   }
 
   .triage-container {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
     border-radius: 12px;
     width: 580px;
     padding: 32px;
@@ -308,7 +308,7 @@
   }
 
   .triage-header h2 {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 18px;
     font-weight: 600;
     margin: 0;
@@ -317,13 +317,13 @@
 
   .status {
     padding: 32px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 14px;
     text-align: center;
   }
 
   .status.error {
-    color: #f38ba8;
+    color: var(--status-error);
   }
 
   .card-area {
@@ -357,19 +357,19 @@
     gap: 6px;
     padding: 6px 12px;
     border-radius: 6px;
-    border: 1px solid #313244;
-    background: #181825;
+    border: 1px solid var(--border-default);
+    background: var(--bg-base);
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
   }
 
   .ranking-option:hover {
-    background: #313244;
+    background: var(--bg-hover);
   }
 
   .ranking-option .ranking-key {
     font-size: 13px;
-    color: #6c7086;
+    color: var(--text-secondary);
   }
 
   .ranking-label-group {
@@ -380,7 +380,7 @@
   .ranking-option .ranking-label {
     font-size: 13px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 
   .back-option {
@@ -390,22 +390,22 @@
   }
 
   .back-option .ranking-label {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-weight: 400;
   }
 
   .current-tag {
     display: block;
     font-size: 11px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-weight: 400;
   }
 
   .issue-card {
     flex: 1;
     min-width: 0;
-    background: #181825;
-    border: 1px solid #313244;
+    background: var(--bg-base);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     padding: 24px;
     display: flex;
@@ -425,19 +425,19 @@
   }
 
   .card-number {
-    color: #89b4fa;
+    color: var(--text-emphasis);
     font-size: 14px;
     font-weight: 600;
   }
 
   .card-title {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 16px;
     line-height: 1.4;
   }
 
   .card-body {
-    color: #a6adc8;
+    color: var(--text-secondary);
     font-size: 13px;
     line-height: 1.5;
     max-height: 160px;
@@ -445,7 +445,7 @@
     white-space: pre-wrap;
     overflow-wrap: break-word;
     word-break: break-word;
-    border-top: 1px solid #313244;
+    border-top: 1px solid var(--border-default);
     padding-top: 8px;
   }
 
@@ -458,14 +458,14 @@
 
   .card-label {
     font-size: 11px;
-    color: #bac2de;
-    background: #313244;
+    color: var(--text-primary);
+    background: var(--bg-hover);
     padding: 2px 8px;
     border-radius: 4px;
   }
 
   .card-counter {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 12px;
     margin-top: 4px;
   }
@@ -481,18 +481,18 @@
 
   .done-icon {
     font-size: 32px;
-    color: #a6e3a1;
+    color: var(--status-idle);
   }
 
   .done-text {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-primary);
   }
 
   .done-hint {
     margin-top: 8px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
   }
 </style>

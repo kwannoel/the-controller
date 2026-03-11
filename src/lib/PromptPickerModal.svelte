@@ -109,7 +109,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -117,26 +118,27 @@
     z-index: 100;
   }
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 480px;
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   }
   .modal-header {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-emphasis);
   }
   .status {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
   }
   .status.error {
-    color: #f38ba8;
+    color: var(--status-error);
   }
   .prompt-list {
     list-style: none;
@@ -146,7 +148,7 @@
     overflow-y: auto;
   }
   .prompt-list li {
-    border-bottom: 1px solid rgba(49, 50, 68, 0.5);
+    border-bottom: 1px solid var(--border-default);
   }
   .prompt-list li:last-child {
     border-bottom: none;
@@ -159,7 +161,7 @@
     padding: 10px 8px;
     background: none;
     border: none;
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 13px;
     cursor: pointer;
     text-align: left;
@@ -167,11 +169,11 @@
   }
   .prompt-btn:hover,
   .prompt-btn.selected {
-    background: #313244;
+    background: var(--bg-hover);
     border-radius: 4px;
   }
   .prompt-source {
-    color: #89b4fa;
+    color: var(--text-emphasis);
     font-weight: 500;
     white-space: nowrap;
     flex-shrink: 0;

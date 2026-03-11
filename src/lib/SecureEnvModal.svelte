@@ -76,7 +76,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -85,26 +86,26 @@
     outline: none;
   }
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 420px;
     padding: 24px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   }
   .modal-header {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-emphasis);
   }
   .meta {
     display: grid;
     gap: 8px;
-    background: #181825;
-    border: 1px solid #313244;
+    background: var(--bg-base);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 12px;
   }
@@ -114,20 +115,20 @@
     gap: 16px;
   }
   .meta-label {
-    color: #7f849c;
+    color: var(--text-secondary);
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
   .meta-value {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 13px;
   }
   .meta-value.code {
-    font-family: "SFMono-Regular", "Menlo", monospace;
+    font-family: var(--font-mono);
   }
   .label {
-    color: #bac2de;
+    color: var(--text-primary);
     font-size: 13px;
   }
   .input-row {
@@ -136,16 +137,16 @@
   }
   .input {
     flex: 1;
-    background: #11111b;
-    color: #cdd6f4;
-    border: 1px solid #45475a;
+    background: var(--bg-void);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
     padding: 10px 12px;
     border-radius: 6px;
     font-size: 14px;
     outline: none;
   }
   .input:focus {
-    border-color: #89b4fa;
+    border-color: var(--text-emphasis);
   }
   .btn-toggle,
   .btn-cancel,
@@ -157,13 +158,13 @@
   }
   .btn-toggle,
   .btn-cancel {
-    background: #313244;
-    color: #cdd6f4;
+    background: var(--bg-hover);
+    color: var(--text-primary);
     padding: 10px 14px;
   }
   .btn-primary {
-    background: #89b4fa;
-    color: #1e1e2e;
+    background: var(--text-emphasis);
+    color: var(--bg-void);
     padding: 10px 16px;
     font-weight: 600;
   }

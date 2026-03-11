@@ -89,7 +89,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -97,8 +98,8 @@
     z-index: 100;
   }
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 500px;
     max-height: 400px;
@@ -107,10 +108,10 @@
     overflow: hidden;
   }
   .search-input {
-    background: #1e1e2e;
-    color: #cdd6f4;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
     border: none;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
     padding: 14px 16px;
     font-size: 15px;
     outline: none;
@@ -128,19 +129,19 @@
   }
   .result-item:hover,
   .result-item.selected {
-    background: #313244;
+    background: var(--bg-hover);
   }
   .entry-name {
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 14px;
   }
   .entry-path {
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 12px;
   }
   .empty {
     padding: 20px 16px;
-    color: #6c7086;
+    color: var(--text-secondary);
     font-size: 13px;
     text-align: center;
   }

@@ -55,7 +55,8 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(16px);
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -63,8 +64,8 @@
     z-index: 100;
   }
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     width: 380px;
     padding: 24px;
@@ -72,14 +73,15 @@
     flex-direction: column;
     gap: 12px;
     outline: none;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   }
   .modal-header {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-emphasis);
   }
   .description {
-    color: #a6adc8;
+    color: var(--text-secondary);
     font-size: 13px;
     margin: 0;
     line-height: 1.5;
@@ -89,8 +91,8 @@
     gap: 8px;
   }
   .btn-confirm {
-    background: #f38ba8;
-    color: #1e1e2e;
+    background: var(--status-error);
+    color: var(--text-emphasis);
     border: none;
     padding: 10px 16px;
     border-radius: 6px;
@@ -99,12 +101,12 @@
     cursor: pointer;
   }
   .btn-confirm:hover {
-    background: #eba0ac;
+    opacity: 0.85;
   }
   .btn-cancel {
     background: none;
-    color: #6c7086;
-    border: 1px solid #313244;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
     padding: 10px 16px;
     border-radius: 6px;
     font-size: 13px;
@@ -112,11 +114,11 @@
     margin-left: auto;
   }
   .btn-cancel:hover {
-    color: #cdd6f4;
-    border-color: #45475a;
+    color: var(--text-primary);
+    border-color: var(--text-secondary);
   }
   kbd {
-    font-family: monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     opacity: 0.7;
   }
