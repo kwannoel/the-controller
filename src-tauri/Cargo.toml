@@ -42,5 +42,9 @@ name = "server"
 path = "src/bin/server.rs"
 required-features = ["server"]
 
+[[bin]]
+name = "controller-cli"
+path = "src/bin/controller-cli.rs"
+
 [dev-dependencies]
 tempfile = "3"

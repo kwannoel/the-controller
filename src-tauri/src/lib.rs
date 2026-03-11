@@ -10,6 +10,7 @@ pub mod maintainer;
 pub mod models;
 pub mod notes;
 pub mod pty_manager;
+pub mod secure_env;
 pub mod session_args;
 pub mod skills;
 pub mod state;
@@ -67,6 +68,8 @@ pub fn run() {
             commands::resize_pty,
             commands::close_session,
             commands::set_initial_prompt,
+            commands::submit_secure_env_value,
+            commands::cancel_secure_env_request,
             commands::start_claude_login,
             commands::stop_claude_login,
             commands::home_dir,
