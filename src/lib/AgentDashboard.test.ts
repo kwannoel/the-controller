@@ -69,6 +69,7 @@ describe("AgentDashboard auto-worker pane", () => {
     });
 
     render(AgentDashboard);
+    hotkeyAction.set({ type: "toggle-maintainer-view" });
 
     await waitFor(() => {
       expect(screen.getByText("#299 Sanitize markdown link URLs")).toBeInTheDocument();
@@ -77,6 +78,53 @@ describe("AgentDashboard auto-worker pane", () => {
     expect(screen.getByText("assigned-to-auto-worker")).toBeInTheDocument();
     expect(screen.getByText("complexity:low")).toBeInTheDocument();
     expect(screen.queryByText("finished-by-worker")).not.toBeInTheDocument();
+  });
+
+  it("shows a navigable eligible issue queue by default, including the active issue", async () => {
+    autoWorkerStatuses.set(new Map([[
+      "project-1",
+      { status: "working", issue_number: 144, issue_title: "Render queue in auto-worker panel" },
+    ]]));
+
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "get_auto_worker_queue") {
+        return [
+          {
+            number: 144,
+            title: "Render queue in auto-worker panel",
+            url: "https://github.com/example/controller/issues/144",
+            body: "Show the current issue at the top of the queue.",
+            labels: ["priority:high", "complexity:low", "assigned-to-auto-worker"],
+            is_active: true,
+          },
+          {
+            number: 145,
+            title: "Add queue detail view",
+            url: "https://github.com/example/controller/issues/145",
+            body: "Open the queue item detail in-panel.",
+            labels: ["priority:high", "complexity:low"],
+            is_active: false,
+          },
+        ];
+      }
+      if (cmd === "get_worker_reports") return [];
+      return [];
+    });
+
+    render(AgentDashboard);
+
+    await waitFor(() => {
+      expect(screen.getByText("Queue")).toBeInTheDocument();
+      expect(screen.getByText("#145 Add queue detail view")).toBeInTheDocument();
+    });
+
+    expect(screen.getAllByText("Working").length).toBeGreaterThan(0);
+
+    await fireEvent.click(screen.getByText("#145 Add queue detail view"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Open the queue item detail in-panel.")).toBeInTheDocument();
+    });
   });
 
   it("shows fallback report text when a completed issue has no worker report comment", async () => {
@@ -95,6 +143,7 @@ describe("AgentDashboard auto-worker pane", () => {
     });
 
     render(AgentDashboard);
+    hotkeyAction.set({ type: "toggle-maintainer-view" });
 
     const report = await screen.findByText("#299 Sanitize markdown link URLs");
     await fireEvent.click(report);
