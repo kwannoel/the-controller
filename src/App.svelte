@@ -21,9 +21,10 @@
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import NotesEditor from "./lib/NotesEditor.svelte";
   import GlobalChat from "./lib/GlobalChat.svelte";
+  import ArchitectureExplorer from "./lib/ArchitectureExplorer.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
-  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, controllerChatVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, architectureViews, controllerChatVisible, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
@@ -42,8 +43,34 @@
   const projectsState = fromStore(projects);
   const activeSessionIdState = fromStore(activeSessionId);
   const focusTargetState = fromStore(focusTarget);
+  const architectureViewsState = fromStore(architectureViews);
   const selectedSessionProviderState = fromStore(selectedSessionProvider);
   let currentSessionProvider = $derived(selectedSessionProviderState.current);
+  let currentArchitectureProject = $derived.by(() => {
+    const focusedProjectId =
+      focusTargetState.current?.projectId ??
+      projectsState.current.find((project) =>
+        project.sessions.some((session) => session.id === activeSessionIdState.current),
+      )?.id ??
+      projectsState.current[0]?.id ??
+      null;
+
+    if (!focusedProjectId) {
+      return null;
+    }
+
+    return projectsState.current.find((project) => project.id === focusedProjectId) ?? null;
+  });
+  let currentArchitectureView = $derived.by(() => {
+    if (!currentArchitectureProject) {
+      return null;
+    }
+
+    return (
+      architectureViewsState.current.get(currentArchitectureProject.id) ??
+      createArchitectureViewState()
+    );
+  });
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
@@ -285,12 +312,31 @@
     }
   }
 
+  function handleArchitectureSelection(componentId: string) {
+    if (!currentArchitectureProject) {
+      return;
+    }
+
+    architectureViews.update((views) => {
+      const next = new Map(views);
+      const currentView =
+        next.get(currentArchitectureProject.id) ?? createArchitectureViewState();
+      next.set(currentArchitectureProject.id, {
+        ...currentView,
+        selectedComponentId: componentId,
+      });
+      return next;
+    });
+  }
+
   // Reactively update title when staging state changes
   $effect(() => {
     const stagedProject = projectsState.current.find((p) => p.staged_session);
     if (stagedProject) {
       command<[string, string]>("get_repo_head", { repoPath: stagedProject.repo_path })
-        .then(([branch, commit]) => updateWindowTitle(branch, commit))
+        .then(([branch, commit]: [string, string]) =>
+          updateWindowTitle(branch, commit),
+        )
         .catch(() => {
           // Fallback to staged_session info
           updateWindowTitle(stagedProject.staged_session!.staging_branch, "");
@@ -376,6 +422,13 @@
       <main class="terminal-area">
         {#if workspaceModeState.current === "agents"}
           <AgentDashboard />
+        {:else if workspaceModeState.current === "architecture"}
+          <ArchitectureExplorer
+            projectName={currentArchitectureProject?.name ?? "Architecture"}
+            architecture={currentArchitectureView?.result ?? null}
+            selectedComponentId={currentArchitectureView?.selectedComponentId ?? null}
+            onSelectComponent={handleArchitectureSelection}
+          />
         {:else if workspaceModeState.current === "notes"}
           <NotesEditor />
         {:else}
