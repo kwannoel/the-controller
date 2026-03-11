@@ -70,8 +70,6 @@ pub fn run() {
             commands::set_initial_prompt,
             commands::submit_secure_env_value,
             commands::cancel_secure_env_request,
-            commands::archive_session,
-            commands::unarchive_session,
             commands::start_claude_login,
             commands::stop_claude_login,
             commands::home_dir,
