@@ -5,6 +5,7 @@ pub mod controller_chat;
 pub mod commands;
 pub mod config;
 pub mod emitter;
+pub mod labels;
 pub mod maintainer;
 pub mod models;
 pub mod notes;

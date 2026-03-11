@@ -7,6 +7,7 @@ use once_cell::sync::Lazy;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
+use crate::labels;
 use crate::models::GithubIssue;
 use crate::state::AppState;
 
@@ -25,11 +26,11 @@ const POLL_INTERVAL_SECS: u64 = 30;
 const SESSION_TIMEOUT_SECS: u64 = 30 * 60; // 30 minutes
 const MAX_NUDGES: u32 = 3;
 const NUDGE_COOLDOWN_SECS: u64 = 60;
-const LABEL_PRIORITY_HIGH: &str = "priority:high";
-const LABEL_COMPLEXITY_LOW: &str = "complexity:low";
-const LABEL_IN_PROGRESS: &str = "in-progress";
-const LABEL_ASSIGNED_TO_AUTO_WORKER: &str = "assigned-to-auto-worker";
-const LABEL_FINISHED_BY_WORKER: &str = "finished-by-worker";
+const LABEL_PRIORITY_HIGH: &str = labels::PRIORITY_HIGH;
+const LABEL_COMPLEXITY_LOW: &str = labels::COMPLEXITY_LOW;
+const LABEL_IN_PROGRESS: &str = labels::IN_PROGRESS;
+const LABEL_ASSIGNED_TO_AUTO_WORKER: &str = labels::ASSIGNED_TO_AUTO_WORKER;
+const LABEL_FINISHED_BY_WORKER: &str = labels::FINISHED_BY_WORKER;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 struct WorkerLabelPlan {

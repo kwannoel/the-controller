@@ -6,15 +6,16 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
+use crate::labels;
 use crate::models::{IssueAction, IssueSummary, MaintainerRunLog};
 use crate::state::AppState;
 
 const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.6;
 const MIN_FINGERPRINT_TOKENS: usize = 3;
-const PRIORITY_LOW_LABEL: &str = "priority: low";
-const PRIORITY_HIGH_LABEL: &str = "priority: high";
-const COMPLEXITY_LOW_LABEL: &str = "complexity: low";
-const COMPLEXITY_HIGH_LABEL: &str = "complexity: high";
+const PRIORITY_LOW_LABEL: &str = labels::PRIORITY_LOW;
+const PRIORITY_HIGH_LABEL: &str = labels::PRIORITY_HIGH;
+const COMPLEXITY_LOW_LABEL: &str = labels::COMPLEXITY_LOW;
+const COMPLEXITY_HIGH_LABEL: &str = labels::COMPLEXITY_HIGH;
 
 const STOPWORDS: &[&str] = &[
     "a",
@@ -1130,9 +1131,9 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_priority_label_uses_spaced_canonical_labels() {
-        assert_eq!(normalize_priority_label("high"), "priority: high");
-        assert_eq!(normalize_priority_label("low"), "priority: low");
+    fn test_normalize_priority_label_uses_canonical_labels() {
+        assert_eq!(normalize_priority_label("high"), "priority:high");
+        assert_eq!(normalize_priority_label("low"), "priority:low");
     }
 
     #[test]
@@ -1428,7 +1429,7 @@ mod tests {
         ];
         let desired = vec![
             "filed-by-maintainer".to_string(),
-            "priority: high".to_string(),
+            PRIORITY_HIGH_LABEL.to_string(),
             COMPLEXITY_HIGH_LABEL.to_string(),
         ];
 
