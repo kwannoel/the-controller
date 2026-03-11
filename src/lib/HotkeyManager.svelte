@@ -396,6 +396,11 @@
           dispatchAction({ type: "rename-note", projectId: currentFocus.projectId, filename: currentFocus.filename });
         }
         return true;
+      case "duplicate-note":
+        if (currentFocus?.type === "note") {
+          dispatchAction({ type: "duplicate-note", projectId: currentFocus.projectId, filename: currentFocus.filename });
+        }
+        return true;
       case "toggle-note-preview":
         dispatchAction({ type: "toggle-note-preview" });
         return true;

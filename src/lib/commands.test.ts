@@ -173,7 +173,7 @@ describe("command registry", () => {
     expect(panels.entries).toHaveLength(4);
 
     const notes = sections.find(s => s.label === "Notes")!;
-    expect(notes.entries).toHaveLength(4);
+    expect(notes.entries).toHaveLength(5);
     expect(notes.entries).toContainEqual({
       key: "p",
       description: "Cycle edit / preview / split",

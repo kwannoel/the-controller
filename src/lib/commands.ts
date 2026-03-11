@@ -27,6 +27,7 @@ export type CommandId =
   | "create-note"
   | "delete-note"
   | "rename-note"
+  | "duplicate-note"
   | "toggle-note-preview"
   | "save-prompt"
   | "load-prompt"
@@ -105,6 +106,7 @@ export const commands: CommandDef[] = [
   { id: "create-note", key: "n", section: "Notes", description: "Create new note", mode: "notes" },
   { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note", mode: "notes" },
   { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note", mode: "notes" },
+  { id: "duplicate-note", key: "y", section: "Notes", description: "Duplicate focused note", mode: "notes" },
   { id: "toggle-note-preview", key: "p", section: "Notes", description: "Cycle edit / preview / split", mode: "notes" },
   { id: "expand-collapse", key: "o", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
   { id: "expand-collapse", key: "i", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },

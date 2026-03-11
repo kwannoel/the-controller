@@ -70,6 +70,19 @@ pub(crate) fn rename_note(
         .map_err(|e| e.to_string())
 }
 
+pub(crate) fn duplicate_note(
+    state: State<'_, AppState>,
+    project_name: String,
+    filename: String,
+) -> Result<String, String> {
+    let base_dir = state
+        .storage
+        .lock()
+        .map_err(|e| e.to_string())?
+        .base_dir();
+    notes::duplicate_note(&base_dir, &project_name, &filename).map_err(|e| e.to_string())
+}
+
 pub(crate) fn delete_note(
     state: State<'_, AppState>,
     project_name: String,
