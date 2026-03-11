@@ -133,27 +133,6 @@ export interface NoteEntry {
   modified_at: string;
 }
 
-export interface ControllerChatFocus {
-  project_id: string | null;
-  project_name: string | null;
-  session_id: string | null;
-  note_filename: string | null;
-  workspace_mode: string | null;
-}
-
-export type ControllerChatItemKind = "user" | "tool" | "assistant";
-
-export interface ControllerChatItem {
-  kind: ControllerChatItemKind;
-  text: string;
-}
-
-export interface ControllerChatSession {
-  focus: ControllerChatFocus;
-  items: ControllerChatItem[];
-  turn_in_progress: boolean;
-}
-
 export interface ArchitectureRelationship {
   component_id: string;
   summary: string;
@@ -214,18 +193,6 @@ export const architectureViews = writable<Map<string, ArchitectureViewState>>(
 );
 export type NoteViewMode = "edit" | "preview" | "split";
 export const noteViewMode = writable<NoteViewMode>("edit");
-export const controllerChatSession = writable<ControllerChatSession>({
-  focus: {
-    project_id: null,
-    project_name: null,
-    session_id: null,
-    note_filename: null,
-    workspace_mode: null,
-  },
-  items: [],
-  turn_in_progress: false,
-});
-
 export const projects = writable<Project[]>([]);
 export const activeSessionId = writable<string | null>(null);
 export type SessionStatus = "working" | "idle" | "exited";
@@ -309,7 +276,6 @@ export type HotkeyAction =
 export const hotkeyAction = writable<HotkeyAction>(null);
 export const showKeyHints = writable<boolean>(false);
 export const sidebarVisible = writable<boolean>(true);
-export const controllerChatVisible = writable<boolean>(false);
 
 export const expandedProjects = writable<Set<string>>(new Set());
 

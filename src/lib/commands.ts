@@ -32,8 +32,7 @@ export type CommandId =
   | "load-prompt"
   | "generate-architecture"
   | "stage-inplace"
-  | "toggle-maintainer-view"
-  | "toggle-controller-chat";
+  | "toggle-maintainer-view";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -91,7 +90,6 @@ export const commands: CommandDef[] = [
 
   // ── Panels ──
   { id: "toggle-sidebar", key: "s", section: "Panels", description: "Toggle sidebar" },
-  { id: "toggle-controller-chat", key: "g", section: "Panels", description: "Toggle controller chat" },
   { id: "toggle-mode", key: "o", section: "Panels", description: "Toggle: (m)aintainer / (w)orker", mode: "development" },
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
   { id: "switch-workspace", key: "␣", section: "Panels", description: "Switch workspace mode", handledExternally: true },

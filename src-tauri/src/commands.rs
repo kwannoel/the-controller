@@ -1400,49 +1400,6 @@ pub fn delete_note(
     notes::delete_note(state, project_name, filename)
 }
 
-#[tauri::command]
-pub fn get_controller_chat_session(
-    state: State<'_, AppState>,
-) -> Result<crate::controller_chat::ControllerChatSession, String> {
-    crate::controller_chat::get_controller_chat_session(state.inner())
-}
-
-#[tauri::command]
-pub fn update_controller_chat_focus(
-    state: State<'_, AppState>,
-    project_id: Option<String>,
-    project_name: Option<String>,
-    session_id: Option<String>,
-    note_filename: Option<String>,
-    workspace_mode: Option<String>,
-) -> Result<crate::controller_chat::ControllerChatSession, String> {
-    let project_id = project_id
-        .map(|id| Uuid::parse_str(&id).map_err(|e| e.to_string()))
-        .transpose()?;
-    let session_id = session_id
-        .map(|id| Uuid::parse_str(&id).map_err(|e| e.to_string()))
-        .transpose()?;
-
-    crate::controller_chat::update_focus_snapshot(
-        state.inner(),
-        crate::controller_chat::ControllerFocusUpdate {
-            project_id,
-            project_name,
-            session_id,
-            note_filename,
-            workspace_mode,
-        },
-    )
-}
-
-#[tauri::command]
-pub async fn send_controller_chat_message(
-    state: State<'_, AppState>,
-    message: String,
-) -> Result<crate::controller_chat::ControllerChatSession, String> {
-    crate::controller_chat::send_message(state.inner(), message).await
-}
-
 const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;
 const MAX_MERGE_REBASE_WAIT_SECS: u64 = 600; // 10 minutes
@@ -1988,7 +1945,6 @@ mod tests {
             storage: Mutex::new(storage),
             pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
-            controller_chat: Arc::new(Mutex::new(crate::controller_chat::ControllerChatSession::default())),
             secure_env_request: Mutex::new(None),
             emitter: crate::emitter::NoopEmitter::new(),
         }

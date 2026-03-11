@@ -222,31 +222,6 @@ pub struct AutoWorkerQueueIssue {
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ControllerChatTranscriptRowKind {
-    Tool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ControllerChatTranscriptRow {
-    pub kind: ControllerChatTranscriptRowKind,
-    pub text: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ControllerChatNoteOpenEvent {
-    pub project_id: Uuid,
-    pub filename: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct ControllerBridgeActionResult {
-    pub transcript_row: ControllerChatTranscriptRow,
-    #[serde(default)]
-    pub note_open_event: Option<ControllerChatNoteOpenEvent>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

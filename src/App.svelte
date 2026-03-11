@@ -20,11 +20,10 @@
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import NotesEditor from "./lib/NotesEditor.svelte";
-  import GlobalChat from "./lib/GlobalChat.svelte";
   import ArchitectureExplorer from "./lib/ArchitectureExplorer.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
-  import { appConfig, architectureViews, controllerChatVisible, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
@@ -34,7 +33,6 @@
   let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
-  const controllerChatVisibleState = fromStore(controllerChatVisible);
   const showKeyHintsState = fromStore(showKeyHints);
 
   const workspaceModePickerVisibleState = fromStore(workspaceModePickerVisible);
@@ -497,10 +495,6 @@
           <TerminalManager />
         {/if}
       </main>
-      {#if controllerChatVisibleState.current}
-        <GlobalChat />
-      {/if}
-
     </div>
     <HotkeyManager />
     {#if showKeyHintsState.current}

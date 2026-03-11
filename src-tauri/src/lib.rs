@@ -2,7 +2,6 @@ use tauri::Manager;
 
 pub mod architecture;
 pub mod auto_worker;
-pub mod controller_chat;
 pub mod commands;
 pub mod config;
 pub mod emitter;
@@ -109,9 +108,6 @@ pub fn run() {
             commands::create_note,
             commands::rename_note,
             commands::delete_note,
-            commands::get_controller_chat_session,
-            commands::update_controller_chat_focus,
-            commands::send_controller_chat_message,
             commands::save_session_prompt,
             commands::list_project_prompts,
             commands::stage_session_inplace,

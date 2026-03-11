@@ -6,7 +6,6 @@
     projects,
     activeSessionId,
     sidebarVisible,
-    controllerChatVisible,
     workspaceMode,
     workspaceModePickerVisible,
     selectedSessionProvider,
@@ -330,13 +329,6 @@
       }
       case "toggle-sidebar":
         sidebarVisible.update(v => !v);
-        return true;
-      case "toggle-controller-chat":
-        controllerChatVisible.update(v => !v);
-        tick().then(() => {
-          const input = document.querySelector('[data-testid="controller-chat-input"]') as HTMLElement;
-          input?.focus();
-        });
         return true;
       case "create-issue":
         dispatchCreateIssue();

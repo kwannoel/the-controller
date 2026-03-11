@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { command } from '$lib/backend';
-import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, controllerChatVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, activeNote, noteEntries, type Project, type SessionConfig } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, activeNote, noteEntries, type Project, type SessionConfig } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 function makeSession(id: string, label: string, kind = 'claude'): SessionConfig {
@@ -85,7 +85,6 @@ describe('HotkeyManager', () => {
     hotkeyAction.set(null);
     focusTarget.set(null);
     sidebarVisible.set(true);
-    controllerChatVisible.set(true);
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
     workspaceMode.set("development");
     workspaceModePickerVisible.set(false);
@@ -360,16 +359,6 @@ describe('HotkeyManager', () => {
     });
   });
 
-  describe('g toggles controller chat', () => {
-    it('g toggles controllerChatVisible', () => {
-      expect(get(controllerChatVisible)).toBe(true);
-      pressKey('g');
-      expect(get(controllerChatVisible)).toBe(false);
-      pressKey('g');
-      expect(get(controllerChatVisible)).toBe(true);
-    });
-  });
-
   // ── Terminal escape (terminal focused) ──
 
   describe('terminal escape', () => {
@@ -412,16 +401,6 @@ describe('HotkeyManager', () => {
       pressKey('f');
       expect(captured).toEqual({ type: 'open-fuzzy-finder' });
       unsub();
-    });
-
-    it('Escape then g toggles controller chat in ambient mode', () => {
-      pressKey('Escape');
-
-      removeTerminalFocus(xtermEl);
-      xtermEl = document.createElement('div');
-
-      pressKey('g');
-      expect(get(controllerChatVisible)).toBe(false);
     });
 
     it('double Escape forwards Escape to PTY', () => {

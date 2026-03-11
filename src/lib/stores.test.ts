@@ -11,7 +11,6 @@ import {
   onboardingComplete,
   focusTarget,
   sidebarVisible,
-  controllerChatVisible,
   workspaceMode,
   workspaceModePickerVisible,
 } from './stores';
@@ -80,10 +79,6 @@ describe('stores', () => {
 
   it('sidebarVisible defaults to true', () => {
     expect(get(sidebarVisible)).toBe(true);
-  });
-
-  it('controllerChatVisible defaults to false', () => {
-    expect(get(controllerChatVisible)).toBe(false);
   });
 
   describe('maintainerStatuses store', () => {
