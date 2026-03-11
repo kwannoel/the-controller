@@ -177,7 +177,8 @@ export type WorkspaceMode =
   | "development"
   | "agents"
   | "notes"
-  | "architecture";
+  | "architecture"
+  | "infrastructure";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
 export type SessionProvider = "claude" | "codex";

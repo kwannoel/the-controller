@@ -227,4 +227,33 @@ describe("focusForModeSwitch", () => {
     );
     expect(result).toEqual({ type: "project", projectId: "p1" });
   });
+
+  it("switches session focus to project when entering infrastructure mode", () => {
+    const projects = [makeProject("p1", ["s1"])];
+    const result = focusForModeSwitch(
+      { type: "session", sessionId: "s1", projectId: "p1" },
+      "infrastructure",
+      "s1",
+      projects,
+    );
+    expect(result).toEqual({ type: "project", projectId: "p1" });
+  });
+
+  it("switches agent focus to project when entering infrastructure mode", () => {
+    const projects = [makeProject("p1", ["s1"])];
+    const result = focusForModeSwitch(
+      { type: "agent", agentKind: "maintainer", projectId: "p1" },
+      "infrastructure",
+      null,
+      projects,
+    );
+    expect(result).toEqual({ type: "project", projectId: "p1" });
+  });
+
+  it("keeps project focus when entering infrastructure mode", () => {
+    const projects = [makeProject("p1", ["s1"])];
+    const focus = { type: "project" as const, projectId: "p1" };
+    const result = focusForModeSwitch(focus, "infrastructure", null, projects);
+    expect(result).toEqual({ type: "project", projectId: "p1" });
+  });
 });

@@ -95,5 +95,17 @@ export function focusForModeSwitch(
     }
   }
 
+  if (newMode === "infrastructure") {
+    if (
+      current.type === "session" ||
+      current.type === "agent" ||
+      current.type === "agent-panel" ||
+      current.type === "note" ||
+      current.type === "notes-editor"
+    ) {
+      return { type: "project", projectId: current.projectId };
+    }
+  }
+
   return current;
 }
