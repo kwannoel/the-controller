@@ -109,6 +109,7 @@ pub fn run() {
             commands::create_note,
             commands::rename_note,
             commands::delete_note,
+            commands::send_note_ai_chat,
             commands::save_session_prompt,
             commands::list_project_prompts,
             commands::stage_session_inplace,

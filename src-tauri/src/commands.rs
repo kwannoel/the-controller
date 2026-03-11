@@ -1400,6 +1400,22 @@ pub fn delete_note(
     notes::delete_note(state, project_name, filename)
 }
 
+#[tauri::command]
+pub async fn send_note_ai_chat(
+    note_content: String,
+    selected_text: String,
+    conversation_history: Vec<crate::note_ai_chat::NoteAiChatMessage>,
+    prompt: String,
+) -> Result<crate::note_ai_chat::NoteAiResponse, String> {
+    crate::note_ai_chat::send_note_ai_message(
+        std::env::temp_dir().to_string_lossy().to_string(),
+        note_content,
+        selected_text,
+        conversation_history,
+        prompt,
+    )
+    .await
+}
 const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;
 const MAX_MERGE_REBASE_WAIT_SECS: u64 = 600; // 10 minutes
