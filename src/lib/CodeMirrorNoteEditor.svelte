@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   import { EditorState } from "@codemirror/state";
   import { EditorView, drawSelection } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
@@ -49,13 +50,18 @@
   $effect(() => {
     if (!hostEl || view) return;
 
+    // Use untrack to prevent this effect from depending on `value` and callback
+    // props. The value sync effect (below) handles value changes separately.
+    // Without untrack, every keystroke in insert mode would re-run this effect,
+    // destroying and recreating the view (and losing vim state + focus).
+    const initialValue = untrack(() => value);
     view = new EditorView({
-      state: buildState(value),
+      state: buildState(initialValue),
       parent: hostEl,
     });
 
     currentMode = "normal";
-    onModeChange?.(currentMode);
+    untrack(() => onModeChange?.(currentMode));
 
     const cm = getCM(view);
     const handleModeChange = (event: { mode?: string }) => {

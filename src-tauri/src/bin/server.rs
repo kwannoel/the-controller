@@ -14,6 +14,7 @@ use the_controller_lib::{
     controller_chat::{self, ControllerFocusUpdate},
     config,
     emitter::WsBroadcastEmitter,
+    notes,
     state::AppState,
 };
 use tokio::sync::broadcast;
@@ -49,6 +50,12 @@ async fn main() {
         .route("/api/get_controller_chat_session", post(get_controller_chat_session))
         .route("/api/update_controller_chat_focus", post(update_controller_chat_focus))
         .route("/api/send_controller_chat_message", post(send_controller_chat_message))
+        .route("/api/list_notes", post(api_list_notes))
+        .route("/api/read_note", post(api_read_note))
+        .route("/api/write_note", post(api_write_note))
+        .route("/api/create_note", post(api_create_note))
+        .route("/api/delete_note", post(api_delete_note))
+        .route("/api/rename_note", post(api_rename_note))
         .route("/ws", get(ws_upgrade))
         .fallback(post(fallback_handler))
         .layer(CorsLayer::permissive())
@@ -434,6 +441,108 @@ async fn send_controller_chat_message(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(serde_json::to_value(session).unwrap()))
+}
+
+// --- Notes ---
+
+async fn api_list_notes(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_name = args["projectName"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing projectName".to_string()))?
+        .to_string();
+    let base_dir = state.app.storage.lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let entries = notes::list_notes(&base_dir, &project_name)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::to_value(entries).unwrap()))
+}
+
+async fn api_read_note(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_name = args["projectName"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing projectName".to_string()))?.to_string();
+    let filename = args["filename"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?.to_string();
+    let base_dir = state.app.storage.lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let content = notes::read_note(&base_dir, &project_name, &filename)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::to_value(content).unwrap()))
+}
+
+async fn api_write_note(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_name = args["projectName"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing projectName".to_string()))?.to_string();
+    let filename = args["filename"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?.to_string();
+    let content = args["content"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing content".to_string()))?.to_string();
+    let base_dir = state.app.storage.lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    notes::write_note(&base_dir, &project_name, &filename, &content)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(Value::Null))
+}
+
+async fn api_create_note(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_name = args["projectName"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing projectName".to_string()))?.to_string();
+    let title = args["title"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing title".to_string()))?.to_string();
+    let base_dir = state.app.storage.lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let filename = notes::create_note(&base_dir, &project_name, &title)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::to_value(filename).unwrap()))
+}
+
+async fn api_delete_note(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_name = args["projectName"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing projectName".to_string()))?.to_string();
+    let filename = args["filename"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?.to_string();
+    let base_dir = state.app.storage.lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    notes::delete_note(&base_dir, &project_name, &filename)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(Value::Null))
+}
+
+async fn api_rename_note(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_name = args["projectName"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing projectName".to_string()))?.to_string();
+    let old_name = args["oldName"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing oldName".to_string()))?.to_string();
+    let new_name = args["newName"].as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing newName".to_string()))?.to_string();
+    let base_dir = state.app.storage.lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let filename = notes::rename_note(&base_dir, &project_name, &old_name, &new_name)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::to_value(filename).unwrap()))
 }
 
 // --- WebSocket ---
