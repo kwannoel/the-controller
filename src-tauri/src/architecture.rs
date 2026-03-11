@@ -266,9 +266,9 @@ pub fn build_architecture_prompt(repo_path: &Path, evidence: &RepoEvidence) -> S
             .iter()
             .map(|file| {
                 format!(
-                    "### {}\n```text\n{}\n```",
+                    "### {}\nSnippet lines:\n{}",
                     file.path,
-                    file.snippet.trim_end()
+                    format_prompt_snippet(&file.snippet)
                 )
             })
             .collect::<Vec<_>>()
@@ -288,6 +288,19 @@ Requirements:\n\
 Top-level directories:\n{directories}\n\n\
 Repository evidence:\n{file_sections}\n"
     )
+}
+
+fn format_prompt_snippet(snippet: &str) -> String {
+    let snippet = snippet.trim_end();
+    if snippet.is_empty() {
+        return "|".to_string();
+    }
+
+    snippet
+        .lines()
+        .map(|line| format!("| {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn generate_architecture_blocking(repo_path: &Path) -> Result<ArchitectureResult, String> {
@@ -348,13 +361,15 @@ fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, Stri
     let stderr_handle = spawn_pipe_reader(stderr_reader, "stderr", overflow_tx);
     let started_at = Instant::now();
     let status = loop {
-        if let Ok(stream_name) = overflow_rx.try_recv() {
-            terminate_codex_process(&mut child);
-            let _ = child.wait();
-            return Err(format!(
-                "codex exec {} exceeded {} bytes of output",
-                stream_name, MAX_CAPTURE_BYTES
-            ));
+        while let Ok(stream_name) = overflow_rx.try_recv() {
+            if stream_name != "stdout" {
+                terminate_codex_process(&mut child);
+                let _ = child.wait();
+                return Err(format!(
+                    "codex exec {} exceeded {} bytes of output",
+                    stream_name, MAX_CAPTURE_BYTES
+                ));
+            }
         }
 
         if let Some(status) = child
@@ -378,7 +393,7 @@ fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, Stri
 
     let stdout = join_pipe_reader(stdout_handle, "stdout")?;
     let stderr = join_pipe_reader(stderr_handle, "stderr")?;
-    if stdout.overflowed {
+    if stdout.overflowed && !status.success() {
         return Err(format!(
             "codex exec stdout exceeded {} bytes of output",
             MAX_CAPTURE_BYTES
@@ -419,6 +434,7 @@ fn terminate_codex_process(child: &mut std::process::Child) {
         }
     }
 
+    // Non-Unix platforms fall back to killing the direct child only.
     let _ = child.kill();
 }
 pub fn extract_json(output: &str) -> Option<&str> {
@@ -1268,11 +1284,11 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        collect_repo_evidence, collect_repo_evidence_with_limits,
+        build_architecture_prompt, collect_repo_evidence, collect_repo_evidence_with_limits,
         generate_architecture_blocking_with_config, parse_architecture_output,
         parse_architecture_output_with_evidence, read_text_snippet, sort_entries_with_budget,
         CodexExecConfig, RepoEvidence, RepoEvidenceFile, ScanBudget, ScanLimits,
-        MAX_EVIDENCE_FILES, MAX_SNIPPET_CHARS,
+        MAX_CAPTURE_BYTES, MAX_EVIDENCE_FILES, MAX_SNIPPET_CHARS,
     };
 
     fn write_repo_file(repo: &TempDir, relative_path: &str, contents: &str) {
@@ -1414,6 +1430,27 @@ That should be enough to render the view."#;
 
         assert_eq!(parsed.title, "Controller backend");
         assert_eq!(parsed.components.len(), 2);
+    }
+
+    #[test]
+    fn build_architecture_prompt_formats_evidence_without_markdown_fences() {
+        let repo = Path::new("/tmp/fenced-repo");
+        let evidence = RepoEvidence {
+            top_level_directories: vec!["docs".to_string()],
+            files: vec![RepoEvidenceFile {
+                path: "README.md".to_string(),
+                snippet: "# README\n```bash\nnpm install\n```\n".to_string(),
+            }],
+        };
+
+        let prompt = build_architecture_prompt(repo, &evidence);
+
+        assert!(
+            !prompt.contains("```text"),
+            "prompt evidence should not open raw markdown fences"
+        );
+        assert!(prompt.contains("### README.md"));
+        assert!(prompt.contains("Snippet lines:\n| # README\n| ```bash\n| npm install\n| ```"));
     }
 
     #[test]
@@ -2272,6 +2309,33 @@ That should be enough to render the view."#;
             },
         )
         .expect("verbose codex output should be drained without deadlock");
+
+        assert_eq!(result.title, "Architecture");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_prefers_last_message_when_stdout_is_noisy() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        write_repo_file(&repo, "README.md", "# Noisy stdout test\n");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            &format!(
+                "#!/bin/sh\nif [ \"$5\" != \"--output-last-message\" ] || [ -z \"$6\" ]; then\n  echo 'missing output-last-message contract' >&2\n  exit 18\nfi\nprintf '%s\\n' '{{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[\"README.md\"],\"evidence_snippets\":[\"# Noisy stdout test\"]}}]}}' > \"$6\"\ndd if=/dev/zero bs=1024 count={} 2>/dev/null | tr '\\000' 'x'\n",
+                (MAX_CAPTURE_BYTES / 1024) + 1
+            ),
+        );
+
+        let result = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_secs(2),
+            },
+        )
+        .expect("successful codex runs should use the last-message file even if stdout is noisy");
 
         assert_eq!(result.title, "Architecture");
     }
