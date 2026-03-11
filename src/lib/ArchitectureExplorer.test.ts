@@ -172,9 +172,9 @@ describe("ArchitectureExplorer", () => {
     expect(
       screen.getByText("Receives generated architecture payloads from the backend command."),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Evidence paths" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Evidence" })).toBeInTheDocument();
     expect(screen.getByText("src/App.svelte")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Evidence snippets" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Snippets" })).toBeInTheDocument();
     expect(
       screen.getByText('{#if workspaceModeState.current === "architecture"}'),
     ).toBeInTheDocument();
@@ -205,7 +205,7 @@ describe("ArchitectureExplorer", () => {
       },
     });
 
-    await fireEvent.click(screen.getByRole("button", { name: "Generate Architecture" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
     expect(onGenerateArchitecture).toHaveBeenCalledTimes(1);
   });
@@ -220,7 +220,7 @@ describe("ArchitectureExplorer", () => {
       },
     });
 
-    await fireEvent.click(screen.getByRole("button", { name: "Regenerate Architecture" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
 
     expect(onGenerateArchitecture).toHaveBeenCalledTimes(1);
   });

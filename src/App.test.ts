@@ -449,7 +449,7 @@ describe("App architecture workspace", () => {
     render(App);
 
     const generateButton = await waitFor(() =>
-      screen.getByRole("button", { name: "Generate Architecture" }),
+      screen.getByRole("button", { name: "Generate" }),
     );
 
     await fireEvent.click(generateButton);
@@ -499,7 +499,7 @@ describe("App architecture workspace", () => {
       expect(screen.getByRole("heading", { name: "Backend Command Layer" })).toBeInTheDocument();
     });
 
-    await fireEvent.click(screen.getByRole("button", { name: "Regenerate Architecture" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Regenerate" }));
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("generate_architecture", {
