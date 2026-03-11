@@ -166,3 +166,32 @@ test("multiline visual selection works with ga", async ({ page }) => {
   await page.waitForTimeout(300);
   await expect(panel).not.toBeVisible();
 });
+
+test("ga works when entire note is selected with ggVG", async ({ page }) => {
+  const editor = await navigateToNote(page, "the-controller", "ai-chat-test.md");
+
+  // Select the entire note: gg (go to top), V (visual line), G (to bottom)
+  await page.keyboard.press("g");
+  await page.waitForTimeout(100);
+  await page.keyboard.press("g");
+  await page.waitForTimeout(200);
+  await page.keyboard.press("Shift+v");
+  await page.waitForTimeout(200);
+  await page.keyboard.press("Shift+g");
+  await page.waitForTimeout(200);
+
+  // Press ga to trigger AI chat
+  await page.keyboard.press("g");
+  await page.waitForTimeout(100);
+  await page.keyboard.press("a");
+  await page.waitForTimeout(500);
+
+  // Panel should appear even though position 0 may be scrolled off-screen
+  const panel = page.locator('[data-testid="note-ai-panel"]');
+  await expect(panel).toBeVisible({ timeout: 3_000 });
+
+  // Dismiss
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  await expect(panel).not.toBeVisible();
+});
