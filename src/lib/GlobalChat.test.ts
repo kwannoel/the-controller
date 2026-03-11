@@ -106,10 +106,11 @@ describe("GlobalChat", () => {
 
     render(GlobalChat);
 
-    await fireEvent.input(screen.getByTestId("controller-chat-input"), {
+    const input = screen.getByTestId("controller-chat-input");
+    await fireEvent.input(input, {
       target: { value: "fetch issue 123" },
     });
-    await fireEvent.submit(screen.getByRole("button", { name: "Send" }).closest("form")!);
+    await fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("send_controller_chat_message", {

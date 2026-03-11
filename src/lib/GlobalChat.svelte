@@ -139,162 +139,152 @@
 </script>
 
 <aside class="global-chat" data-testid="global-chat">
-  <header class="chat-header">
-    <div class="label">Controller Chat</div>
-    <div class="focus" data-testid="controller-chat-focus">
-      {#if session.focus.project_name}
-        <span>{session.focus.project_name}</span>
-        {#if session.focus.note_filename}
-          <span> / {session.focus.note_filename}</span>
-        {/if}
-      {:else}
-        <span>No focused project</span>
+  <header class="chat-header" data-testid="controller-chat-focus">
+    {#if session.focus.project_name}
+      <span class="focus-project">{session.focus.project_name}</span>
+      {#if session.focus.note_filename}
+        <span class="focus-separator">/</span>
+        <span class="focus-note">{session.focus.note_filename}</span>
       {/if}
-    </div>
+    {:else}
+      <span class="focus-empty">No focus</span>
+    {/if}
   </header>
 
   <div class="transcript" data-testid="controller-chat-transcript">
     {#if session.items.length === 0}
-      <div class="empty">Ask the controller to work with the focused project.</div>
+      <div class="empty">No messages yet</div>
     {:else}
       {#each session.items as item, index}
         <div class={`item item-${item.kind}`} data-testid={`controller-chat-item-${index}`}>
-          <span class="kind">{item.kind}</span>
-          <span class="text">{item.text}</span>
+          {item.text}
         </div>
       {/each}
     {/if}
   </div>
 
-  <form
-    class="composer"
-    onsubmit={(event) => {
-      event.preventDefault();
-      submitMessage();
-    }}
-  >
+  <div class="composer">
     <textarea
       bind:value={draft}
-      rows="4"
-      placeholder="Fetch an issue into notes, summarize a file, or update the current note..."
+      rows="2"
+      placeholder="Ask the controller..."
+      disabled={session.turn_in_progress}
       data-testid="controller-chat-input"
+      onkeydown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          submitMessage();
+        }
+      }}
     ></textarea>
-    <button type="submit" disabled={session.turn_in_progress}>
-      {session.turn_in_progress ? "Working..." : "Send"}
-    </button>
-  </form>
+    {#if session.turn_in_progress}
+      <span class="working-indicator">working...</span>
+    {/if}
+  </div>
 </aside>
 
 <style>
   .global-chat {
-    width: 24rem;
+    width: 280px;
+    min-width: 280px;
     border-left: 1px solid #313244;
-    background: #181825;
+    background: #1e1e2e;
     color: #cdd6f4;
     display: flex;
     flex-direction: column;
-    min-width: 0;
   }
 
   .chat-header {
-    padding: 0.9rem 1rem;
+    padding: 12px 16px;
     border-bottom: 1px solid #313244;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 20px;
   }
 
-  .label {
-    font-size: 0.75rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #89b4fa;
-    margin-bottom: 0.25rem;
+  .focus-project {
+    color: #cdd6f4;
   }
 
-  .focus {
-    font-size: 0.9rem;
+  .focus-separator {
+    color: #6c7086;
+  }
+
+  .focus-note {
     color: #bac2de;
-    min-height: 1.3rem;
+  }
+
+  .focus-empty {
+    color: #6c7086;
   }
 
   .transcript {
     flex: 1;
-    overflow: auto;
-    padding: 0.85rem;
+    overflow-y: auto;
+    padding: 8px;
     display: flex;
     flex-direction: column;
-    gap: 0.6rem;
+    gap: 4px;
   }
 
   .empty {
-    color: #7f849c;
-    font-size: 0.95rem;
+    color: #6c7086;
+    font-size: 13px;
+    text-align: center;
+    margin-top: 24px;
   }
 
   .item {
-    display: grid;
-    gap: 0.2rem;
-    padding: 0.65rem 0.75rem;
-    border-radius: 0.75rem;
-    background: #1e1e2e;
+    padding: 8px 12px;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-left: 3px solid transparent;
   }
 
   .item-user {
-    border: 1px solid #45475a;
-  }
-
-  .item-tool {
-    border: 1px solid #45475a;
-    background: #11111b;
+    border-left-color: #89b4fa;
   }
 
   .item-assistant {
-    border: 1px solid #89b4fa33;
+    border-left-color: #a6e3a1;
   }
 
-  .kind {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #89b4fa;
-  }
-
-  .text {
-    font-size: 0.95rem;
-    white-space: pre-wrap;
-    word-break: break-word;
+  .item-tool {
+    border-left-color: #f9e2af;
   }
 
   .composer {
-    display: grid;
-    gap: 0.75rem;
-    padding: 0.85rem;
+    padding: 8px;
     border-top: 1px solid #313244;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   textarea {
     width: 100%;
     resize: none;
     border: 1px solid #45475a;
-    border-radius: 0.75rem;
+    border-radius: 4px;
     background: #11111b;
     color: #cdd6f4;
-    padding: 0.75rem;
+    padding: 8px 10px;
     font: inherit;
+    font-size: 13px;
+    box-sizing: border-box;
   }
 
-  button {
-    justify-self: end;
-    border: none;
-    border-radius: 999px;
-    padding: 0.55rem 1rem;
-    background: #89b4fa;
-    color: #11111b;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  button:disabled {
+  textarea:disabled {
     opacity: 0.6;
-    cursor: default;
+  }
+
+  .working-indicator {
+    font-size: 11px;
+    color: #6c7086;
+    padding: 0 2px;
   }
 </style>
