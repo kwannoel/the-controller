@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 use uuid::Uuid;
 
-use crate::architecture::ArchitectureResult;
+use crate::architecture::{generate_architecture_blocking, ArchitectureResult};
 use crate::config;
 use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
 use crate::state::AppState;
@@ -1222,8 +1222,12 @@ pub fn generate_project_names(description: String) -> Result<Vec<String>, String
 }
 
 #[tauri::command]
-pub async fn generate_architecture(_repo_path: String) -> Result<ArchitectureResult, String> {
-    Err("generate_architecture not yet implemented".to_string())
+pub async fn generate_architecture(repo_path: String) -> Result<ArchitectureResult, String> {
+    tokio::task::spawn_blocking(move || {
+        generate_architecture_blocking(std::path::Path::new(&repo_path))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
