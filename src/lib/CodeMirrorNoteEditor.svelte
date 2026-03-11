@@ -95,7 +95,10 @@
       const from = sel.from;
       const to = sel.to;
       const selectedText = view.state.doc.sliceString(from, to);
-      const coords = view.coordsAtPos(from);
+      // coordsAtPos returns null for off-screen positions. When the entire
+      // note is selected (ggVG), `from` (pos 0) is scrolled out of view
+      // while `to` (cursor end) is visible — fall back to `to` coords.
+      const coords = view.coordsAtPos(from) ?? view.coordsAtPos(to);
       if (!coords) return;
       onAiChat?.({
         selectedText,
