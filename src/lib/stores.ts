@@ -264,6 +264,7 @@ export type HotkeyAction =
   | { type: "create-note" }
   | { type: "delete-note"; projectId: string; filename: string }
   | { type: "rename-note"; projectId: string; filename: string }
+  | { type: "duplicate-note"; projectId: string; filename: string }
   | { type: "toggle-note-preview" }
   | { type: "save-session-prompt"; sessionId: string; projectId: string }
   | { type: "pick-prompt-for-session"; projectId: string }

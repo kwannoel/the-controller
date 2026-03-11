@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct NoteEntry {
@@ -175,6 +176,33 @@ pub fn rename_note(
     Ok(new_filename)
 }
 
+/// Duplicate a note file. Creates a copy named `{stem}-{uuid}.md`.
+/// Returns the filename of the new copy.
+pub fn duplicate_note(
+    base: &std::path::Path,
+    project_name: &str,
+    filename: &str,
+) -> std::io::Result<String> {
+    validate_filename(filename)?;
+    let dir = notes_dir_with_base(base, project_name);
+    let src_path = dir.join(filename);
+
+    if !src_path.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("note '{}' not found", filename),
+        ));
+    }
+
+    let content = fs::read_to_string(&src_path)?;
+    let stem = filename.strip_suffix(".md").unwrap_or(filename);
+    let short_id = &Uuid::new_v4().to_string()[..8];
+    let copy_filename = format!("{}-{}.md", stem, short_id);
+
+    fs::write(dir.join(&copy_filename), content)?;
+    Ok(copy_filename)
+}
+
 /// Delete a note file. Returns Ok(()) even if the file doesn't exist (idempotent).
 pub fn delete_note(
     base: &std::path::Path,
@@ -305,6 +333,46 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let result = delete_note(tmp.path(), "proj", "nonexistent.md");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_duplicate_note() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        create_note(base, "proj", "original").unwrap();
+        write_note(base, "proj", "original.md", "hello world").unwrap();
+
+        let copy = duplicate_note(base, "proj", "original.md").unwrap();
+        assert!(copy.starts_with("original-"), "expected 'original-<uuid>.md', got '{}'", copy);
+        assert!(copy.ends_with(".md"));
+        assert_ne!(copy, "original.md");
+
+        let content = read_note(base, "proj", &copy).unwrap();
+        assert_eq!(content, "hello world");
+    }
+
+    #[test]
+    fn test_duplicate_note_unique_names() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        create_note(base, "proj", "doc").unwrap();
+
+        let copy1 = duplicate_note(base, "proj", "doc.md").unwrap();
+        let copy2 = duplicate_note(base, "proj", "doc.md").unwrap();
+        assert_ne!(copy1, copy2);
+
+        // Both should exist with the same content
+        let c1 = read_note(base, "proj", &copy1).unwrap();
+        let c2 = read_note(base, "proj", &copy2).unwrap();
+        assert_eq!(c1, c2);
+    }
+
+    #[test]
+    fn test_duplicate_nonexistent_note_fails() {
+        let tmp = TempDir::new().unwrap();
+        let result = duplicate_note(tmp.path(), "proj", "nope.md");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
     }
 
     #[test]

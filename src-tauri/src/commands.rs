@@ -1392,6 +1392,15 @@ pub fn rename_note(
 }
 
 #[tauri::command]
+pub fn duplicate_note(
+    state: State<'_, AppState>,
+    project_name: String,
+    filename: String,
+) -> Result<String, String> {
+    notes::duplicate_note(state, project_name, filename)
+}
+
+#[tauri::command]
 pub fn delete_note(
     state: State<'_, AppState>,
     project_name: String,
