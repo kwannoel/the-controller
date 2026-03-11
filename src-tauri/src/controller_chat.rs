@@ -270,8 +270,6 @@ fn run_codex_turn(repo_path: String, prompt: String) -> Result<ControllerAgentTu
         .arg("exec")
         .arg("--sandbox")
         .arg("danger-full-access")
-        .arg("--ask-for-approval")
-        .arg("never")
         .arg(&prompt)
         .current_dir(repo_path)
         .env_remove("CLAUDECODE")
