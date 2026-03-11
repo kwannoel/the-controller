@@ -13,7 +13,7 @@ pub enum NoteAiResponse {
     Info { text: String },
 }
 
-pub fn build_note_ai_prompt(
+fn build_note_ai_prompt(
     note_content: &str,
     selected_text: &str,
     conversation_history: &[NoteAiChatMessage],
@@ -43,12 +43,12 @@ pub fn build_note_ai_prompt(
     ));
 
     if !conversation_history.is_empty() {
-        let mut history_section = String::from("--- CONVERSATION HISTORY ---\n");
-        for msg in conversation_history {
-            history_section.push_str(&format!("[{}]: {}\n", msg.role, msg.content));
-        }
-        history_section.push_str("--- END CONVERSATION HISTORY ---");
-        parts.push(history_section);
+        let history_json = serde_json::to_string(conversation_history)
+            .unwrap_or_else(|_| "[]".to_string());
+        parts.push(format!(
+            "--- CONVERSATION HISTORY ---\n{}\n--- END CONVERSATION HISTORY ---",
+            history_json
+        ));
     }
 
     parts.push(format!("User prompt: {}", prompt));
@@ -60,12 +60,13 @@ pub fn parse_note_ai_response(raw: &str) -> Result<NoteAiResponse, String> {
     serde_json::from_str(raw).map_err(|e| format!("Failed to parse note AI response: {}", e))
 }
 
-pub fn run_note_ai_turn(prompt: String) -> Result<NoteAiResponse, String> {
+fn run_note_ai_turn(repo_path: String, prompt: String) -> Result<NoteAiResponse, String> {
     let output = std::process::Command::new("codex")
         .arg("exec")
         .arg("--sandbox")
         .arg("danger-full-access")
         .arg(&prompt)
+        .current_dir(&repo_path)
         .env_remove("CLAUDECODE")
         .output()
         .map_err(|e| format!("Failed to run codex exec: {}", e))?;
@@ -79,6 +80,7 @@ pub fn run_note_ai_turn(prompt: String) -> Result<NoteAiResponse, String> {
 }
 
 pub async fn send_note_ai_message(
+    repo_path: String,
     note_content: String,
     selected_text: String,
     conversation_history: Vec<NoteAiChatMessage>,
@@ -87,7 +89,7 @@ pub async fn send_note_ai_message(
     let full_prompt =
         build_note_ai_prompt(&note_content, &selected_text, &conversation_history, &prompt);
 
-    tokio::task::spawn_blocking(move || run_note_ai_turn(full_prompt))
+    tokio::task::spawn_blocking(move || run_note_ai_turn(repo_path, full_prompt))
         .await
         .map_err(|e| format!("Task failed: {}", e))?
 }
@@ -161,8 +163,10 @@ mod tests {
 
         let prompt = build_note_ai_prompt("note text", "selected", &history, "Now capitalize it");
 
-        assert!(prompt.contains("[user]: Fix the typo"));
-        assert!(prompt.contains("[assistant]: Fixed it"));
+        assert!(prompt.contains("\"role\":\"user\""));
+        assert!(prompt.contains("\"content\":\"Fix the typo\""));
+        assert!(prompt.contains("\"role\":\"assistant\""));
+        assert!(prompt.contains("\"content\":\"Fixed it\""));
         assert!(prompt.contains("--- CONVERSATION HISTORY ---"));
         assert!(prompt.contains("--- END CONVERSATION HISTORY ---"));
     }
