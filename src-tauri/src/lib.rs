@@ -119,6 +119,7 @@ pub fn run() {
             commands::unstage_session_inplace,
             commands::get_repo_head,
             commands::get_session_token_usage,
+            deploy::commands::detect_project_type,
             deploy::commands::get_deploy_credentials,
             deploy::commands::save_deploy_credentials,
             deploy::commands::is_deploy_provisioned,
