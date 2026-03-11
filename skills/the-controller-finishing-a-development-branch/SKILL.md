@@ -33,14 +33,14 @@ Run the project's test suite. If tests fail, fix them before proceeding.
    fi
    ```
 7. Close the associated issue with a summary of what was done
-8. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree. Retry up to 3 times if the signal fails:
+8. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree. Syncing master (step 6) may trigger a dev server restart which temporarily kills the socket, so retry for up to 60 seconds:
    ```bash
    if [ -z "$THE_CONTROLLER_SESSION_ID" ]; then
      echo "ERROR: THE_CONTROLLER_SESSION_ID is not set, cannot signal cleanup"
    else
-     for i in 1 2 3; do
+     for i in $(seq 1 30); do
        echo "cleanup:$THE_CONTROLLER_SESSION_ID" | nc -U -w 2 /tmp/the-controller.sock && break
-       echo "Cleanup signal failed (attempt $i/3), retrying in 2s..."
+       echo "Waiting for controller socket (attempt $i/30)..."
        sleep 2
      done
    fi
