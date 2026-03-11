@@ -168,6 +168,13 @@
       }
       return result;
     }
+    if (currentMode === "infrastructure") {
+      const result: SidebarItem[] = [];
+      for (const p of projectList) {
+        result.push({ type: "project", projectId: p.id });
+      }
+      return result;
+    }
     const result: SidebarItem[] = [];
     for (const p of projectList) {
       result.push({ type: "project", projectId: p.id });

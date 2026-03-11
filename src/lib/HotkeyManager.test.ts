@@ -815,6 +815,45 @@ describe('HotkeyManager', () => {
     });
   });
 
+  // ── Infrastructure mode navigation ──
+
+  describe('infrastructure mode navigation', () => {
+    beforeEach(() => {
+      workspaceMode.set('infrastructure');
+      projects.set([testProject, testProject2]);
+    });
+
+    afterEach(() => {
+      workspaceMode.set('development');
+    });
+
+    it('j navigates between projects only (no sessions)', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      pressKey('j');
+      // Should go directly to proj-2, skipping sess-1 and sess-2
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
+    });
+
+    it('k navigates between projects only (no sessions)', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-2' });
+      pressKey('k');
+      // Should go directly to proj-1, skipping sessions
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
+    });
+
+    it('j wraps from last project to first project', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-2' });
+      pressKey('j');
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
+    });
+
+    it('k wraps from first project to last project', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      pressKey('k');
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
+    });
+  });
+
   // ── Input field passthrough ──
 
   describe('input field passthrough', () => {
