@@ -140,15 +140,7 @@
 
 <aside class="global-chat" data-testid="global-chat">
   <header class="chat-header" data-testid="controller-chat-focus">
-    {#if session.focus.project_name}
-      <span class="focus-project">{session.focus.project_name}</span>
-      {#if session.focus.note_filename}
-        <span class="focus-separator">/</span>
-        <span class="focus-note">{session.focus.note_filename}</span>
-      {/if}
-    {:else}
-      <span class="focus-empty">No focus</span>
-    {/if}
+    controller-chat
   </header>
 
   <div class="transcript" data-testid="controller-chat-transcript">
@@ -203,21 +195,6 @@
     align-items: center;
     gap: 4px;
     min-height: 20px;
-  }
-
-  .focus-project {
-    color: #cdd6f4;
-  }
-
-  .focus-separator {
-    color: #6c7086;
-  }
-
-  .focus-note {
-    color: #bac2de;
-  }
-
-  .focus-empty {
     color: #6c7086;
   }
 

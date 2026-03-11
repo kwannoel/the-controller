@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { fromStore, get } from "svelte/store";
   import { command } from "$lib/backend";
   import {
@@ -316,6 +316,10 @@
         return true;
       case "toggle-controller-chat":
         controllerChatVisible.update(v => !v);
+        tick().then(() => {
+          const input = document.querySelector('[data-testid="controller-chat-input"]') as HTMLElement;
+          input?.focus();
+        });
         return true;
       case "create-issue":
         dispatchCreateIssue();

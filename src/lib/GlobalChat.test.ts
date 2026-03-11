@@ -70,7 +70,7 @@ describe("GlobalChat", () => {
 
     expect(await screen.findByText("controller.create_note(issue-123.md)")).toBeInTheDocument();
     expect(screen.getByText("Created the note and opened it.")).toBeInTheDocument();
-    expect(screen.getByTestId("controller-chat-focus")).toHaveTextContent("Project Alpha / issue-123.md");
+    expect(screen.getByTestId("controller-chat-focus")).toHaveTextContent("controller-chat");
   });
 
   it("submits a user message through send_controller_chat_message", async () => {
