@@ -27,6 +27,19 @@
 
     return components.find((component) => component.id === selectedComponentId) ?? components[0];
   });
+  let resolvedSelectedComponentId = $derived(selectedComponent?.id ?? null);
+
+  $effect(() => {
+    if (!resolvedSelectedComponentId) {
+      return;
+    }
+
+    if (selectedComponentId === resolvedSelectedComponentId) {
+      return;
+    }
+
+    onSelectComponent(resolvedSelectedComponentId);
+  });
 
   function selectComponent(componentId: string) {
     onSelectComponent(componentId);
@@ -121,6 +134,32 @@
             </ul>
           {:else}
             <p>No incoming relationships.</p>
+          {/if}
+        </div>
+
+        <div class="detail-group">
+          <h3>Evidence paths</h3>
+          {#if selectedComponent.evidence_paths.length > 0}
+            <ul>
+              {#each selectedComponent.evidence_paths as evidencePath}
+                <li><code>{evidencePath}</code></li>
+              {/each}
+            </ul>
+          {:else}
+            <p>No evidence paths captured.</p>
+          {/if}
+        </div>
+
+        <div class="detail-group">
+          <h3>Evidence snippets</h3>
+          {#if selectedComponent.evidence_snippets.length > 0}
+            <ul class="evidence-snippets">
+              {#each selectedComponent.evidence_snippets as evidenceSnippet}
+                <li><pre>{evidenceSnippet}</pre></li>
+              {/each}
+            </ul>
+          {:else}
+            <p>No evidence snippets captured.</p>
           {/if}
         </div>
       {:else}
@@ -283,8 +322,29 @@
     padding-left: 1.1rem;
   }
 
+  .detail-group code,
+  .evidence-snippets pre {
+    font-family: "SFMono-Regular", "SF Mono", "Cascadia Code", "JetBrains Mono",
+      Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
   .detail-group li + li {
     margin-top: 0.35rem;
+  }
+
+  .evidence-snippets {
+    list-style: none;
+    padding-left: 0;
+  }
+
+  .evidence-snippets pre {
+    margin: 0;
+    white-space: pre-wrap;
+    border: 1px solid rgba(205, 214, 244, 0.08);
+    border-radius: 12px;
+    padding: 0.8rem 0.9rem;
+    background: rgba(30, 30, 46, 0.92);
+    color: #f5e0dc;
   }
 
   @media (max-width: 980px) {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen, within } from "@testing-library/svelte";
 import ArchitectureExplorer from "./ArchitectureExplorer.svelte";
 import type { ArchitectureResult } from "./stores";
@@ -93,5 +93,25 @@ describe("ArchitectureExplorer", () => {
     expect(
       screen.getByText("Receives generated architecture payloads from the backend command."),
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Evidence paths" })).toBeInTheDocument();
+    expect(screen.getByText("src/App.svelte")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Evidence snippets" })).toBeInTheDocument();
+    expect(
+      screen.getByText('{#if workspaceModeState.current === "architecture"}'),
+    ).toBeInTheDocument();
+  });
+
+  it("publishes the first component when the parent has no stored selection", () => {
+    const onSelectComponent = vi.fn();
+
+    render(ArchitectureExplorer, {
+      props: {
+        architecture,
+        onSelectComponent,
+      },
+    });
+
+    expect(onSelectComponent).toHaveBeenCalledWith("ui");
+    expect(onSelectComponent).toHaveBeenCalledTimes(1);
   });
 });
