@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,54 @@ pub(crate) const MAX_EVIDENCE_FILES: usize = 8;
 const MAX_SNIPPET_LINES: usize = 24;
 const MAX_SNIPPET_CHARS: usize = 1_200;
 const CODEX_EXEC_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_SCAN_LIMITS: ScanLimits = ScanLimits {
+    max_entries: 512,
+    max_depth: 6,
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ScanLimits {
+    max_entries: usize,
+    max_depth: usize,
+}
+
+#[derive(Debug)]
+struct ScanBudget {
+    remaining_entries: usize,
+}
+
+impl ScanBudget {
+    fn new(limits: ScanLimits) -> Self {
+        Self {
+            remaining_entries: limits.max_entries,
+        }
+    }
+
+    fn try_take_entry(&mut self) -> bool {
+        if self.remaining_entries == 0 {
+            return false;
+        }
+        self.remaining_entries -= 1;
+        true
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CodexExecConfig {
+    binary: PathBuf,
+    timeout: Duration,
+}
+
+impl Default for CodexExecConfig {
+    fn default() -> Self {
+        Self {
+            binary: std::env::var_os("THE_CONTROLLER_CODEX_BIN")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("codex")),
+            timeout: CODEX_EXEC_TIMEOUT,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoEvidence {
@@ -54,14 +102,22 @@ pub struct ArchitectureRelationship {
 }
 
 pub fn collect_repo_evidence(repo_path: &Path) -> Result<RepoEvidence, String> {
+    collect_repo_evidence_with_limits(repo_path, DEFAULT_SCAN_LIMITS)
+}
+
+fn collect_repo_evidence_with_limits(
+    repo_path: &Path,
+    scan_limits: ScanLimits,
+) -> Result<RepoEvidence, String> {
     if !repo_path.is_dir() {
         return Err(format!("Not a directory: {}", repo_path.display()));
     }
     let repo_path = repo_path
         .canonicalize()
         .map_err(|e| format!("Failed to resolve {}: {}", repo_path.display(), e))?;
+    let mut scan_budget = ScanBudget::new(scan_limits);
 
-    let root_entries = read_sorted_dir(&repo_path)?;
+    let root_entries = read_sorted_dir(&repo_path, &mut scan_budget)?;
     let top_level_directories = root_entries
         .iter()
         .filter(|path| path_kind(path) == Some(RepoPathKind::Directory))
@@ -126,7 +182,9 @@ pub fn collect_repo_evidence(repo_path: &Path) -> Result<RepoEvidence, String> {
         }
 
         let path = repo_path.join(directory);
-        if let Some(file) = best_source_file_in_dir(&repo_path, &path)? {
+        if let Some(file) =
+            best_source_file_in_dir(&repo_path, &path, scan_limits, &mut scan_budget, 0)?
+        {
             push_evidence_file(&mut files, &mut seen_paths, &repo_path, &file);
         }
     }
@@ -185,14 +243,36 @@ Repository evidence:\n{file_sections}\n"
 }
 
 pub fn generate_architecture_blocking(repo_path: &Path) -> Result<ArchitectureResult, String> {
+    generate_architecture_blocking_with_config(repo_path, &CodexExecConfig::default())
+}
+
+fn generate_architecture_blocking_with_config(
+    repo_path: &Path,
+    config: &CodexExecConfig,
+) -> Result<ArchitectureResult, String> {
     let evidence = collect_repo_evidence(repo_path)?;
     let prompt = build_architecture_prompt(repo_path, &evidence);
-    let mut command = Command::new("codex");
+    let output = run_codex_exec(repo_path, &prompt, config)?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("codex exec failed: {}", stderr.trim()));
+    }
+
+    parse_architecture_output_with_evidence(&String::from_utf8_lossy(&output.stdout), &evidence)
+}
+
+fn run_codex_exec(
+    repo_path: &Path,
+    prompt: &str,
+    config: &CodexExecConfig,
+) -> Result<Output, String> {
+    let mut command = Command::new(&config.binary);
     command
         .arg("exec")
         .arg("--sandbox")
         .arg("danger-full-access")
-        .arg(&prompt)
+        .arg(prompt)
         .current_dir(repo_path)
         .env_remove("CLAUDECODE");
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -210,26 +290,20 @@ pub fn generate_architecture_blocking(repo_path: &Path) -> Result<ArchitectureRe
                 .map_err(|e| format!("Failed to capture codex exec output: {}", e))?;
         }
 
-        if started_at.elapsed() >= CODEX_EXEC_TIMEOUT {
+        if started_at.elapsed() >= config.timeout {
             let _ = child.kill();
             let _ = child.wait_with_output();
             return Err(format!(
                 "codex exec timed out after {} seconds",
-                CODEX_EXEC_TIMEOUT.as_secs()
+                config.timeout.as_secs_f32()
             ));
         }
 
         std::thread::sleep(Duration::from_millis(50));
     };
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("codex exec failed: {}", stderr.trim()));
-    }
-
-    parse_architecture_output_with_evidence(&String::from_utf8_lossy(&output.stdout), &evidence)
+    Ok(output)
 }
-
 pub fn extract_json(output: &str) -> Option<&str> {
     if let Some(start) = output.find("```json") {
         let json_start = start + "```json".len();
@@ -629,11 +703,18 @@ fn is_mermaid_edge_char(byte: u8) -> bool {
     matches!(byte, b'-' | b'.' | b'=' | b'<' | b'>' | b'o' | b'x')
 }
 
-fn read_sorted_dir(path: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut entries = std::fs::read_dir(path)
-        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .collect::<Vec<_>>();
+fn read_sorted_dir(path: &Path, scan_budget: &mut ScanBudget) -> Result<Vec<PathBuf>, String> {
+    let mut entries = Vec::new();
+    for entry in
+        std::fs::read_dir(path).map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
+    {
+        if !scan_budget.try_take_entry() {
+            break;
+        }
+        if let Ok(entry) = entry {
+            entries.push(entry.path());
+        }
+    }
     entries.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
     Ok(entries)
 }
@@ -694,31 +775,58 @@ fn read_text_snippet(path: &Path) -> Option<String> {
     (!snippet.is_empty()).then_some(snippet)
 }
 
-fn best_source_file_in_dir(repo_path: &Path, directory: &Path) -> Result<Option<PathBuf>, String> {
+fn best_source_file_in_dir(
+    repo_path: &Path,
+    directory: &Path,
+    scan_limits: ScanLimits,
+    scan_budget: &mut ScanBudget,
+    current_depth: usize,
+) -> Result<Option<PathBuf>, String> {
     let mut best = None;
-    collect_source_candidates(repo_path, directory, &mut best)?;
+    collect_source_candidates(
+        repo_path,
+        directory,
+        scan_limits,
+        scan_budget,
+        current_depth,
+        &mut best,
+    )?;
     Ok(best)
 }
 
 fn collect_source_candidates(
     repo_path: &Path,
     current_dir: &Path,
+    scan_limits: ScanLimits,
+    scan_budget: &mut ScanBudget,
+    current_depth: usize,
     best_candidate: &mut Option<PathBuf>,
 ) -> Result<(), String> {
-    for path in read_sorted_dir(current_dir)? {
+    for path in read_sorted_dir(current_dir, scan_budget)? {
         if path_kind(&path) == Some(RepoPathKind::Directory) {
+            if current_depth >= scan_limits.max_depth {
+                continue;
+            }
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
                 continue;
             };
             if is_ignored_dir(name) {
                 continue;
             }
-            collect_source_candidates(repo_path, &path, best_candidate)?;
+            collect_source_candidates(
+                repo_path,
+                &path,
+                scan_limits,
+                scan_budget,
+                current_depth + 1,
+                best_candidate,
+            )?;
             continue;
         }
 
         if path_kind(&path) == Some(RepoPathKind::File)
             && is_source_file(&path)
+            && read_text_snippet(&path).is_some()
             && best_candidate.as_ref().is_none_or(|best| {
                 source_file_rank(repo_path, &path) < source_file_rank(repo_path, best)
             })
@@ -858,12 +966,18 @@ fn relative_path(repo_path: &Path, path: &Path) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
 
     use tempfile::TempDir;
 
-    use super::{collect_repo_evidence, parse_architecture_output, MAX_EVIDENCE_FILES};
+    use super::{
+        collect_repo_evidence, collect_repo_evidence_with_limits,
+        generate_architecture_blocking_with_config, parse_architecture_output, CodexExecConfig,
+        ScanLimits, MAX_EVIDENCE_FILES,
+    };
 
     fn write_repo_file(repo: &TempDir, relative_path: &str, contents: &str) {
         let path = repo.path().join(relative_path);
@@ -871,6 +985,18 @@ mod tests {
             fs::create_dir_all(parent).expect("create parent directories");
         }
         fs::write(path, contents).expect("write repo fixture file");
+    }
+
+    #[cfg(unix)]
+    fn write_executable_script(temp_dir: &TempDir, name: &str, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = temp_dir.path().join(name);
+        fs::write(&path, body).expect("write test script");
+        let mut permissions = fs::metadata(&path).expect("stat script").permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions).expect("chmod script");
+        path
     }
 
     #[cfg(unix)]
@@ -1467,6 +1593,59 @@ That should be enough to render the view."#;
     }
 
     #[test]
+    fn falls_back_when_best_ranked_source_file_has_no_usable_snippet() {
+        let repo = TempDir::new().expect("create temp repo");
+        write_repo_file(
+            &repo,
+            "Cargo.toml",
+            "[package]\nname = \"snippet-fallback\"\nversion = \"0.1.0\"\n",
+        );
+        write_repo_file(&repo, "src/main.rs", "   \n\n\t");
+        write_repo_file(&repo, "src/lib.rs", "pub fn serve() {}\n");
+
+        let evidence = collect_repo_evidence(repo.path()).expect("collect evidence");
+
+        assert!(
+            evidence.files.iter().any(|file| file.path == "src/lib.rs"),
+            "scanner should continue searching after an unusable top-ranked file"
+        );
+    }
+
+    #[test]
+    fn collect_repo_evidence_respects_scan_limits() {
+        let repo = TempDir::new().expect("create temp repo");
+        write_repo_file(
+            &repo,
+            "README.md",
+            "# Scan budget\n\nKeep scanning bounded.\n",
+        );
+        write_repo_file(&repo, "src/level1/entry.ts", "export const one = 1;\n");
+        write_repo_file(
+            &repo,
+            "src/level1/level2/deep.ts",
+            "export const deep = 2;\n",
+        );
+        write_repo_file(&repo, "web/app.ts", "export const app = true;\n");
+
+        let evidence = collect_repo_evidence_with_limits(
+            repo.path(),
+            ScanLimits {
+                max_entries: 3,
+                max_depth: 1,
+            },
+        )
+        .expect("collect evidence");
+
+        assert!(
+            evidence
+                .files
+                .iter()
+                .all(|file| file.path != "src/level1/level2/deep.ts"),
+            "scan limits should prevent arbitrarily deep traversal"
+        );
+    }
+
+    #[test]
     fn generate_architecture_command_uses_spawn_blocking() {
         let commands_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs");
         let source = fs::read_to_string(commands_path).expect("read commands source");
@@ -1485,26 +1664,89 @@ That should be enough to render the view."#;
         );
     }
 
+    #[cfg(unix)]
     #[test]
-    fn generate_architecture_uses_bounded_codex_wait() {
-        let architecture_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/architecture.rs");
-        let source = fs::read_to_string(architecture_path).expect("read architecture source");
-        let start = source
-            .find("pub fn generate_architecture_blocking")
-            .expect("find generate_architecture_blocking");
-        let rest = &source[start..];
-        let end = rest
-            .find("\npub fn extract_json")
-            .expect("find end of generate_architecture_blocking");
-        let function_body = &rest[..end];
+    fn generate_architecture_times_out_hung_codex_process() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        write_repo_file(&repo, "README.md", "# Timeout test\n");
+        let script = write_executable_script(&bin, "fake-codex.sh", "#!/bin/sh\nsleep 5\n");
+
+        let started = Instant::now();
+        let error = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_millis(100),
+            },
+        )
+        .expect_err("hung codex process should time out");
 
         assert!(
-            function_body.contains("try_wait(") && function_body.contains("kill()"),
-            "codex exec should use a bounded wait and terminate hung processes"
+            started.elapsed() < Duration::from_secs(2),
+            "timeout should return promptly"
         );
-        assert!(
-            !function_body.contains(".output()"),
-            "generate_architecture_blocking should not wait on codex exec with an unbounded output() call"
+        assert!(error.contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_strips_claudecode_from_codex_environment() {
+        struct EnvGuard(Option<std::ffi::OsString>);
+
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => env::set_var("CLAUDECODE", value),
+                    None => env::remove_var("CLAUDECODE"),
+                }
+            }
+        }
+
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        write_repo_file(&repo, "README.md", "# Env strip test\n");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            "#!/bin/sh\nif [ -n \"${CLAUDECODE+x}\" ]; then\n  echo 'CLAUDECODE still set' >&2\n  exit 17\nfi\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[],\"evidence_snippets\":[]}]}\nEOF\n",
         );
+        let _guard = EnvGuard(env::var_os("CLAUDECODE"));
+        env::set_var("CLAUDECODE", "nested-session");
+
+        let result = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_secs(1),
+            },
+        )
+        .expect("CLAUDECODE should be removed for codex exec");
+
+        assert_eq!(result.title, "Architecture");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_returns_codex_stderr_on_failure() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        write_repo_file(&repo, "README.md", "# Error test\n");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            "#!/bin/sh\necho 'codex exploded' >&2\nexit 9\n",
+        );
+
+        let error = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_secs(1),
+            },
+        )
+        .expect_err("non-zero codex exit should fail");
+
+        assert!(error.contains("codex exploded"));
     }
 }
