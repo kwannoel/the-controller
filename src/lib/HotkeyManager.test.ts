@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { command } from '$lib/backend';
-import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, controllerChatVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, controllerChatVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, activeNote, noteEntries, type Project, type SessionConfig } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 function makeSession(id: string, label: string, kind = 'claude'): SessionConfig {
@@ -758,6 +758,40 @@ describe('HotkeyManager', () => {
       pressKey(' ');
       expect(get(workspaceModePickerVisible)).toBe(false);
       removeTerminalFocus(xtermEl);
+    });
+  });
+
+  // ── Notes mode keys ──
+
+  describe('notes mode keys', () => {
+    beforeEach(() => {
+      workspaceMode.set('notes');
+      noteEntries.set(new Map([['proj-1', [{ filename: 'todo.md', modified_at: '2026-01-01' }]]]));
+    });
+
+    afterEach(() => {
+      workspaceMode.set('development');
+    });
+
+    it('o on a focused note opens the note editor', () => {
+      focusTarget.set({ type: 'note', filename: 'todo.md', projectId: 'proj-1' });
+      pressKey('o');
+      expect(get(activeNote)).toEqual({ projectId: 'proj-1', filename: 'todo.md' });
+      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1' });
+    });
+
+    it('i on a focused note opens the note editor', () => {
+      focusTarget.set({ type: 'note', filename: 'todo.md', projectId: 'proj-1' });
+      pressKey('i');
+      expect(get(activeNote)).toEqual({ projectId: 'proj-1', filename: 'todo.md' });
+      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1' });
+    });
+
+    it('a on a focused note opens the note editor', () => {
+      focusTarget.set({ type: 'note', filename: 'todo.md', projectId: 'proj-1' });
+      pressKey('a');
+      expect(get(activeNote)).toEqual({ projectId: 'proj-1', filename: 'todo.md' });
+      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1' });
     });
   });
 

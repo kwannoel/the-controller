@@ -112,7 +112,9 @@ describe("command registry", () => {
     expect(map.has("p")).toBe(true);  // toggle-note-preview (notes)
     expect(map.get("p")).toBe("toggle-note-preview");
     expect(map.has("c")).toBe(false); // create-session is dev-only
-    expect(map.has("o")).toBe(false); // toggle-mode is dev-only, toggle-agent is agents-only
+    expect(map.get("o")).toBe("expand-collapse"); // open note for editing
+    expect(map.get("i")).toBe("expand-collapse"); // open note for editing
+    expect(map.get("a")).toBe("expand-collapse"); // open note for editing
   });
 
   it("buildKeyMap without mode includes all non-external commands", () => {

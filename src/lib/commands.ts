@@ -106,6 +106,9 @@ export const commands: CommandDef[] = [
   { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note", mode: "notes" },
   { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note", mode: "notes" },
   { id: "toggle-note-preview", key: "p", section: "Notes", description: "Cycle edit / preview / split", mode: "notes" },
+  { id: "expand-collapse", key: "o", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
+  { id: "expand-collapse", key: "i", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
+  { id: "expand-collapse", key: "a", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
 ];
 
 // Section order for help display
