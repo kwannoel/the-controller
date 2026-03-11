@@ -332,6 +332,10 @@
   }
 
   async function generateArchitectureForProject(projectId: string, repoPath: string) {
+    if (architectureViewsState.current.get(projectId)?.isGenerating) {
+      return;
+    }
+
     architectureViews.update((views) => {
       const next = new Map(views);
       const currentView = next.get(projectId) ?? createArchitectureViewState();

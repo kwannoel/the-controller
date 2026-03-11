@@ -516,6 +516,51 @@ describe("App architecture workspace", () => {
       screen.getByText("Runs architecture analysis and refreshes the cached view."),
     ).toBeInTheDocument();
   });
+
+  it("ignores duplicate architecture generation requests while one is already running", async () => {
+    let generateArchitectureCalls = 0;
+    let resolveArchitecture: ((value: ArchitectureResult) => void) | undefined;
+    const pendingArchitecture = new Promise<ArchitectureResult>((resolve) => {
+      resolveArchitecture = resolve;
+    });
+
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "generate_architecture") {
+        generateArchitectureCalls += 1;
+        return pendingArchitecture;
+      }
+      return;
+    });
+
+    render(App);
+
+    hotkeyAction.set({
+      type: "generate-architecture",
+      projectId: "proj-1",
+      repoPath: "/tmp/the-controller",
+    });
+
+    await waitFor(() => {
+      expect(generateArchitectureCalls).toBe(1);
+    });
+
+    hotkeyAction.set({
+      type: "generate-architecture",
+      projectId: "proj-1",
+      repoPath: "/tmp/the-controller",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(generateArchitectureCalls).toBe(1);
+
+    resolveArchitecture?.(generatedArchitecture);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "UI Shell" })).toBeInTheDocument();
+    });
+  });
 });
 
 describe("App issue picker flow", () => {
