@@ -6,10 +6,6 @@ function escapeAttributeValue(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function getDiagramNodeComponentId(node: SVGGElement): string | null {
   const dataId = node.getAttribute("data-id");
   if (dataId) {
@@ -29,15 +25,7 @@ function getDiagramNodeComponentId(node: SVGGElement): string | null {
 }
 
 function matchesComponentId(node: SVGGElement, componentId: string): boolean {
-  const normalizedComponentId = getDiagramNodeComponentId(node);
-  if (normalizedComponentId === componentId) {
-    return true;
-  }
-
-  const id = node.getAttribute("id");
-  return id
-    ? new RegExp(`(?:^|[-_])${escapeRegExp(componentId)}(?:[-_]|$)`).test(id)
-    : false;
+  return getDiagramNodeComponentId(node) === componentId;
 }
 
 function getDiagramNodes(container: ParentNode): SVGGElement[] {

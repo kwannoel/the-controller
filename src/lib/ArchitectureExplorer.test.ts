@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import ArchitectureExplorer from "./ArchitectureExplorer.svelte";
 import { findArchitectureDiagramNode } from "./architecture-diagram";
 import type { ArchitectureResult } from "./stores";
@@ -30,6 +30,11 @@ vi.mock("mermaid", () => ({
     render: renderMermaid,
   },
 }));
+
+beforeEach(() => {
+  initializeMermaid.mockClear();
+  renderMermaid.mockClear();
+});
 
 const architecture: ArchitectureResult = {
   title: "Controller Architecture",
@@ -94,6 +99,21 @@ const architecture: ArchitectureResult = {
 };
 
 describe("ArchitectureExplorer", () => {
+  it("initializes mermaid with strict security for generated diagrams", async () => {
+    render(ArchitectureExplorer, {
+      props: {
+        architecture,
+        selectedComponentId: "ui",
+      },
+    });
+
+    await waitFor(() => {
+      expect(initializeMermaid).toHaveBeenCalledWith(
+        expect.objectContaining({ securityLevel: "strict" }),
+      );
+    });
+  });
+
   it("renders the mermaid diagram once and reuses it across selection changes", async () => {
     const onSelectComponent = vi.fn();
     const view = render(ArchitectureExplorer, {

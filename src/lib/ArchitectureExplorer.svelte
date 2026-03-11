@@ -96,7 +96,7 @@
 
         mermaid.initialize({
           startOnLoad: false,
-          securityLevel: "loose",
+          securityLevel: "strict",
           theme: "base",
           flowchart: {
             useMaxWidth: false,

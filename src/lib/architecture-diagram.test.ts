@@ -32,6 +32,22 @@ describe("architecture-diagram", () => {
     expect(node).toHaveAttribute("id", "flowchart-backend-1");
   });
 
+  it("does not confuse shorter component ids with hyphenated node ids", () => {
+    const container = document.createElement("div");
+    container.innerHTML = `
+      <svg>
+        <g class="node" id="flowchart-public-api-0">
+          <rect />
+          <text>Public API</text>
+        </g>
+      </svg>
+    `;
+
+    const node = findArchitectureDiagramNode(container, "api");
+
+    expect(node).toBeNull();
+  });
+
   it("highlights and scrolls the selected node into view", () => {
     const container = createDiagram();
     const backendNode = findArchitectureDiagramNode(container, "backend")!;
