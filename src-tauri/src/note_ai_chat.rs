@@ -63,6 +63,7 @@ pub fn parse_note_ai_response(raw: &str) -> Result<NoteAiResponse, String> {
 fn run_note_ai_turn(repo_path: String, prompt: String) -> Result<NoteAiResponse, String> {
     let output = std::process::Command::new("codex")
         .arg("exec")
+        .arg("--skip-git-repo-check")
         .arg("--sandbox")
         .arg("danger-full-access")
         .arg(&prompt)
