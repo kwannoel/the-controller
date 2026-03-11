@@ -73,8 +73,17 @@
 
     const cm = getCM(view);
     const handleModeChange = (event: { mode?: string }) => {
+      const prevMode = currentMode;
       currentMode = event.mode ?? "normal";
       onModeChange?.(currentMode);
+
+      // When exiting visual mode, WebKit/WKWebView can leave a stale native
+      // selection highlight ("smeared" artifact) even though drawSelection()
+      // renders its own overlay. Collapsing the native selection forces a
+      // repaint and removes the artifact.
+      if (prevMode === "visual" && currentMode === "normal") {
+        window.getSelection()?.collapseToEnd();
+      }
     };
 
     cm?.on("vim-mode-change", handleModeChange);
@@ -166,5 +175,14 @@
 
   .note-code-editor :global(.cm-selectionBackground) {
     background: rgba(137, 180, 250, 0.35);
+  }
+
+  /* Hide native browser selection — drawSelection() renders its own overlay.
+     CodeMirror's built-in hideNativeSelection CSS doesn't reliably suppress
+     the native ::selection in WebKit/WKWebView (Tauri), causing a visible
+     "smeared" highlight alongside (or persisting after) the custom overlay. */
+  .note-code-editor :global(.cm-content::selection),
+  .note-code-editor :global(.cm-content *::selection) {
+    background-color: transparent !important;
   }
 </style>
