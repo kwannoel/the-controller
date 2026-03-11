@@ -7,6 +7,13 @@
 
   export type VimMode = "normal" | "insert" | "visual" | "replace";
 
+  export interface AiChatRequest {
+    selectedText: string;
+    from: number;
+    to: number;
+    coords: { left: number; top: number; bottom: number };
+  }
+
   interface Props {
     value: string;
     focused?: boolean;
@@ -14,9 +21,10 @@
     onChange?: (value: string) => void;
     onEscape?: (mode: VimMode | string) => void;
     onModeChange?: (mode: VimMode | string) => void;
+    onAiChat?: (request: AiChatRequest) => void;
   }
 
-  let { value, focused = false, entryKey, onChange, onEscape, onModeChange }: Props = $props();
+  let { value, focused = false, entryKey, onChange, onEscape, onModeChange, onAiChat }: Props = $props();
 
   let hostEl: HTMLDivElement | undefined;
   let view: EditorView | null = null;
@@ -70,6 +78,24 @@
     };
 
     cm?.on("vim-mode-change", handleModeChange);
+
+    Vim.defineAction("aiChat", (_cm: any) => {
+      if (!view) return;
+      const sel = view.state.selection.main;
+      if (sel.empty) return;
+      const from = sel.from;
+      const to = sel.to;
+      const selectedText = view.state.doc.sliceString(from, to);
+      const coords = view.coordsAtPos(from);
+      if (!coords) return;
+      onAiChat?.({
+        selectedText,
+        from,
+        to,
+        coords: { left: coords.left, top: coords.top, bottom: coords.bottom },
+      });
+    });
+    Vim.mapCommand("ga", "action", "aiChat", undefined, { context: "visual" });
 
     return () => {
       cm?.off("vim-mode-change", handleModeChange);
