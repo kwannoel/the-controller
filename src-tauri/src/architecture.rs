@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +9,7 @@ pub(crate) const MAX_TOP_LEVEL_DIRECTORIES: usize = 6;
 pub(crate) const MAX_EVIDENCE_FILES: usize = 8;
 const MAX_SNIPPET_LINES: usize = 24;
 const MAX_SNIPPET_CHARS: usize = 1_200;
+const CODEX_EXEC_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepoEvidence {
@@ -54,11 +57,14 @@ pub fn collect_repo_evidence(repo_path: &Path) -> Result<RepoEvidence, String> {
     if !repo_path.is_dir() {
         return Err(format!("Not a directory: {}", repo_path.display()));
     }
+    let repo_path = repo_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve {}: {}", repo_path.display(), e))?;
 
-    let root_entries = read_sorted_dir(repo_path)?;
+    let root_entries = read_sorted_dir(&repo_path)?;
     let top_level_directories = root_entries
         .iter()
-        .filter(|path| path.is_dir())
+        .filter(|path| path_kind(path) == Some(RepoPathKind::Directory))
         .filter_map(|path| {
             let name = path.file_name()?.to_str()?;
             (!is_ignored_dir(name)).then(|| name.to_string())
@@ -78,7 +84,7 @@ pub fn collect_repo_evidence(repo_path: &Path) -> Result<RepoEvidence, String> {
 
     let mut metadata_paths = root_entries
         .iter()
-        .filter(|path| path.is_file())
+        .filter(|path| path_kind(path) == Some(RepoPathKind::File))
         .filter_map(|path| {
             let name = path.file_name()?.to_str()?;
             is_metadata_file(name).then(|| path.to_path_buf())
@@ -87,14 +93,31 @@ pub fn collect_repo_evidence(repo_path: &Path) -> Result<RepoEvidence, String> {
     metadata_paths.sort_by(|left, right| {
         metadata_file_rank(left)
             .cmp(&metadata_file_rank(right))
-            .then_with(|| relative_path(repo_path, left).cmp(&relative_path(repo_path, right)))
+            .then_with(|| relative_path(&repo_path, left).cmp(&relative_path(&repo_path, right)))
     });
 
     for path in metadata_paths {
         if files.len() >= MAX_EVIDENCE_FILES {
             break;
         }
-        push_evidence_file(&mut files, &mut seen_paths, repo_path, &path);
+        push_evidence_file(&mut files, &mut seen_paths, &repo_path, &path);
+    }
+
+    let mut root_source_paths = root_entries
+        .iter()
+        .filter(|path| path_kind(path) == Some(RepoPathKind::File))
+        .filter(|path| is_source_file(path))
+        .map(|path| path.to_path_buf())
+        .collect::<Vec<_>>();
+    root_source_paths.sort_by(|left, right| {
+        source_file_rank(&repo_path, left).cmp(&source_file_rank(&repo_path, right))
+    });
+
+    for path in root_source_paths {
+        if files.len() >= MAX_EVIDENCE_FILES {
+            break;
+        }
+        push_evidence_file(&mut files, &mut seen_paths, &repo_path, &path);
     }
 
     for directory in &top_level_directories {
@@ -103,8 +126,8 @@ pub fn collect_repo_evidence(repo_path: &Path) -> Result<RepoEvidence, String> {
         }
 
         let path = repo_path.join(directory);
-        if let Some(file) = best_source_file_in_dir(repo_path, &path)? {
-            push_evidence_file(&mut files, &mut seen_paths, repo_path, &file);
+        if let Some(file) = best_source_file_in_dir(&repo_path, &path)? {
+            push_evidence_file(&mut files, &mut seen_paths, &repo_path, &file);
         }
     }
 
@@ -164,22 +187,47 @@ Repository evidence:\n{file_sections}\n"
 pub fn generate_architecture_blocking(repo_path: &Path) -> Result<ArchitectureResult, String> {
     let evidence = collect_repo_evidence(repo_path)?;
     let prompt = build_architecture_prompt(repo_path, &evidence);
-    let output = std::process::Command::new("codex")
+    let mut command = Command::new("codex");
+    command
         .arg("exec")
         .arg("--sandbox")
         .arg("danger-full-access")
         .arg(&prompt)
         .current_dir(repo_path)
-        .env_remove("CLAUDECODE")
-        .output()
+        .env_remove("CLAUDECODE");
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
         .map_err(|e| format!("Failed to run codex exec: {}", e))?;
+    let started_at = Instant::now();
+    let output = loop {
+        if let Some(_status) = child
+            .try_wait()
+            .map_err(|e| format!("Failed to wait for codex exec: {}", e))?
+        {
+            break child
+                .wait_with_output()
+                .map_err(|e| format!("Failed to capture codex exec output: {}", e))?;
+        }
+
+        if started_at.elapsed() >= CODEX_EXEC_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait_with_output();
+            return Err(format!(
+                "codex exec timed out after {} seconds",
+                CODEX_EXEC_TIMEOUT.as_secs()
+            ));
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("codex exec failed: {}", stderr.trim()));
     }
 
-    parse_architecture_output(&String::from_utf8_lossy(&output.stdout))
+    parse_architecture_output_with_evidence(&String::from_utf8_lossy(&output.stdout), &evidence)
 }
 
 pub fn extract_json(output: &str) -> Option<&str> {
@@ -202,13 +250,29 @@ pub fn extract_json(output: &str) -> Option<&str> {
 }
 
 pub fn parse_architecture_output(output: &str) -> Result<ArchitectureResult, String> {
+    parse_architecture_output_with_evidence(
+        output,
+        &RepoEvidence {
+            top_level_directories: Vec::new(),
+            files: Vec::new(),
+        },
+    )
+}
+
+fn parse_architecture_output_with_evidence(
+    output: &str,
+    evidence: &RepoEvidence,
+) -> Result<ArchitectureResult, String> {
     let json = extract_json(output).ok_or("No JSON found in output")?;
     let parsed: ArchitectureResult =
         serde_json::from_str(json).map_err(|e| format!("Failed to parse JSON: {}", e))?;
-    sanitize_architecture_result(parsed)
+    sanitize_architecture_result(parsed, evidence)
 }
 
-fn sanitize_architecture_result(result: ArchitectureResult) -> Result<ArchitectureResult, String> {
+fn sanitize_architecture_result(
+    result: ArchitectureResult,
+    evidence: &RepoEvidence,
+) -> Result<ArchitectureResult, String> {
     let title = result.title.trim().to_string();
     if title.is_empty() {
         return Err("Architecture title cannot be empty".to_string());
@@ -220,12 +284,24 @@ fn sanitize_architecture_result(result: ArchitectureResult) -> Result<Architectu
     }
 
     let mermaid_node_ids = extract_mermaid_node_ids(&mermaid);
+    let evidence_paths = evidence
+        .files
+        .iter()
+        .map(|file| file.path.as_str())
+        .collect::<HashSet<_>>();
+    let evidence_snippets = evidence
+        .files
+        .iter()
+        .map(|file| file.snippet.as_str())
+        .collect::<Vec<_>>();
     let mut components = Vec::with_capacity(result.components.len());
     for (component_index, component) in result.components.into_iter().enumerate() {
         components.push(sanitize_component(
             component,
             component_index,
             &mermaid_node_ids,
+            &evidence_paths,
+            &evidence_snippets,
         )?);
     }
     validate_component_references(&components)?;
@@ -241,6 +317,8 @@ fn sanitize_component(
     component: ArchitectureComponent,
     component_index: usize,
     mermaid_node_ids: &HashSet<String>,
+    evidence_paths: &HashSet<&str>,
+    evidence_snippets: &[&str],
 ) -> Result<ArchitectureComponent, String> {
     let id = component.id.trim().to_string();
     if id.is_empty() {
@@ -284,8 +362,11 @@ fn sanitize_component(
             component_index,
             "outgoing",
         )?,
-        evidence_paths: trim_string_list(component.evidence_paths),
-        evidence_snippets: trim_string_list(component.evidence_snippets),
+        evidence_paths: grounded_evidence_paths(component.evidence_paths, evidence_paths),
+        evidence_snippets: grounded_evidence_snippets(
+            component.evidence_snippets,
+            evidence_snippets,
+        ),
     })
 }
 
@@ -327,6 +408,30 @@ fn trim_string_list(values: Vec<String>) -> Vec<String> {
         .into_iter()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn grounded_evidence_paths(values: Vec<String>, allowed_paths: &HashSet<&str>) -> Vec<String> {
+    let mut seen = HashSet::new();
+
+    trim_string_list(values)
+        .into_iter()
+        .filter(|value| allowed_paths.contains(value.as_str()))
+        .filter(|value| seen.insert(value.clone()))
+        .collect()
+}
+
+fn grounded_evidence_snippets(values: Vec<String>, allowed_snippets: &[&str]) -> Vec<String> {
+    let mut seen = HashSet::new();
+
+    trim_string_list(values)
+        .into_iter()
+        .filter(|value| {
+            allowed_snippets
+                .iter()
+                .any(|snippet| snippet.contains(value.as_str()))
+        })
+        .filter(|value| seen.insert(value.clone()))
         .collect()
 }
 
@@ -533,13 +638,36 @@ fn read_sorted_dir(path: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(entries)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RepoPathKind {
+    Directory,
+    File,
+}
+
+fn path_kind(path: &Path) -> Option<RepoPathKind> {
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    let file_type = metadata.file_type();
+    if file_type.is_symlink() {
+        return None;
+    }
+    if file_type.is_dir() {
+        Some(RepoPathKind::Directory)
+    } else if file_type.is_file() {
+        Some(RepoPathKind::File)
+    } else {
+        None
+    }
+}
+
 fn push_evidence_file(
     files: &mut Vec<RepoEvidenceFile>,
     seen_paths: &mut HashSet<String>,
     repo_path: &Path,
     path: &Path,
 ) {
-    let relative = relative_path(repo_path, path);
+    let Some(relative) = relative_path(repo_path, path) else {
+        return;
+    };
     if !seen_paths.insert(relative.clone()) {
         return;
     }
@@ -567,35 +695,35 @@ fn read_text_snippet(path: &Path) -> Option<String> {
 }
 
 fn best_source_file_in_dir(repo_path: &Path, directory: &Path) -> Result<Option<PathBuf>, String> {
-    let mut candidates = Vec::new();
-    collect_source_candidates(repo_path, directory, &mut candidates)?;
-    candidates.sort_by(|left, right| {
-        source_file_rank(repo_path, left)
-            .cmp(&source_file_rank(repo_path, right))
-            .then_with(|| relative_path(repo_path, left).cmp(&relative_path(repo_path, right)))
-    });
-    Ok(candidates.into_iter().next())
+    let mut best = None;
+    collect_source_candidates(repo_path, directory, &mut best)?;
+    Ok(best)
 }
 
 fn collect_source_candidates(
     repo_path: &Path,
     current_dir: &Path,
-    candidates: &mut Vec<PathBuf>,
+    best_candidate: &mut Option<PathBuf>,
 ) -> Result<(), String> {
     for path in read_sorted_dir(current_dir)? {
-        if path.is_dir() {
+        if path_kind(&path) == Some(RepoPathKind::Directory) {
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
                 continue;
             };
             if is_ignored_dir(name) {
                 continue;
             }
-            collect_source_candidates(repo_path, &path, candidates)?;
+            collect_source_candidates(repo_path, &path, best_candidate)?;
             continue;
         }
 
-        if path.is_file() && is_source_file(&path) {
-            candidates.push(path);
+        if path_kind(&path) == Some(RepoPathKind::File)
+            && is_source_file(&path)
+            && best_candidate.as_ref().is_none_or(|best| {
+                source_file_rank(repo_path, &path) < source_file_rank(repo_path, best)
+            })
+        {
+            *best_candidate = Some(path);
         }
     }
 
@@ -702,7 +830,7 @@ fn is_source_file(path: &Path) -> bool {
 }
 
 fn source_file_rank(repo_path: &Path, path: &Path) -> (usize, usize, String) {
-    let relative = relative_path(repo_path, path);
+    let relative = relative_path(repo_path, path).unwrap_or_default();
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -722,11 +850,10 @@ fn source_file_rank(repo_path: &Path, path: &Path) -> (usize, usize, String) {
     (basename_rank, depth, relative)
 }
 
-fn relative_path(repo_path: &Path, path: &Path) -> String {
+fn relative_path(repo_path: &Path, path: &Path) -> Option<String> {
     path.strip_prefix(repo_path)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
+        .ok()
+        .map(|relative| relative.to_string_lossy().replace('\\', "/"))
 }
 
 #[cfg(test)]
@@ -744,6 +871,24 @@ mod tests {
             fs::create_dir_all(parent).expect("create parent directories");
         }
         fs::write(path, contents).expect("write repo fixture file");
+    }
+
+    #[cfg(unix)]
+    fn create_symlink(target: &Path, link: &Path, is_dir: bool) {
+        if is_dir {
+            std::os::unix::fs::symlink(target, link).expect("create directory symlink");
+        } else {
+            std::os::unix::fs::symlink(target, link).expect("create file symlink");
+        }
+    }
+
+    #[cfg(windows)]
+    fn create_symlink(target: &Path, link: &Path, is_dir: bool) {
+        if is_dir {
+            std::os::windows::fs::symlink_dir(target, link).expect("create directory symlink");
+        } else {
+            std::os::windows::fs::symlink_file(target, link).expect("create file symlink");
+        }
     }
 
     #[test]
@@ -1066,6 +1211,37 @@ That should be enough to render the view."#;
     }
 
     #[test]
+    fn drops_ungrounded_component_evidence_without_repo_context() {
+        let output = r#"{
+          "title": "Architecture",
+          "mermaid": "flowchart TD\napi[API]",
+          "components": [
+            {
+              "id": "api",
+              "name": "API",
+              "summary": "Handles requests",
+              "contains": [],
+              "incoming_relationships": [],
+              "outgoing_relationships": [],
+              "evidence_paths": ["src/main.rs", "made/up.rs"],
+              "evidence_snippets": ["fn main() {}", "invented snippet"]
+            }
+          ]
+        }"#;
+
+        let parsed = parse_architecture_output(output).expect("payload should parse");
+
+        assert!(
+            parsed.components[0].evidence_paths.is_empty(),
+            "ungrounded evidence paths should be dropped"
+        );
+        assert!(
+            parsed.components[0].evidence_snippets.is_empty(),
+            "ungrounded evidence snippets should be dropped"
+        );
+    }
+
+    #[test]
     fn collects_bounded_repo_evidence() {
         let repo = TempDir::new().expect("create temp repo");
         write_repo_file(
@@ -1146,6 +1322,13 @@ That should be enough to render the view."#;
                 .any(|file| file.path.starts_with(".git/")),
             "git metadata should stay out of evidence"
         );
+        assert!(
+            evidence
+                .files
+                .iter()
+                .all(|file| !Path::new(&file.path).is_absolute()),
+            "evidence paths should stay repo-relative"
+        );
     }
 
     #[test]
@@ -1208,6 +1391,82 @@ That should be enough to render the view."#;
     }
 
     #[test]
+    fn includes_root_level_source_files_as_evidence_candidates() {
+        let repo = TempDir::new().expect("create temp repo");
+        write_repo_file(
+            &repo,
+            "Cargo.toml",
+            "[package]\nname = \"root-source\"\nversion = \"0.1.0\"\n",
+        );
+        write_repo_file(
+            &repo,
+            "main.rs",
+            "fn main() {\n    println!(\"root entrypoint\");\n}\n",
+        );
+        write_repo_file(&repo, "src/lib.rs", "pub fn serve() {}\n");
+
+        let evidence = collect_repo_evidence(repo.path()).expect("collect evidence");
+        let paths: Vec<&str> = evidence
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+
+        assert!(
+            paths.iter().any(|path| *path == "main.rs"),
+            "root-level source files should be considered evidence"
+        );
+    }
+
+    #[test]
+    fn ignores_symlinked_files_and_directories_when_collecting_evidence() {
+        let repo = TempDir::new().expect("create temp repo");
+        let outside = TempDir::new().expect("create outside temp repo");
+
+        write_repo_file(
+            &outside,
+            "README.md",
+            "# Outside Repo\n\nThis file must never become evidence.\n",
+        );
+        write_repo_file(
+            &outside,
+            "src/main.rs",
+            "fn main() {\n    println!(\"outside\");\n}\n",
+        );
+
+        write_repo_file(
+            &repo,
+            "package.json",
+            "{\n  \"name\": \"safe-repo\",\n  \"private\": true\n}\n",
+        );
+        write_repo_file(&repo, "app/main.ts", "export const safe = true;\n");
+
+        create_symlink(
+            &outside.path().join("README.md"),
+            &repo.path().join("README.md"),
+            false,
+        );
+        create_symlink(&outside.path().join("src"), &repo.path().join("src"), true);
+
+        let evidence = collect_repo_evidence(repo.path()).expect("collect evidence");
+
+        assert!(
+            !evidence
+                .files
+                .iter()
+                .any(|file| file.path == "README.md" || file.path.starts_with("src/")),
+            "symlink targets outside the repo should not be collected"
+        );
+        assert!(
+            !evidence
+                .top_level_directories
+                .iter()
+                .any(|dir| dir == "src"),
+            "symlinked directories should not appear as top-level evidence"
+        );
+    }
+
+    #[test]
     fn generate_architecture_command_uses_spawn_blocking() {
         let commands_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs");
         let source = fs::read_to_string(commands_path).expect("read commands source");
@@ -1223,6 +1482,29 @@ That should be enough to render the view."#;
         assert!(
             function_body.contains("spawn_blocking"),
             "generate_architecture must offload repo scanning and codex exec with spawn_blocking"
+        );
+    }
+
+    #[test]
+    fn generate_architecture_uses_bounded_codex_wait() {
+        let architecture_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/architecture.rs");
+        let source = fs::read_to_string(architecture_path).expect("read architecture source");
+        let start = source
+            .find("pub fn generate_architecture_blocking")
+            .expect("find generate_architecture_blocking");
+        let rest = &source[start..];
+        let end = rest
+            .find("\npub fn extract_json")
+            .expect("find end of generate_architecture_blocking");
+        let function_body = &rest[..end];
+
+        assert!(
+            function_body.contains("try_wait(") && function_body.contains("kill()"),
+            "codex exec should use a bounded wait and terminate hung processes"
+        );
+        assert!(
+            !function_body.contains(".output()"),
+            "generate_architecture_blocking should not wait on codex exec with an unbounded output() call"
         );
     }
 }
