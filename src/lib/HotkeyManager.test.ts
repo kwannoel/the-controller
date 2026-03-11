@@ -773,25 +773,25 @@ describe('HotkeyManager', () => {
       workspaceMode.set('development');
     });
 
-    it('o on a focused note opens the note editor', () => {
+    it('o on a focused note opens the note editor with entryKey', () => {
       focusTarget.set({ type: 'note', filename: 'todo.md', projectId: 'proj-1' });
       pressKey('o');
       expect(get(activeNote)).toEqual({ projectId: 'proj-1', filename: 'todo.md' });
-      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1' });
+      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1', entryKey: 'o' });
     });
 
-    it('i on a focused note opens the note editor', () => {
+    it('i on a focused note opens the note editor with entryKey', () => {
       focusTarget.set({ type: 'note', filename: 'todo.md', projectId: 'proj-1' });
       pressKey('i');
       expect(get(activeNote)).toEqual({ projectId: 'proj-1', filename: 'todo.md' });
-      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1' });
+      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1', entryKey: 'i' });
     });
 
-    it('a on a focused note opens the note editor', () => {
+    it('a on a focused note opens the note editor with entryKey', () => {
       focusTarget.set({ type: 'note', filename: 'todo.md', projectId: 'proj-1' });
       pressKey('a');
       expect(get(activeNote)).toEqual({ projectId: 'proj-1', filename: 'todo.md' });
-      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1' });
+      expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1', entryKey: 'a' });
     });
   });
 

@@ -349,7 +349,8 @@
           focusTarget.set({ type: "agent-panel", agentKind: currentFocus.agentKind, projectId: currentFocus.projectId });
         } else if (currentFocus?.type === "note") {
           activeNote.set({ projectId: currentFocus.projectId, filename: currentFocus.filename });
-          focusTarget.set({ type: "notes-editor", projectId: currentFocus.projectId });
+          const vimKeys = ["o", "i", "a"];
+          focusTarget.set({ type: "notes-editor", projectId: currentFocus.projectId, entryKey: vimKeys.includes(key) ? key : undefined });
         }
         return true;
       case "toggle-mode":
@@ -481,8 +482,9 @@
     // Allow dialog-local keyboard handlers to own key events.
     if (isDialogOpen()) return;
 
-    // Don't intercept keys when typing in input fields
+    // Don't intercept keys when typing in input fields or the notes code editor
     if (isEditableElementFocused()) return;
+    if (currentFocus?.type === "notes-editor") return;
 
     // Escape: check for double-tap (forward to terminal), else walk up focus hierarchy
     if (e.key === "Escape") {
@@ -494,17 +496,6 @@
         dispatchAction({ type: "focus-terminal" });
         e.stopPropagation();
         e.preventDefault();
-      } else if (currentFocus?.type === "notes-editor") {
-        // Get current active note to return focus to
-        const currentNote = get(activeNote);
-        if (currentNote) {
-          focusTarget.set({ type: "note", filename: currentNote.filename, projectId: currentNote.projectId });
-        } else {
-          focusTarget.set({ type: "project", projectId: currentFocus.projectId });
-        }
-        e.stopPropagation();
-        e.preventDefault();
-        pushKeystroke("Esc");
       } else if (currentFocus?.type === "note") {
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();

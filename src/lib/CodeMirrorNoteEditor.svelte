@@ -2,19 +2,20 @@
   import { EditorState } from "@codemirror/state";
   import { EditorView, drawSelection } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
-  import { getCM, vim } from "@replit/codemirror-vim";
+  import { Vim, getCM, vim } from "@replit/codemirror-vim";
 
   export type VimMode = "normal" | "insert" | "visual" | "replace";
 
   interface Props {
     value: string;
     focused?: boolean;
+    entryKey?: string;
     onChange?: (value: string) => void;
     onEscape?: (mode: VimMode | string) => void;
     onModeChange?: (mode: VimMode | string) => void;
   }
 
-  let { value, focused = false, onChange, onEscape, onModeChange }: Props = $props();
+  let { value, focused = false, entryKey, onChange, onEscape, onModeChange }: Props = $props();
 
   let hostEl: HTMLDivElement | undefined;
   let view: EditorView | null = null;
@@ -82,9 +83,17 @@
     });
   });
 
+  let lastEntryKey: string | undefined;
   $effect(() => {
     if (view && focused) {
       view.focus();
+      if (entryKey && entryKey !== lastEntryKey) {
+        lastEntryKey = entryKey;
+        const cm = getCM(view);
+        if (cm) Vim.handleKey(cm, entryKey, "mapping");
+      }
+    } else {
+      lastEntryKey = undefined;
     }
   });
 </script>

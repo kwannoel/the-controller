@@ -27,6 +27,7 @@
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
 
   let editorFocused = $derived(currentFocus?.type === "notes-editor");
+  let editorEntryKey = $derived(currentFocus?.type === "notes-editor" ? currentFocus.entryKey : undefined);
 
   let projectName = $derived(
     currentNote
@@ -199,6 +200,7 @@
         <CodeMirrorNoteEditor
           value={content}
           focused={editorFocused}
+          entryKey={editorEntryKey}
           onChange={handleEditorChange}
           onModeChange={(mode) => {
             editorMode = mode;
