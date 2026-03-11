@@ -284,6 +284,6 @@ export type FocusTarget =
   | { type: "agent"; agentKind: AgentKind; projectId: string }
   | { type: "agent-panel"; agentKind: AgentKind; projectId: string }
   | { type: "note"; filename: string; projectId: string }
-  | { type: "notes-editor"; projectId: string }
+  | { type: "notes-editor"; projectId: string; entryKey?: string }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
