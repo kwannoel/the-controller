@@ -21,6 +21,7 @@
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import NotesEditor from "./lib/NotesEditor.svelte";
   import ArchitectureExplorer from "./lib/ArchitectureExplorer.svelte";
+  import InfrastructureDashboard from "./lib/InfrastructureDashboard.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
   import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
@@ -491,6 +492,8 @@
           />
         {:else if workspaceModeState.current === "notes"}
           <NotesEditor />
+        {:else if workspaceModeState.current === "infrastructure"}
+          <InfrastructureDashboard />
         {:else}
           <TerminalManager />
         {/if}
