@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { command } from '$lib/backend';
-import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, controllerChatVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
 import HotkeyManager from './HotkeyManager.svelte';
 
 function makeSession(id: string, label: string, kind = 'claude'): SessionConfig {
@@ -85,6 +85,7 @@ describe('HotkeyManager', () => {
     hotkeyAction.set(null);
     focusTarget.set(null);
     sidebarVisible.set(true);
+    controllerChatVisible.set(true);
     expandedProjects.set(new Set(['proj-1', 'proj-2']));
     workspaceMode.set("development");
     workspaceModePickerVisible.set(false);
@@ -359,16 +360,13 @@ describe('HotkeyManager', () => {
     });
   });
 
-  describe('removed g hotkey', () => {
-    it('g does not start a navigation prefix or change focus', () => {
-      projects.set([testProject, testProject2]);
-      focusTarget.set({ type: 'project', projectId: 'proj-2' });
-
+  describe('g toggles controller chat', () => {
+    it('g toggles controllerChatVisible', () => {
+      expect(get(controllerChatVisible)).toBe(true);
       pressKey('g');
-      pressKey('z');
-
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
-      expect(get(hotkeyAction)).toBeNull();
+      expect(get(controllerChatVisible)).toBe(false);
+      pressKey('g');
+      expect(get(controllerChatVisible)).toBe(true);
     });
   });
 
@@ -416,20 +414,14 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('Escape then g remains inert in ambient mode', () => {
+    it('Escape then g toggles controller chat in ambient mode', () => {
       pressKey('Escape');
 
       removeTerminalFocus(xtermEl);
       xtermEl = document.createElement('div');
 
       pressKey('g');
-      pressKey('z');
-      expect(get(focusTarget)).toEqual({
-        type: 'session',
-        sessionId: 'sess-1',
-        projectId: 'proj-1',
-      });
-      expect(get(hotkeyAction)).toBeNull();
+      expect(get(controllerChatVisible)).toBe(false);
     });
 
     it('double Escape forwards Escape to PTY', () => {

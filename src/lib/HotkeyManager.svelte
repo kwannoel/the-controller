@@ -6,6 +6,7 @@
     projects,
     activeSessionId,
     sidebarVisible,
+    controllerChatVisible,
     workspaceMode,
     workspaceModePickerVisible,
     selectedSessionProvider,
@@ -312,6 +313,9 @@
       }
       case "toggle-sidebar":
         sidebarVisible.update(v => !v);
+        return true;
+      case "toggle-controller-chat":
+        controllerChatVisible.update(v => !v);
         return true;
       case "create-issue":
         dispatchCreateIssue();
