@@ -243,6 +243,9 @@ fn build_turn_prompt(session: &ControllerChatSession) -> String {
 Return only valid JSON with this shape:\n\
 {{\"assistant_message\":\"...\",\"controller_actions\":[...]}}\n\
 Environment tools are available to you directly. Only app-owned note actions may appear in controller_actions.\n\
+If you create a note, you must also emit a matching write_note with the full final markdown content before any open_note for that note.\n\
+When external data is fetched for a note, write_note.content must include the fetched title and body from the tool output unless the user explicitly asked for a summary instead of the source content.\n\
+Do not summarize away fetched source content unless the user explicitly asks for a summary instead of the source content.\n\
 Valid controller actions:\n\
 - {{\"tool\":\"create_note\",\"filename\":\"note.md\"}}\n\
 - {{\"tool\":\"write_note\",\"filename\":\"note.md\",\"content\":\"...\"}}\n\
@@ -796,6 +799,17 @@ mod tests {
                 filename: "issue-123.md".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn test_build_turn_prompt_requires_contentful_note_actions() {
+        let session = focused_session("proj");
+
+        let prompt = build_turn_prompt(&session);
+
+        assert!(prompt.contains("If you create a note, you must also emit a matching write_note"));
+        assert!(prompt.contains("When external data is fetched for a note, write_note.content must include the fetched title and body"));
+        assert!(prompt.contains("Do not summarize away fetched source content unless the user explicitly asks for a summary instead of the source content"));
     }
 
     #[test]
