@@ -13,9 +13,11 @@ use std::sync::Arc;
 use the_controller_lib::{
     config,
     emitter::WsBroadcastEmitter,
+    note_ai_chat,
     notes,
     state::AppState,
 };
+
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 
@@ -48,6 +50,7 @@ async fn main() {
         .route("/api/list_archived_projects", post(list_archived_projects))
         .route("/api/generate_architecture", post(generate_architecture))
         .route("/api/merge_session_branch", post(merge_session_branch))
+        .route("/api/send_note_ai_chat", post(send_note_ai_chat))
         .route("/api/list_notes", post(api_list_notes))
         .route("/api/read_note", post(api_read_note))
         .route("/api/write_note", post(api_write_note))
@@ -440,6 +443,38 @@ async fn merge_session_branch(
     ))
 }
 
+async fn send_note_ai_chat(
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let note_content = args["noteContent"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing noteContent".to_string()))?
+        .to_string();
+    let selected_text = args["selectedText"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing selectedText".to_string()))?
+        .to_string();
+    let prompt = args["prompt"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing prompt".to_string()))?
+        .to_string();
+
+    let conversation_history: Vec<note_ai_chat::NoteAiChatMessage> =
+        serde_json::from_value(args["conversationHistory"].clone())
+            .unwrap_or_default();
+
+    let response = note_ai_chat::send_note_ai_message(
+        std::env::temp_dir().to_string_lossy().to_string(),
+        note_content,
+        selected_text,
+        conversation_history,
+        prompt,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    Ok(Json(serde_json::to_value(response).unwrap()))
+}
 // --- Notes ---
 
 async fn api_list_notes(
