@@ -230,7 +230,7 @@ pub fn update_focus_snapshot(
         session.update_focus(update);
         session.clone()
     };
-    emit_session_updated(state, &snapshot)?;
+    let _ = emit_session_updated(state, &snapshot);
     Ok(snapshot)
 }
 
@@ -312,7 +312,7 @@ where
         let prompt = build_turn_prompt(&session);
         let snapshot = session.clone();
         drop(session);
-        emit_session_updated(state, &snapshot)?;
+        let _ = emit_session_updated(state, &snapshot);
 
         (project.repo_path, prompt, base_dir)
     };
@@ -353,10 +353,10 @@ where
             };
             let (snapshot, bridge_results) = bridge_outcome;
 
-            emit_session_updated(state, &snapshot)?;
+            let _ = emit_session_updated(state, &snapshot);
             for result in &bridge_results {
                 if let Some(note_open_event) = &result.note_open_event {
-                    emit_note_opened(state, note_open_event)?;
+                    let _ = emit_note_opened(state, note_open_event);
                 }
             }
             Ok(snapshot)
@@ -427,6 +427,14 @@ mod tests {
                 .unwrap()
                 .push((event.to_string(), payload.to_string()));
             Ok(())
+        }
+    }
+
+    struct FailingEmitter;
+
+    impl EventEmitter for FailingEmitter {
+        fn emit(&self, _event: &str, _payload: &str) -> Result<(), String> {
+            Err("emit failed".to_string())
         }
     }
 
@@ -751,6 +759,27 @@ mod tests {
     }
 
     #[test]
+    fn test_update_focus_snapshot_keeps_snapshot_when_emit_fails() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_test_state(tmp.path(), Arc::new(FailingEmitter));
+
+        let session = update_focus_snapshot(
+            &state,
+            ControllerFocusUpdate {
+                project_id: Some(Uuid::from_u128(99)),
+                project_name: Some("proj".to_string()),
+                session_id: Some(Uuid::from_u128(100)),
+                note_filename: Some("focus.md".to_string()),
+                workspace_mode: Some("notes".to_string()),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(session.focus.project_id, Some(Uuid::from_u128(99)));
+        assert_eq!(session.focus.note_filename.as_deref(), Some("focus.md"));
+    }
+
+    #[test]
     fn test_parse_agent_turn_output_parses_controller_actions() {
         let parsed = parse_agent_turn_output(
             r#"{
@@ -861,6 +890,69 @@ mod tests {
         let events = emitter.recorded();
         assert!(events.iter().any(|(event, _)| event == CONTROLLER_CHAT_SESSION_UPDATED_EVENT));
         assert!(events.iter().any(|(event, _)| event == CONTROLLER_CHAT_NOTE_OPENED_EVENT));
+    }
+
+    #[test]
+    fn test_send_message_with_runner_preserves_success_when_emit_fails() {
+        let tmp = TempDir::new().unwrap();
+        let repo_dir = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        let state = make_test_state(tmp.path(), Arc::new(FailingEmitter));
+        let project_id = Uuid::from_u128(300);
+
+        {
+            let storage = state.storage.lock().unwrap();
+            storage
+                .save_project(&make_test_project(project_id, &repo_dir))
+                .unwrap();
+        }
+
+        {
+            let mut session = state.controller_chat.lock().unwrap();
+            session.update_focus(ControllerFocusUpdate {
+                project_id: Some(project_id),
+                project_name: Some("proj".to_string()),
+                session_id: None,
+                note_filename: None,
+                workspace_mode: Some("notes".to_string()),
+            });
+        }
+
+        let session = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(send_message_with_runner(
+                &state,
+                "fetch issue 123".to_string(),
+                |_repo_path, _prompt| {
+                    Ok(ControllerAgentTurnOutput {
+                        assistant_message: "Fetched the issue and opened the note.".to_string(),
+                        controller_actions: vec![
+                            ControllerBridgeAction::CreateNote {
+                                filename: "issue-123.md".to_string(),
+                            },
+                            ControllerBridgeAction::WriteNote {
+                                filename: "issue-123.md".to_string(),
+                                content: "# Issue 123\n".to_string(),
+                            },
+                            ControllerBridgeAction::OpenNote {
+                                filename: "issue-123.md".to_string(),
+                            },
+                        ],
+                    })
+                },
+            ))
+            .unwrap();
+
+        assert_eq!(session.items.len(), 5);
+        assert_eq!(session.items[4].kind, ControllerChatItemKind::Assistant);
+        assert!(!session.turn_in_progress);
+        assert_eq!(session.focus.note_filename.as_deref(), Some("issue-123.md"));
+        assert_eq!(
+            notes::read_note(tmp.path(), "proj", "issue-123.md").unwrap(),
+            "# Issue 123\n"
+        );
     }
 
     #[test]
