@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -279,20 +280,30 @@ fn run_codex_exec(
     let mut child = command
         .spawn()
         .map_err(|e| format!("Failed to run codex exec: {}", e))?;
+    let stdout_reader = child
+        .stdout
+        .take()
+        .ok_or("Failed to capture codex exec stdout".to_string())?;
+    let stderr_reader = child
+        .stderr
+        .take()
+        .ok_or("Failed to capture codex exec stderr".to_string())?;
+    let stdout_handle = spawn_pipe_reader(stdout_reader);
+    let stderr_handle = spawn_pipe_reader(stderr_reader);
     let started_at = Instant::now();
-    let output = loop {
-        if let Some(_status) = child
+    let status = loop {
+        if let Some(status) = child
             .try_wait()
             .map_err(|e| format!("Failed to wait for codex exec: {}", e))?
         {
-            break child
-                .wait_with_output()
-                .map_err(|e| format!("Failed to capture codex exec output: {}", e))?;
+            break status;
         }
 
         if started_at.elapsed() >= config.timeout {
             let _ = child.kill();
-            let _ = child.wait_with_output();
+            let _ = child.wait();
+            let _ = join_pipe_reader(stdout_handle, "stdout");
+            let _ = join_pipe_reader(stderr_handle, "stderr");
             return Err(format!(
                 "codex exec timed out after {} seconds",
                 config.timeout.as_secs_f32()
@@ -302,7 +313,14 @@ fn run_codex_exec(
         std::thread::sleep(Duration::from_millis(50));
     };
 
-    Ok(output)
+    let stdout = join_pipe_reader(stdout_handle, "stdout")?;
+    let stderr = join_pipe_reader(stderr_handle, "stderr")?;
+
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 pub fn extract_json(output: &str) -> Option<&str> {
     if let Some(start) = output.find("```json") {
@@ -708,15 +726,22 @@ fn read_sorted_dir(path: &Path, scan_budget: &mut ScanBudget) -> Result<Vec<Path
     for entry in
         std::fs::read_dir(path).map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
     {
-        if !scan_budget.try_take_entry() {
-            break;
-        }
         if let Ok(entry) = entry {
             entries.push(entry.path());
         }
     }
+    Ok(sort_entries_with_budget(entries, scan_budget))
+}
+
+fn sort_entries_with_budget(
+    mut entries: Vec<PathBuf>,
+    scan_budget: &mut ScanBudget,
+) -> Vec<PathBuf> {
     entries.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
-    Ok(entries)
+    entries
+        .into_iter()
+        .take_while(|_| scan_budget.try_take_entry())
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -762,17 +787,63 @@ fn push_evidence_file(
 }
 
 fn read_text_snippet(path: &Path) -> Option<String> {
-    let contents = std::fs::read_to_string(path).ok()?;
-    let mut snippet = contents
-        .lines()
-        .take(MAX_SNIPPET_LINES)
-        .collect::<Vec<_>>()
-        .join("\n");
-    if snippet.chars().count() > MAX_SNIPPET_CHARS {
-        snippet = snippet.chars().take(MAX_SNIPPET_CHARS).collect();
+    let file = std::fs::File::open(path).ok()?;
+    let mut snippet = String::new();
+    let mut char_buffer = Vec::with_capacity(4);
+    let mut line_count = 0usize;
+    let mut char_count = 0usize;
+
+    for byte in BufReader::new(file).bytes() {
+        let byte = byte.ok()?;
+        char_buffer.push(byte);
+
+        let decoded = match std::str::from_utf8(&char_buffer) {
+            Ok(decoded) => decoded,
+            Err(error) if error.error_len().is_none() && char_buffer.len() < 4 => continue,
+            Err(_) => break,
+        };
+
+        for ch in decoded.chars() {
+            if char_count >= MAX_SNIPPET_CHARS || line_count >= MAX_SNIPPET_LINES {
+                break;
+            }
+            snippet.push(ch);
+            char_count += 1;
+            if ch == '\n' {
+                line_count += 1;
+            }
+        }
+        char_buffer.clear();
+
+        if char_count >= MAX_SNIPPET_CHARS || line_count >= MAX_SNIPPET_LINES {
+            break;
+        }
     }
+
     let snippet = snippet.trim().to_string();
     (!snippet.is_empty()).then_some(snippet)
+}
+
+fn spawn_pipe_reader<T>(reader: T) -> std::thread::JoinHandle<std::io::Result<Vec<u8>>>
+where
+    T: Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(reader);
+        let mut buffer = Vec::new();
+        reader.read_to_end(&mut buffer)?;
+        Ok(buffer)
+    })
+}
+
+fn join_pipe_reader(
+    handle: std::thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    stream_name: &str,
+) -> Result<Vec<u8>, String> {
+    handle
+        .join()
+        .map_err(|_| format!("Failed to join codex exec {} reader thread", stream_name))?
+        .map_err(|e| format!("Failed to read codex exec {}: {}", stream_name, e))
 }
 
 fn best_source_file_in_dir(
@@ -975,8 +1046,9 @@ mod tests {
 
     use super::{
         collect_repo_evidence, collect_repo_evidence_with_limits,
-        generate_architecture_blocking_with_config, parse_architecture_output, CodexExecConfig,
-        ScanLimits, MAX_EVIDENCE_FILES,
+        generate_architecture_blocking_with_config, parse_architecture_output, read_text_snippet,
+        sort_entries_with_budget, CodexExecConfig, ScanBudget, ScanLimits, MAX_EVIDENCE_FILES,
+        MAX_SNIPPET_CHARS,
     };
 
     fn write_repo_file(repo: &TempDir, relative_path: &str, contents: &str) {
@@ -1646,6 +1718,41 @@ That should be enough to render the view."#;
     }
 
     #[test]
+    fn sort_entries_applies_budget_after_sorting() {
+        let entries = vec![
+            PathBuf::from("z-last.ts"),
+            PathBuf::from("a-first.ts"),
+            PathBuf::from("m-middle.ts"),
+        ];
+        let mut scan_budget = ScanBudget::new(ScanLimits {
+            max_entries: 2,
+            max_depth: 1,
+        });
+
+        let retained = sort_entries_with_budget(entries, &mut scan_budget);
+
+        assert_eq!(
+            retained,
+            vec![PathBuf::from("a-first.ts"), PathBuf::from("m-middle.ts")]
+        );
+    }
+
+    #[test]
+    fn read_text_snippet_stops_before_invalid_bytes_beyond_cap() {
+        let repo = TempDir::new().expect("create temp repo");
+        let path = repo.path().join("large.txt");
+        let mut bytes = vec![b'a'; MAX_SNIPPET_CHARS];
+        bytes.push(0xff);
+        bytes.extend_from_slice(b"rest of file");
+        fs::write(&path, bytes).expect("write invalid utf8 fixture");
+
+        let snippet = read_text_snippet(&path).expect("snippet should stop before invalid bytes");
+
+        assert_eq!(snippet.len(), MAX_SNIPPET_CHARS);
+        assert!(snippet.chars().all(|ch| ch == 'a'));
+    }
+
+    #[test]
     fn generate_architecture_command_uses_spawn_blocking() {
         let commands_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs");
         let source = fs::read_to_string(commands_path).expect("read commands source");
@@ -1687,6 +1794,30 @@ That should be enough to render the view."#;
             "timeout should return promptly"
         );
         assert!(error.contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_handles_verbose_codex_output_without_deadlock() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        write_repo_file(&repo, "README.md", "# Verbose output test\n");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            "#!/bin/sh\ndd if=/dev/zero bs=1024 count=256 2>/dev/null | tr '\\000' 'x' >&2\ncat <<'EOF'\n{\"title\":\"Architecture\",\"mermaid\":\"flowchart TD\\napi[API]\",\"components\":[{\"id\":\"api\",\"name\":\"API\",\"summary\":\"Handles requests\",\"contains\":[],\"incoming_relationships\":[],\"outgoing_relationships\":[],\"evidence_paths\":[],\"evidence_snippets\":[]}]}\nEOF\n",
+        );
+
+        let result = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_secs(2),
+            },
+        )
+        .expect("verbose codex output should be drained without deadlock");
+
+        assert_eq!(result.title, "Architecture");
     }
 
     #[cfg(unix)]
