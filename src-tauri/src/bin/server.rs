@@ -12,7 +12,6 @@ use serde_json::Value;
 use std::sync::Arc;
 use the_controller_lib::{
     controller_chat::{self, ControllerFocusUpdate},
-    architecture::generate_architecture_blocking,
     config,
     emitter::WsBroadcastEmitter,
     notes,
@@ -299,30 +298,12 @@ async fn create_session(
 
 async fn generate_architecture(
     AxumState(_state): AxumState<Arc<ServerState>>,
-    Json(args): Json<Value>,
+    Json(_args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let repo_path = args["repoPath"]
-        .as_str()
-        .or_else(|| args["repo_path"].as_str())
-        .unwrap_or_default()
-        .to_string();
-    if repo_path.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "repoPath is required".to_string()));
-    }
-
-    let architecture = tokio::task::spawn_blocking(move || {
-        generate_architecture_blocking(std::path::Path::new(&repo_path))
-    })
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
-        )
-    })?
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-
-    Ok(Json(serde_json::to_value(architecture).unwrap()))
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        "generate_architecture not yet wired".to_string(),
+    ))
 }
 
 async fn list_archived_projects(
