@@ -123,6 +123,8 @@ pub fn run() {
             deploy::commands::get_deploy_credentials,
             deploy::commands::save_deploy_credentials,
             deploy::commands::is_deploy_provisioned,
+            deploy::commands::deploy_project,
+            deploy::commands::list_deployed_services,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

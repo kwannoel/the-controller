@@ -1,5 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
+use super::coolify::CoolifyClient;
 use super::credentials::DeployCredentials;
 
 #[derive(Serialize)]
@@ -63,4 +64,77 @@ pub async fn is_deploy_provisioned() -> Result<bool, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[derive(Deserialize)]
+pub struct DeployRequest {
+    pub project_name: String,
+    pub repo_path: String,
+    pub subdomain: String,
+    pub project_type: String,
+}
+
+#[derive(Serialize)]
+pub struct DeployResult {
+    pub url: String,
+    pub coolify_uuid: String,
+}
+
+#[tauri::command]
+pub async fn deploy_project(request: DeployRequest) -> Result<DeployResult, String> {
+    let creds = DeployCredentials::load()?;
+    if !creds.is_provisioned() {
+        return Err("Deploy not provisioned. Run setup first.".to_string());
+    }
+
+    let coolify = CoolifyClient::new(
+        creds.coolify_url.as_ref().unwrap(),
+        creds.coolify_api_key.as_ref().unwrap(),
+    );
+
+    let apps = coolify.list_applications().await?;
+    let existing = apps.iter().find(|a| a.name == request.project_name);
+
+    let uuid = if let Some(app) = existing {
+        coolify.deploy_application(&app.uuid).await?;
+        app.uuid.clone()
+    } else {
+        return Err("Creating new Coolify applications not yet implemented. Create the app in Coolify UI first.".to_string());
+    };
+
+    let domain = format!("{}.{}", request.subdomain, creds.root_domain.unwrap());
+    let url = format!("https://{domain}");
+
+    Ok(DeployResult {
+        url,
+        coolify_uuid: uuid,
+    })
+}
+
+#[tauri::command]
+pub async fn list_deployed_services() -> Result<Vec<serde_json::Value>, String> {
+    let creds = DeployCredentials::load()?;
+    if !creds.is_provisioned() {
+        return Ok(vec![]);
+    }
+
+    let coolify = CoolifyClient::new(
+        creds.coolify_url.as_ref().unwrap(),
+        creds.coolify_api_key.as_ref().unwrap(),
+    );
+
+    let apps = coolify.list_applications().await?;
+    let result: Vec<serde_json::Value> = apps
+        .iter()
+        .map(|app| {
+            serde_json::json!({
+                "uuid": app.uuid,
+                "name": app.name,
+                "status": app.status,
+                "fqdn": app.fqdn,
+            })
+        })
+        .collect();
+
+    Ok(result)
 }
