@@ -15,6 +15,7 @@ pub mod state;
 pub mod status_socket;
 pub mod storage;
 pub mod tmux;
+pub mod token_usage;
 pub mod worktree;
 
 fn show_startup_error(error: &std::io::Error) {
@@ -110,6 +111,7 @@ pub fn run() {
             commands::stage_session_inplace,
             commands::unstage_session_inplace,
             commands::get_repo_head,
+            commands::get_session_token_usage,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

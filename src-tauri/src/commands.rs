@@ -7,6 +7,7 @@ use crate::config;
 use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
 use crate::state::AppState;
 use crate::storage::ProjectInventory;
+use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
 mod github;
@@ -1548,6 +1549,34 @@ pub fn get_session_commits(
     }
 
     Ok(all_commits)
+}
+
+#[tauri::command]
+pub fn get_session_token_usage(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<Vec<TokenDataPoint>, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
+
+    let session = project
+        .sessions
+        .iter()
+        .find(|s| s.id == session_uuid)
+        .ok_or_else(|| "Session not found".to_string())?;
+
+    let working_dir = session
+        .worktree_path
+        .as_deref()
+        .unwrap_or(&project.repo_path);
+
+    token_usage::get_token_usage(working_dir, &session.kind)
 }
 
 /// Walk commits on the worktree branch that aren't on the main branch.
