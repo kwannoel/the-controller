@@ -347,6 +347,7 @@
     box-sizing: border-box;
     flex: 1;
     background: var(--bg-void);
+    color: var(--text-primary);
   }
 
   .preview.split {
