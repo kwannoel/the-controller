@@ -238,10 +238,13 @@
   }
 
   async function screenshotToNewSession(preview: boolean, cropped: boolean) {
-    const project = getTargetProject();
+    // IMPORTANT: Screenshot sessions are a core personalization feature — they let
+    // users debug and modify the controller from within itself. This must always
+    // target the controller project, never the focused project.
+    const project = projectsState.current.find((p) => p.name === "the-controller");
 
     if (!project) {
-      showToast("Select a project before starting a screenshot session", "error");
+      showToast("The controller project must be loaded to use screenshot sessions", "error");
       return;
     }
 

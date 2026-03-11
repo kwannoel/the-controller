@@ -136,17 +136,20 @@ describe("App screenshot flow", () => {
     expect(mocks.openPath).not.toHaveBeenCalled();
   });
 
-  it("uses the focused project for screenshot sessions even when the project name differs", async () => {
+  it("always routes screenshot sessions to the controller project, ignoring focus", async () => {
+    const controllerProject = { ...baseProject, id: "proj-controller", name: "the-controller", repo_path: "/tmp/the-controller" };
+    const otherProject = { ...baseProject, id: "proj-other", name: "client-app", repo_path: "/tmp/client-app" };
     setupMocks();
-    projects.set([{ ...baseProject, name: "client-app", repo_path: "/tmp/client-app" }]);
-    focusTarget.set({ type: "project", projectId: "proj-1" });
+    projects.set([otherProject, controllerProject]);
+    // Focus is on a different project — screenshot should still go to the-controller
+    focusTarget.set({ type: "project", projectId: "proj-other" });
 
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
+        projectId: "proj-controller",
         kind: "claude",
         initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
       }));
