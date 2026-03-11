@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,7 @@ pub(crate) const MAX_EVIDENCE_FILES: usize = 8;
 const MAX_SNIPPET_LINES: usize = 24;
 const MAX_SNIPPET_CHARS: usize = 1_200;
 const CODEX_EXEC_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_CAPTURE_BYTES: usize = 256 * 1024;
 const DEFAULT_SCAN_LIMITS: ScanLimits = ScanLimits {
     max_entries: 512,
     max_depth: 6,
@@ -25,6 +27,12 @@ struct ScanLimits {
 #[derive(Debug)]
 struct ScanBudget {
     remaining_entries: usize,
+}
+
+#[derive(Debug)]
+struct PipeCapture {
+    bytes: Vec<u8>,
+    overflowed: bool,
 }
 
 impl ScanBudget {
@@ -117,8 +125,7 @@ fn collect_repo_evidence_with_limits(
         .canonicalize()
         .map_err(|e| format!("Failed to resolve {}: {}", repo_path.display(), e))?;
     let mut scan_budget = ScanBudget::new(scan_limits);
-
-    let root_entries = read_sorted_dir(&repo_path, &mut scan_budget)?;
+    let root_entries = read_root_entries(&repo_path, &mut scan_budget)?;
     let top_level_directories = root_entries
         .iter()
         .filter(|path| path_kind(path) == Some(RepoPathKind::Directory))
@@ -288,10 +295,20 @@ fn run_codex_exec(
         .stderr
         .take()
         .ok_or("Failed to capture codex exec stderr".to_string())?;
-    let stdout_handle = spawn_pipe_reader(stdout_reader);
-    let stderr_handle = spawn_pipe_reader(stderr_reader);
+    let (overflow_tx, overflow_rx) = mpsc::channel();
+    let stdout_handle = spawn_pipe_reader(stdout_reader, "stdout", overflow_tx.clone());
+    let stderr_handle = spawn_pipe_reader(stderr_reader, "stderr", overflow_tx);
     let started_at = Instant::now();
     let status = loop {
+        if let Ok(stream_name) = overflow_rx.try_recv() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "codex exec {} exceeded {} bytes of output",
+                stream_name, MAX_CAPTURE_BYTES
+            ));
+        }
+
         if let Some(status) = child
             .try_wait()
             .map_err(|e| format!("Failed to wait for codex exec: {}", e))?
@@ -302,8 +319,6 @@ fn run_codex_exec(
         if started_at.elapsed() >= config.timeout {
             let _ = child.kill();
             let _ = child.wait();
-            let _ = join_pipe_reader(stdout_handle, "stdout");
-            let _ = join_pipe_reader(stderr_handle, "stderr");
             return Err(format!(
                 "codex exec timed out after {} seconds",
                 config.timeout.as_secs_f32()
@@ -315,11 +330,23 @@ fn run_codex_exec(
 
     let stdout = join_pipe_reader(stdout_handle, "stdout")?;
     let stderr = join_pipe_reader(stderr_handle, "stderr")?;
+    if stdout.overflowed {
+        return Err(format!(
+            "codex exec stdout exceeded {} bytes of output",
+            MAX_CAPTURE_BYTES
+        ));
+    }
+    if stderr.overflowed {
+        return Err(format!(
+            "codex exec stderr exceeded {} bytes of output",
+            MAX_CAPTURE_BYTES
+        ));
+    }
 
     Ok(Output {
         status,
-        stdout,
-        stderr,
+        stdout: stdout.bytes,
+        stderr: stderr.bytes,
     })
 }
 pub fn extract_json(output: &str) -> Option<&str> {
@@ -733,6 +760,28 @@ fn read_sorted_dir(path: &Path, scan_budget: &mut ScanBudget) -> Result<Vec<Path
     Ok(sort_entries_with_budget(entries, scan_budget))
 }
 
+fn read_root_entries(path: &Path, scan_budget: &mut ScanBudget) -> Result<Vec<PathBuf>, String> {
+    let mut entries = Vec::new();
+    for entry in
+        std::fs::read_dir(path).map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
+    {
+        if let Ok(entry) = entry {
+            entries.push(entry.path());
+        }
+    }
+
+    entries.sort_by(|left, right| {
+        root_entry_rank(left)
+            .cmp(&root_entry_rank(right))
+            .then_with(|| left.file_name().cmp(&right.file_name()))
+    });
+
+    Ok(entries
+        .into_iter()
+        .take_while(|_| scan_budget.try_take_entry())
+        .collect())
+}
+
 fn sort_entries_with_budget(
     mut entries: Vec<PathBuf>,
     scan_budget: &mut ScanBudget,
@@ -742,6 +791,46 @@ fn sort_entries_with_budget(
         .into_iter()
         .take_while(|_| scan_budget.try_take_entry())
         .collect()
+}
+
+fn root_entry_rank(path: &Path) -> (usize, usize) {
+    match path_kind(path) {
+        Some(RepoPathKind::File) => {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if is_metadata_file(name) {
+                (0, metadata_file_rank(path))
+            } else if is_source_file(path) {
+                let basename = name.split('.').next().unwrap_or(name);
+                let rank = match basename {
+                    "main" => 0,
+                    "app" => 1,
+                    "index" => 2,
+                    "server" => 3,
+                    "lib" => 4,
+                    "mod" => 5,
+                    _ => 10,
+                };
+                (2, rank)
+            } else {
+                (4, 0)
+            }
+        }
+        Some(RepoPathKind::Directory) => {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("");
+            if is_ignored_dir(name) {
+                (5, 0)
+            } else {
+                (1, preferred_directory_rank(name))
+            }
+        }
+        None => (6, 0),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -824,22 +913,49 @@ fn read_text_snippet(path: &Path) -> Option<String> {
     (!snippet.is_empty()).then_some(snippet)
 }
 
-fn spawn_pipe_reader<T>(reader: T) -> std::thread::JoinHandle<std::io::Result<Vec<u8>>>
+fn spawn_pipe_reader<T>(
+    reader: T,
+    stream_name: &'static str,
+    overflow_tx: mpsc::Sender<&'static str>,
+) -> std::thread::JoinHandle<std::io::Result<PipeCapture>>
 where
     T: Read + Send + 'static,
 {
     std::thread::spawn(move || {
         let mut reader = BufReader::new(reader);
         let mut buffer = Vec::new();
-        reader.read_to_end(&mut buffer)?;
-        Ok(buffer)
+        let mut chunk = [0u8; 8192];
+        let mut overflowed = false;
+
+        loop {
+            let bytes_read = reader.read(&mut chunk)?;
+            if bytes_read == 0 {
+                break;
+            }
+
+            let remaining = MAX_CAPTURE_BYTES.saturating_sub(buffer.len());
+            if buffer.len() < MAX_CAPTURE_BYTES {
+                let to_copy = remaining.min(bytes_read);
+                buffer.extend_from_slice(&chunk[..to_copy]);
+            }
+
+            if !overflowed && bytes_read > remaining {
+                overflowed = true;
+                let _ = overflow_tx.send(stream_name);
+            }
+        }
+
+        Ok(PipeCapture {
+            bytes: buffer,
+            overflowed,
+        })
     })
 }
 
 fn join_pipe_reader(
-    handle: std::thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    handle: std::thread::JoinHandle<std::io::Result<PipeCapture>>,
     stream_name: &str,
-) -> Result<Vec<u8>, String> {
+) -> Result<PipeCapture, String> {
     handle
         .join()
         .map_err(|_| format!("Failed to join codex exec {} reader thread", stream_name))?
@@ -1718,6 +1834,43 @@ That should be enough to render the view."#;
     }
 
     #[test]
+    fn root_landmarks_are_prioritized_before_root_budget_is_spent() {
+        let repo = TempDir::new().expect("create temp repo");
+        write_repo_file(&repo, "a-noise.txt", "ignore me\n");
+        write_repo_file(&repo, "b-noise/extra.ts", "export const noise = true;\n");
+        write_repo_file(
+            &repo,
+            "package.json",
+            "{\n  \"name\": \"root-priority\",\n  \"private\": true\n}\n",
+        );
+        write_repo_file(&repo, "src/main.ts", "export const app = true;\n");
+
+        let evidence = collect_repo_evidence_with_limits(
+            repo.path(),
+            ScanLimits {
+                max_entries: 2,
+                max_depth: 2,
+            },
+        )
+        .expect("collect evidence");
+
+        assert!(
+            evidence
+                .files
+                .iter()
+                .any(|file| file.path == "package.json"),
+            "root metadata landmarks should outrank alphabetical noise under tight budget"
+        );
+        assert!(
+            evidence
+                .top_level_directories
+                .iter()
+                .any(|dir| dir == "src"),
+            "preferred source directories should survive root-entry budgeting"
+        );
+    }
+
+    #[test]
     fn sort_entries_applies_budget_after_sorting() {
         let entries = vec![
             PathBuf::from("z-last.ts"),
@@ -1792,6 +1945,35 @@ That should be enough to render the view."#;
         assert!(
             started.elapsed() < Duration::from_secs(2),
             "timeout should return promptly"
+        );
+        assert!(error.contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_timeout_does_not_wait_for_descendants_holding_pipes_open() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        write_repo_file(&repo, "README.md", "# Timeout descendant test\n");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            "#!/bin/sh\n(sleep 5) >&2 &\nsleep 5\n",
+        );
+
+        let started = Instant::now();
+        let error = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_millis(100),
+            },
+        )
+        .expect_err("timeout should not wait for descendant-held pipes");
+
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "timeout should return promptly even if descendants keep pipes open"
         );
         assert!(error.contains("timed out"));
     }
