@@ -66,8 +66,13 @@ impl TmuxManager {
             "24".to_string(),
             "-e".to_string(),
             format!("THE_CONTROLLER_SESSION_ID={}", session_id),
-            command.to_string(),
         ];
+        // Prepend ~/.the-controller/bin to PATH so controller-cli is available
+        if let Some(path_val) = crate::cli_install::path_with_controller_bin() {
+            args.push("-e".to_string());
+            args.push(format!("PATH={}", path_val));
+        }
+        args.push(command.to_string());
         args.extend(crate::session_args::build_session_args(
             command,
             session_id,
@@ -353,6 +358,47 @@ mod tests {
         assert!(
             e_idx < cmd_idx,
             "-e flag must come before the shell command"
+        );
+    }
+
+    #[test]
+    fn test_create_args_prepends_controller_bin_to_path() {
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let args = TmuxManager::build_create_args(id, "/tmp", "claude", false, None);
+
+        // Find the PATH -e flag (second -e, after THE_CONTROLLER_SESSION_ID)
+        let e_positions: Vec<usize> = args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| *a == "-e")
+            .map(|(i, _)| i)
+            .collect();
+
+        // Should have at least 2 -e flags (session ID + PATH)
+        assert!(
+            e_positions.len() >= 2,
+            "expected at least 2 -e flags, got {}",
+            e_positions.len()
+        );
+
+        let path_e_idx = e_positions[1];
+        let path_val = &args[path_e_idx + 1];
+        assert!(
+            path_val.starts_with("PATH="),
+            "second -e should set PATH, got: {}",
+            path_val
+        );
+        assert!(
+            path_val.contains(".the-controller/bin"),
+            "PATH should contain .the-controller/bin, got: {}",
+            path_val
+        );
+
+        // PATH -e must come before the shell command
+        let cmd_idx = args.iter().position(|a| a == "claude").unwrap();
+        assert!(
+            path_e_idx < cmd_idx,
+            "PATH -e flag must come before the shell command"
         );
     }
 

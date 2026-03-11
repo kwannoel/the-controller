@@ -2,6 +2,7 @@ use tauri::Manager;
 
 pub mod architecture;
 pub mod auto_worker;
+pub mod cli_install;
 pub mod commands;
 pub mod config;
 pub mod emitter;
@@ -48,6 +49,7 @@ pub fn run() {
                 }
             };
             app.manage(app_state);
+            cli_install::install_controller_cli();
             skills::sync_skills();
             status_socket::start_listener(app.handle().clone());
             maintainer::MaintainerScheduler::start(app.handle().clone());

@@ -117,6 +117,10 @@ impl PtyManager {
         cmd.cwd(working_dir);
         cmd.env_remove("CLAUDECODE");
         cmd.env("THE_CONTROLLER_SESSION_ID", session_id.to_string());
+        // Prepend ~/.the-controller/bin to PATH so controller-cli is available
+        if let Some(path_val) = crate::cli_install::path_with_controller_bin() {
+            cmd.env("PATH", path_val);
+        }
         for arg in
             crate::session_args::build_session_args(command, session_id, false, initial_prompt)
         {
