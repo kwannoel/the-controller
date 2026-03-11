@@ -14,6 +14,7 @@
   import IssuePickerModal from "./lib/IssuePickerModal.svelte";
   import PromptPickerModal from "./lib/PromptPickerModal.svelte";
   import SecureEnvModal from "./lib/SecureEnvModal.svelte";
+  import DeploySetupModal from "./lib/DeploySetupModal.svelte";
   import TriagePanel from "./lib/TriagePanel.svelte";
   import AssignedIssuesPanel from "./lib/AssignedIssuesPanel.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
@@ -32,6 +33,7 @@
   let assignedIssuesPanelOpen = $state(false);
   let promptPickerTarget: { projectId: string } | null = $state(null);
   let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
+  let deploySetupOpen = $state(false);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
@@ -97,6 +99,14 @@
         promptPickerTarget = { projectId: action.projectId };
       } else if (action?.type === "generate-architecture") {
         generateArchitectureForProject(action.projectId, action.repoPath);
+      } else if (action?.type === "deploy-project") {
+        command<boolean>("is_deploy_provisioned").then((provisioned) => {
+          if (!provisioned) {
+            deploySetupOpen = true;
+          } else {
+            showToast("Deploy not yet implemented", "info");
+          }
+        });
       }
     });
     return unsub;
@@ -540,6 +550,12 @@
     {/if}
     {#if workspaceModePickerVisibleState.current}
       <WorkspaceModePicker />
+    {/if}
+    {#if deploySetupOpen}
+      <DeploySetupModal
+        onComplete={() => { deploySetupOpen = false; showToast("Deploy setup complete", "info"); }}
+        onClose={() => { deploySetupOpen = false; }}
+      />
     {/if}
   {/if}
 {/if}
