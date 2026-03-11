@@ -4,7 +4,7 @@ use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::config;
-use crate::models::{CommitInfo, Project, SessionConfig};
+use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
 use crate::state::AppState;
 use crate::storage::ProjectInventory;
 use crate::worktree::WorktreeManager;
@@ -1600,6 +1600,65 @@ pub async fn get_worker_reports(repo_path: String) -> Result<Vec<github::WorkerR
     github::get_worker_reports(repo_path).await
 }
 
+fn queue_issue_from_github(issue: GithubIssue, is_active: bool) -> AutoWorkerQueueIssue {
+    AutoWorkerQueueIssue {
+        number: issue.number,
+        title: issue.title,
+        url: issue.url,
+        body: issue.body,
+        labels: issue.labels.into_iter().map(|label| label.name).collect(),
+        is_active,
+    }
+}
+
+fn active_auto_worker_issue(project: &Project) -> Option<GithubIssue> {
+    project
+        .sessions
+        .iter()
+        .find(|session| session.auto_worker_session)
+        .and_then(|session| session.github_issue.clone())
+}
+
+fn build_auto_worker_queue(
+    issues: Vec<GithubIssue>,
+    active_issue: Option<GithubIssue>,
+) -> Vec<AutoWorkerQueueIssue> {
+    let active_issue_number = active_issue.as_ref().map(|issue| issue.number);
+    let mut queue = Vec::new();
+
+    if let Some(issue) = active_issue {
+        queue.push(queue_issue_from_github(issue, true));
+    }
+
+    queue.extend(
+        issues
+            .into_iter()
+            .filter(crate::auto_worker::is_eligible)
+            .filter(|issue| Some(issue.number) != active_issue_number)
+            .map(|issue| queue_issue_from_github(issue, false)),
+    );
+
+    queue
+}
+
+#[tauri::command]
+pub async fn get_auto_worker_queue(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<AutoWorkerQueueIssue>, String> {
+    let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let project = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        storage
+            .load_project(project_id)
+            .map_err(|e| e.to_string())?
+    };
+
+    let active_issue = active_auto_worker_issue(&project);
+    let issues = github::list_github_issues(project.repo_path.clone(), state).await?;
+    Ok(build_auto_worker_queue(issues, active_issue))
+}
+
 #[tauri::command]
 pub async fn get_maintainer_status(
     state: State<'_, AppState>,
@@ -2874,5 +2933,120 @@ mod tests {
 
             assert_eq!(log.project_id, project_id);
         });
+    }
+
+    fn make_issue(number: u64, title: &str, labels: &[&str]) -> crate::models::GithubIssue {
+        crate::models::GithubIssue {
+            number,
+            title: title.to_string(),
+            url: format!("https://github.com/example/repo/issues/{number}"),
+            body: Some(format!("Body for issue {number}")),
+            labels: labels
+                .iter()
+                .map(|label| crate::models::GithubLabel {
+                    name: (*label).to_string(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_build_auto_worker_queue_filters_and_pins_active_issue() {
+        let issues = vec![
+            make_issue(11, "Eligible queued issue", &["priority:high", "complexity:low"]),
+            make_issue(12, "Busy issue", &["priority:high", "complexity:low", "in-progress"]),
+        ];
+        let active_issue = Some(make_issue(
+            12,
+            "Busy issue",
+            &["priority:high", "complexity:low", "in-progress", "assigned-to-auto-worker"],
+        ));
+
+        let queue = build_auto_worker_queue(issues, active_issue);
+
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue[0].number, 12);
+        assert!(queue[0].is_active);
+        assert_eq!(queue[1].number, 11);
+        assert!(!queue[1].is_active);
+    }
+
+    #[test]
+    fn test_build_auto_worker_queue_avoids_duplicate_active_issue() {
+        let issues = vec![make_issue(21, "Already active", &["priority:high", "complexity:low"])];
+        let active_issue = Some(make_issue(21, "Already active", &["priority:high", "complexity:low"]));
+
+        let queue = build_auto_worker_queue(issues, active_issue);
+
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].number, 21);
+        assert!(queue[0].is_active);
+    }
+
+    #[test]
+    fn test_get_auto_worker_queue_uses_cached_issues() {
+        let base_dir = TempDir::new().unwrap();
+        let projects_root = TempDir::new().unwrap();
+        let app_state = make_test_state(base_dir.path(), projects_root.path());
+        let project_id = Uuid::new_v4();
+        let repo_path = projects_root.path().join("queue-project");
+        fs::create_dir_all(&repo_path).expect("create repo dir");
+
+        {
+            let storage = app_state.storage.lock().expect("lock storage");
+            storage
+                .save_project(&crate::models::Project {
+                    id: project_id,
+                    name: "Queue Project".to_string(),
+                    repo_path: repo_path.to_string_lossy().to_string(),
+                    created_at: "2026-03-10T00:00:00Z".to_string(),
+                    archived: false,
+                    sessions: vec![crate::models::SessionConfig {
+                        id: Uuid::new_v4(),
+                        label: "session-1".to_string(),
+                        worktree_path: None,
+                        worktree_branch: None,
+                        archived: false,
+                        kind: "claude".to_string(),
+                        github_issue: Some(make_issue(
+                            33,
+                            "Active worker issue",
+                            &["priority:high", "complexity:low", "assigned-to-auto-worker"],
+                        )),
+                        initial_prompt: None,
+                        done_commits: vec![],
+                        auto_worker_session: true,
+                    }],
+                    maintainer: crate::models::MaintainerConfig::default(),
+                    auto_worker: crate::models::AutoWorkerConfig { enabled: true },
+                    prompts: vec![],
+                    staged_session: None,
+                })
+                .expect("save project");
+        }
+
+        {
+            let mut issue_cache = app_state.issue_cache.lock().expect("lock cache");
+            issue_cache.insert(
+                repo_path.to_string_lossy().to_string(),
+                vec![
+                    make_issue(33, "Active worker issue", &["priority:high", "complexity:low"]),
+                    make_issue(34, "Queued issue", &["priority:high", "complexity:low"]),
+                    make_issue(35, "Ineligible issue", &["priority:high"]),
+                ],
+            );
+        }
+
+        let queue = run_async_test(get_auto_worker_queue(
+            state_from_ref(&app_state),
+            project_id.to_string(),
+        ))
+        .expect("queue command should succeed");
+
+        assert_eq!(queue.len(), 2);
+        assert_eq!(queue[0].number, 33);
+        assert!(queue[0].is_active);
+        assert_eq!(queue[1].number, 34);
+        assert!(!queue[1].is_active);
     }
 }

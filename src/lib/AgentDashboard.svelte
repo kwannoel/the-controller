@@ -3,7 +3,7 @@
   import { untrack } from "svelte";
   import { command } from "$lib/backend";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail, type WorkerReport } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail, type WorkerReport, type AutoWorkerQueueIssue } from "./stores";
   import { showToast } from "./toast";
 
   let runLogs: MaintainerRunLog[] = $state([]);
@@ -32,10 +32,17 @@
   let allSortedIssues = $derived([...openIssues, ...closedIssues]);
 
   // Worker report state
+  type AutoWorkerViewMode = "queue" | "reports";
+  let autoWorkerViewMode: AutoWorkerViewMode = $state("queue");
+  let autoWorkerQueue: AutoWorkerQueueIssue[] = $state([]);
+  let autoWorkerQueueLoading = $state(false);
+  let autoWorkerQueueOpenIndex: number | null = $state(null);
+  let autoWorkerQueueSelectedIndex = $state(0);
   let workerReports: WorkerReport[] = $state([]);
   let workerLoading = $state(false);
   let workerOpenIndex: number | null = $state(null);
   let workerSelectedIndex = $state(0);
+  let prevAutoWorkerStatusKey: string | null = $state(null);
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
@@ -60,6 +67,10 @@
     openLogIndex !== null ? runLogs[openLogIndex] ?? null : null
   );
 
+  let openAutoWorkerIssue = $derived(
+    autoWorkerQueueOpenIndex !== null ? autoWorkerQueue[autoWorkerQueueOpenIndex] ?? null : null
+  );
+
   // All issues in the open log (for detail navigation)
   let openLogIssues = $derived(
     openLog ? [...openLog.issues_filed, ...openLog.issues_updated] : []
@@ -79,9 +90,15 @@
       issuesList = [];
       issueDetail = null;
       issueSelectedIndex = 0;
+      autoWorkerViewMode = "queue";
+      autoWorkerQueue = [];
+      autoWorkerQueueLoading = false;
+      autoWorkerQueueOpenIndex = null;
+      autoWorkerQueueSelectedIndex = 0;
       workerReports = [];
       workerOpenIndex = null;
       workerSelectedIndex = 0;
+      prevAutoWorkerStatusKey = null;
 
       const pid = untrack(() => project?.id ?? null);
       if (pid && focusedAgent?.agentKind === "maintainer") {
@@ -117,14 +134,25 @@
   });
 
   function toggleViewMode() {
-    if (focusedAgent?.agentKind !== "maintainer") return;
-    if (viewMode === "runs") {
-      viewMode = "issues";
-      issueDetail = null;
-      issueSelectedIndex = 0;
-      if (project) fetchIssues(project.id);
-    } else {
-      viewMode = "runs";
+    if (focusedAgent?.agentKind === "auto-worker") {
+      if (autoWorkerViewMode === "queue") {
+        autoWorkerViewMode = "reports";
+      } else {
+        autoWorkerViewMode = "queue";
+        if (project) fetchAutoWorkerQueue(project.id);
+      }
+      return;
+    }
+
+    if (focusedAgent?.agentKind === "maintainer") {
+      if (viewMode === "runs") {
+        viewMode = "issues";
+        issueDetail = null;
+        issueSelectedIndex = 0;
+        if (project) fetchIssues(project.id);
+      } else {
+        viewMode = "runs";
+      }
     }
   }
 
@@ -158,6 +186,17 @@
   }
 
   function openSelectedIssueInBrowser() {
+    if (focusedAgent?.agentKind === "auto-worker") {
+      if (autoWorkerViewMode !== "queue") return;
+      if (openAutoWorkerIssue) {
+        openUrl(openAutoWorkerIssue.url);
+      } else if (autoWorkerQueue.length > 0) {
+        const issue = autoWorkerQueue[autoWorkerQueueSelectedIndex];
+        if (issue) openUrl(issue.url);
+      }
+      return;
+    }
+
     if (focusedAgent?.agentKind !== "maintainer") return;
     if (viewMode === "issues") {
       if (issueDetail) {
@@ -174,10 +213,17 @@
 
   function handleNavigate(direction: 1 | -1) {
     if (focusedAgent?.agentKind === "auto-worker") {
-      if (workerOpenIndex !== null) return; // no sub-navigation in detail view
-      if (workerReports.length === 0) return;
-      workerSelectedIndex = Math.max(0, Math.min(workerReports.length - 1, workerSelectedIndex + direction));
-      scrollWorkerReportIntoView();
+      if (autoWorkerViewMode === "queue") {
+        if (autoWorkerQueueOpenIndex !== null) return;
+        if (autoWorkerQueue.length === 0) return;
+        autoWorkerQueueSelectedIndex = Math.max(0, Math.min(autoWorkerQueue.length - 1, autoWorkerQueueSelectedIndex + direction));
+        scrollAutoWorkerQueueIntoView();
+      } else {
+        if (workerOpenIndex !== null) return;
+        if (workerReports.length === 0) return;
+        workerSelectedIndex = Math.max(0, Math.min(workerReports.length - 1, workerSelectedIndex + direction));
+        scrollWorkerReportIntoView();
+      }
       return;
     }
 
@@ -209,9 +255,15 @@
 
   function handleSelect() {
     if (focusedAgent?.agentKind === "auto-worker") {
-      if (workerOpenIndex !== null) return;
-      if (workerReports.length === 0) return;
-      workerOpenIndex = workerSelectedIndex;
+      if (autoWorkerViewMode === "queue") {
+        if (autoWorkerQueueOpenIndex !== null) return;
+        if (autoWorkerQueue.length === 0) return;
+        autoWorkerQueueOpenIndex = autoWorkerQueueSelectedIndex;
+      } else {
+        if (workerOpenIndex !== null) return;
+        if (workerReports.length === 0) return;
+        workerOpenIndex = workerSelectedIndex;
+      }
       return;
     }
     if (focusedAgent?.agentKind !== "maintainer") return;
@@ -233,8 +285,18 @@
   }
 
   function handleEscape() {
-    if (focusedAgent?.agentKind === "auto-worker" && workerOpenIndex !== null) {
-      workerOpenIndex = null;
+    if (focusedAgent?.agentKind === "auto-worker") {
+      if (autoWorkerViewMode === "queue" && autoWorkerQueueOpenIndex !== null) {
+        autoWorkerQueueOpenIndex = null;
+        return;
+      }
+      if (autoWorkerViewMode === "reports" && workerOpenIndex !== null) {
+        workerOpenIndex = null;
+        return;
+      }
+      if (focusedAgent) {
+        focusTarget.set({ type: "agent", agentKind: focusedAgent.agentKind, projectId: focusedAgent.projectId });
+      }
       return;
     }
     if (viewMode === "issues") {
@@ -279,6 +341,43 @@
       const el = document.querySelector(`[data-worker-report-index="${workerSelectedIndex}"]`);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
+  }
+
+  function scrollAutoWorkerQueueIntoView() {
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`[data-worker-queue-index="${autoWorkerQueueSelectedIndex}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  async function fetchAutoWorkerQueue(projectId: string) {
+    autoWorkerQueueLoading = true;
+    try {
+      const result = await command<AutoWorkerQueueIssue[]>("get_auto_worker_queue", { projectId });
+      if (prevAgentKey === `${projectId}:auto-worker`) {
+        const selectedNumber = autoWorkerQueue[autoWorkerQueueSelectedIndex]?.number ?? null;
+        const openNumber = autoWorkerQueueOpenIndex !== null ? autoWorkerQueue[autoWorkerQueueOpenIndex]?.number ?? null : null;
+        autoWorkerQueue = result;
+        const nextSelectedIndex = selectedNumber === null ? 0 : result.findIndex((issue) => issue.number === selectedNumber);
+        autoWorkerQueueSelectedIndex = nextSelectedIndex >= 0 ? nextSelectedIndex : 0;
+        if (openNumber === null) {
+          autoWorkerQueueOpenIndex = null;
+        } else {
+          const nextOpenIndex = result.findIndex((issue) => issue.number === openNumber);
+          autoWorkerQueueOpenIndex = nextOpenIndex >= 0 ? nextOpenIndex : null;
+        }
+      }
+    } catch (e) {
+      if (prevAgentKey === `${projectId}:auto-worker`) {
+        autoWorkerQueue = [];
+        autoWorkerQueueOpenIndex = null;
+      }
+      showToast(String(e), "error");
+    } finally {
+      if (prevAgentKey === `${projectId}:auto-worker`) {
+        autoWorkerQueueLoading = false;
+      }
+    }
   }
 
   async function fetchHistory(projectId: string) {
@@ -406,6 +505,18 @@
   function stateColor(state: string): string {
     return state === "OPEN" ? "#a6e3a1" : "#cba6f7";
   }
+
+  $effect(() => {
+    if (focusedAgent?.agentKind !== "auto-worker" || !project) {
+      prevAutoWorkerStatusKey = null;
+      return;
+    }
+
+    const statusKey = `${project.id}:${autoWorkerStatus?.status ?? "idle"}:${autoWorkerStatus?.issue_number ?? ""}:${autoWorkerStatus?.issue_title ?? ""}`;
+    if (statusKey === prevAutoWorkerStatusKey) return;
+    prevAutoWorkerStatusKey = statusKey;
+    fetchAutoWorkerQueue(project.id);
+  });
 </script>
 
 <div class="dashboard" class:panel-focused={panelFocused}>
@@ -464,54 +575,122 @@
       </div>
     </section>
 
-    <section class="section report-section">
-      {#if workerLoading}
-        <div class="section-body">
-          <p class="muted">Loading reports...</p>
-        </div>
-      {:else if workerOpenIndex !== null && workerReports[workerOpenIndex]}
-        {@const report = workerReports[workerOpenIndex]}
-        <div class="detail-view">
-          <div class="detail-header">
-            <span class="detail-back">Reports</span>
-            <span class="detail-timestamp">{formatTimestamp(report.updated_at)}</span>
-            <span class="detail-summary">#{report.issue_number} {report.title}</span>
-          </div>
-          <div class="detail-blocks">
-            <div class="detail-block">
-              <div class="worker-report-body">{report.comment_body}</div>
-            </div>
-          </div>
-        </div>
-      {:else}
-        <div class="report-list">
-          {#if workerReports.length === 0}
-            <div class="section-body">
-              <p class="muted">No completed work yet</p>
-            </div>
-          {:else}
-            {#each workerReports as report, i}
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <div
-                class="report-item"
-                class:selected={panelFocused && workerSelectedIndex === i}
-                data-worker-report-index={i}
-                onclick={() => { workerSelectedIndex = i; workerOpenIndex = i; }}
-              >
-                <span class="log-dot"></span>
-                <span class="report-timestamp">{formatTimestamp(report.updated_at)}</span>
-                <span class="report-summary-preview">#{report.issue_number} {report.title}</span>
-              </div>
-            {/each}
-          {/if}
-        </div>
-      {/if}
-    </section>
+    <div class="view-tabs">
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <span class="view-tab" class:active={autoWorkerViewMode === "queue"} onclick={() => { autoWorkerViewMode = "queue"; if (project) fetchAutoWorkerQueue(project.id); }}>Queue</span>
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <span class="view-tab" class:active={autoWorkerViewMode === "reports"} onclick={() => { autoWorkerViewMode = "reports"; }}>Reports</span>
+      <span class="view-tab-hint">(t) toggle</span>
+    </div>
 
-    {#if !panelFocused && workerReports.length > 0}
+    {#if autoWorkerViewMode === "queue"}
+      <section class="section report-section">
+        {#if autoWorkerQueueLoading}
+          <div class="section-body">
+            <p class="muted">Loading eligible issues...</p>
+          </div>
+        {:else if openAutoWorkerIssue}
+          <div class="issue-detail-popup">
+            <div class="issue-detail-header">
+              <span class="issue-detail-number">#{openAutoWorkerIssue.number}</span>
+              <span class={`queue-state${openAutoWorkerIssue.is_active ? " worker-queue-state" : ""}`}>
+                {openAutoWorkerIssue.is_active ? "WORKING" : "QUEUED"}
+              </span>
+              <span class="issue-detail-hint">(o) open in browser / (Esc) back</span>
+            </div>
+            <h3 class="issue-detail-title">{openAutoWorkerIssue.title}</h3>
+            {#if openAutoWorkerIssue.labels.length > 0}
+              <div class="issue-detail-labels">
+                {#each openAutoWorkerIssue.labels as label}
+                  <span class="issue-label">{label}</span>
+                {/each}
+              </div>
+            {/if}
+            {#if openAutoWorkerIssue.body}
+              <div class="issue-detail-body">{openAutoWorkerIssue.body}</div>
+            {/if}
+          </div>
+        {:else}
+          <div class="issues-list">
+            {#if autoWorkerQueue.length === 0}
+              <div class="section-body">
+                <p class="muted">No eligible issues</p>
+              </div>
+            {:else}
+              {#each autoWorkerQueue as issue, i}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <div
+                  class="issues-item"
+                  class:selected={panelFocused && autoWorkerQueueSelectedIndex === i}
+                  data-worker-queue-index={i}
+                  onclick={() => { autoWorkerQueueSelectedIndex = i; autoWorkerQueueOpenIndex = i; }}
+                >
+                  <span class="issues-state" class:open-dot={!issue.is_active} class:working-dot={issue.is_active}></span>
+                  <span class="queue-summary">#{issue.number} {issue.title}</span>
+                  {#if issue.is_active}
+                    <span class="queue-state worker-queue-state">Working</span>
+                  {:else}
+                    <span class="queue-state">Queued</span>
+                  {/if}
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </section>
+    {:else}
+      <section class="section report-section">
+        {#if workerLoading}
+          <div class="section-body">
+            <p class="muted">Loading reports...</p>
+          </div>
+        {:else if workerOpenIndex !== null && workerReports[workerOpenIndex]}
+          {@const report = workerReports[workerOpenIndex]}
+          <div class="detail-view">
+            <div class="detail-header">
+              <span class="detail-back">Reports</span>
+              <span class="detail-timestamp">{formatTimestamp(report.updated_at)}</span>
+              <span class="detail-summary">#{report.issue_number} {report.title}</span>
+            </div>
+            <div class="detail-blocks">
+              <div class="detail-block">
+                <div class="worker-report-body">{report.comment_body}</div>
+              </div>
+            </div>
+          </div>
+        {:else}
+          <div class="report-list">
+            {#if workerReports.length === 0}
+              <div class="section-body">
+                <p class="muted">No completed work yet</p>
+              </div>
+            {:else}
+              {#each workerReports as report, i}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <div
+                  class="report-item"
+                  class:selected={panelFocused && workerSelectedIndex === i}
+                  data-worker-report-index={i}
+                  onclick={() => { workerSelectedIndex = i; workerOpenIndex = i; }}
+                >
+                  <span class="log-dot"></span>
+                  <span class="report-timestamp">{formatTimestamp(report.updated_at)}</span>
+                  <span class="report-summary-preview">#{report.issue_number} {report.title}</span>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/if}
+      </section>
+    {/if}
+
+    {#if !panelFocused}
       <div class="panel-hint">
-        <span class="muted">Press <kbd>l</kbd> to browse reports</span>
+        <span class="muted">Press <kbd>l</kbd> to browse {autoWorkerViewMode === "queue" ? "eligible issues" : "reports"}</span>
       </div>
     {/if}
   {:else if focusedAgent.agentKind === "maintainer"}
@@ -859,11 +1038,15 @@
   .issues-item.closed { opacity: 0.6; }
   .issues-state { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .open-dot { background: #a6e3a1; }
+  .working-dot { background: #89b4fa; }
   .closed-dot { background: #cba6f7; }
   .issues-number { color: #6c7086; font-size: 11px; flex-shrink: 0; }
   .issues-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cdd6f4; }
   .issues-item-labels { display: flex; gap: 4px; flex-wrap: nowrap; flex-shrink: 0; }
   .issues-date { color: #45475a; font-size: 10px; flex-shrink: 0; white-space: nowrap; }
+  .queue-summary { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cdd6f4; }
+  .queue-state { font-size: 10px; font-weight: 600; color: #6c7086; text-transform: uppercase; letter-spacing: 0.04em; }
+  .worker-queue-state { color: #89b4fa; }
 
   /* Issue detail popup */
   .issue-detail-popup { padding: 16px 24px; display: flex; flex-direction: column; gap: 12px; }

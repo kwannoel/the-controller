@@ -174,6 +174,15 @@ export interface WorkerReport {
   updated_at: string;
 }
 
+export interface AutoWorkerQueueIssue {
+  number: number;
+  title: string;
+  url: string;
+  body?: string | null;
+  labels: string[];
+  is_active: boolean;
+}
+
 // Hotkey state
 export type TriageCategory = "untriaged" | "triaged";
 

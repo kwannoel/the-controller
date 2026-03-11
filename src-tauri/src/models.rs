@@ -211,6 +211,17 @@ pub struct MaintainerIssueDetail {
     pub closed_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AutoWorkerQueueIssue {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    #[serde(default)]
+    pub body: Option<String>,
+    pub labels: Vec<String>,
+    pub is_active: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
