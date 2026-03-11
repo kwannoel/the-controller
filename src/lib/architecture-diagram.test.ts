@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  bindArchitectureDiagramInteractions,
   findArchitectureDiagramNode,
   syncArchitectureDiagramSelection,
 } from "./architecture-diagram";
@@ -43,5 +44,22 @@ describe("architecture-diagram", () => {
     expect(backendNode).toHaveClass("architecture-node-selected");
     expect(uiNode).not.toHaveClass("architecture-node-selected");
     expect(scrollIntoView).toHaveBeenCalledOnce();
+  });
+
+  it("publishes component selection when a rendered node is clicked", () => {
+    const container = createDiagram();
+    const onSelectComponent = vi.fn();
+    const cleanup = bindArchitectureDiagramInteractions(container, onSelectComponent);
+
+    try {
+      findArchitectureDiagramNode(container, "backend")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+
+      expect(onSelectComponent).toHaveBeenCalledWith("backend");
+      expect(onSelectComponent).toHaveBeenCalledTimes(1);
+    } finally {
+      cleanup();
+    }
   });
 });

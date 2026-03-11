@@ -185,8 +185,10 @@ describe("ArchitectureExplorer", () => {
       );
       expect(scrollIntoView).toHaveBeenCalled();
 
+      onSelectComponent.mockClear();
       await fireEvent.click(findArchitectureDiagramNode(document.body, "backend")!);
       expect(onSelectComponent).toHaveBeenCalledWith("backend");
+      expect(onSelectComponent).toHaveBeenCalledTimes(1);
     } finally {
       Element.prototype.scrollIntoView = originalScrollIntoView;
     }

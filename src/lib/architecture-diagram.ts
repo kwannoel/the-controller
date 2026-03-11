@@ -10,22 +10,34 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function matchesComponentId(node: SVGGElement, componentId: string): boolean {
+function getDiagramNodeComponentId(node: SVGGElement): string | null {
   const dataId = node.getAttribute("data-id");
-  if (dataId === componentId) {
-    return true;
+  if (dataId) {
+    return dataId;
   }
 
   const id = node.getAttribute("id");
   if (!id) {
-    return false;
+    return null;
   }
 
-  if (id === componentId) {
+  if (id.startsWith("flowchart-")) {
+    return id.slice("flowchart-".length).replace(/-\d+$/, "");
+  }
+
+  return id;
+}
+
+function matchesComponentId(node: SVGGElement, componentId: string): boolean {
+  const normalizedComponentId = getDiagramNodeComponentId(node);
+  if (normalizedComponentId === componentId) {
     return true;
   }
 
-  return new RegExp(`(?:^|[-_])${escapeRegExp(componentId)}(?:[-_]|$)`).test(id);
+  const id = node.getAttribute("id");
+  return id
+    ? new RegExp(`(?:^|[-_])${escapeRegExp(componentId)}(?:[-_]|$)`).test(id)
+    : false;
 }
 
 function getDiagramNodes(container: ParentNode): SVGGElement[] {
@@ -84,7 +96,7 @@ export function bindArchitectureDiagramInteractions(
   }
 
   function publishSelection(node: SVGGElement | null) {
-    const componentId = node?.dataset.id;
+    const componentId = node ? getDiagramNodeComponentId(node) : null;
     if (componentId) {
       onSelectComponent(componentId);
     }
