@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BinaryHeap, HashSet};
 use std::io::{BufReader, Read};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -80,6 +80,10 @@ impl ScanBudget {
         Self {
             remaining_entries: limits.max_entries,
         }
+    }
+
+    fn remaining_entries(&self) -> usize {
+        self.remaining_entries
     }
 
     fn try_take_entry(&mut self) -> bool {
@@ -872,48 +876,93 @@ fn is_mermaid_edge_char(byte: u8) -> bool {
 }
 
 fn read_sorted_dir(path: &Path, scan_budget: &mut ScanBudget) -> Result<Vec<PathBuf>, String> {
-    let mut entries = Vec::new();
-    for entry in
-        std::fs::read_dir(path).map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
-    {
-        if let Ok(entry) = entry {
-            entries.push(entry.path());
-        }
+    if scan_budget.remaining_entries() == 0 {
+        return Ok(Vec::new());
     }
+
+    let entries = std::fs::read_dir(path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path());
     Ok(sort_entries_with_budget(entries, scan_budget))
 }
 
 fn read_root_entries(path: &Path, scan_budget: &mut ScanBudget) -> Result<Vec<PathBuf>, String> {
-    let mut entries = Vec::new();
-    for entry in
-        std::fs::read_dir(path).map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
-    {
-        if let Ok(entry) = entry {
-            entries.push(entry.path());
+    if scan_budget.remaining_entries() == 0 {
+        return Ok(Vec::new());
+    }
+
+    let entries = std::fs::read_dir(path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path());
+    Ok(retain_best_entries(
+        entries,
+        scan_budget,
+        root_entry_sort_key,
+    ))
+}
+
+fn root_entry_sort_key(path: &Path) -> (usize, usize, String) {
+    let (bucket_rank, item_rank) = root_entry_rank(path);
+    (
+        bucket_rank,
+        item_rank,
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    )
+}
+
+fn sort_entries_with_budget<I>(entries: I, scan_budget: &mut ScanBudget) -> Vec<PathBuf>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    retain_best_entries(entries, scan_budget, |path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    })
+}
+
+fn retain_best_entries<I, K>(
+    entries: I,
+    scan_budget: &mut ScanBudget,
+    mut sort_key: impl FnMut(&Path) -> K,
+) -> Vec<PathBuf>
+where
+    I: IntoIterator<Item = PathBuf>,
+    K: Ord,
+{
+    let limit = scan_budget.remaining_entries();
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    let mut retained = BinaryHeap::with_capacity(limit);
+    for path in entries {
+        let candidate = (sort_key(&path), path);
+        if retained.len() < limit {
+            retained.push(candidate);
+            continue;
+        }
+
+        if retained
+            .peek()
+            .is_some_and(|worst| (&candidate.0, &candidate.1) < (&worst.0, &worst.1))
+        {
+            retained.pop();
+            retained.push(candidate);
         }
     }
 
-    entries.sort_by(|left, right| {
-        root_entry_rank(left)
-            .cmp(&root_entry_rank(right))
-            .then_with(|| left.file_name().cmp(&right.file_name()))
-    });
-
-    Ok(entries
-        .into_iter()
-        .take_while(|_| scan_budget.try_take_entry())
-        .collect())
-}
-
-fn sort_entries_with_budget(
-    mut entries: Vec<PathBuf>,
-    scan_budget: &mut ScanBudget,
-) -> Vec<PathBuf> {
-    entries.sort_by(|left, right| left.file_name().cmp(&right.file_name()));
-    entries
-        .into_iter()
-        .take_while(|_| scan_budget.try_take_entry())
-        .collect()
+    let mut retained = retained.into_vec();
+    retained.sort();
+    let selected = retained.len();
+    for _ in 0..selected {
+        let _ = scan_budget.try_take_entry();
+    }
+    retained.into_iter().map(|(_, path)| path).collect()
 }
 
 fn root_entry_rank(path: &Path) -> (usize, usize) {
@@ -1286,9 +1335,10 @@ mod tests {
     use super::{
         build_architecture_prompt, collect_repo_evidence, collect_repo_evidence_with_limits,
         generate_architecture_blocking_with_config, parse_architecture_output,
-        parse_architecture_output_with_evidence, read_text_snippet, sort_entries_with_budget,
-        CodexExecConfig, RepoEvidence, RepoEvidenceFile, ScanBudget, ScanLimits,
-        MAX_CAPTURE_BYTES, MAX_EVIDENCE_FILES, MAX_SNIPPET_CHARS,
+        parse_architecture_output_with_evidence, read_root_entries, read_sorted_dir,
+        read_text_snippet, sort_entries_with_budget, CodexExecConfig, RepoEvidence,
+        RepoEvidenceFile, ScanBudget, ScanLimits, MAX_CAPTURE_BYTES, MAX_EVIDENCE_FILES,
+        MAX_SNIPPET_CHARS,
     };
 
     fn write_repo_file(repo: &TempDir, relative_path: &str, contents: &str) {
@@ -2033,6 +2083,36 @@ That should be enough to render the view."#;
             retained,
             vec![PathBuf::from("a-first.ts"), PathBuf::from("m-middle.ts")]
         );
+    }
+
+    #[test]
+    fn read_sorted_dir_skips_io_when_budget_is_exhausted() {
+        let mut scan_budget = ScanBudget::new(ScanLimits {
+            max_entries: 0,
+            max_depth: 1,
+        });
+
+        let entries = read_sorted_dir(
+            Path::new("/definitely/missing-sorted-dir"),
+            &mut scan_budget,
+        )
+        .expect("exhausted budget should skip directory enumeration");
+
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn read_root_entries_skips_io_when_budget_is_exhausted() {
+        let mut scan_budget = ScanBudget::new(ScanLimits {
+            max_entries: 0,
+            max_depth: 1,
+        });
+
+        let entries =
+            read_root_entries(Path::new("/definitely/missing-root-dir"), &mut scan_budget)
+                .expect("exhausted budget should skip root enumeration");
+
+        assert!(entries.is_empty());
     }
 
     #[test]
