@@ -2,6 +2,7 @@
   import { fromStore } from "svelte/store";
   import { command, listen } from "$lib/backend";
   import { projects, sessionStatuses, type Project, type SessionStatus } from "./stores";
+  import TokenChart from "./TokenChart.svelte";
 
   interface Props {
     sessionId: string;
@@ -19,6 +20,15 @@
   const sessionStatusesState = fromStore(sessionStatuses);
   let statuses: Map<string, SessionStatus> = $derived(sessionStatusesState.current);
   let commits: CommitInfo[] = $state([]);
+  interface TokenDataPoint {
+    timestamp: string;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+  }
+
+  let tokenData: TokenDataPoint[] = $state([]);
 
   let session = $derived(
     projectList.flatMap((p) =>
@@ -40,17 +50,35 @@
     });
   }
 
-  // Fetch commits on mount and when session changes
+  function fetchTokenUsage() {
+    if (!session) return;
+    command<TokenDataPoint[]>("get_session_token_usage", {
+      projectId: session.projectId,
+      sessionId: session.id,
+    }).then((result) => {
+      tokenData = result;
+    }).catch(() => {
+      // Ignore errors (e.g., no session files yet)
+    });
+  }
+
+  // Fetch commits and tokens on mount and when session changes
   $effect(() => {
-    if (session) fetchCommits();
+    if (session) {
+      fetchCommits();
+      fetchTokenUsage();
+    }
   });
 
-  // Refresh commits when session transitions to idle (likely just committed)
+  // Refresh when session transitions to idle (likely just committed)
   let prevStatus: SessionStatus | null = $state(null);
   $effect(() => {
     if (prevStatus === "working" && status === "idle") {
-      // Delay slightly to let git finish writing
-      setTimeout(fetchCommits, 1000);
+      // Delay slightly to let git/files finish writing
+      setTimeout(() => {
+        fetchCommits();
+        fetchTokenUsage();
+      }, 1000);
     }
     prevStatus = status;
   });
@@ -59,7 +87,10 @@
   $effect(() => {
     const unlisten = listen<string>(`session-status-hook:${sessionId}`, (payload) => {
       if (payload === "idle") {
-        setTimeout(fetchCommits, 1000);
+        setTimeout(() => {
+          fetchCommits();
+          fetchTokenUsage();
+        }, 1000);
       }
     });
 
@@ -96,6 +127,7 @@
         <span class="muted">No commits yet</span>
       {/if}
     </div>
+    <TokenChart dataPoints={tokenData} />
   </div>
 {/if}
 
@@ -109,7 +141,7 @@
     border-bottom: 1px solid #313244;
     font-size: 18px;
     flex-shrink: 0;
-    max-height: 200px;
+    max-height: 280px;
     overflow: hidden;
   }
 
