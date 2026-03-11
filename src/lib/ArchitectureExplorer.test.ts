@@ -1,7 +1,31 @@
-import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import ArchitectureExplorer from "./ArchitectureExplorer.svelte";
+import { findArchitectureDiagramNode } from "./architecture-diagram";
 import type { ArchitectureResult } from "./stores";
+
+const originalGetBBox = SVGElement.prototype.getBBox;
+const originalGetComputedTextLength = SVGElement.prototype.getComputedTextLength;
+
+beforeAll(() => {
+  SVGElement.prototype.getBBox = function getBBox() {
+    return {
+      x: 0,
+      y: 0,
+      width: 160,
+      height: 48,
+    };
+  };
+
+  SVGElement.prototype.getComputedTextLength = function getComputedTextLength() {
+    return 160;
+  };
+});
+
+afterAll(() => {
+  SVGElement.prototype.getBBox = originalGetBBox;
+  SVGElement.prototype.getComputedTextLength = originalGetComputedTextLength;
+});
 
 const architecture: ArchitectureResult = {
   title: "Controller Architecture",
@@ -113,5 +137,58 @@ describe("ArchitectureExplorer", () => {
 
     expect(onSelectComponent).toHaveBeenCalledWith("ui");
     expect(onSelectComponent).toHaveBeenCalledTimes(1);
+  });
+
+  it("syncs list and diagram selection through the shared component id", async () => {
+    const onSelectComponent = vi.fn();
+    const scrollIntoView = vi.fn();
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    try {
+      const view = render(ArchitectureExplorer, {
+        props: {
+          architecture,
+          selectedComponentId: "ui",
+          onSelectComponent,
+        },
+      });
+
+      await waitFor(() => {
+        expect(findArchitectureDiagramNode(document.body, "ui")).toBeInTheDocument();
+      });
+
+      await fireEvent.click(screen.getByRole("button", { name: "Backend Command Layer" }));
+      expect(onSelectComponent).toHaveBeenCalledWith("backend");
+
+      await view.rerender({
+        architecture,
+        selectedComponentId: "backend",
+        onSelectComponent,
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole("heading", { name: "Backend Command Layer" })).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect(findArchitectureDiagramNode(document.body, "backend")).toHaveClass(
+          "architecture-node-selected",
+        );
+      });
+
+      expect(findArchitectureDiagramNode(document.body, "backend")).toHaveClass(
+        "architecture-node-selected",
+      );
+      expect(findArchitectureDiagramNode(document.body, "ui")).not.toHaveClass(
+        "architecture-node-selected",
+      );
+      expect(scrollIntoView).toHaveBeenCalled();
+
+      await fireEvent.click(findArchitectureDiagramNode(document.body, "backend")!);
+      expect(onSelectComponent).toHaveBeenCalledWith("backend");
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 });

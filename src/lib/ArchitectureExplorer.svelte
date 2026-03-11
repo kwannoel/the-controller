@@ -1,5 +1,9 @@
 <script lang="ts">
   import type { ArchitectureResult } from "./stores";
+  import {
+    bindArchitectureDiagramInteractions,
+    syncArchitectureDiagramSelection,
+  } from "./architecture-diagram";
 
   interface Props {
     architecture?: ArchitectureResult | null;
@@ -16,6 +20,10 @@
   }: Props = $props();
 
   let components = $derived(architecture?.components ?? []);
+  let diagramContainer = $state<HTMLDivElement | null>(null);
+  let diagramError = $state<string | null>(null);
+  let activeDiagramCleanup = () => {};
+  const diagramId = `architecture-diagram-${Math.random().toString(36).slice(2)}`;
   let selectedComponent = $derived.by(() => {
     if (components.length === 0) {
       return null;
@@ -44,6 +52,84 @@
   function selectComponent(componentId: string) {
     onSelectComponent(componentId);
   }
+
+  $effect(() => {
+    const container = diagramContainer;
+    const mermaidSource = architecture?.mermaid ?? null;
+
+    activeDiagramCleanup();
+    activeDiagramCleanup = () => {};
+
+    if (!container) {
+      return;
+    }
+
+    container.innerHTML = "";
+    diagramError = null;
+
+    if (!mermaidSource) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const mermaidModule = await import("mermaid");
+        const mermaid = mermaidModule.default;
+
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "loose",
+          theme: "base",
+          flowchart: {
+            useMaxWidth: false,
+            htmlLabels: false,
+          },
+          themeVariables: {
+            primaryColor: "#1e1e2e",
+            primaryTextColor: "#cdd6f4",
+            primaryBorderColor: "#45475a",
+            lineColor: "#89b4fa",
+            tertiaryColor: "#181825",
+            clusterBkg: "#11111b",
+            clusterBorder: "#45475a",
+          },
+        });
+
+        const { svg } = await mermaid.render(diagramId, mermaidSource);
+        if (cancelled) {
+          return;
+        }
+
+        container.innerHTML = svg;
+        activeDiagramCleanup = bindArchitectureDiagramInteractions(container, onSelectComponent);
+        syncArchitectureDiagramSelection(container, resolvedSelectedComponentId);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        container.innerHTML = "";
+        diagramError =
+          error instanceof Error ? error.message : "Failed to render Mermaid diagram.";
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      activeDiagramCleanup();
+      activeDiagramCleanup = () => {};
+    };
+  });
+
+  $effect(() => {
+    if (!diagramContainer) {
+      return;
+    }
+
+    syncArchitectureDiagramSelection(diagramContainer, resolvedSelectedComponentId);
+  });
 </script>
 
 <div class="architecture-explorer">
@@ -56,7 +142,13 @@
 
     <div class="diagram-surface">
       {#if architecture}
-        <pre>{architecture.mermaid}</pre>
+        <div class="diagram-render" bind:this={diagramContainer}></div>
+        {#if diagramError}
+          <div class="diagram-error">
+            <h2>Diagram render failed</h2>
+            <p>{diagramError}</p>
+          </div>
+        {/if}
       {:else}
         <div class="empty-state">
           <h2>No architecture generated yet</h2>
@@ -219,6 +311,7 @@
   }
 
   .diagram-surface {
+    position: relative;
     flex: 1;
     min-height: 0;
     overflow: auto;
@@ -229,12 +322,76 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
 
-  .diagram-surface pre {
+  .diagram-render {
+    min-width: max-content;
+    min-height: 100%;
+  }
+
+  .diagram-error {
+    position: sticky;
+    left: 1rem;
+    bottom: 1rem;
+    display: inline-grid;
+    gap: 0.25rem;
+    margin-top: 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(243, 139, 168, 0.35);
+    border-radius: 14px;
+    background: rgba(30, 30, 46, 0.94);
+  }
+
+  .diagram-error h2,
+  .diagram-error p {
     margin: 0;
-    white-space: pre-wrap;
-    font-size: 0.92rem;
-    line-height: 1.55;
-    color: #f5e0dc;
+  }
+
+  .diagram-error p {
+    color: #f2cdcd;
+  }
+
+  .diagram-render :global(svg) {
+    display: block;
+    width: max-content;
+    min-width: 100%;
+    height: auto;
+  }
+
+  .diagram-render :global(g.node),
+  .diagram-render :global(g.cluster) {
+    cursor: pointer;
+    outline: none;
+  }
+
+  .diagram-render :global(g.node rect),
+  .diagram-render :global(g.node polygon),
+  .diagram-render :global(g.node path),
+  .diagram-render :global(g.node circle),
+  .diagram-render :global(g.node ellipse),
+  .diagram-render :global(g.cluster rect),
+  .diagram-render :global(g.cluster polygon),
+  .diagram-render :global(g.cluster path),
+  .diagram-render :global(g.cluster circle),
+  .diagram-render :global(g.cluster ellipse) {
+    transition:
+      stroke 120ms ease,
+      stroke-width 120ms ease,
+      filter 120ms ease;
+  }
+
+  .diagram-render :global(g.architecture-node-selected rect),
+  .diagram-render :global(g.architecture-node-selected polygon),
+  .diagram-render :global(g.architecture-node-selected path),
+  .diagram-render :global(g.architecture-node-selected circle),
+  .diagram-render :global(g.architecture-node-selected ellipse) {
+    stroke: #f9e2af !important;
+    stroke-width: 3px !important;
+    filter: drop-shadow(0 0 16px rgba(249, 226, 175, 0.18));
+  }
+
+  .diagram-render :global(g.architecture-node-selected .nodeLabel),
+  .diagram-render :global(g.architecture-node-selected text) {
+    font-weight: 700;
+    fill: #f9e2af !important;
   }
 
   .empty-state,
