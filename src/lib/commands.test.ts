@@ -8,7 +8,7 @@ describe("command registry", () => {
     const globalSet = new Set(globalKeys);
     expect(globalKeys.length).toBe(globalSet.size);
 
-    const modes = ["development", "agents", "notes"] as const;
+    const modes = ["development", "agents", "notes", "architecture", "infrastructure"] as const;
     for (const mode of modes) {
       const modeKeys = internal.filter(c => c.mode === mode).map(c => c.key);
       const allKeys = [...globalKeys, ...modeKeys];
@@ -40,7 +40,7 @@ describe("command registry", () => {
 
   it("getHelpSections without mode returns all sections", () => {
     const sections = getHelpSections();
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes"]);
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"]);
   });
 
   it("getHelpSections excludes hidden commands", () => {
@@ -206,5 +206,32 @@ describe("command registry", () => {
   it("includes toggle-maintainer-view command in agents mode", () => {
     const keyMap = buildKeyMap("agents");
     expect(keyMap.get("t")).toBe("toggle-maintainer-view");
+  });
+
+  it("includes deploy-project command in infrastructure mode keymap", () => {
+    const map = buildKeyMap("infrastructure");
+    expect(map.get("d")).toBe("deploy-project");
+  });
+
+  it("includes rollback-deploy command in infrastructure mode keymap", () => {
+    const map = buildKeyMap("infrastructure");
+    expect(map.get("r")).toBe("rollback-deploy");
+  });
+
+  it("includes Infrastructure section in help for infrastructure mode", () => {
+    const sections = getHelpSections("infrastructure");
+    const infraSection = sections.find(s => s.label === "Infrastructure");
+    expect(infraSection).toBeTruthy();
+    expect(infraSection!.entries.length).toBeGreaterThan(0);
+  });
+
+  it("does not include infrastructure commands in development mode", () => {
+    const map = buildKeyMap("development");
+    expect(map.get("d")).not.toBe("deploy-project");
+  });
+
+  it("getHelpSections returns sections for infrastructure mode", () => {
+    const sections = getHelpSections("infrastructure");
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Panels", "Infrastructure"]);
   });
 });

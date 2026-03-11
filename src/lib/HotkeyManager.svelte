@@ -408,6 +408,20 @@
       case "toggle-maintainer-view":
         dispatchAction({ type: "toggle-maintainer-view" });
         return true;
+      case "deploy-project": {
+        const project = getFocusedProject();
+        if (project) {
+          dispatchAction({ type: "deploy-project", projectId: project.id, repoPath: project.repo_path });
+        }
+        return true;
+      }
+      case "rollback-deploy": {
+        const project = getFocusedProject();
+        if (project) {
+          dispatchAction({ type: "rollback-deploy", projectId: project.id });
+        }
+        return true;
+      }
       default: {
         const _exhaustive: never = id;
         return false;

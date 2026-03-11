@@ -272,6 +272,8 @@ export type HotkeyAction =
   | { type: "unstage-session-inplace"; projectId: string }
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
+  | { type: "deploy-project"; projectId: string; repoPath: string }
+  | { type: "rollback-deploy"; projectId: string }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);

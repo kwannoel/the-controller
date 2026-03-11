@@ -1,6 +1,6 @@
 import type { WorkspaceMode } from "./stores";
 
-export type CommandSection = "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Notes";
+export type CommandSection = "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Notes" | "Infrastructure";
 
 // IDs for commands handled in handleHotkey's switch
 export type CommandId =
@@ -32,7 +32,9 @@ export type CommandId =
   | "load-prompt"
   | "generate-architecture"
   | "stage-inplace"
-  | "toggle-maintainer-view";
+  | "toggle-maintainer-view"
+  | "deploy-project"
+  | "rollback-deploy";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -109,10 +111,14 @@ export const commands: CommandDef[] = [
   { id: "expand-collapse", key: "o", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
   { id: "expand-collapse", key: "i", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
   { id: "expand-collapse", key: "a", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
+
+  // ── Infrastructure ──
+  { id: "deploy-project", key: "d", section: "Infrastructure", description: "Deploy focused project", mode: "infrastructure" },
+  { id: "rollback-deploy", key: "r", section: "Infrastructure", description: "Rollback last deployment", mode: "infrastructure" },
 ];
 
 // Section order for help display
-const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes"];
+const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"];
 
 export interface HelpEntry {
   key: string;
