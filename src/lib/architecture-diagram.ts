@@ -74,11 +74,13 @@ export function syncArchitectureDiagramSelection(
     node.setAttribute("aria-pressed", String(isSelected));
   }
 
-  selectedNode?.scrollIntoView({
-    behavior: "smooth",
-    block: "nearest",
-    inline: "nearest",
-  });
+  if (typeof selectedNode?.scrollIntoView === "function") {
+    selectedNode.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "nearest",
+    });
+  }
 
   return selectedNode;
 }

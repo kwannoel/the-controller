@@ -22,6 +22,8 @@
   let components = $derived(architecture?.components ?? []);
   let diagramContainer = $state<HTMLDivElement | null>(null);
   let diagramError = $state<string | null>(null);
+  let renderedDiagramVersion = $state(0);
+  let renderedMermaidSource = $state<string | null>(null);
   let activeDiagramCleanup = () => {};
   const diagramId = `architecture-diagram-${Math.random().toString(36).slice(2)}`;
   let selectedComponent = $derived.by(() => {
@@ -57,15 +59,29 @@
     const container = diagramContainer;
     const mermaidSource = architecture?.mermaid ?? null;
 
-    activeDiagramCleanup();
-    activeDiagramCleanup = () => {};
-
     if (!container) {
       return;
     }
 
+    if (
+      mermaidSource &&
+      renderedMermaidSource === mermaidSource &&
+      container.childElementCount > 0
+    ) {
+      activeDiagramCleanup = bindArchitectureDiagramInteractions(container, onSelectComponent);
+      return () => {
+        activeDiagramCleanup();
+        activeDiagramCleanup = () => {};
+      };
+    }
+
+    activeDiagramCleanup();
+    activeDiagramCleanup = () => {};
+
     container.innerHTML = "";
     diagramError = null;
+    renderedDiagramVersion = 0;
+    renderedMermaidSource = null;
 
     if (!mermaidSource) {
       return;
@@ -104,7 +120,8 @@
 
         container.innerHTML = svg;
         activeDiagramCleanup = bindArchitectureDiagramInteractions(container, onSelectComponent);
-        syncArchitectureDiagramSelection(container, resolvedSelectedComponentId);
+        renderedMermaidSource = mermaidSource;
+        renderedDiagramVersion += 1;
       } catch (error) {
         if (cancelled) {
           return;
@@ -124,7 +141,7 @@
   });
 
   $effect(() => {
-    if (!diagramContainer) {
+    if (!diagramContainer || renderedDiagramVersion === 0) {
       return;
     }
 

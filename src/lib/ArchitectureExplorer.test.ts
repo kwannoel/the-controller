@@ -1,31 +1,35 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import ArchitectureExplorer from "./ArchitectureExplorer.svelte";
 import { findArchitectureDiagramNode } from "./architecture-diagram";
 import type { ArchitectureResult } from "./stores";
 
-const originalGetBBox = SVGElement.prototype.getBBox;
-const originalGetComputedTextLength = SVGElement.prototype.getComputedTextLength;
+const initializeMermaid = vi.fn();
+const renderMermaid = vi.fn(async (diagramId: string) => ({
+  svg: `
+    <svg id="${diagramId}" viewBox="0 0 100 100">
+      <g class="node" id="flowchart-ui-0">
+        <rect />
+        <text>UI</text>
+      </g>
+      <g class="node" id="flowchart-backend-1">
+        <rect />
+        <text>Backend</text>
+      </g>
+      <g class="node" id="flowchart-repo-2">
+        <rect />
+        <text>Repository</text>
+      </g>
+    </svg>
+  `,
+}));
 
-beforeAll(() => {
-  SVGElement.prototype.getBBox = function getBBox() {
-    return {
-      x: 0,
-      y: 0,
-      width: 160,
-      height: 48,
-    };
-  };
-
-  SVGElement.prototype.getComputedTextLength = function getComputedTextLength() {
-    return 160;
-  };
-});
-
-afterAll(() => {
-  SVGElement.prototype.getBBox = originalGetBBox;
-  SVGElement.prototype.getComputedTextLength = originalGetComputedTextLength;
-});
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: initializeMermaid,
+    render: renderMermaid,
+  },
+}));
 
 const architecture: ArchitectureResult = {
   title: "Controller Architecture",
@@ -90,6 +94,37 @@ const architecture: ArchitectureResult = {
 };
 
 describe("ArchitectureExplorer", () => {
+  it("renders the mermaid diagram once and reuses it across selection changes", async () => {
+    const onSelectComponent = vi.fn();
+    const view = render(ArchitectureExplorer, {
+      props: {
+        architecture,
+        selectedComponentId: "ui",
+        onSelectComponent,
+      },
+    });
+
+    await waitFor(() => {
+      expect(findArchitectureDiagramNode(document.body, "ui")).toBeInTheDocument();
+    });
+
+    expect(renderMermaid).toHaveBeenCalledTimes(1);
+
+    await view.rerender({
+      architecture,
+      selectedComponentId: "backend",
+      onSelectComponent,
+    });
+
+    await waitFor(() => {
+      expect(findArchitectureDiagramNode(document.body, "backend")).toHaveClass(
+        "architecture-node-selected",
+      );
+    });
+
+    expect(renderMermaid).toHaveBeenCalledTimes(1);
+  });
+
   it("renders all components and shows the first component details by default", () => {
     render(ArchitectureExplorer, {
       props: {
@@ -186,7 +221,9 @@ describe("ArchitectureExplorer", () => {
       expect(scrollIntoView).toHaveBeenCalled();
 
       onSelectComponent.mockClear();
-      await fireEvent.click(findArchitectureDiagramNode(document.body, "backend")!);
+      findArchitectureDiagramNode(document.body, "backend")?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
       expect(onSelectComponent).toHaveBeenCalledWith("backend");
       expect(onSelectComponent).toHaveBeenCalledTimes(1);
     } finally {
