@@ -24,7 +24,7 @@
   import ArchitectureExplorer from "./lib/ArchitectureExplorer.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
-  import { appConfig, architectureViews, controllerChatVisible, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, architectureViews, controllerChatVisible, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
   let ready = $state(false);
   let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
   let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
@@ -96,6 +96,8 @@
         saveSessionPrompt(action.projectId, action.sessionId);
       } else if (action?.type === "pick-prompt-for-session") {
         promptPickerTarget = { projectId: action.projectId };
+      } else if (action?.type === "generate-architecture") {
+        generateArchitectureForProject(action.projectId, action.repoPath);
       }
     });
     return unsub;
@@ -329,6 +331,52 @@
     });
   }
 
+  async function generateArchitectureForProject(projectId: string, repoPath: string) {
+    architectureViews.update((views) => {
+      const next = new Map(views);
+      const currentView = next.get(projectId) ?? createArchitectureViewState();
+      next.set(projectId, {
+        ...currentView,
+        isGenerating: true,
+        error: null,
+      });
+      return next;
+    });
+
+    try {
+      const result = await command<ArchitectureResult>("generate_architecture", { repoPath });
+      architectureViews.update((views) => {
+        const next = new Map(views);
+        const currentView = next.get(projectId) ?? createArchitectureViewState();
+        const selectedComponentId =
+          currentView.selectedComponentId &&
+          result.components.some((component) => component.id === currentView.selectedComponentId)
+            ? currentView.selectedComponentId
+            : result.components[0]?.id ?? null;
+
+        next.set(projectId, {
+          result,
+          selectedComponentId,
+          isGenerating: false,
+          error: null,
+        });
+        return next;
+      });
+    } catch (error) {
+      architectureViews.update((views) => {
+        const next = new Map(views);
+        const currentView = next.get(projectId) ?? createArchitectureViewState();
+        next.set(projectId, {
+          ...currentView,
+          isGenerating: false,
+          error: String(error),
+        });
+        return next;
+      });
+      showToast(`Failed to generate architecture: ${error}`, "error");
+    }
+  }
+
   // Reactively update title when staging state changes
   $effect(() => {
     const stagedProject = projectsState.current.find((p) => p.staged_session);
@@ -428,6 +476,16 @@
             architecture={currentArchitectureView?.result ?? null}
             selectedComponentId={currentArchitectureView?.selectedComponentId ?? null}
             onSelectComponent={handleArchitectureSelection}
+            onGenerateArchitecture={() => {
+              if (currentArchitectureProject) {
+                generateArchitectureForProject(
+                  currentArchitectureProject.id,
+                  currentArchitectureProject.repo_path,
+                );
+              }
+            }}
+            isGenerating={currentArchitectureView?.isGenerating ?? false}
+            error={currentArchitectureView?.error ?? null}
           />
         {:else if workspaceModeState.current === "notes"}
           <NotesEditor />

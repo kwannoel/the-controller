@@ -299,6 +299,7 @@ export type HotkeyAction =
   | { type: "toggle-note-preview" }
   | { type: "save-session-prompt"; sessionId: string; projectId: string }
   | { type: "pick-prompt-for-session"; projectId: string }
+  | { type: "generate-architecture"; projectId: string; repoPath: string }
   | { type: "stage-session-inplace"; sessionId: string; projectId: string }
   | { type: "unstage-session-inplace"; projectId: string }
   | { type: "toggle-maintainer-view" }

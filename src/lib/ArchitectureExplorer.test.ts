@@ -194,6 +194,37 @@ describe("ArchitectureExplorer", () => {
     expect(onSelectComponent).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a generate action when no architecture is cached", async () => {
+    const onGenerateArchitecture = vi.fn();
+
+    render(ArchitectureExplorer, {
+      props: {
+        architecture: null,
+        projectName: "client-app",
+        onGenerateArchitecture,
+      },
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Generate Architecture" }));
+
+    expect(onGenerateArchitecture).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a regenerate action when architecture is already cached", async () => {
+    const onGenerateArchitecture = vi.fn();
+
+    render(ArchitectureExplorer, {
+      props: {
+        architecture,
+        onGenerateArchitecture,
+      },
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Regenerate Architecture" }));
+
+    expect(onGenerateArchitecture).toHaveBeenCalledTimes(1);
+  });
+
   it("syncs list and diagram selection through the shared component id", async () => {
     const onSelectComponent = vi.fn();
     const scrollIntoView = vi.fn();

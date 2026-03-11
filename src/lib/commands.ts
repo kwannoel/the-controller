@@ -30,6 +30,7 @@ export type CommandId =
   | "toggle-note-preview"
   | "save-prompt"
   | "load-prompt"
+  | "generate-architecture"
   | "stage-inplace"
   | "toggle-maintainer-view"
   | "toggle-controller-chat";
@@ -86,6 +87,7 @@ export const commands: CommandDef[] = [
   { id: "triage-untriaged", key: "t", section: "Projects", description: "Triage issues (untriaged)", mode: "development" },
   { id: "triage-triaged", key: "T", section: "Projects", description: "View triaged issues", mode: "development" },
   { id: "assigned-issues", key: "e", section: "Projects", description: "View assigned but uncompleted issues", mode: "development" },
+  { id: "generate-architecture", key: "r", section: "Projects", description: "Generate / regenerate architecture for focused project", mode: "architecture" },
 
   // ── Panels ──
   { id: "toggle-sidebar", key: "s", section: "Panels", description: "Toggle sidebar" },

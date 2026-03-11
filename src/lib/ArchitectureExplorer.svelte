@@ -10,6 +10,9 @@
     projectName?: string;
     selectedComponentId?: string | null;
     onSelectComponent?: (componentId: string) => void;
+    onGenerateArchitecture?: () => void;
+    isGenerating?: boolean;
+    error?: string | null;
   }
 
   let {
@@ -17,6 +20,9 @@
     projectName = "Architecture",
     selectedComponentId = null,
     onSelectComponent = () => {},
+    onGenerateArchitecture = () => {},
+    isGenerating = false,
+    error = null,
   }: Props = $props();
 
   let components = $derived(architecture?.components ?? []);
@@ -53,6 +59,10 @@
 
   function selectComponent(componentId: string) {
     onSelectComponent(componentId);
+  }
+
+  function triggerArchitectureGeneration() {
+    onGenerateArchitecture();
   }
 
   $effect(() => {
@@ -152,9 +162,19 @@
 <div class="architecture-explorer">
   <section class="diagram-pane" aria-label="Architecture diagram">
     <div class="pane-header">
-      <p class="eyebrow">Architecture</p>
-      <h1>{architecture?.title ?? projectName}</h1>
-      <p class="note">Generated as a high-level systems view, not an exhaustive code index.</p>
+      <div class="header-copy">
+        <p class="eyebrow">Architecture</p>
+        <h1>{architecture?.title ?? projectName}</h1>
+        <p class="note">Generated as a high-level systems view, not an exhaustive code index.</p>
+      </div>
+      <button
+        type="button"
+        class="generate-action"
+        disabled={isGenerating}
+        onclick={triggerArchitectureGeneration}
+      >
+        {architecture ? "Regenerate Architecture" : "Generate Architecture"}
+      </button>
     </div>
 
     <div class="diagram-surface">
@@ -173,6 +193,9 @@
         </div>
       {/if}
     </div>
+    {#if error}
+      <p class="generation-error">{error}</p>
+    {/if}
   </section>
 
   <aside class="inspector-rail">
@@ -305,6 +328,17 @@
     gap: 1rem;
   }
 
+  .pane-header {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .header-copy {
+    min-width: 0;
+  }
+
   .pane-header h1,
   .section-heading h2,
   .details-pane h2 {
@@ -320,11 +354,43 @@
   }
 
   .note,
+  .generation-error,
   .placeholder-copy,
   .summary,
   .empty-state p,
   .empty-details p {
     color: #bac2de;
+  }
+
+  .generate-action {
+    flex-shrink: 0;
+    padding: 0.65rem 1rem;
+    border: 1px solid rgba(137, 180, 250, 0.35);
+    border-radius: 999px;
+    background: rgba(137, 180, 250, 0.12);
+    color: #cdd6f4;
+    font: inherit;
+    cursor: pointer;
+    transition:
+      border-color 120ms ease,
+      background 120ms ease,
+      transform 120ms ease;
+  }
+
+  .generate-action:hover:enabled {
+    border-color: rgba(137, 180, 250, 0.65);
+    background: rgba(137, 180, 250, 0.18);
+    transform: translateY(-1px);
+  }
+
+  .generate-action:disabled {
+    opacity: 0.65;
+    cursor: wait;
+  }
+
+  .generation-error {
+    margin: 0;
+    color: #f2cdcd;
   }
 
   .diagram-surface {

@@ -119,6 +119,12 @@
       if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
+    if (key === "r") {
+      workspaceMode.set("architecture");
+      const newFocus = focusForModeSwitch(currentFocus, "architecture", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      return;
+    }
     if (key === "n") {
       workspaceMode.set("notes");
       const newFocus = focusForModeSwitch(currentFocus, "notes", activeId, projectList);
@@ -295,6 +301,17 @@
         const project = getFocusedProject();
         if (project) {
           dispatchAction({ type: "pick-prompt-for-session", projectId: project.id });
+        }
+        return true;
+      }
+      case "generate-architecture": {
+        const project = getFocusedProject();
+        if (project) {
+          dispatchAction({
+            type: "generate-architecture",
+            projectId: project.id,
+            repoPath: project.repo_path,
+          });
         }
         return true;
       }
