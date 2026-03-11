@@ -78,6 +78,17 @@ pub fn read_note(
     fs::read_to_string(path)
 }
 
+/// Check whether a note file exists after validating its filename.
+pub fn note_exists(
+    base: &std::path::Path,
+    project_name: &str,
+    filename: &str,
+) -> std::io::Result<bool> {
+    validate_filename(filename)?;
+    let path = notes_dir_with_base(base, project_name).join(filename);
+    Ok(path.exists())
+}
+
 /// Write (create or overwrite) a note file. Creates the directory if needed.
 pub fn write_note(
     base: &std::path::Path,
