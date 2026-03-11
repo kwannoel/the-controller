@@ -100,11 +100,26 @@
       } else if (action?.type === "generate-architecture") {
         generateArchitectureForProject(action.projectId, action.repoPath);
       } else if (action?.type === "deploy-project") {
-        command<boolean>("is_deploy_provisioned").then((provisioned) => {
+        command<boolean>("is_deploy_provisioned").then(async (provisioned) => {
           if (!provisioned) {
             deploySetupOpen = true;
           } else {
-            showToast("Deploy not yet implemented", "info");
+            const project = projectsState.current.find((p) => p.id === action.projectId);
+            if (!project) return;
+            try {
+              showToast("Deploying...", "info");
+              const result = await command<{ url: string; coolify_uuid: string }>("deploy_project", {
+                request: {
+                  projectName: project.name,
+                  repoPath: project.repo_path,
+                  subdomain: project.name.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                  projectType: "node",
+                },
+              });
+              showToast(`Deployed to ${result.url}`, "info");
+            } catch (e) {
+              showToast(String(e), "error");
+            }
           }
         });
       }
