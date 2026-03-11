@@ -75,7 +75,7 @@ describe("command registry", () => {
     expect(map.get("l")).toBe("expand-collapse");
     expect(map.get("Enter")).toBe("expand-collapse");
     expect(map.get("?")).toBe("toggle-help");
-    expect(map.has("g")).toBe(false);
+    expect(map.get("g")).toBe("toggle-controller-chat");
   });
 
   it("buildKeyMap for development includes dev commands but not agents commands", () => {
@@ -142,7 +142,7 @@ describe("command registry", () => {
     expect(proj.entries.map(entry => entry.description)).not.toContain("View archived projects");
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(5);
+    expect(panels.entries).toHaveLength(6);
   });
 
   it("help sections have correct entry counts for agents mode", () => {
@@ -154,7 +154,7 @@ describe("command registry", () => {
     expect(sess.entries).toHaveLength(3);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(4);
+    expect(panels.entries).toHaveLength(5);
 
     const agents = sections.find(s => s.label === "Agents")!;
     expect(agents.entries).toHaveLength(4);
@@ -169,7 +169,7 @@ describe("command registry", () => {
     expect(sess.entries).toHaveLength(3);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(4);
+    expect(panels.entries).toHaveLength(5);
 
     const notes = sections.find(s => s.label === "Notes")!;
     expect(notes.entries).toHaveLength(4);
