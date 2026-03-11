@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 use std::io::{BufReader, Read};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::mpsc;
@@ -34,6 +36,14 @@ struct PipeCapture {
     bytes: Vec<u8>,
     overflowed: bool,
 }
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
+}
+
+#[cfg(unix)]
+const SIGKILL: i32 = 9;
 
 impl ScanBudget {
     fn new(limits: ScanLimits) -> Self {
@@ -283,6 +293,8 @@ fn run_codex_exec(
         .arg(prompt)
         .current_dir(repo_path)
         .env_remove("CLAUDECODE");
+    #[cfg(unix)]
+    command.process_group(0);
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command
         .spawn()
@@ -301,7 +313,7 @@ fn run_codex_exec(
     let started_at = Instant::now();
     let status = loop {
         if let Ok(stream_name) = overflow_rx.try_recv() {
-            let _ = child.kill();
+            terminate_codex_process(&mut child);
             let _ = child.wait();
             return Err(format!(
                 "codex exec {} exceeded {} bytes of output",
@@ -317,7 +329,7 @@ fn run_codex_exec(
         }
 
         if started_at.elapsed() >= config.timeout {
-            let _ = child.kill();
+            terminate_codex_process(&mut child);
             let _ = child.wait();
             return Err(format!(
                 "codex exec timed out after {} seconds",
@@ -348,6 +360,18 @@ fn run_codex_exec(
         stdout: stdout.bytes,
         stderr: stderr.bytes,
     })
+}
+
+fn terminate_codex_process(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    if let Ok(pid) = i32::try_from(child.id()) {
+        // `process_group(0)` puts the subprocess in its own group, so negative pid targets its subtree.
+        unsafe {
+            let _ = kill(-pid, SIGKILL);
+        }
+    }
+
+    let _ = child.kill();
 }
 pub fn extract_json(output: &str) -> Option<&str> {
     if let Some(start) = output.find("```json") {
@@ -408,11 +432,6 @@ fn sanitize_architecture_result(
         .iter()
         .map(|file| file.path.as_str())
         .collect::<HashSet<_>>();
-    let evidence_snippets = evidence
-        .files
-        .iter()
-        .map(|file| file.snippet.as_str())
-        .collect::<Vec<_>>();
     let mut components = Vec::with_capacity(result.components.len());
     for (component_index, component) in result.components.into_iter().enumerate() {
         components.push(sanitize_component(
@@ -420,7 +439,7 @@ fn sanitize_architecture_result(
             component_index,
             &mermaid_node_ids,
             &evidence_paths,
-            &evidence_snippets,
+            &evidence.files,
         )?);
     }
     validate_component_references(&components)?;
@@ -437,7 +456,7 @@ fn sanitize_component(
     component_index: usize,
     mermaid_node_ids: &HashSet<String>,
     evidence_paths: &HashSet<&str>,
-    evidence_snippets: &[&str],
+    evidence_files: &[RepoEvidenceFile],
 ) -> Result<ArchitectureComponent, String> {
     let id = component.id.trim().to_string();
     if id.is_empty() {
@@ -466,6 +485,10 @@ fn sanitize_component(
         ));
     }
 
+    let grounded_paths = grounded_evidence_paths(component.evidence_paths, evidence_paths);
+    let grounded_snippets =
+        grounded_evidence_snippets(component.evidence_snippets, &grounded_paths, evidence_files);
+
     Ok(ArchitectureComponent {
         id,
         name,
@@ -481,11 +504,8 @@ fn sanitize_component(
             component_index,
             "outgoing",
         )?,
-        evidence_paths: grounded_evidence_paths(component.evidence_paths, evidence_paths),
-        evidence_snippets: grounded_evidence_snippets(
-            component.evidence_snippets,
-            evidence_snippets,
-        ),
+        evidence_paths: grounded_paths,
+        evidence_snippets: grounded_snippets,
     })
 }
 
@@ -540,18 +560,50 @@ fn grounded_evidence_paths(values: Vec<String>, allowed_paths: &HashSet<&str>) -
         .collect()
 }
 
-fn grounded_evidence_snippets(values: Vec<String>, allowed_snippets: &[&str]) -> Vec<String> {
+fn grounded_evidence_snippets(
+    values: Vec<String>,
+    grounded_paths: &[String],
+    evidence_files: &[RepoEvidenceFile],
+) -> Vec<String> {
     let mut seen = HashSet::new();
+    let grounded_path_set = grounded_paths
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
 
     trim_string_list(values)
         .into_iter()
         .filter(|value| {
-            allowed_snippets
+            evidence_files
                 .iter()
-                .any(|snippet| snippet.contains(value.as_str()))
+                .filter(|file| grounded_path_set.contains(file.path.as_str()))
+                .any(|file| snippet_matches_line_window(value, &file.snippet))
         })
         .filter(|value| seen.insert(value.clone()))
         .collect()
+}
+
+fn snippet_matches_line_window(candidate: &str, evidence_snippet: &str) -> bool {
+    let candidate_lines = normalized_nonempty_lines(candidate);
+    let evidence_lines = normalized_nonempty_lines(evidence_snippet);
+
+    !candidate_lines.is_empty()
+        && candidate_lines.len() <= evidence_lines.len()
+        && evidence_lines
+            .windows(candidate_lines.len())
+            .any(|window| window == candidate_lines.as_slice())
+}
+
+fn normalized_nonempty_lines(value: &str) -> Vec<String> {
+    value
+        .lines()
+        .map(normalize_line)
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn normalize_line(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn validate_component_references(components: &[ArchitectureComponent]) -> Result<(), String> {
@@ -1162,9 +1214,10 @@ mod tests {
 
     use super::{
         collect_repo_evidence, collect_repo_evidence_with_limits,
-        generate_architecture_blocking_with_config, parse_architecture_output, read_text_snippet,
-        sort_entries_with_budget, CodexExecConfig, ScanBudget, ScanLimits, MAX_EVIDENCE_FILES,
-        MAX_SNIPPET_CHARS,
+        generate_architecture_blocking_with_config, parse_architecture_output,
+        parse_architecture_output_with_evidence, read_text_snippet, sort_entries_with_budget,
+        CodexExecConfig, RepoEvidence, RepoEvidenceFile, ScanBudget, ScanLimits,
+        MAX_EVIDENCE_FILES, MAX_SNIPPET_CHARS,
     };
 
     fn write_repo_file(repo: &TempDir, relative_path: &str, contents: &str) {
@@ -1906,6 +1959,51 @@ That should be enough to render the view."#;
     }
 
     #[test]
+    fn evidence_snippets_require_normalized_line_windows_from_cited_paths() {
+        let output = r#"{
+          "title": "Architecture",
+          "mermaid": "flowchart TD\napi[API]",
+          "components": [
+            {
+              "id": "api",
+              "name": "API",
+              "summary": "Handles requests",
+              "contains": [],
+              "incoming_relationships": [],
+              "outgoing_relationships": [],
+              "evidence_paths": ["src/main.rs"],
+              "evidence_snippets": [
+                "fn main() {\n println!(\"hi\");\n}",
+                "run();",
+                "println!(\"hi\")"
+              ]
+            }
+          ]
+        }"#;
+        let evidence = RepoEvidence {
+            top_level_directories: vec!["src".to_string()],
+            files: vec![
+                RepoEvidenceFile {
+                    path: "src/main.rs".to_string(),
+                    snippet: "fn main() {\n    println!(\"hi\");\n}\n".to_string(),
+                },
+                RepoEvidenceFile {
+                    path: "src/lib.rs".to_string(),
+                    snippet: "pub fn run() {\n    println!(\"lib\");\n}\n".to_string(),
+                },
+            ],
+        };
+
+        let parsed = parse_architecture_output_with_evidence(output, &evidence).expect("parse");
+
+        assert_eq!(
+            parsed.components[0].evidence_snippets,
+            vec!["fn main() {\n println!(\"hi\");\n}".to_string()],
+            "accepted snippets should be normalized line windows from cited evidence files only"
+        );
+    }
+
+    #[test]
     fn generate_architecture_command_uses_spawn_blocking() {
         let commands_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs");
         let source = fs::read_to_string(commands_path).expect("read commands source");
@@ -1976,6 +2074,40 @@ That should be enough to render the view."#;
             "timeout should return promptly even if descendants keep pipes open"
         );
         assert!(error.contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn generate_architecture_timeout_kills_descendants_in_same_process_group() {
+        let repo = TempDir::new().expect("create temp repo");
+        let bin = TempDir::new().expect("create temp bin");
+        let marker = repo.path().join("descendant-alive.txt");
+        write_repo_file(&repo, "README.md", "# Process group timeout test\n");
+        let script = write_executable_script(
+            &bin,
+            "fake-codex.sh",
+            &format!(
+                "#!/bin/sh\nnohup sh -c 'sleep 1; echo survived > \"{}\"' >/dev/null 2>&1 &\nsleep 5\n",
+                marker.display()
+            ),
+        );
+
+        let error = generate_architecture_blocking_with_config(
+            repo.path(),
+            &CodexExecConfig {
+                binary: script,
+                timeout: Duration::from_millis(100),
+            },
+        )
+        .expect_err("timeout should kill the whole codex process group");
+
+        std::thread::sleep(Duration::from_millis(1300));
+
+        assert!(error.contains("timed out"));
+        assert!(
+            !marker.exists(),
+            "descendant process should be terminated with the timed-out codex process group"
+        );
     }
 
     #[cfg(unix)]
