@@ -154,6 +154,13 @@
 
   .progress-row {
     align-items: flex-start;
+    overflow-y: auto;
+    min-height: 0;
+    scrollbar-width: none;
+  }
+
+  .progress-row::-webkit-scrollbar {
+    display: none;
   }
 
   .label {
