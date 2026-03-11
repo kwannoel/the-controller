@@ -261,7 +261,7 @@ export type HotkeyAction =
 export const hotkeyAction = writable<HotkeyAction>(null);
 export const showKeyHints = writable<boolean>(false);
 export const sidebarVisible = writable<boolean>(true);
-export const controllerChatVisible = writable<boolean>(true);
+export const controllerChatVisible = writable<boolean>(false);
 
 export const expandedProjects = writable<Set<string>>(new Set());
 

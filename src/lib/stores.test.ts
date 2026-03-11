@@ -82,8 +82,8 @@ describe('stores', () => {
     expect(get(sidebarVisible)).toBe(true);
   });
 
-  it('controllerChatVisible defaults to true', () => {
-    expect(get(controllerChatVisible)).toBe(true);
+  it('controllerChatVisible defaults to false', () => {
+    expect(get(controllerChatVisible)).toBe(false);
   });
 
   describe('maintainerStatuses store', () => {
