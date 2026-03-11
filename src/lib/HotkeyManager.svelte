@@ -130,6 +130,12 @@
       if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
+    if (key === "i") {
+      workspaceMode.set("infrastructure");
+      const newFocus = focusForModeSwitch(currentFocus, "infrastructure", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      return;
+    }
     // Any other key (including Escape) cancels
   }
 

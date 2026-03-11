@@ -10,6 +10,7 @@
     { key: "a", id: "agents", label: "Agents" },
     { key: "r", id: "architecture", label: "Architecture" },
     { key: "n", id: "notes", label: "Notes" },
+    { key: "i", id: "infrastructure", label: "Infrastructure" },
   ];
 </script>
 

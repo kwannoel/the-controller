@@ -729,6 +729,17 @@ describe('HotkeyManager', () => {
       expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
     });
 
+    it('Space then i switches to infrastructure mode', () => {
+      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
+
+      pressKey(' ');
+      pressKey('i');
+
+      expect(get(workspaceMode)).toBe('infrastructure');
+      expect(get(workspaceModePickerVisible)).toBe(false);
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
+    });
+
     it('Space then Escape closes picker without changing mode', () => {
       pressKey(' ');
       pressKey('Escape');
