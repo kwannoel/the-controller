@@ -8,6 +8,7 @@ pub mod emitter;
 pub mod labels;
 pub mod maintainer;
 pub mod models;
+pub mod note_ai_chat;
 pub mod notes;
 pub mod pty_manager;
 pub mod secure_env;
