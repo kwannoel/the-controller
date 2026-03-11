@@ -154,7 +154,51 @@ export interface ControllerChatSession {
   turn_in_progress: boolean;
 }
 
-export type WorkspaceMode = "development" | "agents" | "notes";
+export interface ArchitectureRelationship {
+  component_id: string;
+  summary: string;
+}
+
+export interface ArchitectureComponent {
+  id: string;
+  name: string;
+  summary: string;
+  contains: string[];
+  incoming_relationships: ArchitectureRelationship[];
+  outgoing_relationships: ArchitectureRelationship[];
+  evidence_paths: string[];
+  evidence_snippets: string[];
+}
+
+export interface ArchitectureResult {
+  title: string;
+  mermaid: string;
+  components: ArchitectureComponent[];
+}
+
+export interface ArchitectureViewState {
+  result: ArchitectureResult | null;
+  selectedComponentId: string | null;
+  isGenerating: boolean;
+  error: string | null;
+}
+
+export function createArchitectureViewState(
+  result: ArchitectureResult | null = null,
+): ArchitectureViewState {
+  return {
+    result,
+    selectedComponentId: result?.components[0]?.id ?? null,
+    isGenerating: false,
+    error: null,
+  };
+}
+
+export type WorkspaceMode =
+  | "development"
+  | "agents"
+  | "notes"
+  | "architecture";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
 export type SessionProvider = "claude" | "codex";
@@ -165,6 +209,9 @@ export const activeNote = writable<{
   filename: string;
 } | null>(null);
 export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
+export const architectureViews = writable<Map<string, ArchitectureViewState>>(
+  new Map(),
+);
 export type NoteViewMode = "edit" | "preview" | "split";
 export const noteViewMode = writable<NoteViewMode>("edit");
 export const controllerChatSession = writable<ControllerChatSession>({
@@ -252,6 +299,7 @@ export type HotkeyAction =
   | { type: "toggle-note-preview" }
   | { type: "save-session-prompt"; sessionId: string; projectId: string }
   | { type: "pick-prompt-for-session"; projectId: string }
+  | { type: "generate-architecture"; projectId: string; repoPath: string }
   | { type: "stage-session-inplace"; sessionId: string; projectId: string }
   | { type: "unstage-session-inplace"; projectId: string }
   | { type: "toggle-maintainer-view" }

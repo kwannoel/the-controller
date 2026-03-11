@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+pub mod architecture;
 pub mod auto_worker;
 pub mod controller_chat;
 pub mod commands;
@@ -79,6 +80,7 @@ pub fn run() {
             commands::list_directories_at,
             commands::list_root_directories,
             commands::generate_project_names,
+            commands::generate_architecture,
             commands::scaffold_project,
             commands::list_github_issues,
             commands::list_assigned_issues,

@@ -4,6 +4,8 @@ import { command, listen } from "$lib/backend";
 import {
   activeSessionId,
   appConfig,
+  architectureViews,
+  createArchitectureViewState,
   expandedProjects,
   focusTarget,
   hotkeyAction,
@@ -13,6 +15,8 @@ import {
   sessionStatuses,
   showKeyHints,
   sidebarVisible,
+  workspaceMode,
+  type ArchitectureResult,
   type Project,
 } from "./lib/stores";
 
@@ -39,6 +43,25 @@ vi.mock("./lib/Onboarding.svelte", () => ({ default: function MockOnboarding() {
 vi.mock("./lib/Toast.svelte", () => ({ default: function MockToast() {} }));
 vi.mock("./lib/HotkeyManager.svelte", () => ({ default: function MockHotkeyManager() {} }));
 vi.mock("./lib/HotkeyHelp.svelte", () => ({ default: function MockHotkeyHelp() {} }));
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async (diagramId: string) => ({
+      svg: `
+        <svg id="${diagramId}" viewBox="0 0 100 100">
+          <g class="node" id="flowchart-ui-0">
+            <rect />
+            <text>UI</text>
+          </g>
+          <g class="node" id="flowchart-backend-1">
+            <rect />
+            <text>Backend</text>
+          </g>
+        </svg>
+      `,
+    })),
+  },
+}));
 
 vi.mock("./lib/CreateIssueModal.svelte", async () => ({
   default: (await import("./test/CreateIssueModalMock.svelte")).default,
@@ -62,6 +85,63 @@ const baseProject: Project = {
   staged_session: null,
 };
 
+const secondProject: Project = {
+  ...baseProject,
+  id: "proj-2",
+  name: "client-app",
+  repo_path: "/tmp/client-app",
+  sessions: [
+    {
+      id: "sess-2",
+      label: "session-2",
+      worktree_path: null,
+      worktree_branch: null,
+      archived: false,
+      kind: "claude",
+      github_issue: null,
+      initial_prompt: null,
+      auto_worker_session: false,
+    },
+  ],
+};
+
+const generatedArchitecture: ArchitectureResult = {
+  title: "Generated Architecture",
+  mermaid: "flowchart TD\nui[UI] --> backend[Backend]",
+  components: [
+    {
+      id: "ui",
+      name: "UI Shell",
+      summary: "Hosts the workspace shell.",
+      contains: ["App.svelte"],
+      incoming_relationships: [],
+      outgoing_relationships: [
+        {
+          component_id: "backend",
+          summary: "Requests architecture generation.",
+        },
+      ],
+      evidence_paths: ["src/App.svelte"],
+      evidence_snippets: ["workspaceModeState.current === \"architecture\""],
+    },
+    {
+      id: "backend",
+      name: "Backend Command Layer",
+      summary: "Runs architecture analysis.",
+      contains: ["commands.rs"],
+      incoming_relationships: [
+        {
+          component_id: "ui",
+          summary: "Serves architecture payloads back to the UI shell.",
+        },
+      ],
+      outgoing_relationships: [],
+      evidence_paths: ["src-tauri/src/commands.rs"],
+      evidence_snippets: ["pub async fn generate_architecture"],
+    },
+  ],
+};
+
 describe("App screenshot flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,6 +159,8 @@ describe("App screenshot flow", () => {
     showKeyHints.set(false);
     sidebarVisible.set(true);
     selectedSessionProvider.set("claude");
+    workspaceMode.set("development");
+    architectureViews.set(new Map());
 
     onboardingComplete.set(true);
     appConfig.set({ projects_root: "/tmp/projects" });
@@ -322,6 +404,161 @@ describe("Window title updates on staging", () => {
       expect(mocks.setTitle).toHaveBeenCalledWith(
         "The Controller (test-commit, test-branch, localhost:1420)",
       );
+    });
+  });
+});
+
+describe("App architecture workspace", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_COMMIT__ = "test-commit";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_BRANCH__ = "test-branch";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__DEV_PORT__ = "1420";
+
+    projects.set([baseProject, secondProject]);
+    activeSessionId.set(null);
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+    hotkeyAction.set(null);
+    showKeyHints.set(false);
+    sidebarVisible.set(true);
+    selectedSessionProvider.set("claude");
+    workspaceMode.set("architecture");
+    architectureViews.set(new Map());
+    onboardingComplete.set(true);
+    appConfig.set({ projects_root: "/tmp/projects" });
+    sessionStatuses.set(new Map());
+    expandedProjects.set(new Set());
+  });
+
+  it("generates architecture for the focused project", async () => {
+    focusTarget.set({ type: "project", projectId: "proj-2" });
+
+    vi.mocked(command).mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "generate_architecture") {
+        expect(args).toEqual({ repoPath: "/tmp/client-app" });
+        return generatedArchitecture;
+      }
+      return;
+    });
+
+    render(App);
+
+    const generateButton = await waitFor(() =>
+      screen.getByRole("button", { name: "Generate Architecture" }),
+    );
+
+    await fireEvent.click(generateButton);
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("generate_architecture", { repoPath: "/tmp/client-app" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "UI Shell" })).toBeInTheDocument();
+    });
+  });
+
+  it("re-generates architecture without breaking the selected component", async () => {
+    architectureViews.set(new Map([
+      [
+        "proj-1",
+        {
+          ...createArchitectureViewState(generatedArchitecture),
+          selectedComponentId: "backend",
+        },
+      ],
+    ]));
+
+    const refreshedArchitecture: ArchitectureResult = {
+      ...generatedArchitecture,
+      title: "Refreshed Architecture",
+      components: [
+        generatedArchitecture.components[0],
+        {
+          ...generatedArchitecture.components[1],
+          summary: "Runs architecture analysis and refreshes the cached view.",
+        },
+      ],
+    };
+
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "generate_architecture") return refreshedArchitecture;
+      return;
+    });
+
+    render(App);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Backend Command Layer" })).toBeInTheDocument();
+    });
+
+    await fireEvent.click(screen.getByRole("button", { name: "Regenerate Architecture" }));
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("generate_architecture", {
+        repoPath: "/tmp/the-controller",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Refreshed Architecture")).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("heading", { name: "Backend Command Layer" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Runs architecture analysis and refreshes the cached view."),
+    ).toBeInTheDocument();
+  });
+
+  it("ignores duplicate architecture generation requests while one is already running", async () => {
+    let generateArchitectureCalls = 0;
+    let resolveArchitecture: ((value: ArchitectureResult) => void) | undefined;
+    const pendingArchitecture = new Promise<ArchitectureResult>((resolve) => {
+      resolveArchitecture = resolve;
+    });
+
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "generate_architecture") {
+        generateArchitectureCalls += 1;
+        return pendingArchitecture;
+      }
+      return;
+    });
+
+    render(App);
+
+    hotkeyAction.set({
+      type: "generate-architecture",
+      projectId: "proj-1",
+      repoPath: "/tmp/the-controller",
+    });
+
+    await waitFor(() => {
+      expect(generateArchitectureCalls).toBe(1);
+    });
+
+    hotkeyAction.set({
+      type: "generate-architecture",
+      projectId: "proj-1",
+      repoPath: "/tmp/the-controller",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(generateArchitectureCalls).toBe(1);
+
+    resolveArchitecture?.(generatedArchitecture);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "UI Shell" })).toBeInTheDocument();
     });
   });
 });

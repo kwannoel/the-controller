@@ -739,6 +739,17 @@ describe('HotkeyManager', () => {
       expect(get(workspaceModePickerVisible)).toBe(false);
     });
 
+    it('Space then r switches to architecture mode and focuses the project', () => {
+      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
+
+      pressKey(' ');
+      pressKey('r');
+
+      expect(get(workspaceMode)).toBe('architecture');
+      expect(get(workspaceModePickerVisible)).toBe(false);
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
+    });
+
     it('Space then Escape closes picker without changing mode', () => {
       pressKey(' ');
       pressKey('Escape');
@@ -792,6 +803,25 @@ describe('HotkeyManager', () => {
       pressKey('a');
       expect(get(activeNote)).toEqual({ projectId: 'proj-1', filename: 'todo.md' });
       expect(get(focusTarget)).toEqual({ type: 'notes-editor', projectId: 'proj-1', entryKey: 'a' });
+    });
+  });
+
+  describe('architecture mode', () => {
+    it('r dispatches generate-architecture for the focused project', () => {
+      workspaceMode.set('architecture');
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+
+      pressKey('r');
+
+      expect(captured).toEqual({
+        type: 'generate-architecture',
+        projectId: 'proj-1',
+        repoPath: '/tmp/test',
+      });
+      unsub();
     });
   });
 

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 use uuid::Uuid;
 
+use crate::architecture::{generate_architecture_blocking, ArchitectureResult};
 use crate::config;
 use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
 use crate::state::AppState;
@@ -1218,6 +1219,15 @@ pub fn list_root_directories(state: State<AppState>) -> Result<Vec<config::DirEn
 #[tauri::command]
 pub fn generate_project_names(description: String) -> Result<Vec<String>, String> {
     config::generate_names_via_cli(&description)
+}
+
+#[tauri::command]
+pub async fn generate_architecture(repo_path: String) -> Result<ArchitectureResult, String> {
+    tokio::task::spawn_blocking(move || {
+        generate_architecture_blocking(std::path::Path::new(&repo_path))
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }
 
 #[tauri::command]
