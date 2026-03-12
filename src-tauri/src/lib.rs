@@ -116,8 +116,8 @@ pub fn run() {
             commands::send_note_ai_chat,
             commands::save_session_prompt,
             commands::list_project_prompts,
-            commands::stage_session_inplace,
-            commands::unstage_session_inplace,
+            commands::stage_session,
+            commands::unstage_session,
             commands::get_repo_head,
             commands::get_session_token_usage,
             deploy::commands::detect_project_type,
@@ -132,6 +132,19 @@ pub fn run() {
         .run(|app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 status_socket::cleanup();
+                // Kill any staged controller instance
+                if let Some(state) = app_handle.try_state::<state::AppState>() {
+                    if let Ok(storage) = state.storage.lock() {
+                        if let Ok(inventory) = storage.list_projects() {
+                            for project in &inventory.projects {
+                                if let Some(staged) = &project.staged_session {
+                                    commands::kill_process_group(staged.pid);
+                                    let _ = std::fs::remove_file("/tmp/the-controller-staged.sock");
+                                }
+                            }
+                        }
+                    }
+                }
                 // In release builds, kill tmux sessions on quit so they don't linger.
                 // In dev builds, let tmux sessions survive so they reattach after
                 // cargo-watch restarts the app (the whole point of the tmux layer).

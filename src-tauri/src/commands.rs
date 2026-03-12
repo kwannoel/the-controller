@@ -825,14 +825,27 @@ fn find_staging_port(base_port: u16) -> Result<u16, String> {
     ))
 }
 
+/// Kill a process group by PID. Sends SIGTERM to the group, then SIGKILL after 2s.
+pub(crate) fn kill_process_group(pid: u32) {
+    use std::process::Command;
+    let pgid = format!("-{}", pid);
+    let _ = Command::new("kill").args(["--", &pgid]).status();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let _ = Command::new("kill").args(["-9", "--", &pgid]).status();
+    });
+}
+
 #[tauri::command]
-pub async fn stage_session_inplace(
+pub async fn stage_session(
     state: State<'_, AppState>,
     _app_handle: AppHandle,
     project_id: String,
     session_id: String,
 ) -> Result<(), String> {
     use crate::models::StagedSession;
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
 
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
@@ -977,24 +990,64 @@ pub async fn stage_session_inplace(
         }
     }
 
-    // 3. Proceed with staging — re-acquire storage lock
-    let rp = repo_path.clone();
-    let br = branch.clone();
-    let original_branch =
-        tokio::task::spawn_blocking(move || WorktreeManager::stage_inplace(&rp, &br))
-            .await
-            .map_err(|e| format!("Task failed: {}", e))??;
+    // 3. Launch a separate Controller instance from the worktree
+    let _ = state
+        .emitter
+        .emit("staging-status", "Preparing staged instance...");
 
+    // Ensure node_modules exists in the worktree
+    let node_modules = PathBuf::from(&worktree_path).join("node_modules");
+    if !node_modules.exists() {
+        let _ = state
+            .emitter
+            .emit("staging-status", "Installing dependencies...");
+        let wt = worktree_path.clone();
+        let install_status = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("npm")
+                .arg("install")
+                .current_dir(&wt)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+        })
+        .await
+        .map_err(|e| format!("Task failed: {}", e))?
+        .map_err(|e| format!("npm install failed: {}", e))?;
+
+        if !install_status.success() {
+            return Err("npm install failed in worktree".to_string());
+        }
+    }
+
+    let port = find_staging_port(1420)?;
+
+    let _ = state
+        .emitter
+        .emit("staging-status", &format!("Starting on port {}...", port));
+
+    let wt = worktree_path.clone();
+    let child = std::process::Command::new("bash")
+        .args(["./dev.sh", &port.to_string()])
+        .current_dir(&wt)
+        .env("CONTROLLER_SOCKET", "/tmp/the-controller-staged.sock")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn staged instance: {}", e))?;
+
+    let pid = child.id();
+
+    // Save staged session info
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage
         .load_project(project_uuid)
         .map_err(|e| e.to_string())?;
 
-    let staging_branch = format!("staging/{}", branch);
     project.staged_session = Some(StagedSession {
         session_id: session_uuid,
-        original_branch,
-        staging_branch,
+        pid,
+        port,
     });
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -1003,7 +1056,7 @@ pub async fn stage_session_inplace(
 }
 
 #[tauri::command]
-pub fn unstage_session_inplace(state: State<AppState>, project_id: String) -> Result<(), String> {
+pub fn unstage_session(state: State<AppState>, project_id: String) -> Result<(), String> {
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
@@ -1016,11 +1069,11 @@ pub fn unstage_session_inplace(state: State<AppState>, project_id: String) -> Re
         .take()
         .ok_or("No session is currently staged")?;
 
-    WorktreeManager::unstage_inplace(
-        &project.repo_path,
-        &staged.original_branch,
-        &staged.staging_branch,
-    )?;
+    // Kill the staged Controller process group
+    kill_process_group(staged.pid);
+
+    // Clean up the staged socket
+    let _ = std::fs::remove_file("/tmp/the-controller-staged.sock");
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
