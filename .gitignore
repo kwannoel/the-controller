@@ -11,3 +11,4 @@ vite.config.ts.timestamp-*
 e2e/results/
 test-results/
 playwright-report/
+staging.log
