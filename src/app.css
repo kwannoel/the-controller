@@ -30,6 +30,9 @@
   --status-error: #c44040;
   --status-exited: #555555;
 
+  /* Selection */
+  --text-selection: #111111;
+
   /* Focus */
   --focus-ring: #ffffff;
 

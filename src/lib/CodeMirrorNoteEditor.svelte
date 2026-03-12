@@ -214,7 +214,7 @@
   .note-code-editor :global(.cm-content :focus::selection),
   .note-code-editor :global(.cm-content :focus *::selection) {
     background-color: rgba(255, 255, 255, 0.15) !important;
-    color: var(--text-emphasis) !important;
-    -webkit-text-fill-color: var(--text-emphasis) !important;
+    color: var(--text-selection) !important;
+    -webkit-text-fill-color: var(--text-selection) !important;
   }
 </style>
