@@ -879,7 +879,10 @@ pub async fn stage_session(
             if alive {
                 return Err("A session is already staged — unstage it first".to_string());
             }
-            // Stale record — clear it
+            // Stale record — kill orphaned children (e.g. Vite, esbuild that outlived
+            // the process leader), clean up the socket, then clear the record.
+            kill_process_group(staged.pid);
+            let _ = std::fs::remove_file(crate::status_socket::staged_socket_path());
             let mut p = project.clone();
             p.staged_session = None;
             storage.save_project(&p).map_err(|e| e.to_string())?;
@@ -1046,12 +1049,18 @@ pub async fn stage_session(
         .emit("staging-status", &format!("Starting on port {}...", port));
 
     let wt = worktree_path.clone();
+    let log_path = PathBuf::from(&wt).join("staging.log");
+    let log_file = std::fs::File::create(&log_path)
+        .map_err(|e| format!("Failed to create staging log: {}", e))?;
+    let log_stderr = log_file
+        .try_clone()
+        .map_err(|e| format!("Failed to clone log file: {}", e))?;
     let child = std::process::Command::new("bash")
         .args(["./dev.sh", &port.to_string()])
         .current_dir(&wt)
         .env("CONTROLLER_SOCKET", crate::status_socket::staged_socket_path())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(log_stderr))
         .process_group(0)
         .spawn()
         .map_err(|e| format!("Failed to spawn staged instance: {}", e))?;
