@@ -9,8 +9,7 @@ import {
   activeNote,
   focusTarget,
   hotkeyAction,
-  projects,
-  type Project,
+  noteViewMode,
 } from "./stores";
 
 function deferred<T>() {
@@ -23,24 +22,11 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-const baseProject: Project = {
-  id: "project-1",
-  name: "Project Alpha",
-  repo_path: "/tmp/project-alpha",
-  created_at: "2026-03-10T00:00:00Z",
-  archived: false,
-  sessions: [],
-  maintainer: { enabled: false, interval_minutes: 60 },
-  auto_worker: { enabled: false },
-  prompts: [],
-  staged_session: null,
-};
-
 describe("NotesEditor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    projects.set([baseProject]);
-    activeNote.set({ projectId: "project-1", filename: "a.md" });
+    activeNote.set({ folder: "Project Alpha", filename: "a.md" });
+    noteViewMode.set("edit");
     focusTarget.set(null);
     hotkeyAction.set(null);
   });
@@ -76,7 +62,7 @@ describe("NotesEditor", () => {
       return Promise.resolve(undefined);
     });
 
-    focusTarget.set({ type: "notes-editor", projectId: "project-1" });
+    focusTarget.set({ type: "notes-editor", folder: "Project Alpha" });
 
     render(NotesEditor);
     const user = userEvent.setup();
@@ -87,7 +73,7 @@ describe("NotesEditor", () => {
 
     await user.keyboard("{Escape}");
 
-    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
+    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", folder: "Project Alpha" });
   });
 
   it("keeps escape in the editor when leaving insert mode, then exits on the next normal-mode escape", async () => {
@@ -103,7 +89,7 @@ describe("NotesEditor", () => {
       return Promise.resolve(undefined);
     });
 
-    focusTarget.set({ type: "notes-editor", projectId: "project-1" });
+    focusTarget.set({ type: "notes-editor", folder: "Project Alpha" });
 
     render(NotesEditor);
     const user = userEvent.setup();
@@ -114,12 +100,12 @@ describe("NotesEditor", () => {
 
     await user.keyboard("i");
     await user.keyboard("{Escape}");
-    expect(get(focusTarget)).toEqual({ type: "notes-editor", projectId: "project-1" });
+    expect(get(focusTarget)).toEqual({ type: "notes-editor", folder: "Project Alpha" });
 
     await new Promise((resolve) => setTimeout(resolve, 350));
 
     await user.keyboard("{Escape}");
-    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
+    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", folder: "Project Alpha" });
   });
 
   it("keeps escape in the editor when leaving visual mode, then exits on the next normal-mode escape", async () => {
@@ -135,7 +121,7 @@ describe("NotesEditor", () => {
       return Promise.resolve(undefined);
     });
 
-    focusTarget.set({ type: "notes-editor", projectId: "project-1" });
+    focusTarget.set({ type: "notes-editor", folder: "Project Alpha" });
 
     render(NotesEditor);
     const user = userEvent.setup();
@@ -146,10 +132,10 @@ describe("NotesEditor", () => {
 
     await user.keyboard("v");
     await user.keyboard("{Escape}");
-    expect(get(focusTarget)).toEqual({ type: "notes-editor", projectId: "project-1" });
+    expect(get(focusTarget)).toEqual({ type: "notes-editor", folder: "Project Alpha" });
 
     await user.keyboard("{Escape}");
-    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
+    expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", folder: "Project Alpha" });
   });
 
   it("keeps the latest note content when read_note resolves out of order", async () => {
@@ -174,16 +160,16 @@ describe("NotesEditor", () => {
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("read_note", {
-        projectName: "Project Alpha",
+        folder: "Project Alpha",
         filename: "a.md",
       });
     });
 
-    activeNote.set({ projectId: "project-1", filename: "b.md" });
+    activeNote.set({ folder: "Project Alpha", filename: "b.md" });
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("read_note", {
-        projectName: "Project Alpha",
+        folder: "Project Alpha",
         filename: "b.md",
       });
     });
