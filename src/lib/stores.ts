@@ -248,7 +248,7 @@ export type HotkeyAction =
       issue: GithubIssue;
     }
   | { type: "merge-session"; sessionId: string; projectId: string }
-  | { type: "finish-branch"; sessionId: string; kind?: string }
+  | { type: "finish-branch"; sessionId: string; kind?: "claude" | "codex" }
   | { type: "screenshot-to-session"; preview?: boolean; cropped?: boolean }
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-auto-worker-enabled" }
