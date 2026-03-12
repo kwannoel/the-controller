@@ -4,13 +4,20 @@ A desktop app for orchestrating multiple Claude Code terminal sessions.
 
 Built with Tauri v2 + Svelte 5 + Rust.
 
-## Development Setup
+## Running
 
-### Prerequisites
+Install prerequisites:
 
 - [Rust](https://rustup.rs/) + Tauri v2
 - [Node.js](https://nodejs.org/) + npm
 - tmux (`brew install tmux`)
+
+Then:
+
+```bash
+npm install
+npm run tauri dev
+```
 
 ### tmux Configuration
 
@@ -39,7 +46,3 @@ Behavior:
 - The target project must already be known to The Controller.
 - The CLI opens a secure modal in the app instead of reading the secret in the terminal.
 - The CLI prints only redacted results such as `created OPENAI_API_KEY for demo-project`.
-
-## Demo Ideas
-
-- **Meta-programming lightshow:** Ask the editor to turn its background blue, then red, then yellow. Then ask it to cycle through the colors on intervals like a lightshow. The controller is editing itself in real-time.
