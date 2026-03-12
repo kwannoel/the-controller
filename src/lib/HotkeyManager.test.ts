@@ -436,21 +436,21 @@ describe('HotkeyManager', () => {
       expect(get(hotkeyAction)).toBeNull();
     });
 
-    it('c on project dispatches pick-issue-for-session for the selected provider', () => {
+    it('c on project dispatches create-session for the selected provider', () => {
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'claude' });
+      expect(captured).toEqual({ type: 'create-session', projectId: 'proj-1', kind: 'claude' });
       unsub();
     });
 
-    it('c on session dispatches pick-issue-for-session for that project', () => {
+    it('c on session dispatches create-session for that project', () => {
       focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'claude' });
+      expect(captured).toEqual({ type: 'create-session', projectId: 'proj-1', kind: 'claude' });
       unsub();
     });
 
@@ -460,7 +460,7 @@ describe('HotkeyManager', () => {
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'codex' });
+      expect(captured).toEqual({ type: 'create-session', projectId: 'proj-1', kind: 'codex' });
       unsub();
     });
 
@@ -497,12 +497,12 @@ describe('HotkeyManager', () => {
   // ── c key in development mode ──
 
   describe('c key in development mode', () => {
-    it('c dispatches pick-issue-for-session when project focused', () => {
+    it('c dispatches create-session when project focused', () => {
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('c');
-      expect(captured).toEqual({ type: 'pick-issue-for-session', projectId: 'proj-1', repoPath: '/tmp/test', kind: 'claude' });
+      expect(captured).toEqual({ type: 'create-session', projectId: 'proj-1', kind: 'claude' });
       unsub();
     });
 

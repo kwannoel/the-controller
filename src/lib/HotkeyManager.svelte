@@ -254,24 +254,6 @@
     dispatchAction({ type: "delete-project" });
   }
 
-  function dispatchIssuePicker(opts?: { kind?: "claude" | "codex"; background?: boolean }) {
-    const project = getFocusedProject();
-    if (!project) return;
-    dispatchAction({
-      type: "pick-issue-for-session",
-      projectId: project.id,
-      repoPath: project.repo_path,
-      kind: opts?.kind,
-      background: opts?.background,
-    });
-  }
-
-  function dispatchCreateIssue() {
-    const project = getFocusedProject();
-    if (!project) return;
-    dispatchAction({ type: "create-issue", projectId: project.id, repoPath: project.repo_path });
-  }
-
   function handleHotkey(key: string): boolean {
     const id = keyMap.get(key);
     if (id === undefined) return false;
@@ -292,9 +274,12 @@
       case "delete":
         dispatchDeleteAction();
         return true;
-      case "create-session":
-        dispatchIssuePicker({ kind: currentSessionProvider });
+      case "create-session": {
+        const project = getFocusedProject();
+        if (!project) return true;
+        dispatchAction({ type: "create-session", projectId: project.id, kind: currentSessionProvider });
         return true;
+      }
       case "finish-branch":
         if (activeId) {
           const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
@@ -342,18 +327,12 @@
         }
         return true;
       }
-      case "create-issue":
-        dispatchCreateIssue();
+      case "open-issues-modal": {
+        const project = getFocusedProject();
+        if (!project) return true;
+        dispatchAction({ type: "open-issues-modal", projectId: project.id, repoPath: project.repo_path });
         return true;
-      case "triage-untriaged":
-        dispatchAction({ type: "toggle-triage-panel", category: "untriaged" });
-        return true;
-      case "triage-triaged":
-        dispatchAction({ type: "toggle-triage-panel", category: "triaged" });
-        return true;
-      case "assigned-issues":
-        dispatchAction({ type: "toggle-assigned-issues-panel" });
-        return true;
+      }
       case "expand-collapse":
         if (currentFocus?.type === "project") {
           const next = new Set(expandedSet);

@@ -10,13 +10,10 @@
   import HotkeyManager from "./lib/HotkeyManager.svelte";
   import HotkeyHelp from "./lib/HotkeyHelp.svelte";
 
-  import CreateIssueModal from "./lib/CreateIssueModal.svelte";
-  import IssuePickerModal from "./lib/IssuePickerModal.svelte";
+  import IssuesModal from "./lib/IssuesModal.svelte";
   import PromptPickerModal from "./lib/PromptPickerModal.svelte";
   import SecureEnvModal from "./lib/SecureEnvModal.svelte";
   import DeploySetupModal from "./lib/DeploySetupModal.svelte";
-  import TriagePanel from "./lib/TriagePanel.svelte";
-  import AssignedIssuesPanel from "./lib/AssignedIssuesPanel.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
@@ -25,12 +22,9 @@
   import InfrastructureDashboard from "./lib/InfrastructureDashboard.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
-  import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus, type TriageCategory } from "./lib/stores";
+  import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
   let ready = $state(false);
-  let createIssueTarget: { projectId: string; repoPath: string } | null = $state(null);
-  let issuePickerTarget: { projectId: string; repoPath: string; kind?: string; background?: boolean } | null = $state(null);
-  let triagePanelOpen: TriageCategory | null = $state(null);
-  let assignedIssuesPanelOpen = $state(false);
+  let issuesModalTarget: { projectId: string; repoPath: string } | null = $state(null);
   let promptPickerTarget: { projectId: string } | null = $state(null);
   let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
   let deploySetupOpen = $state(false);
@@ -77,22 +71,16 @@
     const unsub = hotkeyAction.subscribe((action) => {
       if (action?.type === "toggle-help") {
         showKeyHints.update((v) => !v);
-      } else if (action?.type === "create-issue") {
-        createIssueTarget = { projectId: action.projectId, repoPath: action.repoPath };
-      } else if (action?.type === "pick-issue-for-session") {
-        issuePickerTarget = { projectId: action.projectId, repoPath: action.repoPath, kind: action.kind, background: action.background };
+      } else if (action?.type === "open-issues-modal") {
+        issuesModalTarget = { projectId: action.projectId, repoPath: action.repoPath };
+      } else if (action?.type === "assign-issue-to-session") {
+        createSessionWithIssue(action.projectId, action.repoPath, action.issue);
       } else if (action?.type === "screenshot-to-session") {
         screenshotToNewSession(action.preview ?? false, action.cropped ?? false);
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
       } else if (action?.type === "toggle-auto-worker-enabled") {
         toggleAutoWorkerEnabled();
-      } else if (action?.type === "toggle-triage-panel") {
-        if (action.category) {
-          triagePanelOpen = triagePanelOpen ? null : action.category;
-        }
-      } else if (action?.type === "toggle-assigned-issues-panel") {
-        assignedIssuesPanelOpen = !assignedIssuesPanelOpen;
       } else if (action?.type === "save-session-prompt") {
         saveSessionPrompt(action.projectId, action.sessionId);
       } else if (action?.type === "pick-prompt-for-session") {
@@ -178,8 +166,8 @@
   }
 
   async function handleIssueSubmit(title: string, priority: "high" | "low", complexity: "high" | "low") {
-    const repoPath = createIssueTarget!.repoPath;
-    createIssueTarget = null; // close modal immediately
+    const repoPath = issuesModalTarget!.repoPath;
+    issuesModalTarget = null; // close modal immediately
 
     try {
       showToast("Generating issue description...", "info");
@@ -214,20 +202,10 @@
     }
   }
 
-  function handleIssuePicked(issue: GithubIssue) {
-    const target = issuePickerTarget!;
-    issuePickerTarget = null;
-    createSessionWithIssue(target.projectId, target.repoPath, issue, target.kind, target.background);
-  }
-
-  function handleIssuePickerSkip() {
-    const target = issuePickerTarget!;
-    issuePickerTarget = null;
-    dispatchHotkeyAction({
-      type: "create-session",
-      projectId: target.projectId,
-      kind: target.kind ?? currentSessionProvider,
-    });
+  function handleAssignIssue(issue: GithubIssue) {
+    const target = issuesModalTarget!;
+    issuesModalTarget = null;
+    createSessionWithIssue(target.projectId, target.repoPath, issue);
   }
 
   async function handlePromptPicked(prompt: SavedPrompt) {
@@ -511,18 +489,13 @@
     {#if showKeyHintsState.current}
       <HotkeyHelp onClose={() => showKeyHints.set(false)} />
     {/if}
-    {#if createIssueTarget}
-      <CreateIssueModal
-        onSubmit={handleIssueSubmit}
-        onClose={() => { createIssueTarget = null; }}
-      />
-    {/if}
-    {#if issuePickerTarget}
-      <IssuePickerModal
-        repoPath={issuePickerTarget.repoPath}
-        onSelect={handleIssuePicked}
-        onSkip={handleIssuePickerSkip}
-        onClose={() => { issuePickerTarget = null; }}
+    {#if issuesModalTarget}
+      <IssuesModal
+        repoPath={issuesModalTarget.repoPath}
+        projectId={issuesModalTarget.projectId}
+        onClose={() => { issuesModalTarget = null; }}
+        onCreateIssue={handleIssueSubmit}
+        onAssignIssue={handleAssignIssue}
       />
     {/if}
     {#if promptPickerTarget}
@@ -539,12 +512,6 @@
         onSubmit={submitSecureEnvValue}
         onClose={cancelSecureEnvRequest}
       />
-    {/if}
-    {#if triagePanelOpen}
-      <TriagePanel category={triagePanelOpen} onClose={() => { triagePanelOpen = null; }} />
-    {/if}
-    {#if assignedIssuesPanelOpen}
-      <AssignedIssuesPanel onClose={() => { assignedIssuesPanelOpen = false; }} />
     {/if}
     {#if workspaceModePickerVisibleState.current}
       <WorkspaceModePicker />

@@ -63,11 +63,8 @@ vi.mock("mermaid", () => ({
   },
 }));
 
-vi.mock("./lib/CreateIssueModal.svelte", async () => ({
-  default: (await import("./test/CreateIssueModalMock.svelte")).default,
-}));
-vi.mock("./lib/IssuePickerModal.svelte", async () => ({
-  default: (await import("./test/IssuePickerModalMock.svelte")).default,
+vi.mock("./lib/IssuesModal.svelte", async () => ({
+  default: (await import("./test/IssuesModalMock.svelte")).default,
 }));
 
 import App from "./App.svelte";
@@ -518,7 +515,7 @@ describe("App architecture workspace", () => {
   });
 });
 
-describe("App issue picker flow", () => {
+describe("App issue assign flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // @ts-expect-error compile-time constants injected in app builds
@@ -554,25 +551,21 @@ describe("App issue picker flow", () => {
     });
   });
 
-  it("creates background issue sessions with codex even when the requested kind is claude", async () => {
+  it("creates a session when assigning an issue from the issues modal", async () => {
     render(App);
 
     hotkeyAction.set({
-      type: "pick-issue-for-session",
+      type: "open-issues-modal",
       projectId: "proj-1",
       repoPath: "/tmp/the-controller",
-      kind: "claude",
-      background: true,
     });
 
-    await fireEvent.click(await screen.findByTestId("mock-issue-select"));
+    await fireEvent.click(await screen.findByTestId("mock-issue-assign"));
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
         projectId: "proj-1",
         githubIssue: expect.objectContaining({ number: 42 }),
-        kind: "codex",
-        background: true,
       }));
     });
   });
@@ -627,7 +620,7 @@ describe("App issue creation flow", () => {
     render(App);
 
     hotkeyAction.set({
-      type: "create-issue",
+      type: "open-issues-modal",
       projectId: "proj-1",
       repoPath: "/tmp/the-controller",
     });

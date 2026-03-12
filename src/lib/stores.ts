@@ -232,8 +232,6 @@ export interface AutoWorkerQueueIssue {
 }
 
 // Hotkey state
-export type TriageCategory = "untriaged" | "triaged";
-
 export type HotkeyAction =
   | { type: "open-fuzzy-finder" }
   | { type: "open-new-project" }
@@ -242,21 +240,18 @@ export type HotkeyAction =
   | { type: "focus-terminal" }
   | { type: "toggle-help" }
   | { type: "delete-project"; projectId?: string }
-  | { type: "create-issue"; projectId: string; repoPath: string }
+  | { type: "open-issues-modal"; projectId: string; repoPath: string }
   | {
-      type: "pick-issue-for-session";
+      type: "assign-issue-to-session";
       projectId: string;
       repoPath: string;
-      kind?: string;
-      background?: boolean;
+      issue: GithubIssue;
     }
   | { type: "merge-session"; sessionId: string; projectId: string }
   | { type: "finish-branch"; sessionId: string; kind?: string }
   | { type: "screenshot-to-session"; preview?: boolean; cropped?: boolean }
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-auto-worker-enabled" }
-  | { type: "toggle-triage-panel"; category?: TriageCategory }
-  | { type: "toggle-assigned-issues-panel" }
   | { type: "trigger-maintainer-check" }
   | { type: "clear-maintainer-reports" }
   | { type: "agent-panel-navigate"; direction: 1 | -1 }
