@@ -1,23 +1,38 @@
 <script lang="ts">
   import { onMount } from "svelte";
 
+  const NEW_FOLDER_SENTINEL = "__new_folder__";
+
   interface Props {
-    onSubmit: (title: string) => void;
+    folders: string[];
+    onSubmit: (title: string, folder: string) => void;
     onClose: () => void;
   }
 
-  let { onSubmit, onClose }: Props = $props();
+  let { folders, onSubmit, onClose }: Props = $props();
 
   let title = $state("");
+  let selectedFolder = $state(folders.length > 0 ? folders[0] : NEW_FOLDER_SENTINEL);
+  let newFolderName = $state("");
+  let folderSelectEl: HTMLSelectElement | undefined = $state();
+  let newFolderInput: HTMLInputElement | undefined = $state();
   let titleInput: HTMLInputElement | undefined = $state();
 
+  let isNewFolder = $derived(selectedFolder === NEW_FOLDER_SENTINEL);
+  let resolvedFolder = $derived(isNewFolder ? newFolderName.trim() : selectedFolder);
+  let canSubmit = $derived(title.trim() !== "" && resolvedFolder !== "");
+
   onMount(() => {
-    titleInput?.focus();
+    if (isNewFolder) {
+      newFolderInput?.focus();
+    } else {
+      titleInput?.focus();
+    }
   });
 
   function submit() {
-    if (!title.trim()) return;
-    onSubmit(title.trim());
+    if (!canSubmit) return;
+    onSubmit(title.trim(), resolvedFolder);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -30,12 +45,38 @@
       submit();
     }
   }
+
+  function handleFolderChange() {
+    if (isNewFolder) {
+      // Wait a tick for the input to render, then focus it
+      requestAnimationFrame(() => newFolderInput?.focus());
+    }
+  }
 </script>
 
 <div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">New Note</div>
+    <select
+      bind:this={folderSelectEl}
+      bind:value={selectedFolder}
+      class="input"
+      onchange={handleFolderChange}
+    >
+      {#each folders as f}
+        <option value={f}>{f}</option>
+      {/each}
+      <option value={NEW_FOLDER_SENTINEL}>New folder...</option>
+    </select>
+    {#if isNewFolder}
+      <input
+        bind:this={newFolderInput}
+        bind:value={newFolderName}
+        placeholder="Folder name"
+        class="input"
+      />
+    {/if}
     <input
       bind:this={titleInput}
       bind:value={title}
@@ -47,7 +88,7 @@
       <button
         class="btn-primary"
         onclick={submit}
-        disabled={!title.trim()}
+        disabled={!canSubmit}
       >
         Create
       </button>
@@ -96,6 +137,18 @@
   }
   .input:focus {
     border-color: var(--text-emphasis);
+  }
+  select.input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cdd6f4' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+    cursor: pointer;
+  }
+  select.input option {
+    background: var(--bg-void);
+    color: var(--text-primary);
   }
   .actions {
     display: flex;
