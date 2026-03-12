@@ -58,6 +58,10 @@
           }
         }
       }
+      // Commit any pending note edits to git
+      if (prev) {
+        command("commit_notes", {}).catch(() => {});
+      }
       prevNoteKey = key;
 
       if (currentNote && folderName && key) {

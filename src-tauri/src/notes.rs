@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
+use git2::{Repository, Signature};
 use serde::Serialize;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Clone)]
@@ -322,6 +323,66 @@ pub fn delete_folder(base: &std::path::Path, name: &str, force: bool) -> std::io
     }
 }
 
+// ── Git version control ─────────────────────────────────────────────
+
+/// Returns the notes root directory: `{base}/notes/`
+fn notes_root(base: &Path) -> PathBuf {
+    base.join("notes")
+}
+
+/// Open or initialize the notes git repo at `{base}/notes/`.
+fn open_or_init_repo(base: &Path) -> Result<Repository, git2::Error> {
+    let root = notes_root(base);
+    fs::create_dir_all(&root).map_err(|e| {
+        git2::Error::from_str(&format!("failed to create notes dir: {}", e))
+    })?;
+    match Repository::open(&root) {
+        Ok(repo) => Ok(repo),
+        Err(_) => {
+            let repo = Repository::init(&root)?;
+            let sig = Signature::now("the-controller", "noreply@the-controller")?;
+            let tree_id = repo.index()?.write_tree()?;
+            {
+                let tree = repo.find_tree(tree_id)?;
+                repo.commit(Some("HEAD"), &sig, &sig, "init notes", &tree, &[])?;
+            }
+            Ok(repo)
+        }
+    }
+}
+
+/// Stage all changes and commit with the given message.
+/// Returns Ok(true) if a commit was created, Ok(false) if there was nothing to commit.
+pub fn commit_notes(base: &Path, message: &str) -> Result<bool, git2::Error> {
+    let repo = open_or_init_repo(base)?;
+    let mut index = repo.index()?;
+
+    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+    index.update_all(["*"].iter(), None)?;
+    index.write()?;
+
+    let head_commit = repo.head()?.peel_to_commit()?;
+    let head_tree = head_commit.tree()?;
+    let new_tree_id = index.write_tree()?;
+    let new_tree = repo.find_tree(new_tree_id)?;
+
+    let diff = repo.diff_tree_to_tree(Some(&head_tree), Some(&new_tree), None)?;
+    if diff.deltas().count() == 0 {
+        return Ok(false);
+    }
+
+    let sig = Signature::now("the-controller", "noreply@the-controller")?;
+    repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        message,
+        &new_tree,
+        &[&head_commit],
+    )?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -636,5 +697,56 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let result = delete_folder(tmp.path(), "nope", false);
         assert!(result.is_ok());
+    }
+
+    // ── Git tests ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_commit_notes_creates_repo_and_commits() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        create_note(base, "proj", "hello").unwrap();
+
+        let committed = commit_notes(base, "add hello").unwrap();
+        assert!(committed);
+
+        let repo = Repository::open(notes_root(base)).unwrap();
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.message().unwrap(), "add hello");
+    }
+
+    #[test]
+    fn test_commit_notes_noop_when_no_changes() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        create_note(base, "proj", "hello").unwrap();
+        commit_notes(base, "first").unwrap();
+
+        let committed = commit_notes(base, "second").unwrap();
+        assert!(!committed);
+    }
+
+    #[test]
+    fn test_commit_notes_tracks_deletes() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        create_note(base, "proj", "temp").unwrap();
+        commit_notes(base, "add temp").unwrap();
+
+        delete_note(base, "proj", "temp.md").unwrap();
+        let committed = commit_notes(base, "delete temp").unwrap();
+        assert!(committed);
+    }
+
+    #[test]
+    fn test_commit_notes_tracks_content_changes() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        create_note(base, "proj", "doc").unwrap();
+        commit_notes(base, "create").unwrap();
+
+        write_note(base, "proj", "doc.md", "updated content").unwrap();
+        let committed = commit_notes(base, "update doc").unwrap();
+        assert!(committed);
     }
 }

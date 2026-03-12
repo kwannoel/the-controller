@@ -1548,6 +1548,11 @@ pub fn delete_folder(state: State<'_, AppState>, name: String, force: bool) -> R
 }
 
 #[tauri::command]
+pub fn commit_notes(state: State<'_, AppState>) -> Result<bool, String> {
+    notes::commit_notes(state)
+}
+
+#[tauri::command]
 pub async fn send_note_ai_chat(
     note_content: String,
     selected_text: String,
