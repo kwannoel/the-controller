@@ -4,6 +4,7 @@
   import { EditorView, drawSelection } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
   import { Vim, getCM, vim } from "@replit/codemirror-vim";
+  import { markdownLivePreview } from "./markdownLivePreview";
 
   // WKWebView (Tauri on macOS) may report Shift+letter keydown events with
   // a lowercase `key` and `shiftKey: true` instead of the uppercase `key` the
@@ -56,6 +57,7 @@
         vim(),
         drawSelection(),
         markdown(),
+        markdownLivePreview(),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
           keydown: (event) => {
@@ -181,7 +183,7 @@
   }
 
   .note-code-editor :global(.cm-scroller) {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans, sans-serif);
     line-height: 1.6;
   }
 
@@ -216,5 +218,69 @@
     background-color: rgba(255, 255, 255, 0.15) !important;
     color: var(--text-selection) !important;
     -webkit-text-fill-color: var(--text-selection) !important;
+  }
+
+  /* Live preview heading styles */
+  .note-code-editor :global(.cm-md-h1) {
+    font-size: 24px;
+    font-weight: 700;
+    font-family: var(--font-sans, sans-serif);
+  }
+
+  .note-code-editor :global(.cm-md-h2) {
+    font-size: 20px;
+    font-weight: 600;
+    font-family: var(--font-sans, sans-serif);
+  }
+
+  .note-code-editor :global(.cm-md-h3) {
+    font-size: 16px;
+    font-weight: 600;
+    font-family: var(--font-sans, sans-serif);
+  }
+
+  .note-code-editor :global(.cm-md-h4),
+  .note-code-editor :global(.cm-md-h5),
+  .note-code-editor :global(.cm-md-h6) {
+    font-size: 14px;
+    font-weight: 600;
+    font-family: var(--font-sans, sans-serif);
+  }
+
+  /* Inline formatting */
+  .note-code-editor :global(.cm-md-strong) {
+    font-weight: 700;
+  }
+
+  .note-code-editor :global(.cm-md-em) {
+    font-style: italic;
+  }
+
+  .note-code-editor :global(.cm-md-code) {
+    background: var(--bg-surface);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+
+  /* Links */
+  .note-code-editor :global(.cm-md-link) {
+    color: var(--text-emphasis);
+    text-decoration: none;
+  }
+
+  .note-code-editor :global(.cm-md-link:hover) {
+    text-decoration: underline;
+  }
+
+  /* List bullets */
+  .note-code-editor :global(.cm-md-list-bullet) {
+    color: var(--text-secondary);
+  }
+
+  /* Fenced code blocks */
+  .note-code-editor :global(.cm-md-codeblock-line) {
+    background: var(--bg-surface);
   }
 </style>
