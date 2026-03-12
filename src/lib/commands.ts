@@ -98,8 +98,8 @@ export const commands: CommandDef[] = [
 
   // ── Notes ──
   { id: "create-note", key: "n", section: "Notes", description: "Create new note", mode: "notes" },
-  { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note", mode: "notes" },
-  { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note", mode: "notes" },
+  { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note or folder", mode: "notes" },
+  { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note or folder", mode: "notes" },
   { id: "duplicate-note", key: "y", section: "Notes", description: "Duplicate focused note", mode: "notes" },
   { id: "toggle-note-preview", key: "p", section: "Notes", description: "Cycle edit / preview / split", mode: "notes" },
   { id: "expand-collapse", key: "o", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },

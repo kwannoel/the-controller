@@ -198,7 +198,7 @@ describe("focusForModeSwitch", () => {
   it("translates note focus to active session when switching to development", () => {
     const projects = [makeProject("p1", ["s1"])];
     const result = focusForModeSwitch(
-      { type: "note", filename: "todo.md", projectId: "p1" },
+      { type: "note", filename: "todo.md", folder: "my-folder" },
       "development",
       "s1",
       projects,
@@ -206,10 +206,10 @@ describe("focusForModeSwitch", () => {
     expect(result).toEqual({ type: "session", sessionId: "s1", projectId: "p1" });
   });
 
-  it("translates note focus to project when no active session on switch to development", () => {
+  it("translates note focus to first project when no active session on switch to development", () => {
     const projects = [makeProject("p1", ["s1"])];
     const result = focusForModeSwitch(
-      { type: "note", filename: "todo.md", projectId: "p1" },
+      { type: "note", filename: "todo.md", folder: "my-folder" },
       "development",
       null,
       projects,
@@ -217,10 +217,10 @@ describe("focusForModeSwitch", () => {
     expect(result).toEqual({ type: "project", projectId: "p1" });
   });
 
-  it("translates notes-editor focus to project when switching to agents", () => {
+  it("translates notes-editor focus to first project when switching to agents", () => {
     const projects = [makeProject("p1", ["s1"])];
     const result = focusForModeSwitch(
-      { type: "notes-editor", projectId: "p1" },
+      { type: "notes-editor", folder: "my-folder" },
       "agents",
       "s1",
       projects,
