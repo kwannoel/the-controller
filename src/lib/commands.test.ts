@@ -25,7 +25,7 @@ describe("command registry", () => {
 
   it("getHelpSections returns sections in order for development mode", () => {
     const sections = getHelpSections("development");
-    expect(sections.map(s => s.label)).toEqual(["Essentials", "Navigation", "Debug", "Sessions", "Projects", "Panels"]);
+    expect(sections.map(s => s.label)).toEqual(["Essentials", "Debug", "Sessions", "Projects", "Panels"]);
   });
 
   it("getHelpSections returns sections for agents mode", () => {
@@ -126,11 +126,10 @@ describe("command registry", () => {
     const sections = getHelpSections("development");
 
     const essentials = sections.find(s => s.label === "Essentials")!;
-    expect(essentials.entries).toHaveLength(7);
-    expect(essentials.entries.map(e => e.key)).toEqual(["c", "j / k", "n", "d", "m", "f", "Esc"]);
+    expect(essentials.entries).toHaveLength(9);
+    expect(essentials.entries.map(e => e.key)).toEqual(["c", "j / k", "n", "d", "m", "f", "l / Enter", "Esc", "Esc Esc"]);
 
-    const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(2); // l/Enter, Esc Esc
+    expect(sections.find(s => s.label === "Navigation")).toBeUndefined();
 
     const sess = sections.find(s => s.label === "Sessions")!;
     expect(sess.entries).toHaveLength(4); // P, p, v, ⌘t

@@ -113,7 +113,7 @@ export const commands: CommandDef[] = [
 
 // Section order for help display
 const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"];
-const DEV_SECTION_ORDER: CommandSection[] = ["Essentials", "Navigation", "Debug", "Sessions", "Projects", "Panels"];
+const DEV_SECTION_ORDER: CommandSection[] = ["Essentials", "Debug", "Sessions", "Projects", "Panels"];
 
 export interface HelpEntry {
   key: string;
@@ -127,7 +127,7 @@ export interface HelpSection {
 
 export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
   if (mode === "development") {
-    const essentialIds = new Set(["create-session", "navigate-next", "navigate-prev", "finish-branch", "new-project", "delete", "fuzzy-finder", "escape-focus"]);
+    const essentialIds = new Set(["create-session", "navigate-next", "navigate-prev", "finish-branch", "new-project", "delete", "fuzzy-finder", "expand-collapse", "escape-focus", "escape-forward"]);
     const debugIds = new Set(["screenshot", "screenshot-cropped", "screenshot-preview"]);
 
     const essentials: HelpSection = {
@@ -139,7 +139,9 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
         { key: "d", description: "Delete focused item" },
         { key: "m", description: "Merge session branch" },
         { key: "f", description: "Find project (fuzzy finder)" },
+        { key: "l / Enter", description: "Expand/collapse or focus terminal" },
         { key: "Esc", description: "Move focus up" },
+        { key: "Esc Esc", description: "Forward escape to terminal" },
       ],
     };
 
