@@ -82,4 +82,12 @@ describe("markdownLivePreview", () => {
       expect(view.dom.querySelector(".cm-md-list-bullet")).toBeNull();
     });
   });
+
+  describe("code blocks", () => {
+    it("applies code block line class when cursor is elsewhere", () => {
+      const doc = "text\n\n```js\nconst x = 1;\n```\n\nother";
+      const view = createView(doc, doc.length - 1);
+      expect(view.dom.querySelector(".cm-md-codeblock-line")).not.toBeNull();
+    });
+  });
 });

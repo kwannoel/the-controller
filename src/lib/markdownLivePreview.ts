@@ -37,6 +37,7 @@ class BulletWidget extends WidgetType {
 }
 
 const bulletWidget = Decoration.replace({ widget: new BulletWidget() });
+const codeBlockLine = Decoration.line({ class: "cm-md-codeblock-line" });
 
 function cursorLineRanges(view: EditorView): Set<number> {
   const lines = new Set<number>();
@@ -121,6 +122,18 @@ function buildDecorations(view: EditorView): DecorationSet {
       if (name === "ListMark") {
         const hideEnd = Math.min(node.to + 1, view.state.doc.length);
         decorations.push({ from: node.from, to: hideEnd, deco: bulletWidget });
+      }
+
+      if (name === "FencedCode") {
+        const startLine = view.state.doc.lineAt(node.from).number;
+        const endLine = view.state.doc.lineAt(node.to).number;
+        for (let l = startLine; l <= endLine; l++) {
+          const line = view.state.doc.line(l);
+          decorations.push({ from: line.from, to: line.from, deco: codeBlockLine });
+        }
+      }
+      if (name === "CodeInfo") {
+        decorations.push({ from: node.from, to: node.to, deco: syntaxHide });
       }
     },
   });
