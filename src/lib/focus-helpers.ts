@@ -89,8 +89,8 @@ export function focusForModeSwitch(
   }
 
   if (newMode === "notes") {
-    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel") {
-      return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
+    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel" || current.type === "project") {
+      return null;
     }
   }
 

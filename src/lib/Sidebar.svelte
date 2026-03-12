@@ -591,6 +591,8 @@
       await command("delete_folder", { name: folder, force: true });
       const folders = await command<string[]>("list_folders", {});
       noteFolders.set(folders);
+      noteEntries.update((m) => { const next = new Map(m); next.delete(folder); return next; });
+      expandedProjects.update((s) => { const next = new Set(s); next.delete(folder); return next; });
       const an = activeNoteState.current;
       if (an?.folder === folder) {
         activeNote.set(null);

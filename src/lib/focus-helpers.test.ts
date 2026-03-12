@@ -159,12 +159,11 @@ describe("focusForModeSwitch", () => {
     expect(result).toEqual({ type: "project", projectId: "p1" });
   });
 
-  it("preserves project focus across mode switches", () => {
+  it("preserves project focus across project-based mode switches", () => {
     const projects = [makeProject("p1", ["s1"])];
     const focus = { type: "project" as const, projectId: "p1" };
     expect(focusForModeSwitch(focus, "development", "s1", projects)).toBe(focus);
     expect(focusForModeSwitch(focus, "agents", "s1", projects)).toBe(focus);
-    expect(focusForModeSwitch(focus, "notes", "s1", projects)).toBe(focus);
   });
 
   it("returns null when current focus is null", () => {
@@ -173,7 +172,7 @@ describe("focusForModeSwitch", () => {
     expect(focusForModeSwitch(null, "notes", null, [])).toBeNull();
   });
 
-  it("translates session focus to project when switching to notes", () => {
+  it("clears focus when switching to notes from session", () => {
     const projects = [makeProject("p1", ["s1"])];
     const result = focusForModeSwitch(
       { type: "session", sessionId: "s1", projectId: "p1" },
@@ -181,10 +180,10 @@ describe("focusForModeSwitch", () => {
       "s1",
       projects,
     );
-    expect(result).toEqual({ type: "project", projectId: "p1" });
+    expect(result).toBeNull();
   });
 
-  it("translates agent focus to project when switching to notes", () => {
+  it("clears focus when switching to notes from agent", () => {
     const projects = [makeProject("p1", ["s1"])];
     const result = focusForModeSwitch(
       { type: "agent", agentKind: "auto-worker", projectId: "p1" },
@@ -192,7 +191,18 @@ describe("focusForModeSwitch", () => {
       "s1",
       projects,
     );
-    expect(result).toEqual({ type: "project", projectId: "p1" });
+    expect(result).toBeNull();
+  });
+
+  it("clears focus when switching to notes from project", () => {
+    const projects = [makeProject("p1", ["s1"])];
+    const result = focusForModeSwitch(
+      { type: "project", projectId: "p1" },
+      "notes",
+      "s1",
+      projects,
+    );
+    expect(result).toBeNull();
   });
 
   it("translates note focus to active session when switching to development", () => {
