@@ -1059,7 +1059,7 @@ pub async fn stage_session(
     let log_stderr = log_file
         .try_clone()
         .map_err(|e| format!("Failed to clone log file: {}", e))?;
-    let child = std::process::Command::new("bash")
+    let mut child = std::process::Command::new("bash")
         .args(["./dev.sh", &port.to_string()])
         .current_dir(&wt)
         .env("CONTROLLER_SOCKET", crate::status_socket::staged_socket_path())
@@ -1070,9 +1070,12 @@ pub async fn stage_session(
         .map_err(|e| format!("Failed to spawn staged instance: {}", e))?;
 
     let pid = child.id();
-    // Deliberately leak the child handle — we manage the process via PID/process group,
-    // not via the Child handle. This avoids zombie entries from an unwaited child.
-    std::mem::forget(child);
+    // Reap the child in a background thread to prevent zombie entries.
+    // We manage the process lifetime via PID/process group (kill_process_group),
+    // not via this Child handle.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
 
     // Save staged session info — if save fails, kill the orphan process
     let save_result = (|| -> Result<(), String> {
