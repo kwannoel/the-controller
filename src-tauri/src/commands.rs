@@ -825,7 +825,8 @@ fn find_staging_port(base_port: u16) -> Result<u16, String> {
     ))
 }
 
-/// Kill a process group by PID. Sends SIGTERM to the group, then SIGKILL after 2s.
+/// Kill a process group by PID. Sends SIGTERM to the group, then SIGKILL after 2s
+/// if the group is still alive.
 pub(crate) fn kill_process_group(pid: u32) {
     #[cfg(unix)]
     {
@@ -834,7 +835,11 @@ pub(crate) fn kill_process_group(pid: u32) {
             unsafe { kill(-pgid, SIGTERM); }
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(2));
-                unsafe { kill(-pgid, SIGKILL); }
+                // Only send SIGKILL if the process group is still alive
+                // (kill with signal 0 checks existence without sending a signal)
+                if unsafe { kill(-pgid, 0) } == 0 {
+                    unsafe { kill(-pgid, SIGKILL); }
+                }
             });
         }
     }
@@ -1052,20 +1057,30 @@ pub async fn stage_session(
         .map_err(|e| format!("Failed to spawn staged instance: {}", e))?;
 
     let pid = child.id();
+    // Deliberately leak the child handle — we manage the process via PID/process group,
+    // not via the Child handle. This avoids zombie entries from an unwaited child.
+    std::mem::forget(child);
 
-    // Save staged session info
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let mut project = storage
-        .load_project(project_uuid)
-        .map_err(|e| e.to_string())?;
+    // Save staged session info — if save fails, kill the orphan process
+    let save_result = (|| -> Result<(), String> {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let mut project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
 
-    project.staged_session = Some(StagedSession {
-        session_id: session_uuid,
-        pid,
-        port,
-    });
+        project.staged_session = Some(StagedSession {
+            session_id: session_uuid,
+            pid,
+            port,
+        });
 
-    storage.save_project(&project).map_err(|e| e.to_string())?;
+        storage.save_project(&project).map_err(|e| e.to_string())
+    })();
+
+    if let Err(e) = save_result {
+        kill_process_group(pid);
+        return Err(e);
+    }
 
     Ok(())
 }
