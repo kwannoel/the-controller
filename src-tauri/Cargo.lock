@@ -4664,7 +4664,7 @@ dependencies = [
 
 [[package]]
 name = "the-controller"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
