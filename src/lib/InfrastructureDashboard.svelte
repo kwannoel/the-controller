@@ -83,8 +83,8 @@
 <style>
   .container {
     height: 100%;
-    background: #11111b;
-    color: #cdd6f4;
+    background: var(--bg-void);
+    color: var(--text-primary);
     display: flex;
   }
 
@@ -97,9 +97,9 @@
   }
 
   .title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-  .subtitle { font-size: 14px; color: #a6adc8; margin-bottom: 16px; }
-  .hint { font-size: 12px; color: #6c7086; }
-  kbd { background: #313244; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; }
+  .subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; }
+  .hint { font-size: 12px; color: var(--text-tertiary); }
+  kbd { background: var(--bg-active); padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; }
 
   .dashboard {
     flex: 1;
@@ -116,31 +116,31 @@
   }
 
   .service-card {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 12px 16px;
     cursor: pointer;
     text-align: left;
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-family: inherit;
     font-size: 13px;
   }
 
-  .service-card:hover { border-color: #45475a; }
-  .service-card.selected { border-color: #89b4fa; background: rgba(137, 180, 250, 0.05); }
+  .service-card:hover { border-color: var(--text-tertiary); }
+  .service-card.selected { border-color: var(--focus-ring); background: rgba(255, 255, 255, 0.05); }
 
   .service-header { display: flex; align-items: center; gap: 8px; }
   .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .service-name { font-weight: 600; flex: 1; }
-  .service-status { font-size: 12px; color: #a6adc8; }
+  .service-status { font-size: 12px; color: var(--text-secondary); }
 
-  .service-meta { display: flex; gap: 12px; margin-top: 6px; font-size: 11px; color: #6c7086; }
+  .service-meta { display: flex; gap: 12px; margin-top: 6px; font-size: 11px; color: var(--text-tertiary); }
 
   .log-panel {
     flex: 1;
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     display: flex;
     flex-direction: column;
@@ -149,9 +149,9 @@
 
   .log-header {
     padding: 8px 12px;
-    border-bottom: 1px solid #313244;
+    border-bottom: 1px solid var(--border-default);
     font-size: 12px;
-    color: #a6adc8;
+    color: var(--text-secondary);
   }
 
   .log-content {
@@ -160,7 +160,7 @@
     overflow-y: auto;
     font-family: monospace;
     font-size: 12px;
-    color: #a6adc8;
+    color: var(--text-secondary);
   }
 
   .log-line { padding: 1px 0; }
