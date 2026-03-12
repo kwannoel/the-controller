@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { untrack } from "svelte";
   import { command } from "$lib/backend";
-  import { activeNote, projects, focusTarget, type Project, type FocusTarget } from "./stores";
+  import { activeNote, noteViewMode, focusTarget, hotkeyAction, type NoteViewMode, type FocusTarget } from "./stores";
   import CodeMirrorNoteEditor, { type VimMode, type AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
   import NoteAiPanel from "./NoteAiPanel.svelte";
 
@@ -16,8 +16,10 @@
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
 
-  const projectsState = fromStore(projects);
-  let projectList: Project[] = $derived(projectsState.current);
+  const viewModeState = fromStore(noteViewMode);
+  let currentViewMode: NoteViewMode = $derived(viewModeState.current);
+  let showsEditor = $derived(currentViewMode === "edit" || currentViewMode === "split");
+  let showsPreview = $derived(currentViewMode === "preview" || currentViewMode === "split");
 
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
@@ -25,11 +27,7 @@
   let editorFocused = $derived(currentFocus?.type === "notes-editor");
   let editorEntryKey = $derived(currentFocus?.type === "notes-editor" ? currentFocus.entryKey : undefined);
 
-  let projectName = $derived(
-    currentNote
-      ? projectList.find((p) => p.id === currentNote!.projectId)?.name ?? null
-      : null
-  );
+  let folderName = $derived(currentNote?.folder ?? null);
 
   let noteTitle = $derived(
     currentNote
@@ -42,7 +40,7 @@
   // Load note content when activeNote changes
   let prevNoteKey: string | null = $state(null);
   $effect(() => {
-    const key = currentNote ? `${currentNote.projectId}:${currentNote.filename}` : null;
+    const key = currentNote ? `${currentNote.folder}:${currentNote.filename}` : null;
     const prev = untrack(() => prevNoteKey);
     if (key !== prev) {
       // Flush unsaved content for the previous note before switching
@@ -53,18 +51,17 @@
         const prevContent = untrack(() => content);
         const prevSaved = untrack(() => savedContent);
         if (prevContent !== prevSaved && prev) {
-          const [prevProjectId, ...rest] = prev.split(":");
+          const [prevFolder, ...rest] = prev.split(":");
           const prevFilename = rest.join(":");
-          const prevProjectName = untrack(() => projectList.find(p => p.id === prevProjectId)?.name);
-          if (prevProjectName && prevFilename) {
-            command("write_note", { projectName: prevProjectName, filename: prevFilename, content: prevContent }).catch(() => {});
+          if (prevFolder && prevFilename) {
+            command("write_note", { folder: prevFolder, filename: prevFilename, content: prevContent }).catch(() => {});
           }
         }
       }
       prevNoteKey = key;
 
-      if (currentNote && projectName && key) {
-        loadNote(projectName, currentNote.filename, key);
+      if (currentNote && folderName && key) {
+        loadNote(folderName, currentNote.filename, key);
       } else {
         content = "";
         savedContent = "";
@@ -73,10 +70,25 @@
     }
   });
 
-  async function loadNote(pName: string, filename: string, requestKey: string) {
+  // Handle hotkey actions
+  $effect(() => {
+    const unsub = hotkeyAction.subscribe((action) => {
+      if (!action) return;
+      if (action.type === "toggle-note-preview") {
+        noteViewMode.update((mode) => {
+          if (mode === "edit") return "preview";
+          if (mode === "preview") return "split";
+          return "edit";
+        });
+      }
+    });
+    return unsub;
+  });
+
+  async function loadNote(folder: string, filename: string, requestKey: string) {
     loading = true;
     try {
-      const text = await command<string>("read_note", { projectName: pName, filename });
+      const text = await command<string>("read_note", { folder, filename });
       if (prevNoteKey === requestKey) {
         content = text;
         savedContent = text;
@@ -105,9 +117,9 @@
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    if (!currentNote || !projectName || content === savedContent) return;
+    if (!currentNote || !folderName || content === savedContent) return;
     try {
-      await command("write_note", { projectName, filename: currentNote.filename, content });
+      await command("write_note", { folder: folderName, filename: currentNote.filename, content });
       savedContent = content;
     } catch {
       // silently fail — user will see unsaved indicator
@@ -129,7 +141,7 @@
 
     void saveNow();
     if (currentNote) {
-      focusTarget.set({ type: "note", filename: currentNote.filename, projectId: currentNote.projectId });
+      focusTarget.set({ type: "note", filename: currentNote.filename, folder: currentNote.folder });
     }
   }
 

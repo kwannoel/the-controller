@@ -1,101 +1,101 @@
 <script lang="ts">
   import { command } from "$lib/backend";
   import { fromStore } from "svelte/store";
-  import { noteEntries, type NoteEntry, type Project, type FocusTarget } from "../stores";
+  import { noteEntries, type NoteEntry, type FocusTarget } from "../stores";
 
   interface Props {
-    projects: Project[];
-    expandedProjectSet: Set<string>;
+    folders: string[];
+    expandedFolderSet: Set<string>;
     currentFocus: FocusTarget;
-    onToggleProject: (projectId: string) => void;
-    onProjectFocus: (projectId: string) => void;
-    onNoteFocus: (filename: string, projectId: string) => void;
-    onNoteSelect: (filename: string, projectId: string) => void;
+    onToggleFolder: (folder: string) => void;
+    onFolderFocus: (folder: string) => void;
+    onNoteFocus: (filename: string, folder: string) => void;
+    onNoteSelect: (filename: string, folder: string) => void;
   }
 
-  let { projects, expandedProjectSet, currentFocus, onToggleProject, onProjectFocus, onNoteFocus, onNoteSelect }: Props = $props();
+  let { folders, expandedFolderSet, currentFocus, onToggleFolder, onFolderFocus, onNoteFocus, onNoteSelect }: Props = $props();
 
   const noteEntriesState = fromStore(noteEntries);
   let noteMap: Map<string, NoteEntry[]> = $derived(noteEntriesState.current);
 
-  function isProjectFocused(projectId: string): boolean {
-    return currentFocus?.type === "project" && currentFocus.projectId === projectId;
+  function isFolderFocused(folder: string): boolean {
+    return currentFocus?.type === "folder" && currentFocus.folder === folder;
   }
 
-  function isNoteFocused(projectId: string, filename: string): boolean {
+  function isNoteFocused(folder: string, filename: string): boolean {
     if (!currentFocus) return false;
-    if (currentFocus.type === "note" && currentFocus.projectId === projectId && currentFocus.filename === filename) return true;
+    if (currentFocus.type === "note" && currentFocus.folder === folder && currentFocus.filename === filename) return true;
     return false;
   }
 
-  function getNotesForProject(projectId: string): NoteEntry[] {
-    return noteMap.get(projectId) ?? [];
+  function getNotesForFolder(folder: string): NoteEntry[] {
+    return noteMap.get(folder) ?? [];
   }
 
-  function noteCount(projectId: string): number {
-    return getNotesForProject(projectId).length;
+  function noteCount(folder: string): number {
+    return getNotesForFolder(folder).length;
   }
 
   function displayName(filename: string): string {
     return filename.endsWith(".md") ? filename.slice(0, -3) : filename;
   }
 
-  function fetchNotes(project: Project) {
-    command<NoteEntry[]>("list_notes", { projectName: project.name }).then((entries) => {
+  function fetchNotes(folder: string) {
+    command<NoteEntry[]>("list_notes", { folder }).then((entries) => {
       noteEntries.update((map) => {
         const next = new Map(map);
-        next.set(project.id, entries);
+        next.set(folder, entries);
         return next;
       });
     });
   }
 
   $effect(() => {
-    for (const project of projects) {
-      if (expandedProjectSet.has(project.id)) {
-        fetchNotes(project);
+    for (const folder of folders) {
+      if (expandedFolderSet.has(folder)) {
+        fetchNotes(folder);
       }
     }
   });
 </script>
 
-{#each projects as project (project.id)}
-  <div class="project-item">
+{#each folders as folder (folder)}
+  <div class="folder-item">
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="project-header"
-      class:focus-target={isProjectFocused(project.id)}
+      class="folder-header"
+      class:focus-target={isFolderFocused(folder)}
       tabindex="0"
-      data-project-id={project.id}
+      data-folder-id={folder}
       onfocusin={(e: FocusEvent) => {
-        if (e.target === e.currentTarget) onProjectFocus(project.id);
+        if (e.target === e.currentTarget) onFolderFocus(folder);
       }}
     >
-      <button class="btn-expand" onclick={() => onToggleProject(project.id)}>
-        {expandedProjectSet.has(project.id) ? "\u25BC" : "\u25B6"}
+      <button class="btn-expand" onclick={() => onToggleFolder(folder)}>
+        {expandedFolderSet.has(folder) ? "\u25BC" : "\u25B6"}
       </button>
-      <span class="project-name">{project.name}</span>
-      <span class="note-count">{noteCount(project.id)}</span>
+      <span class="folder-name">{folder}</span>
+      <span class="note-count">{noteCount(folder)}</span>
     </div>
 
-    {#if expandedProjectSet.has(project.id)}
+    {#if expandedFolderSet.has(folder)}
       <div class="note-list">
-        {#each getNotesForProject(project.id) as note (note.filename)}
+        {#each getNotesForFolder(folder) as note (note.filename)}
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="note-item"
-            class:focus-target={isNoteFocused(project.id, note.filename)}
-            data-note-id="{project.id}:{note.filename}"
+            class:focus-target={isNoteFocused(folder, note.filename)}
+            data-note-id="{folder}:{note.filename}"
             tabindex="0"
-            onfocusin={() => onNoteFocus(note.filename, project.id)}
-            ondblclick={() => onNoteSelect(note.filename, project.id)}
+            onfocusin={() => onNoteFocus(note.filename, folder)}
+            ondblclick={() => onNoteSelect(note.filename, folder)}
           >
             <span class="note-name">{displayName(note.filename)}</span>
           </div>
         {/each}
 
-        {#if getNotesForProject(project.id).length === 0}
+        {#if getNotesForFolder(folder).length === 0}
           <div class="empty-notes">No notes yet — press <kbd>n</kbd></div>
         {/if}
       </div>
@@ -103,27 +103,27 @@
   </div>
 {/each}
 
-{#if projects.length === 0}
-  <div class="empty">No projects</div>
+{#if folders.length === 0}
+  <div class="empty">No folders — press <kbd>n</kbd> to create a note</div>
 {/if}
 
 <style>
-  .project-item {
+  .folder-item {
     border-bottom: 1px solid var(--border-default);
   }
 
-  .project-header {
+  .folder-header {
     display: flex;
     align-items: center;
     padding: 8px 16px;
     gap: 8px;
   }
 
-  .project-header:hover {
+  .folder-header:hover {
     background: var(--bg-hover);
   }
 
-  .project-header.focus-target {
+  .folder-header.focus-target {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
     border-radius: 4px;
@@ -141,7 +141,7 @@
     box-shadow: none;
   }
 
-  .project-name {
+  .folder-name {
     flex: 1;
     font-size: 13px;
     font-weight: 500;

@@ -185,10 +185,11 @@ export type SessionProvider = "claude" | "codex";
 export const selectedSessionProvider = writable<SessionProvider>("claude");
 
 export const activeNote = writable<{
-  projectId: string;
+  folder: string;
   filename: string;
 } | null>(null);
 export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
+export const noteFolders = writable<string[]>([]);
 export const architectureViews = writable<Map<string, ArchitectureViewState>>(
   new Map(),
 );
@@ -260,9 +261,11 @@ export type HotkeyAction =
   | { type: "agent-panel-select" }
   | { type: "agent-panel-escape" }
   | { type: "create-note" }
-  | { type: "delete-note"; projectId: string; filename: string }
-  | { type: "rename-note"; projectId: string; filename: string }
-  | { type: "duplicate-note"; projectId: string; filename: string }
+  | { type: "delete-note"; folder: string; filename: string }
+  | { type: "rename-note"; folder: string; filename: string }
+  | { type: "duplicate-note"; folder: string; filename: string }
+  | { type: "rename-folder"; folder: string }
+  | { type: "delete-folder"; folder: string }
   | { type: "toggle-note-preview" }
   | { type: "save-session-prompt"; sessionId: string; projectId: string }
   | { type: "pick-prompt-for-session"; projectId: string }
@@ -299,7 +302,8 @@ export type FocusTarget =
   | { type: "project"; projectId: string }
   | { type: "agent"; agentKind: AgentKind; projectId: string }
   | { type: "agent-panel"; agentKind: AgentKind; projectId: string }
-  | { type: "note"; filename: string; projectId: string }
-  | { type: "notes-editor"; projectId: string; entryKey?: string }
+  | { type: "folder"; folder: string }
+  | { type: "note"; filename: string; folder: string }
+  | { type: "notes-editor"; folder: string; entryKey?: string }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
