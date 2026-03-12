@@ -328,11 +328,14 @@
     }
   }
 
-  function updateWindowTitle(branch: string, commit: string) {
+  function updateWindowTitle(branch: string, commit: string, staging?: string) {
     try {
-      getCurrentWindow().setTitle(
-        `The Controller (${commit}, ${branch}, localhost:${__DEV_PORT__})`,
-      );
+      const parts = [commit, branch, `localhost:${__DEV_PORT__}`];
+      let title = `The Controller (${parts.join(", ")})`;
+      if (staging) {
+        title += ` — ${staging}`;
+      }
+      getCurrentWindow().setTitle(title);
     } catch {
       // Browser mode — no Tauri window API available
     }
@@ -405,18 +408,19 @@
     }
   }
 
-  // Reactively update title when staging state changes
   $effect(() => {
     const stagedProject = projectsState.current.find((p) => p.staged_session);
     if (stagedProject) {
-      command<[string, string]>("get_repo_head", { repoPath: stagedProject.repo_path })
-        .then(([branch, commit]: [string, string]) =>
-          updateWindowTitle(branch, commit),
-        )
-        .catch(() => {
-          // Fallback to staged_session info
-          updateWindowTitle(stagedProject.staged_session!.staging_branch, "");
-        });
+      const session = stagedProject.sessions.find(
+        (s) => s.id === stagedProject.staged_session!.session_id,
+      );
+      const label = session?.label ?? "unknown";
+      const port = stagedProject.staged_session!.port;
+      updateWindowTitle(
+        __BUILD_BRANCH__,
+        __BUILD_COMMIT__,
+        `staging: ${label} (localhost:${port})`,
+      );
     } else {
       updateWindowTitle(__BUILD_BRANCH__, __BUILD_COMMIT__);
     }

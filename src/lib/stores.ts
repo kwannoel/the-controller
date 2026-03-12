@@ -96,8 +96,8 @@ export type MaintainerStatus = "idle" | "running" | "error";
 
 export interface StagedSession {
   session_id: string;
-  original_branch: string;
-  staging_branch: string;
+  pid: number;
+  port: number;
 }
 
 export interface Project {
@@ -269,8 +269,8 @@ export type HotkeyAction =
   | { type: "save-session-prompt"; sessionId: string; projectId: string }
   | { type: "pick-prompt-for-session"; projectId: string }
   | { type: "generate-architecture"; projectId: string; repoPath: string }
-  | { type: "stage-session-inplace"; sessionId: string; projectId: string }
-  | { type: "unstage-session-inplace"; projectId: string }
+  | { type: "stage-session"; sessionId: string; projectId: string }
+  | { type: "unstage-session"; projectId: string }
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
   | { type: "deploy-project"; projectId: string; repoPath: string }

@@ -327,11 +327,10 @@ describe("Window title updates on staging", () => {
     });
   });
 
-  it("updates title with repo HEAD when a session is staged", async () => {
+  it("updates title with staging info when a session is staged", async () => {
     vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "get_repo_head") return ["staging/fix-foo", "abc1234"];
       return;
     });
 
@@ -342,19 +341,18 @@ describe("Window title updates on staging", () => {
       ...baseProject,
       staged_session: {
         session_id: "sess-1",
-        original_branch: "master",
-        staging_branch: "staging/fix-foo",
+        pid: 12345,
+        port: 1421,
       },
       maintainer: { enabled: false, interval_minutes: 60 },
       auto_worker: { enabled: false },
       prompts: [],
-      sessions: [],
+      sessions: [{ id: "sess-1", label: "fix-foo", worktree_path: null, worktree_branch: null, archived: false, kind: "claude", github_issue: null, initial_prompt: null, auto_worker_session: false }],
     }]);
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("get_repo_head", { repoPath: "/tmp/the-controller" });
       expect(mocks.setTitle).toHaveBeenCalledWith(
-        "The Controller (abc1234, staging/fix-foo, localhost:1420)",
+        "The Controller (test-commit, test-branch, localhost:1420) \u2014 staging: fix-foo (localhost:1421)",
       );
     });
   });
@@ -363,7 +361,6 @@ describe("Window title updates on staging", () => {
     vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "get_repo_head") return ["staging/fix-foo", "abc1234"];
       return;
     });
 
@@ -374,18 +371,18 @@ describe("Window title updates on staging", () => {
       ...baseProject,
       staged_session: {
         session_id: "sess-1",
-        original_branch: "master",
-        staging_branch: "staging/fix-foo",
+        pid: 12345,
+        port: 1421,
       },
       maintainer: { enabled: false, interval_minutes: 60 },
       auto_worker: { enabled: false },
       prompts: [],
-      sessions: [],
+      sessions: [{ id: "sess-1", label: "fix-foo", worktree_path: null, worktree_branch: null, archived: false, kind: "claude", github_issue: null, initial_prompt: null, auto_worker_session: false }],
     }]);
 
     await waitFor(() => {
       expect(mocks.setTitle).toHaveBeenCalledWith(
-        "The Controller (abc1234, staging/fix-foo, localhost:1420)",
+        "The Controller (test-commit, test-branch, localhost:1420) \u2014 staging: fix-foo (localhost:1421)",
       );
     });
 

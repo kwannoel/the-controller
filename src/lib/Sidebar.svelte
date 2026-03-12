@@ -168,12 +168,12 @@
           finishBranchTarget = { sessionId: action.sessionId, kind: action.kind };
           break;
         }
-        case "stage-session-inplace": {
-          stageSessionInplace(action.projectId, action.sessionId);
+        case "stage-session": {
+          stageSession(action.projectId, action.sessionId);
           break;
         }
-        case "unstage-session-inplace": {
-          unstageSessionInplace(action.projectId);
+        case "unstage-session": {
+          unstageSession(action.projectId);
           break;
         }
         case "create-note": {
@@ -415,23 +415,21 @@
     }
   }
 
-  async function stageSessionInplace(projectId: string, sessionId: string) {
-    // Focus the terminal so user can watch Claude commit/resolve conflicts
+  async function stageSession(projectId: string, sessionId: string) {
     activeSessionId.set(sessionId);
     focusTerminalSoon();
 
-    // Listen for intermediate staging status events
     const unlistenStatus = listen<string>("staging-status", (payload) => {
       showToast(payload, "info");
     });
 
     try {
-      await command("stage_session_inplace", { projectId, sessionId });
+      await command("stage_session", { projectId, sessionId });
       await loadProjects();
       const session = projectList
         .find((p) => p.id === projectId)
         ?.sessions.find((s) => s.id === sessionId);
-      showToast(`Staged ${session?.label ?? "session"} in main repo`, "info");
+      showToast(`Staged ${session?.label ?? "session"} — launching on separate port`, "info");
     } catch (e) {
       showToast(String(e), "error");
     } finally {
@@ -439,11 +437,11 @@
     }
   }
 
-  async function unstageSessionInplace(projectId: string) {
+  async function unstageSession(projectId: string) {
     try {
-      await command("unstage_session_inplace", { projectId });
+      await command("unstage_session", { projectId });
       await loadProjects();
-      showToast("Unstaged — restored original branch", "info");
+      showToast("Unstaged — stopped separate instance", "info");
     } catch (e) {
       showToast(String(e), "error");
     }

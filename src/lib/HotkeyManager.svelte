@@ -327,15 +327,14 @@
         }
         return true;
       }
-      case "stage-inplace": {
-        // If any project has a staged session, unstage it; otherwise stage the active session
+      case "stage": {
         const stageProj = projectList.find((p) => p.staged_session !== null);
         if (stageProj) {
-          dispatchHotkeyAction({ type: "unstage-session-inplace", projectId: stageProj.id });
+          dispatchHotkeyAction({ type: "unstage-session", projectId: stageProj.id });
         } else if (activeId) {
           const proj2 = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
           if (proj2 && proj2.name === "the-controller") {
-            dispatchHotkeyAction({ type: "stage-session-inplace", sessionId: activeId, projectId: proj2.id });
+            dispatchHotkeyAction({ type: "stage-session", sessionId: activeId, projectId: proj2.id });
           }
         }
         return true;
