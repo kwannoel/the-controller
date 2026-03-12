@@ -76,7 +76,9 @@ function buildDecorations(view: EditorView): DecorationSet {
     },
   });
 
-  decorations.sort((a, b) => a.from - b.from || a.to - b.to);
+  decorations.sort(
+    (a, b) => a.from - b.from || a.deco.startSide - b.deco.startSide || a.to - b.to,
+  );
   for (const { from, to, deco } of decorations) {
     builder.add(from, to, deco);
   }

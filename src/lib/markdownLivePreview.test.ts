@@ -22,7 +22,7 @@ describe("markdownLivePreview", () => {
       expect(lines[0].querySelector(".cm-md-h1")).not.toBeNull();
     });
 
-    it("does not hide heading markers when cursor is on the heading line", () => {
+    it("does not apply heading class when cursor is on the heading line", () => {
       const view = createView("# Hello World\n\nsome text", 3);
       const lines = view.dom.querySelectorAll(".cm-line");
       expect(lines[0].querySelector(".cm-md-h1")).toBeNull();
