@@ -57,7 +57,19 @@ test("reproduce: o key should enter insert mode", async ({ page }) => {
 });
 ```
 
-Run with `npx playwright test <file> --project=e2e --headed`.
+Run with:
+
+```bash
+# Default: headless (no focus stealing, same browser engine)
+npx playwright test <file> --project=e2e --trace on
+
+# Optional: headed (opens a visible browser window — steals focus on macOS)
+npx playwright test <file> --project=e2e --headed
+```
+
+**Use headless by default.** It runs the exact same browser engine and rendering pipeline — no accuracy loss. Pass `--trace on` to get DOM snapshots, screenshots, network logs, and console output at every step, then review with `npx playwright show-trace <trace.zip>`.
+
+Only use `--headed` when you need live visual interaction (e.g., pausing with `await page.pause()` to manually inspect state).
 
 If the test passes, the bug isn't what you think. If it fails, you have a reproducible case.
 
