@@ -13,6 +13,7 @@
     expandedProjects,
     dispatchHotkeyAction,
     noteEntries,
+    noteFolders,
     activeNote,
     type Project,
     type HotkeyAction,
@@ -42,6 +43,8 @@
   let keyMap = $derived(buildKeyMap(currentMode));
   const noteEntriesState = fromStore(noteEntries);
   let noteEntriesMap = $derived(noteEntriesState.current);
+  const noteFoldersState = fromStore(noteFolders);
+  let noteFolderList = $derived(noteFoldersState.current);
   const selectedSessionProviderState = fromStore(selectedSessionProvider);
   let currentSessionProvider = $derived(selectedSessionProviderState.current);
 
@@ -127,7 +130,8 @@
     | { type: "project"; projectId: string }
     | { type: "session"; sessionId: string; projectId: string }
     | { type: "agent"; agentKind: "auto-worker" | "maintainer"; projectId: string }
-    | { type: "note"; filename: string; projectId: string };
+    | { type: "folder"; folder: string }
+    | { type: "note"; filename: string; folder: string };
 
   function getVisibleItems(): SidebarItem[] {
     if (currentMode === "agents") {
@@ -142,12 +146,12 @@
     }
     if (currentMode === "notes") {
       const result: SidebarItem[] = [];
-      for (const p of projectList) {
-        result.push({ type: "project", projectId: p.id });
-        if (!expandedSet.has(p.id)) continue;
-        const notes = noteEntriesMap.get(p.id) ?? [];
+      for (const folder of noteFolderList) {
+        result.push({ type: "folder", folder });
+        if (!expandedSet.has(folder)) continue;
+        const notes = noteEntriesMap.get(folder) ?? [];
         for (const n of notes) {
-          result.push({ type: "note", filename: n.filename, projectId: p.id });
+          result.push({ type: "note", filename: n.filename, folder });
         }
       }
       return result;
@@ -179,8 +183,10 @@
       idx = items.findIndex(it => it.type === "session" && it.sessionId === currentFocus.sessionId);
     } else if (currentFocus?.type === "agent") {
       idx = items.findIndex(it => it.type === "agent" && it.projectId === currentFocus.projectId && it.agentKind === currentFocus.agentKind);
+    } else if (currentFocus?.type === "folder") {
+      idx = items.findIndex(it => it.type === "folder" && it.folder === currentFocus.folder);
     } else if (currentFocus?.type === "note") {
-      idx = items.findIndex(it => it.type === "note" && it.projectId === currentFocus.projectId && it.filename === currentFocus.filename);
+      idx = items.findIndex(it => it.type === "note" && it.folder === currentFocus.folder && it.filename === currentFocus.filename);
     } else if (currentFocus?.type === "project") {
       idx = items.findIndex(it => it.type === "project" && it.projectId === currentFocus.projectId);
     }
@@ -191,21 +197,52 @@
       focusTarget.set({ type: "session", sessionId: next.sessionId, projectId: next.projectId });
     } else if (next.type === "agent") {
       focusTarget.set({ type: "agent", agentKind: next.agentKind, projectId: next.projectId });
+    } else if (next.type === "folder") {
+      focusTarget.set({ type: "folder", folder: next.folder });
     } else if (next.type === "note") {
-      focusTarget.set({ type: "note", filename: next.filename, projectId: next.projectId });
+      focusTarget.set({ type: "note", filename: next.filename, folder: next.folder });
     } else {
       focusTarget.set({ type: "project", projectId: next.projectId });
     }
   }
 
+  function navigateProject(direction: 1 | -1) {
+    if (currentMode === "notes") {
+      if (noteFolderList.length === 0) return;
+      const focusedFolder = currentFocus?.type === "folder" ? currentFocus.folder
+        : currentFocus?.type === "note" ? currentFocus.folder
+        : currentFocus?.type === "notes-editor" ? currentFocus.folder
+        : null;
+      let idx = -1;
+      if (focusedFolder) idx = noteFolderList.indexOf(focusedFolder);
+      const len = noteFolderList.length;
+      const next = noteFolderList[((idx + direction) % len + len) % len];
+      focusTarget.set({ type: "folder", folder: next });
+      return;
+    }
+    if (projectList.length === 0) return;
+    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel"
+      ? currentFocus.projectId
+      : null;
+    let idx = -1;
+    if (focusedProjectId) idx = projectList.findIndex(p => p.id === focusedProjectId);
+    const len = projectList.length;
+    const next = projectList[((idx + direction) % len + len) % len];
+    focusTarget.set({ type: "project", projectId: next.id });
+  }
+
   function getFocusedProject(): Project | null {
-    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel" || currentFocus?.type === "note" || currentFocus?.type === "notes-editor") {
+    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel") {
       return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
     }
     return null;
   }
 
   function dispatchDeleteAction() {
+    if (currentFocus?.type === "folder") {
+      dispatchAction({ type: "delete-folder", folder: currentFocus.folder });
+      return;
+    }
     if (currentFocus?.type === "session") {
       dispatchAction({ type: "delete-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
       return;
@@ -331,10 +368,18 @@
           dispatchAction({ type: "focus-terminal" });
         } else if (currentFocus?.type === "agent") {
           focusTarget.set({ type: "agent-panel", agentKind: currentFocus.agentKind, projectId: currentFocus.projectId });
+        } else if (currentFocus?.type === "folder") {
+          const next = new Set(expandedSet);
+          if (next.has(currentFocus.folder)) {
+            next.delete(currentFocus.folder);
+          } else {
+            next.add(currentFocus.folder);
+          }
+          expandedProjects.set(next);
         } else if (currentFocus?.type === "note") {
-          activeNote.set({ projectId: currentFocus.projectId, filename: currentFocus.filename });
+          activeNote.set({ folder: currentFocus.folder, filename: currentFocus.filename });
           const vimKeys = ["o", "i", "a"];
-          focusTarget.set({ type: "notes-editor", projectId: currentFocus.projectId, entryKey: vimKeys.includes(key) ? key : undefined });
+          focusTarget.set({ type: "notes-editor", folder: currentFocus.folder, entryKey: vimKeys.includes(key) ? key : undefined });
         }
         return true;
       case "toggle-agent": {
@@ -360,17 +405,19 @@
         return true;
       case "delete-note":
         if (currentFocus?.type === "note") {
-          dispatchAction({ type: "delete-note", projectId: currentFocus.projectId, filename: currentFocus.filename });
+          dispatchAction({ type: "delete-note", folder: currentFocus.folder, filename: currentFocus.filename });
         }
         return true;
       case "rename-note":
         if (currentFocus?.type === "note") {
-          dispatchAction({ type: "rename-note", projectId: currentFocus.projectId, filename: currentFocus.filename });
+          dispatchAction({ type: "rename-note", folder: currentFocus.folder, filename: currentFocus.filename });
+        } else if (currentFocus?.type === "folder") {
+          dispatchAction({ type: "rename-folder", folder: currentFocus.folder });
         }
         return true;
       case "duplicate-note":
         if (currentFocus?.type === "note") {
-          dispatchAction({ type: "duplicate-note", projectId: currentFocus.projectId, filename: currentFocus.filename });
+          dispatchAction({ type: "duplicate-note", folder: currentFocus.folder, filename: currentFocus.filename });
         }
         return true;
       case "toggle-note-preview":
@@ -488,7 +535,7 @@
         e.stopPropagation();
         e.preventDefault();
       } else if (currentFocus?.type === "note") {
-        focusTarget.set({ type: "project", projectId: currentFocus.projectId });
+        focusTarget.set({ type: "folder", folder: currentFocus.folder });
         e.stopPropagation();
         e.preventDefault();
         pushKeystroke("Esc");
