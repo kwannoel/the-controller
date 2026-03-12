@@ -5,6 +5,25 @@
   import { markdown } from "@codemirror/lang-markdown";
   import { Vim, getCM, vim } from "@replit/codemirror-vim";
 
+  // WKWebView (Tauri on macOS) may report Shift+letter keydown events with
+  // a lowercase `key` and `shiftKey: true` instead of the uppercase `key` the
+  // vim plugin expects.  Patch `vimKeyFromEvent` so 'g' + shiftKey → 'G'.
+  const _origVimKeyFromEvent = Vim.vimKeyFromEvent;
+  Vim.vimKeyFromEvent = function (e: any, vim: any) {
+    if (
+      e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey &&
+      typeof e.key === "string" && e.key.length === 1 &&
+      e.key >= "a" && e.key <= "z"
+    ) {
+      return _origVimKeyFromEvent.call(
+        this,
+        { key: e.key.toUpperCase(), shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey, code: e.code },
+        vim,
+      );
+    }
+    return _origVimKeyFromEvent.call(this, e, vim);
+  };
+
   export type VimMode = "normal" | "insert" | "visual" | "replace";
 
   export interface AiChatRequest {
