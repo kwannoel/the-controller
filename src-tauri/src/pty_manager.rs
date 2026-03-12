@@ -26,6 +26,7 @@ pub struct PtySession {
     tmux_session: bool,
 }
 
+#[derive(Default)]
 pub struct PtyManager {
     pub(crate) sessions: HashMap<Uuid, PtySession>,
 }
@@ -41,6 +42,7 @@ impl PtyManager {
     /// otherwise falls back to a direct PTY (production path).
     /// When `continue_session` is true, passes `--continue` to claude to resume
     /// the last conversation in the working directory.
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_session(
         &mut self,
         session_id: Uuid,
@@ -93,6 +95,7 @@ impl PtyManager {
     }
 
     /// Spawn a command directly in a local PTY without tmux.
+    #[allow(clippy::too_many_arguments)]
     fn spawn_direct_session(
         &mut self,
         session_id: Uuid,

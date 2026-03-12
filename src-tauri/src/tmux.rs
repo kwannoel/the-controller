@@ -193,7 +193,7 @@ impl TmuxManager {
             return None;
         }
         let text = String::from_utf8_lossy(&output.stdout);
-        let parts: Vec<&str> = text.trim().split_whitespace().collect();
+        let parts: Vec<&str> = text.split_whitespace().collect();
         if parts.len() == 2 {
             let cols = parts[0].parse::<u16>().ok()?;
             let rows = parts[1].parse::<u16>().ok()?;

@@ -559,11 +559,9 @@ pub fn delete_project(
     storage.delete_project_dir(id).map_err(|e| e.to_string())?;
 
     // Optionally delete the repo directory
-    if delete_repo {
-        if Path::new(&project.repo_path).exists() {
-            std::fs::remove_dir_all(&project.repo_path)
-                .map_err(|e| format!("failed to delete repo: {}", e))?;
-        }
+    if delete_repo && Path::new(&project.repo_path).exists() {
+        std::fs::remove_dir_all(&project.repo_path)
+            .map_err(|e| format!("failed to delete repo: {}", e))?;
     }
 
     Ok(())
@@ -1310,7 +1308,7 @@ pub fn save_onboarding_config(state: State<AppState>, projects_root: String) -> 
 
 #[tauri::command]
 pub async fn check_claude_cli() -> Result<String, String> {
-    let result = tokio::task::spawn_blocking(|| config::check_claude_cli_status())
+    let result = tokio::task::spawn_blocking(config::check_claude_cli_status)
         .await
         .map_err(|e| format!("Task failed: {}", e))?;
     Ok(result)
@@ -1783,7 +1781,7 @@ fn discover_branch_commits(worktree_path: &str) -> Result<Vec<CommitInfo>, Strin
         if message.starts_with("Initial commit") {
             continue;
         }
-        let hash = format!("{}", &oid.to_string()[..7]);
+        let hash = oid.to_string()[..7].to_string();
         commits.push(CommitInfo { hash, message });
         if commits.len() >= 20 {
             break;

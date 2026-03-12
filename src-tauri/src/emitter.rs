@@ -8,6 +8,7 @@ pub trait EventEmitter: Send + Sync + 'static {
 pub struct NoopEmitter;
 
 impl NoopEmitter {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Arc<dyn EventEmitter> {
         Arc::new(Self)
     }
@@ -27,6 +28,7 @@ pub struct WsBroadcastEmitter {
 
 #[cfg(feature = "server")]
 impl WsBroadcastEmitter {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> (Arc<dyn EventEmitter>, tokio::sync::broadcast::Sender<String>) {
         let (tx, _) = tokio::sync::broadcast::channel(4096);
         let sender = tx.clone();
@@ -49,6 +51,7 @@ pub struct TauriEmitter {
 }
 
 impl TauriEmitter {
+    #[allow(clippy::new_ret_no_self)]
     pub fn new(app_handle: tauri::AppHandle) -> Arc<dyn EventEmitter> {
         Arc::new(Self { app_handle })
     }

@@ -343,6 +343,10 @@ mod tests {
         let repo_path = tmp.path().to_str().unwrap().to_string();
 
         let repo = Repository::init(&repo_path).expect("init repo");
+        // Set user config so git commands (e.g. rebase) work in CI without global config
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "Test").unwrap();
+        config.set_str("user.email", "test@example.com").unwrap();
         let sig = repo.signature().unwrap_or_else(|_| {
             git2::Signature::now("Test", "test@example.com").unwrap()
         });

@@ -47,15 +47,9 @@ impl Default for MaintainerConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AutoWorkerConfig {
     pub enabled: bool,
-}
-
-impl Default for AutoWorkerConfig {
-    fn default() -> Self {
-        Self { enabled: false }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -66,7 +66,7 @@ pub fn list_notes(
     for entry in fs::read_dir(&dir)? {
         let entry = entry?;
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "md") {
+        if path.extension().is_some_and(|e| e == "md") {
             let metadata = fs::metadata(&path)?;
             let modified = metadata.modified()?;
             let modified_at: DateTime<Utc> = modified.into();
@@ -146,11 +146,7 @@ pub fn create_note(
         ));
     }
 
-    let display_title = if title.ends_with(".md") {
-        &title[..title.len() - 3]
-    } else {
-        title
-    };
+    let display_title = title.strip_suffix(".md").unwrap_or(title);
     fs::write(&path, format!("# {}\n", display_title))?;
     Ok(filename)
 }

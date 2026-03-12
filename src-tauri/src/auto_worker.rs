@@ -11,6 +11,7 @@ use crate::labels;
 use crate::models::GithubIssue;
 use crate::state::AppState;
 
+#[allow(clippy::type_complexity)]
 static IDLE_CHANNEL: Lazy<(std::sync::Mutex<mpsc::Sender<Uuid>>, std::sync::Mutex<mpsc::Receiver<Uuid>>)> = Lazy::new(|| {
     let (tx, rx) = mpsc::channel();
     (std::sync::Mutex::new(tx), std::sync::Mutex::new(rx))
@@ -210,7 +211,7 @@ impl AutoWorkerScheduler {
                     .iter()
                     .filter(|(_, s)| {
                         s.last_idle_at.is_some()
-                            && s.last_nudge_at.map_or(true, |t| t.elapsed() > Duration::from_secs(NUDGE_COOLDOWN_SECS))
+                            && s.last_nudge_at.is_none_or(|t| t.elapsed() > Duration::from_secs(NUDGE_COOLDOWN_SECS))
                     })
                     .map(|(pid, _)| *pid)
                     .collect();
@@ -382,7 +383,7 @@ impl AutoWorkerScheduler {
         let reconciliation = reconcile_startup_workers(candidates);
 
         for candidate in &reconciliation.restore {
-            let restored = startup_candidate_to_active_session(&candidate);
+            let restored = startup_candidate_to_active_session(candidate);
             let attach_result = {
                 let mut pty_manager = match state.pty_manager.lock() {
                     Ok(manager) => manager,
@@ -730,10 +731,9 @@ fn close_issue_sync(repo_path: &str, issue_number: u64) -> Result<(), String> {
 fn mark_issue_finished(state: &AppState, session: &ActiveSession) {
     let mut issue_closed = issue_is_closed_sync(&session.repo_path, session.issue_number).ok();
 
-    if issue_closed != Some(true) && has_merged_pr_sync(&session.repo_path, session.issue_number) {
-        if close_issue_sync(&session.repo_path, session.issue_number).is_ok() {
+    if issue_closed != Some(true) && has_merged_pr_sync(&session.repo_path, session.issue_number)
+        && close_issue_sync(&session.repo_path, session.issue_number).is_ok() {
             issue_closed = Some(true);
-        }
     }
 
     apply_worker_label_plan_sync(

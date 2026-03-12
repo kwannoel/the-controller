@@ -20,6 +20,7 @@ impl CacheEntry {
     }
 }
 
+#[derive(Default)]
 pub struct IssueCache {
     pub entries: HashMap<String, CacheEntry>,
 }

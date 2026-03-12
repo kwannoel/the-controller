@@ -44,7 +44,7 @@ pub async fn detect_project_type(repo_path: String) -> Result<ProjectSignals, St
 
 #[tauri::command]
 pub async fn get_deploy_credentials() -> Result<DeployCredentials, String> {
-    tokio::task::spawn_blocking(|| DeployCredentials::load())
+    tokio::task::spawn_blocking(DeployCredentials::load)
         .await
         .map_err(|e| e.to_string())?
 }

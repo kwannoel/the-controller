@@ -31,6 +31,7 @@ pub(crate) async fn copy_image_file_to_clipboard(
 /// When `cropped` is false, captures the app window using the window ID.
 /// When `cropped` is true, launches interactive crop selection via `screencapture -i`.
 /// Returns the path to the screenshot file so the caller can pass it to `initial_prompt`.
+#[allow(unused_variables)]
 pub(crate) async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<String, String> {
     #[cfg(not(target_os = "macos"))]
     return Err("Screenshot capture is only supported on macOS".into());
@@ -61,7 +62,7 @@ pub(crate) async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Res
                 let handle = window.window_handle().map_err(|e| e.to_string())?;
                 match handle.as_raw() {
                     RawWindowHandle::AppKit(appkit) => {
-                        let ns_view = appkit.ns_view.as_ptr() as *mut std::ffi::c_void;
+                        let ns_view = appkit.ns_view.as_ptr();
                         unsafe { macos_window_number(ns_view) }
                     }
                     _ => return Err("Not a macOS window".into()),
@@ -106,9 +107,9 @@ unsafe fn macos_window_number(ns_view: *mut std::ffi::c_void) -> isize {
         ) -> *mut std::ffi::c_void;
     }
 
-    let sel_window = sel_registerName(b"window\0".as_ptr());
+    let sel_window = sel_registerName(c"window".as_ptr().cast());
     let ns_window = objc_msgSend(ns_view, sel_window);
 
-    let sel_number = sel_registerName(b"windowNumber\0".as_ptr());
+    let sel_number = sel_registerName(c"windowNumber".as_ptr().cast());
     objc_msgSend(ns_window, sel_number) as isize
 }

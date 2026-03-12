@@ -41,7 +41,7 @@ fn claude_project_dir(working_dir: &str) -> Result<PathBuf, String> {
     }
 
     // Claude Code encodes the working directory path by replacing `/` and `.` with `-`.
-    let encoded = working_dir.replace('/', "-").replace('.', "-");
+    let encoded = working_dir.replace(['/', '.'], "-");
 
     // Try exact match first
     let candidate = claude_projects.join(&encoded);
@@ -55,10 +55,9 @@ fn claude_project_dir(working_dir: &str) -> Result<PathBuf, String> {
     let mut best: Option<PathBuf> = None;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.contains(&encoded) || encoded.contains(&name) {
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+        if (name.contains(&encoded) || encoded.contains(&name))
+            && entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 best = Some(entry.path());
-            }
         }
     }
 
@@ -75,7 +74,7 @@ fn most_recent_jsonl(dir: &Path) -> Result<PathBuf, String> {
         if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
             if let Ok(meta) = fs::metadata(&path) {
                 let modified = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
-                if best.as_ref().map_or(true, |(_, t)| modified > *t) {
+                if best.as_ref().is_none_or(|(_, t)| modified > *t) {
                     best = Some((path, modified));
                 }
             }

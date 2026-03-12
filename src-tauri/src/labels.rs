@@ -2,7 +2,6 @@
 ///
 /// All label names use the `key:value` format (no space after the colon).
 /// Both the maintainer and auto-worker import from here to prevent drift.
-
 // Priority labels
 pub const PRIORITY_LOW: &str = "priority:low";
 pub const PRIORITY_HIGH: &str = "priority:high";
