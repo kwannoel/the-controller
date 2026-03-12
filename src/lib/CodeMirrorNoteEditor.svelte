@@ -165,6 +165,7 @@
 
   .note-code-editor :global(.cm-content) {
     padding: 16px;
+    color: var(--text-primary);
     caret-color: var(--text-primary);
   }
 
