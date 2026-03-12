@@ -18,12 +18,13 @@
   }
 
   function statusColor(status: string): string {
+    const style = getComputedStyle(document.documentElement);
     switch (status) {
-      case "running": return "#a6e3a1";
-      case "stopped": return "#6c7086";
-      case "deploying": return "#89b4fa";
-      case "error": return "#f38ba8";
-      default: return "#a6adc8";
+      case "running": return style.getPropertyValue("--status-idle").trim();
+      case "stopped": return style.getPropertyValue("--text-tertiary").trim();
+      case "deploying": return style.getPropertyValue("--status-working").trim();
+      case "error": return style.getPropertyValue("--status-error").trim();
+      default: return style.getPropertyValue("--text-secondary").trim();
     }
   }
 </script>
