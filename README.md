@@ -1,6 +1,6 @@
 # The Controller
 
-A desktop app for orchestrating multiple Claude Code terminal sessions.
+A shapeable, personal desktop system — starting with terminal multiplexing.
 
 Built with Tauri v2 + Svelte 5 + Rust.
 
