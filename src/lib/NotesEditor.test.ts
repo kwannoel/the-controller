@@ -9,7 +9,6 @@ import {
   activeNote,
   focusTarget,
   hotkeyAction,
-  noteViewMode,
   projects,
   type Project,
 } from "./stores";
@@ -42,60 +41,11 @@ describe("NotesEditor", () => {
     vi.clearAllMocks();
     projects.set([baseProject]);
     activeNote.set({ projectId: "project-1", filename: "a.md" });
-    noteViewMode.set("edit");
     focusTarget.set(null);
     hotkeyAction.set(null);
   });
 
-  it("renders explicit edit, preview, and split mode controls", async () => {
-    vi.mocked(command).mockImplementation((commandName: string) => {
-      if (commandName === "read_note") {
-        return Promise.resolve("# Heading\n\nBody copy");
-      }
-
-      if (commandName === "write_note") {
-        return Promise.resolve(undefined);
-      }
-
-      return Promise.resolve(undefined);
-    });
-
-    render(NotesEditor);
-
-    await screen.findByTestId("note-code-editor");
-
-    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Split" })).toBeInTheDocument();
-  });
-
-  it("shows both the editor and rendered markdown in split mode", async () => {
-    vi.mocked(command).mockImplementation((commandName: string) => {
-      if (commandName === "read_note") {
-        return Promise.resolve("# Heading\n\nBody copy");
-      }
-
-      if (commandName === "write_note") {
-        return Promise.resolve(undefined);
-      }
-
-      return Promise.resolve(undefined);
-    });
-
-    render(NotesEditor);
-
-    await screen.findByTestId("note-code-editor");
-
-    await fireEvent.click(screen.getByRole("button", { name: "Split" }));
-
-    expect(screen.getByTestId("note-code-editor")).toBeInTheDocument();
-    const preview = document.querySelector(".preview");
-    expect(preview).not.toBeNull();
-    expect(within(preview as HTMLElement).getByRole("heading", { name: "Heading" })).toBeInTheDocument();
-    expect(within(preview as HTMLElement).getByText("Body copy")).toBeInTheDocument();
-  });
-
-  it("mounts a dedicated code editor surface in edit mode", async () => {
+  it("mounts a dedicated code editor surface", async () => {
     vi.mocked(command).mockImplementation((commandName: string) => {
       if (commandName === "read_note") {
         return Promise.resolve("# Heading\n\nBody copy");
@@ -200,48 +150,6 @@ describe("NotesEditor", () => {
 
     await user.keyboard("{Escape}");
     expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", projectId: "project-1" });
-  });
-
-  it("cycles edit, preview, and split modes through the notes hotkey action", async () => {
-    vi.mocked(command).mockImplementation((commandName: string) => {
-      if (commandName === "read_note") {
-        return Promise.resolve("# Heading\n\nBody copy");
-      }
-
-      if (commandName === "write_note") {
-        return Promise.resolve(undefined);
-      }
-
-      return Promise.resolve(undefined);
-    });
-
-    render(NotesEditor);
-
-    await screen.findByTestId("note-code-editor");
-    expect(get(noteViewMode)).toBe("edit");
-    expect(document.querySelector(".preview")).toBeNull();
-
-    hotkeyAction.set({ type: "toggle-note-preview" });
-    await waitFor(() => {
-      expect(get(noteViewMode)).toBe("preview");
-    });
-    expect(screen.queryByTestId("note-code-editor")).not.toBeInTheDocument();
-    expect(screen.getByText("Body copy")).toBeInTheDocument();
-
-    hotkeyAction.set({ type: "toggle-note-preview" });
-    await waitFor(() => {
-      expect(get(noteViewMode)).toBe("split");
-    });
-    expect(screen.getByTestId("note-code-editor")).toBeInTheDocument();
-    expect(document.querySelector(".preview")).not.toBeNull();
-    expect(within(document.querySelector(".preview") as HTMLElement).getByText("Body copy")).toBeInTheDocument();
-
-    hotkeyAction.set({ type: "toggle-note-preview" });
-    await waitFor(() => {
-      expect(get(noteViewMode)).toBe("edit");
-    });
-    expect(screen.getByTestId("note-code-editor")).toBeInTheDocument();
-    expect(document.querySelector(".preview")).toBeNull();
   });
 
   it("keeps the latest note content when read_note resolves out of order", async () => {
