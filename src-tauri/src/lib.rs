@@ -117,6 +117,7 @@ pub fn run() {
             commands::create_folder,
             commands::rename_folder,
             commands::delete_folder,
+            commands::commit_notes,
             commands::send_note_ai_chat,
             commands::save_session_prompt,
             commands::list_project_prompts,

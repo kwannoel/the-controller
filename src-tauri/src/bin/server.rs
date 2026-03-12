@@ -61,6 +61,7 @@ async fn main() {
         .route("/api/create_folder", post(api_create_folder))
         .route("/api/rename_folder", post(api_rename_folder))
         .route("/api/delete_folder", post(api_delete_folder))
+        .route("/api/commit_notes", post(api_commit_notes))
         .route("/ws", get(ws_upgrade))
         .fallback(post(fallback_handler))
         .layer(CorsLayer::permissive())
@@ -481,6 +482,15 @@ async fn send_note_ai_chat(
 }
 // --- Notes ---
 
+fn server_try_commit(state: &Arc<ServerState>, message: &str) {
+    if let Ok(storage) = state.app.storage.lock() {
+        let base_dir = storage.base_dir();
+        if let Err(e) = notes::commit_notes(&base_dir, message) {
+            eprintln!("notes git commit failed: {}", e);
+        }
+    }
+}
+
 async fn api_list_notes(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
@@ -544,6 +554,7 @@ async fn api_create_note(
         .base_dir();
     let filename = notes::create_note(&base_dir, &folder, &title)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    server_try_commit(&state, &format!("create {}/{}", folder, filename));
     Ok(Json(serde_json::to_value(filename).unwrap()))
 }
 
@@ -560,6 +571,7 @@ async fn api_delete_note(
         .base_dir();
     notes::delete_note(&base_dir, &folder, &filename)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    server_try_commit(&state, &format!("delete {}/{}", folder, filename));
     Ok(Json(Value::Null))
 }
 
@@ -578,6 +590,7 @@ async fn api_rename_note(
         .base_dir();
     let filename = notes::rename_note(&base_dir, &folder, &old_name, &new_name)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    server_try_commit(&state, &format!("rename {}/{} → {}", folder, old_name, filename));
     Ok(Json(serde_json::to_value(filename).unwrap()))
 }
 
@@ -604,6 +617,7 @@ async fn api_create_folder(
         .base_dir();
     notes::create_folder(&base_dir, &name)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    server_try_commit(&state, &format!("create folder {}", name));
     Ok(Json(Value::Null))
 }
 
@@ -620,6 +634,7 @@ async fn api_rename_folder(
         .base_dir();
     notes::rename_folder(&base_dir, &old_name, &new_name)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    server_try_commit(&state, &format!("rename folder {} → {}", old_name, new_name));
     Ok(Json(Value::Null))
 }
 
@@ -635,7 +650,19 @@ async fn api_delete_folder(
         .base_dir();
     notes::delete_folder(&base_dir, &name, force)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    server_try_commit(&state, &format!("delete folder {}", name));
     Ok(Json(Value::Null))
+}
+
+async fn api_commit_notes(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let base_dir = state.app.storage.lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let committed = notes::commit_notes(&base_dir, "update notes")
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::to_value(committed).unwrap()))
 }
 
 // --- WebSocket ---
