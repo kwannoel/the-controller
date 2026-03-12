@@ -58,4 +58,16 @@ describe("markdownLivePreview", () => {
       expect(view.dom.querySelector(".cm-md-strong")).toBeNull();
     });
   });
+
+  describe("links", () => {
+    it("styles link text when cursor is elsewhere", () => {
+      const view = createView("[click here](https://example.com)\n\nother", 38);
+      expect(view.dom.querySelector(".cm-md-link")).not.toBeNull();
+    });
+
+    it("shows raw markdown when cursor is on the link line", () => {
+      const view = createView("[click here](https://example.com)\n\nother", 5);
+      expect(view.dom.querySelector(".cm-md-link")).toBeNull();
+    });
+  });
 });

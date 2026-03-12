@@ -24,6 +24,7 @@ const strongMark = Decoration.mark({ class: "cm-md-strong" });
 const emphasisMark = Decoration.mark({ class: "cm-md-em" });
 const inlineCodeMark = Decoration.mark({ class: "cm-md-code" });
 const syntaxHide = Decoration.replace({});
+const linkMark = Decoration.mark({ class: "cm-md-link" });
 
 function cursorLineRanges(view: EditorView): Set<number> {
   const lines = new Set<number>();
@@ -92,6 +93,16 @@ function buildDecorations(view: EditorView): DecorationSet {
         decorations.push({ from: node.from, to: node.to, deco: inlineCodeMark });
       }
       if (name === "CodeMark") {
+        decorations.push({ from: node.from, to: node.to, deco: syntaxHide });
+      }
+
+      if (name === "Link") {
+        decorations.push({ from: node.from, to: node.to, deco: linkMark });
+      }
+      if (name === "LinkMark") {
+        decorations.push({ from: node.from, to: node.to, deco: syntaxHide });
+      }
+      if (name === "URL") {
         decorations.push({ from: node.from, to: node.to, deco: syntaxHide });
       }
     },
