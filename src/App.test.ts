@@ -327,7 +327,7 @@ describe("Window title updates on staging", () => {
     });
   });
 
-  it("updates title with staging info when a session is staged", async () => {
+  it("does not change title when a session is staged", async () => {
     vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
@@ -335,73 +335,31 @@ describe("Window title updates on staging", () => {
     });
 
     render(App);
-
-    // Stage a session by updating the projects store
-    projects.set([{
-      ...baseProject,
-      staged_session: {
-        session_id: "sess-1",
-        pid: 12345,
-        port: 1421,
-      },
-      maintainer: { enabled: false, interval_minutes: 60 },
-      auto_worker: { enabled: false },
-      prompts: [],
-      sessions: [{ id: "sess-1", label: "fix-foo", worktree_path: null, worktree_branch: null, archived: false, kind: "claude", github_issue: null, initial_prompt: null, auto_worker_session: false }],
-    }]);
-
-    await waitFor(() => {
-      expect(mocks.setTitle).toHaveBeenCalledWith(
-        "The Controller (test-commit, test-branch, localhost:1420) \u2014 staging: fix-foo (localhost:1421)",
-      );
-    });
-  });
-
-  it("reverts title when session is unstaged", async () => {
-    vi.mocked(command).mockImplementation(async (cmd: string) => {
-      if (cmd === "restore_sessions") return;
-      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      return;
-    });
-
-    render(App);
-
-    // Stage
-    projects.set([{
-      ...baseProject,
-      staged_session: {
-        session_id: "sess-1",
-        pid: 12345,
-        port: 1421,
-      },
-      maintainer: { enabled: false, interval_minutes: 60 },
-      auto_worker: { enabled: false },
-      prompts: [],
-      sessions: [{ id: "sess-1", label: "fix-foo", worktree_path: null, worktree_branch: null, archived: false, kind: "claude", github_issue: null, initial_prompt: null, auto_worker_session: false }],
-    }]);
-
-    await waitFor(() => {
-      expect(mocks.setTitle).toHaveBeenCalledWith(
-        "The Controller (test-commit, test-branch, localhost:1420) \u2014 staging: fix-foo (localhost:1421)",
-      );
-    });
-
-    // Unstage
-    mocks.setTitle.mockClear();
-    projects.set([{
-      ...baseProject,
-      staged_session: null,
-      maintainer: { enabled: false, interval_minutes: 60 },
-      auto_worker: { enabled: false },
-      prompts: [],
-      sessions: [],
-    }]);
 
     await waitFor(() => {
       expect(mocks.setTitle).toHaveBeenCalledWith(
         "The Controller (test-commit, test-branch, localhost:1420)",
       );
     });
+
+    // Stage a session — title should NOT change
+    mocks.setTitle.mockClear();
+    projects.set([{
+      ...baseProject,
+      staged_session: {
+        session_id: "sess-1",
+        pid: 12345,
+        port: 1421,
+      },
+      maintainer: { enabled: false, interval_minutes: 60 },
+      auto_worker: { enabled: false },
+      prompts: [],
+      sessions: [{ id: "sess-1", label: "fix-foo", worktree_path: null, worktree_branch: null, archived: false, kind: "claude", github_issue: null, initial_prompt: null, auto_worker_session: false }],
+    }]);
+
+    // Give reactivity a tick, then verify title was NOT updated
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mocks.setTitle).not.toHaveBeenCalled();
   });
 });
 

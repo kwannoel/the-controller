@@ -328,13 +328,10 @@
     }
   }
 
-  function updateWindowTitle(branch: string, commit: string, staging?: string) {
+  function updateWindowTitle(branch: string, commit: string) {
     try {
       const parts = [commit, branch, `localhost:${__DEV_PORT__}`];
-      let title = `The Controller (${parts.join(", ")})`;
-      if (staging) {
-        title += ` — ${staging}`;
-      }
+      const title = `The Controller (${parts.join(", ")})`;
       getCurrentWindow().setTitle(title);
     } catch {
       // Browser mode — no Tauri window API available
@@ -407,24 +404,6 @@
       showToast(`Failed to generate architecture: ${error}`, "error");
     }
   }
-
-  $effect(() => {
-    const stagedProject = projectsState.current.find((p) => p.staged_session);
-    if (stagedProject) {
-      const session = stagedProject.sessions.find(
-        (s) => s.id === stagedProject.staged_session!.session_id,
-      );
-      const label = session?.label ?? "unknown";
-      const port = stagedProject.staged_session!.port;
-      updateWindowTitle(
-        __BUILD_BRANCH__,
-        __BUILD_COMMIT__,
-        `staging: ${label} (localhost:${port})`,
-      );
-    } else {
-      updateWindowTitle(__BUILD_BRANCH__, __BUILD_COMMIT__);
-    }
-  });
 
   onMount(() => {
     const unlistenSecureEnv = listen<string>("secure-env-requested", (payload) => {
