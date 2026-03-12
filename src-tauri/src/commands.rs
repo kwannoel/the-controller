@@ -805,6 +805,25 @@ pub fn cancel_secure_env_request(
 const COMMIT_POLL_INTERVAL_SECS: u64 = 3;
 const MAX_COMMIT_WAIT_SECS: u64 = 60;
 const MAX_REBASE_WAIT_SECS: u64 = 360; // 6 minutes
+const STAGING_PORT_OFFSET: u16 = 1000;
+
+/// Find a free port for the staged Controller instance.
+/// Starts at base_port + 1000 and increments until a free port is found.
+fn find_staging_port(base_port: u16) -> Result<u16, String> {
+    let start = base_port
+        .checked_add(STAGING_PORT_OFFSET)
+        .ok_or("Port overflow")?;
+    for candidate in start..start.saturating_add(100) {
+        if std::net::TcpListener::bind(("127.0.0.1", candidate)).is_ok() {
+            return Ok(candidate);
+        }
+    }
+    Err(format!(
+        "No free port found in range {}-{}",
+        start,
+        start + 100
+    ))
+}
 
 #[tauri::command]
 pub async fn stage_session_inplace(
@@ -3213,5 +3232,27 @@ mod tests {
         .expect("cancel secure env request");
 
         assert!(app_state.secure_env_request.lock().unwrap().is_none());
+    }
+}
+
+#[cfg(test)]
+mod staging_tests {
+    use super::*;
+
+    #[test]
+    fn test_find_free_port_returns_offset_port_when_free() {
+        // Port 59123 is unlikely to be in use
+        let port = find_staging_port(58123).unwrap();
+        assert_eq!(port, 59123); // base + 1000
+    }
+
+    #[test]
+    fn test_find_free_port_skips_occupied() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let occupied_port = listener.local_addr().unwrap().port();
+        let base = occupied_port - 1000;
+        let port = find_staging_port(base).unwrap();
+        assert!(port > occupied_port);
+        assert!(port <= occupied_port + 100);
     }
 }
