@@ -1,9 +1,9 @@
 import {
   Decoration,
-  DecorationSet,
+  type DecorationSet,
   EditorView,
   ViewPlugin,
-  ViewUpdate,
+  type ViewUpdate,
   WidgetType,
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
