@@ -7,7 +7,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
-import { RangeSetBuilder, type EditorState, Facet } from "@codemirror/state";
+import { type Extension, RangeSetBuilder, type EditorState, Facet } from "@codemirror/state";
 
 /** CSS classes applied by mark decorations. */
 const headingMark = {
@@ -224,7 +224,7 @@ export interface LivePreviewOptions {
 }
 
 export function markdownLivePreview(options?: LivePreviewOptions) {
-  const extensions = [livePreviewPlugin];
+  const extensions: Extension[] = [livePreviewPlugin];
   if (options?.resolveImageSrc) {
     extensions.unshift(imageResolverFacet.of(options.resolveImageSrc));
   }
