@@ -21,26 +21,42 @@ fn validate_filename(filename: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Returns the notes directory for a project under the default base path.
-/// `~/.the-controller/notes/{project_name}/`
-pub fn notes_dir(project_name: &str) -> PathBuf {
+/// Validates that a folder name does not contain path separators or traversal sequences.
+fn validate_folder_name(name: &str) -> std::io::Result<()> {
+    if name.contains('/') || name.contains('\\') || name.contains("..") || name.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid folder name: {}", name),
+        ));
+    }
+    Ok(())
+}
+
+/// Returns the notes directory for a folder under the default base path.
+/// `~/.the-controller/notes/{folder}/`
+pub fn notes_dir(folder: &str) -> PathBuf {
     let home = dirs::home_dir().expect("could not determine home directory");
     home.join(".the-controller")
         .join("notes")
-        .join(project_name)
+        .join(folder)
 }
 
-/// Returns the notes directory for a project under a custom base path (for testing).
-pub fn notes_dir_with_base(base: &std::path::Path, project_name: &str) -> PathBuf {
-    base.join("notes").join(project_name)
+/// Returns the notes directory for a folder under a custom base path (for testing).
+pub fn notes_dir_with_base(base: &std::path::Path, folder: &str) -> PathBuf {
+    base.join("notes").join(folder)
 }
 
-/// List all `.md` files in the project's notes directory, sorted by modified time (newest first).
+/// Returns the root notes directory under a custom base path.
+pub fn notes_root_with_base(base: &std::path::Path) -> PathBuf {
+    base.join("notes")
+}
+
+/// List all `.md` files in the folder's notes directory, sorted by modified time (newest first).
 pub fn list_notes(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
 ) -> std::io::Result<Vec<NoteEntry>> {
-    let dir = notes_dir_with_base(base, project_name);
+    let dir = notes_dir_with_base(base, folder);
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -71,34 +87,34 @@ pub fn list_notes(
 /// Read the content of a note file.
 pub fn read_note(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
     filename: &str,
 ) -> std::io::Result<String> {
     validate_filename(filename)?;
-    let path = notes_dir_with_base(base, project_name).join(filename);
+    let path = notes_dir_with_base(base, folder).join(filename);
     fs::read_to_string(path)
 }
 
 /// Check whether a note file exists after validating its filename.
 pub fn note_exists(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
     filename: &str,
 ) -> std::io::Result<bool> {
     validate_filename(filename)?;
-    let path = notes_dir_with_base(base, project_name).join(filename);
+    let path = notes_dir_with_base(base, folder).join(filename);
     Ok(path.exists())
 }
 
 /// Write (create or overwrite) a note file. Creates the directory if needed.
 pub fn write_note(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
     filename: &str,
     content: &str,
 ) -> std::io::Result<()> {
     validate_filename(filename)?;
-    let dir = notes_dir_with_base(base, project_name);
+    let dir = notes_dir_with_base(base, folder);
     fs::create_dir_all(&dir)?;
     fs::write(dir.join(filename), content)
 }
@@ -108,7 +124,7 @@ pub fn write_note(
 /// Returns an error if a note with that filename already exists.
 pub fn create_note(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
     title: &str,
 ) -> std::io::Result<String> {
     let filename = if title.ends_with(".md") {
@@ -118,7 +134,7 @@ pub fn create_note(
     };
     validate_filename(&filename)?;
 
-    let dir = notes_dir_with_base(base, project_name);
+    let dir = notes_dir_with_base(base, folder);
     fs::create_dir_all(&dir)?;
 
     let path = dir.join(&filename);
@@ -142,7 +158,7 @@ pub fn create_note(
 /// Returns an error if the target filename already exists.
 pub fn rename_note(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
     old_name: &str,
     new_name: &str,
 ) -> std::io::Result<String> {
@@ -154,7 +170,7 @@ pub fn rename_note(
     };
     validate_filename(&new_filename)?;
 
-    let dir = notes_dir_with_base(base, project_name);
+    let dir = notes_dir_with_base(base, folder);
     let old_path = dir.join(old_name);
     let new_path = dir.join(&new_filename);
 
@@ -199,11 +215,11 @@ fn strip_uuid_suffixes(stem: &str) -> &str {
 /// Returns the filename of the new copy.
 pub fn duplicate_note(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
     filename: &str,
 ) -> std::io::Result<String> {
     validate_filename(filename)?;
-    let dir = notes_dir_with_base(base, project_name);
+    let dir = notes_dir_with_base(base, folder);
     let src_path = dir.join(filename);
 
     if !src_path.exists() {
@@ -226,15 +242,83 @@ pub fn duplicate_note(
 /// Delete a note file. Returns Ok(()) even if the file doesn't exist (idempotent).
 pub fn delete_note(
     base: &std::path::Path,
-    project_name: &str,
+    folder: &str,
     filename: &str,
 ) -> std::io::Result<()> {
     validate_filename(filename)?;
-    let path = notes_dir_with_base(base, project_name).join(filename);
+    let path = notes_dir_with_base(base, folder).join(filename);
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
+    }
+}
+
+/// List all folder names (subdirectories) under the notes root, sorted alphabetically.
+pub fn list_folders(base: &std::path::Path) -> std::io::Result<Vec<String>> {
+    let root = notes_root_with_base(base);
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut folders = Vec::new();
+    for entry in fs::read_dir(&root)? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            if let Some(name) = entry.file_name().to_str() {
+                folders.push(name.to_string());
+            }
+        }
+    }
+    folders.sort();
+    Ok(folders)
+}
+
+/// Create an empty folder. Returns error if it already exists.
+pub fn create_folder(base: &std::path::Path, name: &str) -> std::io::Result<()> {
+    validate_folder_name(name)?;
+    let dir = notes_dir_with_base(base, name);
+    if dir.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!("folder '{}' already exists", name),
+        ));
+    }
+    fs::create_dir_all(&dir)
+}
+
+/// Rename a folder. Returns error if target already exists.
+pub fn rename_folder(base: &std::path::Path, old_name: &str, new_name: &str) -> std::io::Result<()> {
+    validate_folder_name(old_name)?;
+    validate_folder_name(new_name)?;
+    let old_dir = notes_dir_with_base(base, old_name);
+    let new_dir = notes_dir_with_base(base, new_name);
+    if !old_dir.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("folder '{}' not found", old_name),
+        ));
+    }
+    if new_dir.exists() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            format!("folder '{}' already exists", new_name),
+        ));
+    }
+    fs::rename(old_dir, new_dir)
+}
+
+/// Delete a folder. If `force` is false, fails when the folder is non-empty.
+/// Returns Ok(()) if the folder doesn't exist (idempotent).
+pub fn delete_folder(base: &std::path::Path, name: &str, force: bool) -> std::io::Result<()> {
+    validate_folder_name(name)?;
+    let dir = notes_dir_with_base(base, name);
+    if !dir.exists() {
+        return Ok(());
+    }
+    if force {
+        fs::remove_dir_all(&dir)
+    } else {
+        fs::remove_dir(&dir)
     }
 }
 
@@ -246,7 +330,7 @@ mod tests {
     #[test]
     fn test_list_notes_empty() {
         let tmp = TempDir::new().unwrap();
-        let notes = list_notes(tmp.path(), "my-project").unwrap();
+        let notes = list_notes(tmp.path(), "my-folder").unwrap();
         assert!(notes.is_empty());
     }
 
@@ -362,7 +446,7 @@ mod tests {
         assert_eq!(strip_uuid_suffixes("blog-adac4038-70d71ba1"), "blog");
         // Don't strip non-hex suffixes
         assert_eq!(strip_uuid_suffixes("my-notes"), "my-notes");
-        assert_eq!(strip_uuid_suffixes("my-project-xyz"), "my-project-xyz");
+        assert_eq!(strip_uuid_suffixes("my-folder-xyz"), "my-folder-xyz");
         // Don't strip to empty
         assert_eq!(strip_uuid_suffixes("abcd1234"), "abcd1234");
     }
@@ -426,19 +510,19 @@ mod tests {
     }
 
     #[test]
-    fn test_notes_are_project_scoped() {
+    fn test_notes_are_folder_scoped() {
         let tmp = TempDir::new().unwrap();
-        create_note(tmp.path(), "project-a", "shared-name").unwrap();
-        create_note(tmp.path(), "project-b", "shared-name").unwrap();
+        create_note(tmp.path(), "folder-a", "shared-name").unwrap();
+        create_note(tmp.path(), "folder-b", "shared-name").unwrap();
 
-        let notes_a = list_notes(tmp.path(), "project-a").unwrap();
-        let notes_b = list_notes(tmp.path(), "project-b").unwrap();
+        let notes_a = list_notes(tmp.path(), "folder-a").unwrap();
+        let notes_b = list_notes(tmp.path(), "folder-b").unwrap();
         assert_eq!(notes_a.len(), 1);
         assert_eq!(notes_b.len(), 1);
 
-        // Writing to one project should not affect the other
-        write_note(tmp.path(), "project-a", "shared-name.md", "content A").unwrap();
-        let content_b = read_note(tmp.path(), "project-b", "shared-name.md").unwrap();
+        // Writing to one folder should not affect the other
+        write_note(tmp.path(), "folder-a", "shared-name.md", "content A").unwrap();
+        let content_b = read_note(tmp.path(), "folder-b", "shared-name.md").unwrap();
         assert_eq!(content_b, "# shared-name\n");
     }
 
@@ -463,10 +547,94 @@ mod tests {
     #[test]
     fn test_rename_nonexistent_source_fails() {
         let tmp = TempDir::new().unwrap();
-        // Create the project directory so the error is about the source, not the dir
+        // Create the folder directory so the error is about the source, not the dir
         create_note(tmp.path(), "proj", "existing").unwrap();
         let result = rename_note(tmp.path(), "proj", "no-such-note.md", "new-name");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn test_list_folders() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        let folders = list_folders(base).unwrap();
+        assert!(folders.is_empty());
+        create_note(base, "work", "task1").unwrap();
+        create_note(base, "personal", "diary").unwrap();
+        let mut folders = list_folders(base).unwrap();
+        folders.sort();
+        assert_eq!(folders, vec!["personal", "work"]);
+    }
+
+    #[test]
+    fn test_create_folder() {
+        let tmp = TempDir::new().unwrap();
+        create_folder(tmp.path(), "my-folder").unwrap();
+        let folders = list_folders(tmp.path()).unwrap();
+        assert_eq!(folders, vec!["my-folder"]);
+    }
+
+    #[test]
+    fn test_create_folder_already_exists() {
+        let tmp = TempDir::new().unwrap();
+        create_folder(tmp.path(), "dup").unwrap();
+        let result = create_folder(tmp.path(), "dup");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+    }
+
+    #[test]
+    fn test_rename_folder() {
+        let tmp = TempDir::new().unwrap();
+        create_note(tmp.path(), "old-name", "note1").unwrap();
+        rename_folder(tmp.path(), "old-name", "new-name").unwrap();
+        let folders = list_folders(tmp.path()).unwrap();
+        assert_eq!(folders, vec!["new-name"]);
+        let content = read_note(tmp.path(), "new-name", "note1.md").unwrap();
+        assert_eq!(content, "# note1\n");
+    }
+
+    #[test]
+    fn test_rename_folder_target_exists() {
+        let tmp = TempDir::new().unwrap();
+        create_folder(tmp.path(), "a").unwrap();
+        create_folder(tmp.path(), "b").unwrap();
+        let result = rename_folder(tmp.path(), "a", "b");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+    }
+
+    #[test]
+    fn test_delete_folder_empty() {
+        let tmp = TempDir::new().unwrap();
+        create_folder(tmp.path(), "empty").unwrap();
+        delete_folder(tmp.path(), "empty", false).unwrap();
+        let folders = list_folders(tmp.path()).unwrap();
+        assert!(folders.is_empty());
+    }
+
+    #[test]
+    fn test_delete_folder_nonempty_without_force() {
+        let tmp = TempDir::new().unwrap();
+        create_note(tmp.path(), "has-notes", "note1").unwrap();
+        let result = delete_folder(tmp.path(), "has-notes", false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_delete_folder_nonempty_with_force() {
+        let tmp = TempDir::new().unwrap();
+        create_note(tmp.path(), "has-notes", "note1").unwrap();
+        delete_folder(tmp.path(), "has-notes", true).unwrap();
+        let folders = list_folders(tmp.path()).unwrap();
+        assert!(folders.is_empty());
+    }
+
+    #[test]
+    fn test_delete_folder_nonexistent_is_ok() {
+        let tmp = TempDir::new().unwrap();
+        let result = delete_folder(tmp.path(), "nope", false);
+        assert!(result.is_ok());
     }
 }
