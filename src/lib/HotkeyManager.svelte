@@ -284,7 +284,7 @@
         if (activeId) {
           const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
           const sess = proj?.sessions.find((s) => s.id === activeId);
-          dispatchHotkeyAction({ type: "finish-branch", sessionId: activeId, kind: sess?.kind });
+          dispatchHotkeyAction({ type: "finish-branch", sessionId: activeId, kind: sess?.kind as "claude" | "codex" | undefined });
         }
         return true;
       case "save-prompt": {

@@ -42,8 +42,9 @@
   const selectedSessionProviderState = fromStore(selectedSessionProvider);
   let currentSessionProvider = $derived(selectedSessionProviderState.current);
   let currentArchitectureProject = $derived.by(() => {
+    const focus = focusTargetState.current;
     const focusedProjectId =
-      focusTargetState.current?.projectId ??
+      (focus && "projectId" in focus ? focus.projectId : undefined) ??
       projectsState.current.find((project) =>
         project.sessions.some((session) => session.id === activeSessionIdState.current),
       )?.id ??
@@ -117,7 +118,7 @@
 
   function getTargetProject(): Project | undefined {
     const focus = focusTargetState.current;
-    if (!focus) return undefined;
+    if (!focus || !("projectId" in focus)) return undefined;
     return projectsState.current.find((p) => p.id === focus.projectId);
   }
 
@@ -140,7 +141,7 @@
 
   async function toggleAutoWorkerEnabled() {
     const focus = focusTargetState.current;
-    if (!focus) return;
+    if (!focus || !("projectId" in focus)) return;
     const project = projectsState.current.find((p) => p.id === focus.projectId);
     if (!project) return;
     const newEnabled = !project.auto_worker.enabled;

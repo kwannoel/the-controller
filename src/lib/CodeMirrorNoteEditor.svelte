@@ -18,7 +18,7 @@
     ) {
       return _origVimKeyFromEvent.call(
         this,
-        { key: e.key.toUpperCase(), shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey, code: e.code },
+        { key: e.key.toUpperCase(), shiftKey: e.shiftKey, ctrlKey: e.ctrlKey, altKey: e.altKey, metaKey: e.metaKey, code: e.code } as unknown as KeyboardEvent,
         vim,
       );
     }

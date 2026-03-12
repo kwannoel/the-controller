@@ -15,7 +15,11 @@
     "strict": true,
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
-    "types": ["vitest/globals", "@testing-library/jest-dom", "node"]
+    "types": ["vitest/globals", "@testing-library/jest-dom", "node"],
+    "paths": {
+      "$lib/*": ["./src/lib/*"],
+      "$lib": ["./src/lib"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte", "vitest-setup.ts"]
 }
