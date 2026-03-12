@@ -27,6 +27,7 @@
   let deleteSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let mergeSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let mergeInProgress = $state(false);
+  let staging = $state(false);
   let finishBranchTarget: { sessionId: string; kind?: string } | null = $state(null);
   const workspaceModeState = fromStore(workspaceMode);
   let currentMode = $derived(workspaceModeState.current);
@@ -416,6 +417,8 @@
   }
 
   async function stageSession(projectId: string, sessionId: string) {
+    if (staging) return;
+    staging = true;
     activeSessionId.set(sessionId);
     focusTerminalSoon();
 
@@ -433,6 +436,7 @@
     } catch (e) {
       showToast(String(e), "error");
     } finally {
+      staging = false;
       unlistenStatus?.();
     }
   }
