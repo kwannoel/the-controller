@@ -5,6 +5,7 @@ use crate::storage::Storage;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex as TokioMutex;
 
 const ISSUE_CACHE_TTL_SECS: u64 = 60;
 
@@ -84,6 +85,7 @@ pub struct AppState {
     pub issue_cache: Arc<Mutex<IssueCache>>,
     pub(crate) secure_env_request: Mutex<Option<crate::secure_env::ActiveSecureEnvRequest>>,
     pub emitter: Arc<dyn EventEmitter>,
+    pub staging_lock: TokioMutex<()>,
 }
 
 impl AppState {
@@ -95,6 +97,7 @@ impl AppState {
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
             secure_env_request: Mutex::new(None),
             emitter,
+            staging_lock: TokioMutex::new(()),
         })
     }
 

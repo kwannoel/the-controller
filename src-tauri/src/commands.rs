@@ -814,7 +814,9 @@ fn find_staging_port(base_port: u16) -> Result<u16, String> {
         .checked_add(STAGING_PORT_OFFSET)
         .ok_or("Port overflow")?;
     for candidate in start..start.saturating_add(100) {
-        if std::net::TcpListener::bind(("127.0.0.1", candidate)).is_ok() {
+        let ipv4_free = std::net::TcpListener::bind(("127.0.0.1", candidate)).is_ok();
+        let ipv6_free = std::net::TcpListener::bind(("::1", candidate)).is_ok();
+        if ipv4_free && ipv6_free {
             return Ok(candidate);
         }
     }
@@ -858,6 +860,8 @@ pub async fn stage_session(
 
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    let _staging_guard = state.staging_lock.lock().await;
 
     // Extract data under a short-lived storage lock to avoid deadlock with pty_manager
     let (repo_path, branch, worktree_path) = {
@@ -2083,6 +2087,7 @@ mod tests {
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
             secure_env_request: Mutex::new(None),
             emitter: crate::emitter::NoopEmitter::new(),
+            staging_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -3346,5 +3351,15 @@ mod staging_tests {
         let port = find_staging_port(base).unwrap();
         assert!(port > occupied_port);
         assert!(port <= occupied_port + 100);
+    }
+
+    #[test]
+    fn test_find_staging_port_checks_ipv6() {
+        // Bind on IPv6 only — find_staging_port must detect this
+        let listener = std::net::TcpListener::bind("[::1]:0").unwrap();
+        let occupied_port = listener.local_addr().unwrap().port();
+        let base = occupied_port.checked_sub(STAGING_PORT_OFFSET).unwrap();
+        let port = find_staging_port(base).unwrap();
+        assert_ne!(port, occupied_port, "must skip port occupied on IPv6");
     }
 }
