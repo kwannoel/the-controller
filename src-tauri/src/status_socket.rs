@@ -9,6 +9,12 @@ use crate::state::AppState;
 use crate::worktree::WorktreeManager;
 
 const DEFAULT_SOCKET_PATH: &str = "/tmp/the-controller.sock";
+const DEFAULT_STAGED_SOCKET_PATH: &str = "/tmp/the-controller-staged.sock";
+
+/// Return the socket path used by staged Controller instances.
+pub fn staged_socket_path() -> &'static str {
+    DEFAULT_STAGED_SOCKET_PATH
+}
 
 /// Return the socket path, checking the CONTROLLER_SOCKET env var first.
 pub fn socket_path() -> String {

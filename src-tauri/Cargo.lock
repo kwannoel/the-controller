@@ -4672,6 +4672,7 @@ dependencies = [
  "dirs 5.0.1",
  "git2",
  "image",
+ "libc",
  "once_cell",
  "portable-pty",
  "raw-window-handle",

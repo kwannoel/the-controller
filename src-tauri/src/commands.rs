@@ -827,13 +827,17 @@ fn find_staging_port(base_port: u16) -> Result<u16, String> {
 
 /// Kill a process group by PID. Sends SIGTERM to the group, then SIGKILL after 2s.
 pub(crate) fn kill_process_group(pid: u32) {
-    use std::process::Command;
-    let pgid = format!("-{}", pid);
-    let _ = Command::new("kill").args(["--", &pgid]).status();
-    std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-        let _ = Command::new("kill").args(["-9", "--", &pgid]).status();
-    });
+    #[cfg(unix)]
+    {
+        use libc::{kill, SIGTERM, SIGKILL};
+        if let Ok(pgid) = i32::try_from(pid) {
+            unsafe { kill(-pgid, SIGTERM); }
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                unsafe { kill(-pgid, SIGKILL); }
+            });
+        }
+    }
 }
 
 #[tauri::command]
@@ -861,8 +865,19 @@ pub async fn stage_session(
             return Err("Staging is only supported for the-controller".to_string());
         }
 
-        if project.staged_session.is_some() {
-            return Err("A session is already staged — unstage it first".to_string());
+        if let Some(staged) = &project.staged_session {
+            // Check if the staged process is still alive
+            #[cfg(unix)]
+            let alive = unsafe { libc::kill(staged.pid as i32, 0) } == 0;
+            #[cfg(not(unix))]
+            let alive = false;
+            if alive {
+                return Err("A session is already staged — unstage it first".to_string());
+            }
+            // Stale record — clear it
+            let mut p = project.clone();
+            p.staged_session = None;
+            storage.save_project(&p).map_err(|e| e.to_string())?;
         }
 
         let session = project
@@ -1029,7 +1044,7 @@ pub async fn stage_session(
     let child = std::process::Command::new("bash")
         .args(["./dev.sh", &port.to_string()])
         .current_dir(&wt)
-        .env("CONTROLLER_SOCKET", "/tmp/the-controller-staged.sock")
+        .env("CONTROLLER_SOCKET", crate::status_socket::staged_socket_path())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .process_group(0)
@@ -1073,7 +1088,7 @@ pub fn unstage_session(state: State<AppState>, project_id: String) -> Result<(),
     kill_process_group(staged.pid);
 
     // Clean up the staged socket
-    let _ = std::fs::remove_file("/tmp/the-controller-staged.sock");
+    let _ = std::fs::remove_file(crate::status_socket::staged_socket_path());
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())

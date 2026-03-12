@@ -132,14 +132,18 @@ pub fn run() {
         .run(|app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 status_socket::cleanup();
-                // Kill any staged controller instance
+                // Kill any staged controller instance and clear stale records
                 if let Some(state) = app_handle.try_state::<state::AppState>() {
                     if let Ok(storage) = state.storage.lock() {
                         if let Ok(inventory) = storage.list_projects() {
                             for project in &inventory.projects {
                                 if let Some(staged) = &project.staged_session {
                                     commands::kill_process_group(staged.pid);
-                                    let _ = std::fs::remove_file("/tmp/the-controller-staged.sock");
+                                    let _ = std::fs::remove_file(status_socket::staged_socket_path());
+                                    // Clear stale staged_session record
+                                    let mut p = project.clone();
+                                    p.staged_session = None;
+                                    let _ = storage.save_project(&p);
                                 }
                             }
                         }
