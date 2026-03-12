@@ -192,8 +192,6 @@ export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
 export const architectureViews = writable<Map<string, ArchitectureViewState>>(
   new Map(),
 );
-export type NoteViewMode = "edit" | "preview" | "split";
-export const noteViewMode = writable<NoteViewMode>("edit");
 export const projects = writable<Project[]>([]);
 export const activeSessionId = writable<string | null>(null);
 export type SessionStatus = "working" | "idle" | "exited";
