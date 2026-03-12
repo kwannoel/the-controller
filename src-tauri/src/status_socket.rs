@@ -8,11 +8,12 @@ use crate::emitter::EventEmitter;
 use crate::state::AppState;
 use crate::worktree::WorktreeManager;
 
-const SOCKET_PATH: &str = "/tmp/the-controller.sock";
+const DEFAULT_SOCKET_PATH: &str = "/tmp/the-controller.sock";
 
-/// Return the socket path constant.
-pub fn socket_path() -> &'static str {
-    SOCKET_PATH
+/// Return the socket path, checking the CONTROLLER_SOCKET env var first.
+pub fn socket_path() -> String {
+    std::env::var("CONTROLLER_SOCKET")
+        .unwrap_or_else(|_| DEFAULT_SOCKET_PATH.to_string())
 }
 
 /// Parse a "working:uuid", "idle:uuid", or "cleanup:uuid" message.
@@ -110,27 +111,29 @@ fn dispatch_secure_env_request(
 /// Start the Unix domain socket listener.
 /// Cleans up stale sockets, binds, and spawns a thread to accept connections.
 pub fn start_listener(app_handle: AppHandle) {
+    let path = socket_path();
+
     // Clean up stale socket
-    if std::path::Path::new(SOCKET_PATH).exists() {
-        match UnixStream::connect(SOCKET_PATH) {
+    if std::path::Path::new(&path).exists() {
+        match UnixStream::connect(&path) {
             Ok(_) => {
                 eprintln!(
                     "Warning: another instance appears to be running (socket {} is active)",
-                    SOCKET_PATH
+                    path
                 );
                 return;
             }
             Err(_) => {
                 // Connection refused — stale socket, safe to remove
-                let _ = std::fs::remove_file(SOCKET_PATH);
+                let _ = std::fs::remove_file(&path);
             }
         }
     }
 
-    let listener = match UnixListener::bind(SOCKET_PATH) {
+    let listener = match UnixListener::bind(&path) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("Failed to bind Unix socket at {}: {}", SOCKET_PATH, e);
+            eprintln!("Failed to bind Unix socket at {}: {}", path, e);
             return;
         }
     };
@@ -302,13 +305,14 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
 /// Generate a JSON settings string for Claude Code's `--settings` flag.
 /// Configures hooks that report session status changes over the Unix socket.
 pub fn hook_settings_json(session_id: Uuid) -> String {
+    let path = socket_path();
     let working_cmd = format!(
         "echo \"working:{}\" | nc -U -w 2 {} 2>/dev/null; true",
-        session_id, SOCKET_PATH
+        session_id, path
     );
     let idle_cmd = format!(
         "echo \"idle:{}\" | nc -U -w 2 {} 2>/dev/null; true",
-        session_id, SOCKET_PATH
+        session_id, path
     );
 
     serde_json::json!({
@@ -351,7 +355,7 @@ pub fn hook_settings_json(session_id: Uuid) -> String {
 
 /// Remove the socket file. Call on app shutdown.
 pub fn cleanup() {
-    let _ = std::fs::remove_file(SOCKET_PATH);
+    let _ = std::fs::remove_file(socket_path());
 }
 
 #[cfg(test)]
@@ -507,8 +511,26 @@ mod tests {
     }
 
     #[test]
-    fn test_socket_path_returns_expected() {
-        assert_eq!(socket_path(), "/tmp/the-controller.sock");
+    fn test_socket_path_returns_default() {
+        // When CONTROLLER_SOCKET is not set, returns the default path
+        if std::env::var("CONTROLLER_SOCKET").is_err() {
+            assert_eq!(socket_path(), "/tmp/the-controller.sock");
+        }
+    }
+
+    #[test]
+    fn test_socket_path_respects_env_var() {
+        // Temporarily set the env var and verify socket_path reads it.
+        // Note: env vars are process-global, but test runners run tests
+        // in separate threads. This is acceptable for a quick read-check.
+        let key = "CONTROLLER_SOCKET";
+        let original = std::env::var(key).ok();
+        std::env::set_var(key, "/tmp/custom-controller.sock");
+        assert_eq!(socket_path(), "/tmp/custom-controller.sock");
+        match original {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
     }
 
     #[test]
