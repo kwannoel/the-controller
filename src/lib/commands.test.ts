@@ -136,7 +136,7 @@ describe("command registry", () => {
     expect(sess.entries.map(entry => entry.key)).toContain("⌘t");
 
     const proj = sections.find(s => s.label === "Projects")!;
-    expect(proj.entries).toHaveLength(4); // i, t, T, e
+    expect(proj.entries).toHaveLength(1); // i (open-issues-modal)
 
     const panels = sections.find(s => s.label === "Panels")!;
     expect(panels.entries).toHaveLength(2); // ?, ⌘k

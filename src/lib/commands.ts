@@ -11,10 +11,7 @@ export type CommandId =
   | "delete"
   | "create-session"
   | "finish-branch"
-  | "create-issue"
-  | "triage-untriaged"
-  | "triage-triaged"
-  | "assigned-issues"
+  | "open-issues-modal"
   | "expand-collapse"
   | "toggle-agent"
   | "trigger-agent-check"
@@ -66,7 +63,7 @@ export const commands: CommandDef[] = [
   { id: "escape-forward", key: "Esc Esc", section: "Navigation", description: "Forward escape to terminal", handledExternally: true },
 
   // ── Sessions ──
-  { id: "create-session", key: "c", section: "Sessions", description: "Create session with issue", mode: "development" },
+  { id: "create-session", key: "c", section: "Sessions", description: "Create session", mode: "development" },
   { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)", mode: "development" },
   { id: "save-prompt", key: "P", section: "Sessions", description: "Save focused session's prompt", mode: "development" },
   { id: "load-prompt", key: "p", section: "Sessions", description: "Load saved prompt into new session", mode: "development" },
@@ -79,10 +76,7 @@ export const commands: CommandDef[] = [
   // ── Projects ──
   { id: "new-project", key: "n", section: "Projects", description: "New project", mode: "development" },
   { id: "delete", key: "d", section: "Projects", description: "Delete focused item (session or project)", mode: "development" },
-  { id: "create-issue", key: "i", section: "Projects", description: "Create GitHub issue for focused project", mode: "development" },
-  { id: "triage-untriaged", key: "t", section: "Projects", description: "Triage issues (untriaged)", mode: "development" },
-  { id: "triage-triaged", key: "T", section: "Projects", description: "View triaged issues", mode: "development" },
-  { id: "assigned-issues", key: "e", section: "Projects", description: "View assigned but uncompleted issues", mode: "development" },
+  { id: "open-issues-modal", key: "i", section: "Projects", description: "Issues (create, find, assign)", mode: "development" },
   { id: "generate-architecture", key: "r", section: "Projects", description: "Generate / regenerate architecture for focused project", mode: "architecture" },
 
   // ── Panels ──
@@ -133,7 +127,7 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
     const essentials: HelpSection = {
       label: "Essentials",
       entries: [
-        { key: "c", description: "Create session with issue" },
+        { key: "c", description: "Create session" },
         { key: "j / k", description: "Next / previous item" },
         { key: "n", description: "New project" },
         { key: "d", description: "Delete focused item" },
