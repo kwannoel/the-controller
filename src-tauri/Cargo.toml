@@ -1,6 +1,6 @@
 [package]
 name = "the-controller"
-version = "0.4.0"
+version = "0.5.0"
 description = "A Tauri desktop app for managing multiple Claude Code sessions"
 authors = ["Noel Kwan"]
 edition = "2021"
