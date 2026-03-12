@@ -176,7 +176,26 @@ pub fn rename_note(
     Ok(new_filename)
 }
 
-/// Duplicate a note file. Creates a copy named `{stem}-{uuid}.md`.
+/// Strip trailing `-<8 hex chars>` UUID suffixes from a stem.
+/// e.g. "blog-adac4038-70d71ba1" → "blog"
+fn strip_uuid_suffixes(stem: &str) -> &str {
+    let mut s = stem;
+    loop {
+        if s.len() < 9 {
+            break;
+        }
+        let (head, tail) = s.split_at(s.len() - 9);
+        if tail.starts_with('-') && tail[1..].bytes().all(|b| b.is_ascii_hexdigit()) && !head.is_empty() {
+            s = head;
+        } else {
+            break;
+        }
+    }
+    s
+}
+
+/// Duplicate a note file. Creates a copy named `{base_stem}-{uuid}.md`,
+/// stripping any existing UUID suffixes first to prevent stacking.
 /// Returns the filename of the new copy.
 pub fn duplicate_note(
     base: &std::path::Path,
@@ -196,8 +215,9 @@ pub fn duplicate_note(
 
     let content = fs::read_to_string(&src_path)?;
     let stem = filename.strip_suffix(".md").unwrap_or(filename);
+    let base_stem = strip_uuid_suffixes(stem);
     let short_id = &Uuid::new_v4().to_string()[..8];
-    let copy_filename = format!("{}-{}.md", stem, short_id);
+    let copy_filename = format!("{}-{}.md", base_stem, short_id);
 
     fs::write(dir.join(&copy_filename), content)?;
     Ok(copy_filename)
@@ -336,6 +356,18 @@ mod tests {
     }
 
     #[test]
+    fn test_strip_uuid_suffixes() {
+        assert_eq!(strip_uuid_suffixes("blog"), "blog");
+        assert_eq!(strip_uuid_suffixes("blog-adac4038"), "blog");
+        assert_eq!(strip_uuid_suffixes("blog-adac4038-70d71ba1"), "blog");
+        // Don't strip non-hex suffixes
+        assert_eq!(strip_uuid_suffixes("my-notes"), "my-notes");
+        assert_eq!(strip_uuid_suffixes("my-project-xyz"), "my-project-xyz");
+        // Don't strip to empty
+        assert_eq!(strip_uuid_suffixes("abcd1234"), "abcd1234");
+    }
+
+    #[test]
     fn test_duplicate_note() {
         let tmp = TempDir::new().unwrap();
         let base = tmp.path();
@@ -349,6 +381,24 @@ mod tests {
 
         let content = read_note(base, "proj", &copy).unwrap();
         assert_eq!(content, "hello world");
+    }
+
+    #[test]
+    fn test_duplicate_strips_existing_uuid_suffix() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        create_note(base, "proj", "blog").unwrap();
+
+        // First duplicate: blog → blog-<uuid1>
+        let copy1 = duplicate_note(base, "proj", "blog.md").unwrap();
+        assert!(copy1.starts_with("blog-"));
+
+        // Second duplicate of the copy: should still be blog-<uuid2>, not blog-<uuid1>-<uuid2>
+        let copy2 = duplicate_note(base, "proj", &copy1).unwrap();
+        assert!(copy2.starts_with("blog-"), "expected 'blog-<uuid>.md', got '{}'", copy2);
+        // Should only have one UUID segment (blog + dash + 8 hex + .md = stem of length 13)
+        let stem2 = copy2.strip_suffix(".md").unwrap();
+        assert_eq!(stem2.len(), 13, "expected 'blog-<8hex>', got '{}'", stem2);
     }
 
     #[test]

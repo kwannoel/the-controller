@@ -542,6 +542,7 @@
       activeNote.set({ projectId, filename: newFilename });
       focusTarget.set({ type: "note", filename: newFilename, projectId });
       showToast("Note duplicated", "info");
+      renameNoteTarget = { projectId, filename: newFilename };
     } catch (e) {
       showToast(String(e), "error");
     }
