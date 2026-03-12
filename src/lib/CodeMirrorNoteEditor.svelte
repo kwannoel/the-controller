@@ -206,9 +206,15 @@
   /* Hide native browser selection — drawSelection() renders its own overlay.
      CodeMirror's built-in hideNativeSelection CSS doesn't reliably suppress
      the native ::selection in WebKit/WKWebView (Tauri), causing a visible
-     "smeared" highlight alongside (or persisting after) the custom overlay. */
+     "smeared" highlight alongside (or persisting after) the custom overlay.
+     The :focus variants are needed to override CodeMirror's own
+     `.cm-content :focus::selection { background-color: highlight }` rule. */
   .note-code-editor :global(.cm-content::selection),
-  .note-code-editor :global(.cm-content *::selection) {
-    background-color: transparent !important;
+  .note-code-editor :global(.cm-content *::selection),
+  .note-code-editor :global(.cm-content :focus::selection),
+  .note-code-editor :global(.cm-content :focus *::selection) {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    color: var(--text-emphasis) !important;
+    -webkit-text-fill-color: var(--text-emphasis) !important;
   }
 </style>
