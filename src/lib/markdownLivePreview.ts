@@ -4,6 +4,7 @@ import {
   EditorView,
   ViewPlugin,
   ViewUpdate,
+  WidgetType,
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
@@ -25,6 +26,17 @@ const emphasisMark = Decoration.mark({ class: "cm-md-em" });
 const inlineCodeMark = Decoration.mark({ class: "cm-md-code" });
 const syntaxHide = Decoration.replace({});
 const linkMark = Decoration.mark({ class: "cm-md-link" });
+
+class BulletWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement("span");
+    span.className = "cm-md-list-bullet";
+    span.textContent = "\u2022 ";
+    return span;
+  }
+}
+
+const bulletWidget = Decoration.replace({ widget: new BulletWidget() });
 
 function cursorLineRanges(view: EditorView): Set<number> {
   const lines = new Set<number>();
@@ -104,6 +116,11 @@ function buildDecorations(view: EditorView): DecorationSet {
       }
       if (name === "URL") {
         decorations.push({ from: node.from, to: node.to, deco: syntaxHide });
+      }
+
+      if (name === "ListMark") {
+        const hideEnd = Math.min(node.to + 1, view.state.doc.length);
+        decorations.push({ from: node.from, to: hideEnd, deco: bulletWidget });
       }
     },
   });

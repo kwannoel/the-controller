@@ -70,4 +70,16 @@ describe("markdownLivePreview", () => {
       expect(view.dom.querySelector(".cm-md-link")).toBeNull();
     });
   });
+
+  describe("lists", () => {
+    it("replaces list marker with bullet when cursor is elsewhere", () => {
+      const view = createView("- item one\n- item two\n\nother", 25);
+      expect(view.dom.querySelector(".cm-md-list-bullet")).not.toBeNull();
+    });
+
+    it("shows raw markdown when cursor is on a list line", () => {
+      const view = createView("- item one\n\nother", 3);
+      expect(view.dom.querySelector(".cm-md-list-bullet")).toBeNull();
+    });
+  });
 });
