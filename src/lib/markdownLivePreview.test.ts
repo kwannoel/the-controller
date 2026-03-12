@@ -36,4 +36,26 @@ describe("markdownLivePreview", () => {
       expect(view.dom.querySelector(".cm-md-h3")).not.toBeNull();
     });
   });
+
+  describe("inline formatting", () => {
+    it("applies bold class and hides markers when cursor is elsewhere", () => {
+      const view = createView("**bold text**\n\nother", 18);
+      expect(view.dom.querySelector(".cm-md-strong")).not.toBeNull();
+    });
+
+    it("applies italic class when cursor is elsewhere", () => {
+      const view = createView("*italic text*\n\nother", 18);
+      expect(view.dom.querySelector(".cm-md-em")).not.toBeNull();
+    });
+
+    it("applies inline code class when cursor is elsewhere", () => {
+      const view = createView("`code`\n\nother", 10);
+      expect(view.dom.querySelector(".cm-md-code")).not.toBeNull();
+    });
+
+    it("does not apply formatting when cursor is on the line", () => {
+      const view = createView("**bold text**\n\nother", 3);
+      expect(view.dom.querySelector(".cm-md-strong")).toBeNull();
+    });
+  });
 });

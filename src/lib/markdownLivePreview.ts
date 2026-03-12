@@ -20,6 +20,11 @@ const headingMark = {
 
 const headerMarkerHide = Decoration.replace({});
 
+const strongMark = Decoration.mark({ class: "cm-md-strong" });
+const emphasisMark = Decoration.mark({ class: "cm-md-em" });
+const inlineCodeMark = Decoration.mark({ class: "cm-md-code" });
+const syntaxHide = Decoration.replace({});
+
 function cursorLineRanges(view: EditorView): Set<number> {
   const lines = new Set<number>();
   for (const range of view.state.selection.ranges) {
@@ -72,6 +77,22 @@ function buildDecorations(view: EditorView): DecorationSet {
           to: hideEnd,
           deco: headerMarkerHide,
         });
+      }
+
+      if (name === "StrongEmphasis") {
+        decorations.push({ from: node.from, to: node.to, deco: strongMark });
+      }
+      if (name === "Emphasis") {
+        decorations.push({ from: node.from, to: node.to, deco: emphasisMark });
+      }
+      if (name === "EmphasisMark") {
+        decorations.push({ from: node.from, to: node.to, deco: syntaxHide });
+      }
+      if (name === "InlineCode") {
+        decorations.push({ from: node.from, to: node.to, deco: inlineCodeMark });
+      }
+      if (name === "CodeMark") {
+        decorations.push({ from: node.from, to: node.to, deco: syntaxHide });
       }
     },
   });
