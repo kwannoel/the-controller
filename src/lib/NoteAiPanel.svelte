@@ -28,11 +28,16 @@
   let currentFrom = $state(request.from);
   let currentTo = $state(request.to);
 
-  // Position the panel near the selection
+  // Position the panel near the selection, clamped within the viewport
   let panelStyle = $derived((() => {
     const { coords } = request;
-    const left = Math.max(8, coords.left);
-    const top = coords.bottom + 8;
+    const maxHeight = 340; // matches CSS max-height
+    const left = Math.min(Math.max(8, coords.left), window.innerWidth - 408);
+    let top = coords.bottom + 8;
+    // If the panel would overflow below the viewport, flip it above the selection
+    if (top + maxHeight > window.innerHeight) {
+      top = Math.max(8, coords.top - maxHeight - 8);
+    }
     return `left: ${left}px; top: ${top}px;`;
   })());
 
