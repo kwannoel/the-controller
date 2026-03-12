@@ -113,7 +113,7 @@ export const commands: CommandDef[] = [
 
 // Section order for help display
 const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"];
-const DEV_SECTION_ORDER: CommandSection[] = ["Essentials", "Navigation", "Sessions", "Projects", "Panels", "Debug"];
+const DEV_SECTION_ORDER: CommandSection[] = ["Essentials", "Navigation", "Debug", "Sessions", "Projects", "Panels"];
 
 export interface HelpEntry {
   key: string;
@@ -150,19 +150,21 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
         .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
     };
 
-    const remaining = DEV_SECTION_ORDER
-      .filter(s => s !== "Essentials" && s !== "Debug")
-      .map(section => ({
-        label: section,
+    const builtSections: Record<string, HelpSection> = { Essentials: essentials, Debug: debug };
+
+    const result = DEV_SECTION_ORDER.map(sectionName => {
+      if (builtSections[sectionName]) return builtSections[sectionName];
+      return {
+        label: sectionName,
         entries: commands
-          .filter(c => c.section === section && !c.hidden)
+          .filter(c => c.section === sectionName && !c.hidden)
           .filter(c => !c.mode || c.mode === mode)
           .filter(c => !essentialIds.has(c.id) && !debugIds.has(c.id))
           .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
-      }))
-      .filter(s => s.entries.length > 0);
+      };
+    }).filter(s => s.entries.length > 0);
 
-    return [essentials, ...remaining, debug];
+    return result;
   }
 
   return SECTION_ORDER.map(section => ({

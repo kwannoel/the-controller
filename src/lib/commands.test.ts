@@ -25,7 +25,7 @@ describe("command registry", () => {
 
   it("getHelpSections returns sections in order for development mode", () => {
     const sections = getHelpSections("development");
-    expect(sections.map(s => s.label)).toEqual(["Essentials", "Navigation", "Sessions", "Projects", "Panels", "Debug"]);
+    expect(sections.map(s => s.label)).toEqual(["Essentials", "Navigation", "Debug", "Sessions", "Projects", "Panels"]);
   });
 
   it("getHelpSections returns sections for agents mode", () => {
