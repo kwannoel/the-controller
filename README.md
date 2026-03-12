@@ -4,6 +4,11 @@ A shapeable, personal desktop system — starting with terminal multiplexing.
 
 Built with Tauri v2 + Svelte 5 + Rust.
 
+> grug have many claude terminal. alt-tab alt-tab alt-tab. where thing go. brain so smooth. so tired.
+> then grug find controller. all terminal one place. grug not lose thing no more.
+> thing not right? grug grab club. beat to shape. grug tool now.
+> complexity demon quiet. grug recommend.
+
 ## Running
 
 Install prerequisites:
