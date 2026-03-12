@@ -190,6 +190,8 @@ export const activeNote = writable<{
 } | null>(null);
 export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
 export const noteFolders = writable<string[]>([]);
+export type NoteViewMode = "edit" | "preview" | "split";
+export const noteViewMode = writable<NoteViewMode>("edit");
 export const architectureViews = writable<Map<string, ArchitectureViewState>>(
   new Map(),
 );
