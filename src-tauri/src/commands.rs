@@ -1551,6 +1551,38 @@ pub fn commit_notes(state: State<'_, AppState>) -> Result<bool, String> {
 }
 
 #[tauri::command]
+pub fn save_note_image(
+    state: State<'_, AppState>,
+    folder: String,
+    image_bytes: Vec<u8>,
+    extension: String,
+) -> Result<String, String> {
+    let base_dir = state
+        .storage
+        .lock()
+        .map_err(|e| e.to_string())?
+        .base_dir();
+    crate::notes::save_note_image(&base_dir, &folder, &image_bytes, &extension)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn resolve_note_asset_path(
+    state: State<'_, AppState>,
+    folder: String,
+    relative_path: String,
+) -> Result<String, String> {
+    let base_dir = state
+        .storage
+        .lock()
+        .map_err(|e| e.to_string())?
+        .base_dir();
+    crate::notes::resolve_note_asset_path(&base_dir, &folder, &relative_path)
+        .map(|p| p.to_string_lossy().to_string())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn send_note_ai_chat(
     note_content: String,
     selected_text: String,

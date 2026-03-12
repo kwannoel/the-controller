@@ -7,7 +7,7 @@ import {
   WidgetType,
 } from "@codemirror/view";
 import { syntaxTree } from "@codemirror/language";
-import { RangeSetBuilder } from "@codemirror/state";
+import { RangeSetBuilder, type EditorState, Facet } from "@codemirror/state";
 
 /** CSS classes applied by mark decorations. */
 const headingMark = {
@@ -38,6 +38,44 @@ class BulletWidget extends WidgetType {
 
 const bulletWidget = Decoration.replace({ widget: new BulletWidget() });
 const codeBlockLine = Decoration.line({ class: "cm-md-codeblock-line" });
+
+export type ImageSrcResolver = (path: string) => string | null;
+
+const imageResolverFacet = Facet.define<ImageSrcResolver, ImageSrcResolver>({
+  combine: (values) => values[values.length - 1] ?? (() => null),
+});
+
+class ImageWidget extends WidgetType {
+  constructor(readonly src: string, readonly alt: string) {
+    super();
+  }
+  eq(other: ImageWidget) {
+    return this.src === other.src && this.alt === other.alt;
+  }
+  toDOM() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "cm-md-image";
+    const img = document.createElement("img");
+    img.src = this.src;
+    img.alt = this.alt;
+    img.style.maxWidth = "100%";
+    img.style.height = "auto";
+    img.style.borderRadius = "4px";
+    img.style.display = "block";
+    img.style.margin = "4px 0";
+    img.draggable = false;
+    wrapper.appendChild(img);
+    return wrapper;
+  }
+}
+
+function resolveImageUrl(rawUrl: string, state: EditorState): string | null {
+  if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) {
+    return rawUrl;
+  }
+  const resolver = state.facet(imageResolverFacet);
+  return resolver(rawUrl);
+}
 
 function cursorLineRanges(view: EditorView): Set<number> {
   const lines = new Set<number>();
@@ -73,6 +111,24 @@ function buildDecorations(view: EditorView): DecorationSet {
       if (onCursorLine) return;
 
       const name = node.name;
+
+      if (name === "Image") {
+        const text = view.state.doc.sliceString(node.from, node.to);
+        const match = text.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        if (match) {
+          const alt = match[1];
+          const rawUrl = match[2];
+          const src = resolveImageUrl(rawUrl, view.state);
+          if (src) {
+            decorations.push({
+              from: node.from,
+              to: node.to,
+              deco: Decoration.replace({ widget: new ImageWidget(src, alt) }),
+            });
+            return;
+          }
+        }
+      }
 
       const headingMatch = name.match(/^ATXHeading(\d)$/);
       if (headingMatch) {
@@ -163,6 +219,14 @@ const livePreviewPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
-export function markdownLivePreview() {
-  return livePreviewPlugin;
+export interface LivePreviewOptions {
+  resolveImageSrc?: ImageSrcResolver;
+}
+
+export function markdownLivePreview(options?: LivePreviewOptions) {
+  const extensions = [livePreviewPlugin];
+  if (options?.resolveImageSrc) {
+    extensions.unshift(imageResolverFacet.of(options.resolveImageSrc));
+  }
+  return extensions;
 }

@@ -38,13 +38,53 @@
     value: string;
     focused?: boolean;
     entryKey?: string;
+    folder?: string;
+    resolveImageSrc?: (path: string) => string | null;
     onChange?: (value: string) => void;
     onEscape?: (mode: VimMode | string) => void;
     onModeChange?: (mode: VimMode | string) => void;
     onAiChat?: (request: AiChatRequest) => void;
+    onImageSaved?: (relativePath: string) => void;
   }
 
-  let { value, focused = false, entryKey, onChange, onEscape, onModeChange, onAiChat }: Props = $props();
+  let { value, focused = false, entryKey, folder, resolveImageSrc, onChange, onEscape, onModeChange, onAiChat, onImageSaved }: Props = $props();
+
+  const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+  function extensionFromMime(mime: string): string | null {
+    const map: Record<string, string> = {
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/gif": "gif",
+      "image/webp": "webp",
+    };
+    return map[mime] ?? null;
+  }
+
+  async function handleImageFile(file: File, insertPos: number) {
+    if (!folder) return;
+    const ext = extensionFromMime(file.type);
+    if (!ext) return;
+
+    const { command } = await import("$lib/backend");
+    const arrayBuf = await file.arrayBuffer();
+    const bytes = Array.from(new Uint8Array(arrayBuf));
+
+    const relativePath = await command<string>("save_note_image", {
+      folder,
+      imageBytes: bytes,
+      extension: ext,
+    });
+
+    if (!view) return;
+
+    const mdText = `![](${relativePath})`;
+    view.dispatch({
+      changes: { from: insertPos, to: insertPos, insert: mdText },
+    });
+    onChange?.(view.state.doc.toString());
+    onImageSaved?.(relativePath);
+  }
 
   let hostEl: HTMLDivElement | undefined;
   let view: EditorView | null = null;
@@ -57,12 +97,42 @@
         vim(),
         drawSelection(),
         markdown(),
-        markdownLivePreview(),
+        markdownLivePreview({ resolveImageSrc: untrack(() => resolveImageSrc) }),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
           keydown: (event) => {
             if (event.key === "Escape") {
               onEscape?.(currentMode);
+            }
+            return false;
+          },
+          paste: (event, editorView) => {
+            const files = event.clipboardData?.files;
+            if (!files || files.length === 0) return false;
+            for (const file of files) {
+              if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
+                event.preventDefault();
+                const pos = editorView.state.selection.main.head;
+                handleImageFile(file, pos);
+                return true;
+              }
+            }
+            return false;
+          },
+          drop: (event, editorView) => {
+            const files = event.dataTransfer?.files;
+            if (!files || files.length === 0) return false;
+            for (const file of files) {
+              if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
+                event.preventDefault();
+                const dropPos = editorView.posAtCoords({
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+                const pos = dropPos ?? editorView.state.selection.main.head;
+                handleImageFile(file, pos);
+                return true;
+              }
             }
             return false;
           },
@@ -282,5 +352,17 @@
   /* Fenced code blocks */
   .note-code-editor :global(.cm-md-codeblock-line) {
     background: var(--bg-surface);
+  }
+
+  /* Images */
+  .note-code-editor :global(.cm-md-image) {
+    padding: 4px 0;
+  }
+
+  .note-code-editor :global(.cm-md-image img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    display: block;
   }
 </style>

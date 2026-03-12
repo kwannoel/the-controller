@@ -14,6 +14,20 @@ function createView(doc: string, cursorPos?: number): EditorView {
   return new EditorView({ state, parent });
 }
 
+function createViewWithResolver(
+  doc: string,
+  resolveImageSrc: (path: string) => string | null,
+  cursorPos?: number,
+): EditorView {
+  const state = EditorState.create({
+    doc,
+    extensions: [markdown(), markdownLivePreview({ resolveImageSrc })],
+    selection: cursorPos !== undefined ? { anchor: cursorPos } : undefined,
+  });
+  const parent = document.createElement("div");
+  return new EditorView({ state, parent });
+}
+
 describe("markdownLivePreview", () => {
   describe("headings", () => {
     it("applies heading class to ATXHeading lines when cursor is elsewhere", () => {
@@ -88,6 +102,31 @@ describe("markdownLivePreview", () => {
       const doc = "text\n\n```js\nconst x = 1;\n```\n\nother";
       const view = createView(doc, doc.length - 1);
       expect(view.dom.querySelector(".cm-md-codeblock-line")).not.toBeNull();
+    });
+  });
+
+  describe("images", () => {
+    it("replaces image syntax with img widget when cursor is elsewhere", () => {
+      const resolver = (path: string) => `file://${path}`;
+      const view = createViewWithResolver("![alt text](assets/photo.png)\n\nother text", resolver, 35);
+      expect(view.dom.querySelector(".cm-md-image")).not.toBeNull();
+      const img = view.dom.querySelector(".cm-md-image img") as HTMLImageElement;
+      expect(img).not.toBeNull();
+      expect(img.src).toContain("assets/photo.png");
+    });
+
+    it("shows raw markdown when cursor is on the image line", () => {
+      const resolver = (path: string) => `file://${path}`;
+      const view = createViewWithResolver("![alt text](assets/photo.png)\n\nother text", resolver, 5);
+      expect(view.dom.querySelector(".cm-md-image")).toBeNull();
+    });
+
+    it("passes through http URLs without resolver", () => {
+      const resolver = (_path: string) => null;
+      const view = createViewWithResolver("![alt](https://example.com/img.png)\n\nother", resolver, 40);
+      const img = view.dom.querySelector(".cm-md-image img") as HTMLImageElement;
+      expect(img).not.toBeNull();
+      expect(img.src).toBe("https://example.com/img.png");
     });
   });
 });

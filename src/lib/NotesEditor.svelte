@@ -12,6 +12,7 @@
   let saveTimer: ReturnType<typeof setTimeout> | null = $state(null);
   let editorMode = $state<VimMode | string>("normal");
   let aiChatRequest = $state<AiChatRequest | null>(null);
+  let assetUrlCache = $state(new Map<string, string>());
 
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
@@ -63,6 +64,7 @@
         command("commit_notes", {}).catch(() => {});
       }
       prevNoteKey = key;
+      assetUrlCache = new Map();
 
       if (currentNote && folderName && key) {
         loadNote(folderName, currentNote.filename, key);
@@ -135,6 +137,46 @@
     scheduleSave();
   }
 
+  async function resolveImageSrc(relativePath: string): Promise<string | null> {
+    if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+      return relativePath;
+    }
+    const cached = assetUrlCache.get(relativePath);
+    if (cached) return cached;
+
+    if (!folderName) return null;
+
+    try {
+      const absPath = await command<string>("resolve_note_asset_path", {
+        folder: folderName,
+        relativePath,
+      });
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      const url = convertFileSrc(absPath);
+      assetUrlCache.set(relativePath, url);
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
+  // Synchronous resolver that returns from cache or triggers async resolution
+  function resolveImageSrcSync(relativePath: string): string | null {
+    if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+      return relativePath;
+    }
+    const cached = assetUrlCache.get(relativePath);
+    if (cached) return cached;
+    // Trigger async resolution — the image will appear on next decoration rebuild
+    resolveImageSrc(relativePath);
+    return null;
+  }
+
+  function handleImageSaved(relativePath: string) {
+    // Pre-warm the cache so the image renders immediately
+    resolveImageSrc(relativePath);
+  }
+
   function handleEditorEscape(mode: VimMode | string) {
     editorMode = mode;
     if (aiChatRequest) {
@@ -173,6 +215,8 @@
         value={content}
         focused={editorFocused}
         entryKey={editorEntryKey}
+        folder={folderName ?? undefined}
+        resolveImageSrc={resolveImageSrcSync}
         onChange={handleEditorChange}
         onModeChange={(mode) => {
           editorMode = mode;
@@ -181,6 +225,7 @@
         onAiChat={(request) => {
           aiChatRequest = request;
         }}
+        onImageSaved={handleImageSaved}
       />
     </div>
     {#if aiChatRequest}

@@ -319,6 +319,59 @@ pub fn delete_folder(base: &std::path::Path, name: &str, force: bool) -> std::io
     }
 }
 
+// ── Image assets ────────────────────────────────────────────────────
+
+const ALLOWED_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"];
+
+/// Validate that a relative asset path (e.g. "assets/foo.png") is safe.
+fn validate_asset_path(relative_path: &str) -> std::io::Result<()> {
+    if relative_path.starts_with('/') || relative_path.contains("..") || relative_path.contains('\\') || relative_path.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid asset path: {}", relative_path),
+        ));
+    }
+    Ok(())
+}
+
+/// Save image bytes to the folder's assets directory.
+/// Returns the relative path (e.g. "assets/a1b2c3d4.png").
+pub fn save_note_image(
+    base: &std::path::Path,
+    folder: &str,
+    image_bytes: &[u8],
+    extension: &str,
+) -> std::io::Result<String> {
+    let ext_lower = extension.to_lowercase();
+    if !ALLOWED_IMAGE_EXTENSIONS.contains(&ext_lower.as_str()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("unsupported image extension: {}", extension),
+        ));
+    }
+
+    let assets_dir = notes_dir_with_base(base, folder).join("assets");
+    fs::create_dir_all(&assets_dir)?;
+
+    let short_id = &Uuid::new_v4().to_string()[..8];
+    let filename = format!("{}.{}", short_id, ext_lower);
+    fs::write(assets_dir.join(&filename), image_bytes)?;
+
+    Ok(format!("assets/{}", filename))
+}
+
+/// Resolve a relative asset path to an absolute filesystem path.
+/// Validates the path does not escape the notes directory.
+pub fn resolve_note_asset_path(
+    base: &std::path::Path,
+    folder: &str,
+    relative_path: &str,
+) -> std::io::Result<PathBuf> {
+    validate_asset_path(relative_path)?;
+    let full_path = notes_dir_with_base(base, folder).join(relative_path);
+    Ok(full_path)
+}
+
 // ── Git version control ─────────────────────────────────────────────
 
 /// Returns the notes root directory: `{base}/notes/`
@@ -744,5 +797,64 @@ mod tests {
         write_note(base, "proj", "doc.md", "updated content").unwrap();
         let committed = commit_notes(base, "update doc").unwrap();
         assert!(committed);
+    }
+
+    // ── Image asset tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_save_note_image_creates_assets_dir_and_file() {
+        let tmp = TempDir::new().unwrap();
+        let bytes = vec![0x89, 0x50, 0x4E, 0x47]; // fake PNG header
+        let relative_path = save_note_image(tmp.path(), "proj", &bytes, "png").unwrap();
+        assert!(relative_path.starts_with("assets/"));
+        assert!(relative_path.ends_with(".png"));
+
+        // File should exist on disk
+        let full_path = notes_dir_with_base(tmp.path(), "proj").join(&relative_path);
+        assert!(full_path.exists());
+        assert_eq!(fs::read(&full_path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn test_save_note_image_rejects_invalid_extension() {
+        let tmp = TempDir::new().unwrap();
+        let result = save_note_image(tmp.path(), "proj", &[1, 2, 3], "exe");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn test_save_note_image_unique_filenames() {
+        let tmp = TempDir::new().unwrap();
+        let bytes = vec![1, 2, 3];
+        let path1 = save_note_image(tmp.path(), "proj", &bytes, "png").unwrap();
+        let path2 = save_note_image(tmp.path(), "proj", &bytes, "png").unwrap();
+        assert_ne!(path1, path2);
+    }
+
+    #[test]
+    fn test_resolve_note_asset_path_valid() {
+        let tmp = TempDir::new().unwrap();
+        let bytes = vec![1, 2, 3];
+        let relative = save_note_image(tmp.path(), "proj", &bytes, "png").unwrap();
+        let abs = resolve_note_asset_path(tmp.path(), "proj", &relative).unwrap();
+        assert!(abs.exists());
+        assert!(abs.is_absolute());
+    }
+
+    #[test]
+    fn test_resolve_note_asset_path_rejects_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let result = resolve_note_asset_path(tmp.path(), "proj", "../../../etc/passwd");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn test_resolve_note_asset_path_rejects_absolute() {
+        let tmp = TempDir::new().unwrap();
+        let result = resolve_note_asset_path(tmp.path(), "proj", "/etc/passwd");
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
     }
 }

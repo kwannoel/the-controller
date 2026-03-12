@@ -31,6 +31,9 @@ fn build_note_ai_prompt(
         Use \"replace\" when the user wants to modify, rewrite, fix, or transform the selected text.\n\
         Use \"info\" when the user is asking a question about the text or wants an explanation without changes.\n\
         \n\
+        The note supports markdown image syntax: ![description](url) for images.\n\
+        You can include images using URLs when relevant to the user's request.\n\
+        \n\
         If the user asks you to revert, return a \"replace\" with the original selected text.\n\
         \n\
         Do NOT wrap JSON in markdown code fences. Return raw JSON only.".to_string(),
@@ -170,5 +173,11 @@ mod tests {
         assert!(prompt.contains("\"content\":\"Fixed it\""));
         assert!(prompt.contains("--- CONVERSATION HISTORY ---"));
         assert!(prompt.contains("--- END CONVERSATION HISTORY ---"));
+    }
+
+    #[test]
+    fn build_prompt_mentions_image_syntax() {
+        let prompt = build_note_ai_prompt("note", "selected", &[], "help");
+        assert!(prompt.contains("!["), "prompt should mention image markdown syntax");
     }
 }
