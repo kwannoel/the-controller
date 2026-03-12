@@ -15,18 +15,18 @@ pub struct Project {
     pub auto_worker: AutoWorkerConfig,
     #[serde(default)]
     pub prompts: Vec<SavedPrompt>,
-    /// When a session's branch is staged in-place in the main repo.
+    /// When a session is staged as a separate Controller instance.
     #[serde(default)]
     pub staged_session: Option<StagedSession>,
 }
 
-/// Tracks in-place staging state: which session branch is checked out
-/// in the main repo and what branch to restore when unstaging.
+/// Tracks staging state: which session is running as a separate
+/// Controller instance, and the PID/port of that process.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StagedSession {
     pub session_id: Uuid,
-    pub original_branch: String,
-    pub staging_branch: String,
+    pub pid: u32,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -667,15 +667,40 @@ mod tests {
             sessions: vec![],
             staged_session: Some(StagedSession {
                 session_id: Uuid::new_v4(),
-                original_branch: "master".to_string(),
-                staging_branch: "staging/session-1-abc123".to_string(),
+                pid: 99999,
+                port: 2420,
             }),
         };
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
         let staged = deserialized.staged_session.unwrap();
-        assert_eq!(staged.original_branch, "master");
-        assert_eq!(staged.staging_branch, "staging/session-1-abc123");
+        assert_eq!(staged.pid, 99999);
+        assert_eq!(staged.port, 2420);
+    }
+
+    #[test]
+    fn test_staged_session_new_format_roundtrip() {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "test".to_string(),
+            repo_path: "/tmp".to_string(),
+            created_at: "2026-03-11T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
+            sessions: vec![],
+            staged_session: Some(StagedSession {
+                session_id: Uuid::new_v4(),
+                pid: 12345,
+                port: 2420,
+            }),
+        };
+        let json = serde_json::to_string(&project).expect("serialize");
+        let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
+        let staged = deserialized.staged_session.unwrap();
+        assert_eq!(staged.pid, 12345);
+        assert_eq!(staged.port, 2420);
     }
 
     #[test]
