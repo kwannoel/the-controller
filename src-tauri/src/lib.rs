@@ -126,6 +126,7 @@ pub fn run() {
             deploy::commands::is_deploy_provisioned,
             deploy::commands::deploy_project,
             deploy::commands::list_deployed_services,
+            commands::log_frontend_error,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

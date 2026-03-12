@@ -2038,6 +2038,11 @@ pub async fn get_maintainer_issue_detail(
     github::get_maintainer_issue_detail(repo_path, github_repo, issue_number).await
 }
 
+#[tauri::command]
+pub fn log_frontend_error(message: String) {
+    eprintln!("[FRONTEND] {}", message);
+}
+
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     for name in &["refs/heads/master", "refs/heads/main"] {
         if let Ok(reference) = repo.find_reference(name) {
