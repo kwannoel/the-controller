@@ -118,8 +118,8 @@
   }
 
   .modal {
-    background: #1e1e2e;
-    border: 1px solid #313244;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: 8px;
     padding: 24px;
     min-width: 400px;
@@ -129,14 +129,14 @@
   .modal-title {
     font-size: 16px;
     font-weight: 600;
-    color: #cdd6f4;
+    color: var(--text-emphasis);
     margin-bottom: 20px;
   }
 
   .field-label {
     display: block;
     font-size: 12px;
-    color: #a6adc8;
+    color: var(--text-secondary);
     margin-bottom: 6px;
     margin-top: 12px;
   }
@@ -144,27 +144,27 @@
   .field-input {
     width: 100%;
     padding: 8px 12px;
-    background: #11111b;
-    border: 1px solid #313244;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
     border-radius: 4px;
-    color: #cdd6f4;
+    color: var(--text-primary);
     font-size: 13px;
     outline: none;
     box-sizing: border-box;
   }
 
   .field-input:focus {
-    border-color: #89b4fa;
+    border-color: var(--focus-ring);
   }
 
   .hint {
     font-size: 11px;
-    color: #6c7086;
+    color: var(--text-tertiary);
     margin-top: 6px;
   }
 
-  .status { color: #89b4fa; font-size: 14px; }
-  .error { color: #f38ba8; font-size: 13px; }
+  .status { color: var(--text-emphasis); font-size: 14px; }
+  .error { color: var(--status-error); font-size: 13px; }
 
   .actions {
     display: flex;
@@ -181,6 +181,6 @@
     border: none;
   }
 
-  .cancel { background: #313244; color: #a6adc8; }
-  .primary { background: #89b4fa; color: #1e1e2e; font-weight: 600; }
+  .cancel { background: var(--bg-active); color: var(--text-secondary); }
+  .primary { background: var(--focus-ring); color: var(--bg-void); font-weight: 600; }
 </style>
