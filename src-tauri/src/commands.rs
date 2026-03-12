@@ -823,7 +823,7 @@ fn find_staging_port(base_port: u16) -> Result<u16, String> {
     Err(format!(
         "No free port found in range {}-{}",
         start,
-        start + 100
+        start.saturating_add(99)
     ))
 }
 
@@ -3355,8 +3355,11 @@ mod staging_tests {
 
     #[test]
     fn test_find_staging_port_checks_ipv6() {
-        // Bind on IPv6 only — find_staging_port must detect this
-        let listener = std::net::TcpListener::bind("[::1]:0").unwrap();
+        // Bind on IPv6 only — find_staging_port must detect this.
+        // Skip gracefully on systems without IPv6 loopback.
+        let Ok(listener) = std::net::TcpListener::bind("[::1]:0") else {
+            return;
+        };
         let occupied_port = listener.local_addr().unwrap().port();
         let base = occupied_port.checked_sub(STAGING_PORT_OFFSET).unwrap();
         let port = find_staging_port(base).unwrap();
