@@ -1466,65 +1466,85 @@ pub async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<Str
 #[tauri::command]
 pub fn list_notes(
     state: State<'_, AppState>,
-    project_name: String,
+    folder: String,
 ) -> Result<Vec<crate::notes::NoteEntry>, String> {
-    notes::list_notes(state, project_name)
+    notes::list_notes(state, folder)
 }
 
 #[tauri::command]
 pub fn read_note(
     state: State<'_, AppState>,
-    project_name: String,
+    folder: String,
     filename: String,
 ) -> Result<String, String> {
-    notes::read_note(state, project_name, filename)
+    notes::read_note(state, folder, filename)
 }
 
 #[tauri::command]
 pub fn write_note(
     state: State<'_, AppState>,
-    project_name: String,
+    folder: String,
     filename: String,
     content: String,
 ) -> Result<(), String> {
-    notes::write_note(state, project_name, filename, content)
+    notes::write_note(state, folder, filename, content)
 }
 
 #[tauri::command]
 pub fn create_note(
     state: State<'_, AppState>,
-    project_name: String,
+    folder: String,
     title: String,
 ) -> Result<String, String> {
-    notes::create_note(state, project_name, title)
+    notes::create_note(state, folder, title)
 }
 
 #[tauri::command]
 pub fn rename_note(
     state: State<'_, AppState>,
-    project_name: String,
+    folder: String,
     old_name: String,
     new_name: String,
 ) -> Result<String, String> {
-    notes::rename_note(state, project_name, old_name, new_name)
+    notes::rename_note(state, folder, old_name, new_name)
 }
 
 #[tauri::command]
 pub fn duplicate_note(
     state: State<'_, AppState>,
-    project_name: String,
+    folder: String,
     filename: String,
 ) -> Result<String, String> {
-    notes::duplicate_note(state, project_name, filename)
+    notes::duplicate_note(state, folder, filename)
 }
 
 #[tauri::command]
 pub fn delete_note(
     state: State<'_, AppState>,
-    project_name: String,
+    folder: String,
     filename: String,
 ) -> Result<(), String> {
-    notes::delete_note(state, project_name, filename)
+    notes::delete_note(state, folder, filename)
+}
+
+#[tauri::command]
+pub fn list_folders(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    notes::list_folders(state)
+}
+
+#[tauri::command]
+pub fn create_folder(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    notes::create_folder(state, name)
+}
+
+#[tauri::command]
+pub fn rename_folder(state: State<'_, AppState>, old_name: String, new_name: String) -> Result<(), String> {
+    notes::rename_folder(state, old_name, new_name)
+}
+
+#[tauri::command]
+pub fn delete_folder(state: State<'_, AppState>, name: String, force: bool) -> Result<(), String> {
+    notes::delete_folder(state, name, force)
 }
 
 #[tauri::command]
