@@ -3410,7 +3410,9 @@ mod staging_tests {
     fn test_find_free_port_skips_occupied() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let occupied_port = listener.local_addr().unwrap().port();
-        let base = occupied_port - 1000;
+        let Some(base) = occupied_port.checked_sub(STAGING_PORT_OFFSET) else {
+            return; // OS assigned a port too low to construct a valid base
+        };
         let port = find_staging_port(base).unwrap();
         assert!(port > occupied_port);
         assert!(port <= occupied_port + 100);
