@@ -23,9 +23,9 @@ describe("command registry", () => {
     }
   });
 
-  it("getHelpSections returns four sections in order for development mode", () => {
+  it("getHelpSections returns sections in order for development mode", () => {
     const sections = getHelpSections("development");
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Projects", "Panels"]);
+    expect(sections.map(s => s.label)).toEqual(["Essentials", "Navigation", "Sessions", "Projects", "Panels", "Debug"]);
   });
 
   it("getHelpSections returns sections for agents mode", () => {
@@ -87,8 +87,7 @@ describe("command registry", () => {
     expect(map.has("X")).toBe(false);
     expect(map.has("C")).toBe(false);
     expect(map.has("j")).toBe(true); // global nav
-    expect(map.has("o")).toBe(true); // toggle-mode (dev)
-    expect(map.get("o")).toBe("toggle-mode");
+    expect(map.has("o")).toBe(false); // toggle-mode removed
   });
 
   it("buildKeyMap for agents includes agents commands but not dev commands", () => {
@@ -125,37 +124,38 @@ describe("command registry", () => {
 
   it("help sections have correct entry counts for development mode", () => {
     const sections = getHelpSections("development");
+
+    const essentials = sections.find(s => s.label === "Essentials")!;
+    expect(essentials.entries).toHaveLength(7);
+    expect(essentials.entries.map(e => e.key)).toEqual(["c", "j / k", "n", "d", "m", "f", "Esc"]);
+
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(6);
+    expect(nav.entries).toHaveLength(2); // l/Enter, Esc Esc
 
     const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(9);
+    expect(sess.entries).toHaveLength(4); // P, p, v, ⌘t
     expect(sess.entries.map(entry => entry.key)).toContain("⌘t");
-    expect(sess.entries.map(entry => entry.key)).not.toContain("x");
-    expect(sess.entries.map(entry => entry.key)).not.toContain("X");
-    expect(sess.entries.map(entry => entry.key)).not.toContain("C");
 
     const proj = sections.find(s => s.label === "Projects")!;
-    expect(proj.entries).toHaveLength(6);
-    expect(proj.entries.map(entry => entry.key)).not.toContain("a");
-    expect(proj.entries.map(entry => entry.key)).not.toContain("A");
-    expect(proj.entries.map(entry => entry.description)).not.toContain("Archive focused item (session or project)");
-    expect(proj.entries.map(entry => entry.description)).not.toContain("View archived projects");
+    expect(proj.entries).toHaveLength(4); // i, t, T, e
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(5);
+    expect(panels.entries).toHaveLength(2); // ?, ⌘k
+
+    const debug = sections.find(s => s.label === "Debug")!;
+    expect(debug.entries).toHaveLength(3); // ⌘s, ⌘d, ⌘S/⌘D
   });
 
   it("help sections have correct entry counts for agents mode", () => {
     const sections = getHelpSections("agents");
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(6);
+    expect(nav.entries).toHaveLength(5);
 
     const sess = sections.find(s => s.label === "Sessions")!;
     expect(sess.entries).toHaveLength(3);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(4);
+    expect(panels.entries).toHaveLength(2);
 
     const agents = sections.find(s => s.label === "Agents")!;
     expect(agents.entries).toHaveLength(4);
@@ -164,13 +164,13 @@ describe("command registry", () => {
   it("help sections have correct entry counts for notes mode", () => {
     const sections = getHelpSections("notes");
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(6);
+    expect(nav.entries).toHaveLength(5);
 
     const sess = sections.find(s => s.label === "Sessions")!;
     expect(sess.entries).toHaveLength(3);
 
     const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(4);
+    expect(panels.entries).toHaveLength(2);
 
     const notes = sections.find(s => s.label === "Notes")!;
     expect(notes.entries).toHaveLength(5);

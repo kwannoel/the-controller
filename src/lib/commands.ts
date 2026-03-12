@@ -1,25 +1,21 @@
 import type { WorkspaceMode } from "./stores";
 
-export type CommandSection = "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Notes" | "Infrastructure";
+export type CommandSection = "Essentials" | "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Notes" | "Infrastructure" | "Debug";
 
 // IDs for commands handled in handleHotkey's switch
 export type CommandId =
   | "navigate-next"
   | "navigate-prev"
-  | "navigate-project-next"
-  | "navigate-project-prev"
   | "fuzzy-finder"
   | "new-project"
   | "delete"
   | "create-session"
   | "finish-branch"
-  | "toggle-sidebar"
   | "create-issue"
   | "triage-untriaged"
   | "triage-triaged"
   | "assigned-issues"
   | "expand-collapse"
-  | "toggle-mode"
   | "toggle-agent"
   | "trigger-agent-check"
   | "toggle-help"
@@ -63,8 +59,6 @@ export const commands: CommandDef[] = [
   // ── Navigation ──
   { id: "navigate-next", key: "j", section: "Navigation", description: "Next / previous item (project or session)", helpKey: "j / k" },
   { id: "navigate-prev", key: "k", section: "Navigation", description: "Next / previous item (project or session)", hidden: true },
-  { id: "navigate-project-next", key: "J", section: "Navigation", description: "Next / previous project (skip sessions)", helpKey: "J / K" },
-  { id: "navigate-project-prev", key: "K", section: "Navigation", description: "Next / previous project (skip sessions)", hidden: true },
   { id: "expand-collapse", key: "l", section: "Navigation", description: "Expand/collapse project or focus terminal", helpKey: "l / Enter" },
   { id: "expand-collapse", key: "Enter", section: "Navigation", description: "Expand/collapse project or focus terminal", hidden: true },
   { id: "fuzzy-finder", key: "f", section: "Navigation", description: "Find project (fuzzy finder)" },
@@ -92,10 +86,8 @@ export const commands: CommandDef[] = [
   { id: "generate-architecture", key: "r", section: "Projects", description: "Generate / regenerate architecture for focused project", mode: "architecture" },
 
   // ── Panels ──
-  { id: "toggle-sidebar", key: "s", section: "Panels", description: "Toggle sidebar" },
-  { id: "toggle-mode", key: "o", section: "Panels", description: "Toggle: (m)aintainer / (w)orker", mode: "development" },
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
-  { id: "switch-workspace", key: "␣", section: "Panels", description: "Switch workspace mode", handledExternally: true },
+  { id: "switch-workspace", key: "␣", section: "Panels", description: "Switch workspace mode", handledExternally: true, hidden: true },
   { id: "keystroke-visualizer", key: "⌘k", section: "Panels", description: "Toggle keystroke visualizer", handledExternally: true },
 
   // ── Agents ──
@@ -121,6 +113,7 @@ export const commands: CommandDef[] = [
 
 // Section order for help display
 const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"];
+const DEV_SECTION_ORDER: CommandSection[] = ["Essentials", "Navigation", "Sessions", "Projects", "Panels", "Debug"];
 
 export interface HelpEntry {
   key: string;
@@ -133,6 +126,45 @@ export interface HelpSection {
 }
 
 export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
+  if (mode === "development") {
+    const essentialIds = new Set(["create-session", "navigate-next", "navigate-prev", "finish-branch", "new-project", "delete", "fuzzy-finder", "escape-focus"]);
+    const debugIds = new Set(["screenshot", "screenshot-cropped", "screenshot-preview"]);
+
+    const essentials: HelpSection = {
+      label: "Essentials",
+      entries: [
+        { key: "c", description: "Create session with issue" },
+        { key: "j / k", description: "Next / previous item" },
+        { key: "n", description: "New project" },
+        { key: "d", description: "Delete focused item" },
+        { key: "m", description: "Merge session branch" },
+        { key: "f", description: "Find project (fuzzy finder)" },
+        { key: "Esc", description: "Move focus up" },
+      ],
+    };
+
+    const debug: HelpSection = {
+      label: "Debug",
+      entries: commands
+        .filter(c => debugIds.has(c.id) && !c.hidden)
+        .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
+    };
+
+    const remaining = DEV_SECTION_ORDER
+      .filter(s => s !== "Essentials" && s !== "Debug")
+      .map(section => ({
+        label: section,
+        entries: commands
+          .filter(c => c.section === section && !c.hidden)
+          .filter(c => !c.mode || c.mode === mode)
+          .filter(c => !essentialIds.has(c.id) && !debugIds.has(c.id))
+          .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
+      }))
+      .filter(s => s.entries.length > 0);
+
+    return [essentials, ...remaining, debug];
+  }
+
   return SECTION_ORDER.map(section => ({
     label: section,
     entries: commands

@@ -26,9 +26,6 @@
 
   const DOUBLE_ESCAPE_MS = 300;
 
-  // Toggle mode state (o prefix)
-  let toggleModeActive = $state(false);
-
   // Workspace mode state (Space prefix)
   let workspaceModeActive = $state(false);
 
@@ -88,19 +85,6 @@
 
   function dispatchAction(action: NonNullable<HotkeyAction>) {
     dispatchHotkeyAction(action);
-  }
-
-  function handleToggleKey(key: string) {
-    toggleModeActive = false;
-    if (key === "m") {
-      dispatchAction({ type: "toggle-maintainer-enabled" });
-      return;
-    }
-    if (key === "w") {
-      dispatchAction({ type: "toggle-auto-worker-enabled" });
-      return;
-    }
-    // Any other key (including Escape) cancels toggle mode
   }
 
   function handleWorkspaceModeKey(key: string) {
@@ -214,18 +198,6 @@
     }
   }
 
-  function navigateProject(direction: 1 | -1) {
-    if (projectList.length === 0) return;
-    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel" || currentFocus?.type === "note" || currentFocus?.type === "notes-editor"
-      ? currentFocus.projectId
-      : null;
-    let idx = -1;
-    if (focusedProjectId) idx = projectList.findIndex(p => p.id === focusedProjectId);
-    const len = projectList.length;
-    const next = projectList[((idx + direction) % len + len) % len];
-    focusTarget.set({ type: "project", projectId: next.id });
-  }
-
   function getFocusedProject(): Project | null {
     if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel" || currentFocus?.type === "note" || currentFocus?.type === "notes-editor") {
       return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
@@ -273,12 +245,6 @@
         return true;
       case "navigate-prev":
         navigateItem(-1);
-        return true;
-      case "navigate-project-next":
-        navigateProject(1);
-        return true;
-      case "navigate-project-prev":
-        navigateProject(-1);
         return true;
       case "fuzzy-finder":
         dispatchAction({ type: "open-fuzzy-finder" });
@@ -339,9 +305,6 @@
         }
         return true;
       }
-      case "toggle-sidebar":
-        sidebarVisible.update(v => !v);
-        return true;
       case "create-issue":
         dispatchCreateIssue();
         return true;
@@ -373,9 +336,6 @@
           const vimKeys = ["o", "i", "a"];
           focusTarget.set({ type: "notes-editor", projectId: currentFocus.projectId, entryKey: vimKeys.includes(key) ? key : undefined });
         }
-        return true;
-      case "toggle-mode":
-        toggleModeActive = true;
         return true;
       case "toggle-agent": {
         const agentFocus = currentFocus?.type === "agent" ? currentFocus : currentFocus?.type === "agent-panel" ? currentFocus : null;
@@ -474,15 +434,6 @@
       e.preventDefault();
       selectedSessionProvider.update((provider) => provider === "claude" ? "codex" : "claude");
       pushKeystroke("⌘T");
-      return;
-    }
-
-    // Toggle mode intercepts all keys
-    if (toggleModeActive) {
-      e.stopPropagation();
-      e.preventDefault();
-      handleToggleKey(e.key);
-      pushKeystroke("o" + e.key);
       return;
     }
 

@@ -223,14 +223,6 @@ describe('HotkeyManager', () => {
       expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
     });
 
-    it('s toggles sidebarVisible', () => {
-      expect(get(sidebarVisible)).toBe(true);
-      pressKey('s');
-      expect(get(sidebarVisible)).toBe(false);
-      pressKey('s');
-      expect(get(sidebarVisible)).toBe(true);
-    });
-
     it('unrecognized keys do not change state', () => {
       const initial = get(activeSessionId);
       pressKey('w');
@@ -311,51 +303,6 @@ describe('HotkeyManager', () => {
       focusTarget.set({ type: 'project', projectId: 'proj-1' });
       pressKey('j');
       expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
-    });
-  });
-
-  // ── J/K project navigation ──
-
-  describe('J/K project navigation', () => {
-    it('J moves to next project', () => {
-      projects.set([testProject, testProject2]);
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-      pressKey('J');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
-    });
-
-    it('K moves to prev project', () => {
-      projects.set([testProject, testProject2]);
-      focusTarget.set({ type: 'project', projectId: 'proj-2' });
-      pressKey('K');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-    });
-
-    it('J wraps from last to first project', () => {
-      projects.set([testProject, testProject2]);
-      focusTarget.set({ type: 'project', projectId: 'proj-2' });
-      pressKey('J');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-    });
-
-    it('K wraps from first to last project', () => {
-      projects.set([testProject, testProject2]);
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-      pressKey('K');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
-    });
-
-    it('J from session focus moves to next project', () => {
-      projects.set([testProject, testProject2]);
-      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
-      pressKey('J');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
-    });
-
-    it('J with no focus goes to first project', () => {
-      focusTarget.set(null);
-      pressKey('J');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
     });
   });
 
@@ -546,54 +493,6 @@ describe('HotkeyManager', () => {
   });
 
   // ── Toggle mode (o) ──
-
-  describe('toggle mode (o)', () => {
-    it('o then m dispatches toggle-maintainer-enabled', () => {
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('o');
-      pressKey('m');
-      expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
-      unsub();
-    });
-
-    it('o then w dispatches toggle-auto-worker-enabled', () => {
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('o');
-      pressKey('w');
-      expect(captured).toEqual({ type: 'toggle-auto-worker-enabled' });
-      unsub();
-    });
-
-    it('o then Escape cancels toggle mode', () => {
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('o');
-      pressKey('Escape');
-      expect(captured).toBeNull();
-      unsub();
-    });
-
-    it('o then unrecognized key cancels toggle mode', () => {
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('o');
-      pressKey('q');
-      expect(captured).toBeNull();
-      unsub();
-    });
-
-    it('o then m dispatches toggle-maintainer-enabled when project focused', () => {
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-      pressKey('o');
-      pressKey('m');
-      expect(captured).toEqual({ type: 'toggle-maintainer-enabled' });
-      unsub();
-    });
-  });
 
   // ── c key in development mode ──
 
