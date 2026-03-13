@@ -92,6 +92,18 @@ One keystroke to preview uncommitted changes.
 
 Together they close the loop: take a screenshot, have the agent inspect the UI with Playwright (`/the-controller-debugging-ui-with-playwright`), fix the issue, toggle staging to verify the fix.
 
+## Claude vs Codex
+
+Claude Code is the first-class development agent for this project. Most of the work is design — architecture, UX, interaction patterns, workflow shaping — where Claude's general reasoning, meta-thinking, and design sense make it the stronger choice. Claude also has better UX for interactive development.
+
+Codex is useful for pushing out straightforward code at volume and handling background maintenance (dependency updates, mechanical refactors). It's a good fit for well-defined, independent tasks that can run in parallel.
+
+Both agents are fully supported. Skills are symlinked to both on app startup, and `agents.md` serves as the shared instruction file. See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+
+## Feature Discovery
+
+Not sure what a feature does or how something works? Just ask Claude. The default setup has you clone the repository, so your agent already has full access to the source code and can trace through the implementation to answer your questions.
+
 ## Caveats
 
 The Controller is a strongly opinionated power tool — built for efficiency, simplicity, and elegant design, maintained under a benevolent-dictator model. This is still a period of experimentation, so even the roadmap is unstable.
