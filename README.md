@@ -98,6 +98,6 @@ The Controller is a strongly opinionated power tool — built for efficiency, si
 
 This project is in early stages. Some features may be overhauled or removed entirely without concern for backwards compatibility. Things will stabilize eventually, but not in the near term.
 
-If you're building on top of this, maintain your own fork and periodically rebase your changes onto the latest commits from `master`. We may provide a skill (`the-controller-maintain-fork`) to automate this — PRs welcome.
+**Maintain your own fork.** This is the single best way to use The Controller without being caught off guard by breaking changes. Keep your customizations on your own branch and periodically rebase onto the latest commits from `master`. We may provide a skill (`the-controller-maintain-fork`) to automate this — PRs welcome.
 
 Several things are still being refined, including the [contribution guide](CONTRIBUTING.md).
