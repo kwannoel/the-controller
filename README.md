@@ -91,3 +91,13 @@ One keystroke to preview uncommitted changes.
 ![Demo: Staging modifications](https://raw.githubusercontent.com/kwannoel/blog/main/demo-staging.gif)
 
 Together they close the loop: take a screenshot, have the agent inspect the UI with Playwright (`/the-controller-debugging-ui-with-playwright`), fix the issue, toggle staging to verify the fix.
+
+## Caveats
+
+The Controller is a strongly opinionated power tool — built for efficiency, simplicity, and elegant design, maintained under a benevolent-dictator model.
+
+This project is in early stages. Some features may be overhauled or removed entirely without concern for backwards compatibility. Things will stabilize eventually, but not in the near term.
+
+If you're building on top of this, maintain your own fork and periodically rebase your changes onto the latest commits from `master`. We may provide a skill (`the-controller-maintain-fork`) to automate this — PRs welcome.
+
+Several things are still being refined, including the [contribution guide](CONTRIBUTING.md).
