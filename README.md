@@ -51,3 +51,43 @@ Behavior:
 - The target project must already be known to The Controller.
 - The CLI opens a secure modal in the app instead of reading the secret in the terminal.
 - The CLI prints only redacted results such as `created OPENAI_API_KEY for demo-project`.
+
+## Navigation & Features
+
+### Switch Focus `esc` `l`
+
+Move focus between the session terminal and the sidebar.
+
+![Demo: Switch focus between terminal and sidebar](https://raw.githubusercontent.com/kwannoel/blog/main/demo-nav-esc-l.gif)
+
+### Move Across Sessions `j/k`
+
+Navigate up and down through sessions in the sidebar.
+
+![Demo: Move across sessions](https://raw.githubusercontent.com/kwannoel/blog/main/demo-nav-jk.gif)
+
+### Create & Delete Session `c` `d`
+
+Create a new session or delete the selected one.
+
+![Demo: Create and delete a session](https://raw.githubusercontent.com/kwannoel/blog/main/demo-nav-cd.gif)
+
+### Create & Delete Project `n` `d`
+
+Create a new project or delete the selected one.
+
+![Demo: Create and delete a project](https://raw.githubusercontent.com/kwannoel/blog/main/demo-nav-nd.gif)
+
+### Screenshot `cmd+shift+s`
+
+One keystroke to capture the current view and save it to the project.
+
+![Demo: Screenshot capability](https://raw.githubusercontent.com/kwannoel/blog/main/demo-screenshot.gif)
+
+### Staging Modifications `v`
+
+One keystroke to preview uncommitted changes.
+
+![Demo: Staging modifications](https://raw.githubusercontent.com/kwannoel/blog/main/demo-staging.gif)
+
+Together they close the loop: take a screenshot, have the agent inspect the UI with Playwright (`/the-controller-debugging-ui-with-playwright`), fix the issue, toggle staging to verify the fix.
