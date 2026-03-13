@@ -94,7 +94,7 @@ Together they close the loop: take a screenshot, have the agent inspect the UI w
 
 ## Caveats
 
-The Controller is a strongly opinionated power tool — built for efficiency, simplicity, and elegant design, maintained under a benevolent-dictator model.
+The Controller is a strongly opinionated power tool — built for efficiency, simplicity, and elegant design, maintained under a benevolent-dictator model. This is still a period of experimentation, so even the roadmap is unstable.
 
 This project is in early stages. Some features may be overhauled or removed entirely without concern for backwards compatibility. Things will stabilize eventually, but not in the near term.
 

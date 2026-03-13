@@ -28,4 +28,4 @@ Bad examples:
 
 The Controller is a strongly opinionated power tool built for efficiency, simplicity, and elegant design. It is maintained under a benevolent-dictator model — decisions about direction, scope, and taste ultimately rest with one person.
 
-Large feature requests that don't align with the current roadmap may not be prioritized or accepted. If you're unsure whether something fits, open an issue first to discuss before investing time in a PR.
+This is still a period of experimentation — the roadmap itself is unstable. Large feature requests that don't align with the current direction may not be prioritized or accepted. If you're unsure whether something fits, open an issue first to discuss before investing time in a PR.
