@@ -288,6 +288,7 @@ Requirements:\n\
 - \"title\" must be a short architecture title.\n\
 - \"mermaid\" must be a valid Mermaid flowchart using stable component ids.\n\
 - \"components\" must be an array of objects with: id, name, summary, contains, incoming_relationships, outgoing_relationships, evidence_paths, evidence_snippets.\n\
+- \"contains\" must be an array of component ids (from this same components array) that are children of the component, or an empty array if the component has no children.\n\
 - Each entry in incoming_relationships and outgoing_relationships must be an object with exactly two keys: \"component_id\" (the id of the related component) and \"summary\" (a short description of the relationship).\n\
 - Every component id must appear as a Mermaid node id.\n\
 - evidence_paths and evidence_snippets must cite only the files shown below.\n\
