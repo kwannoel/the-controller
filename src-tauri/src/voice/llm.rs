@@ -162,6 +162,6 @@ mod tests {
     #[test]
     fn conversation_uses_default_system_prompt() {
         let conv = Conversation::new(None);
-        assert!(conv.system_prompt().contains("voice assistant"));
+        assert!(conv.system_prompt().contains("voice chat"));
     }
 }

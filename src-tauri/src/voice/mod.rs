@@ -43,11 +43,20 @@ struct SpeechContext<'a> {
     whisper: &'a stt::WhisperStt,
     tts_engine: &'a mut tts::PiperTts,
     audio_out: &'a audio_output::AudioOutput,
-    audio_in: &'a mut audio_input::AudioInput,
     conversation: &'a mut llm::Conversation,
     vad_engine: &'a mut vad::Vad,
+    auto_gain: &'a mut gain::AutoGain,
+    audio_rx: &'a Receiver<Vec<i16>>,
     emitter: &'a Arc<dyn EventEmitter>,
     stop: &'a Arc<AtomicBool>,
+}
+
+/// Result of processing speech — either completed normally or was interrupted.
+enum SpeechResult {
+    /// Completed normally.
+    Done,
+    /// User interrupted (barge-in). Contains the speech buffer to process next.
+    Interrupted(Vec<f32>),
 }
 
 impl VoicePipeline {
@@ -208,16 +217,25 @@ fn run_pipeline(
                         whisper: &whisper,
                         tts_engine: &mut tts_engine,
                         audio_out: &audio_out,
-                        audio_in: &mut audio_in,
                         conversation: &mut conversation,
                         vad_engine: &mut vad_engine,
+                        auto_gain: &mut auto_gain,
+                        audio_rx: &rx,
                         emitter: &emitter,
                         stop: &stop,
                     };
 
-                    process_speech(&speech_buffer, &mut speech_ctx)?;
+                    let result = process_speech(&speech_buffer, &mut speech_ctx)?;
 
                     speech_buffer.clear();
+
+                    // If interrupted, seed the speech buffer with the barge-in audio
+                    // and resume the normal VAD listening loop to collect the full utterance
+                    if let SpeechResult::Interrupted(barge_in_audio) = result {
+                        speech_buffer.extend_from_slice(&barge_in_audio);
+                        in_speech = true;
+                    }
+
                     if !stop.load(Ordering::Relaxed) {
                         emit_state(&emitter, VoiceState::Listening);
                     }
@@ -235,21 +253,21 @@ fn run_pipeline(
     Ok(())
 }
 
-fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<(), String> {
+fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechResult, String> {
     if audio.len() < MIN_SPEECH_SAMPLES {
-        return Ok(());
+        return Ok(SpeechResult::Done);
     }
 
     let rms = (audio.iter().map(|&s| s * s).sum::<f32>() / audio.len() as f32).sqrt();
     if rms < MIN_SPEECH_RMS {
-        return Ok(());
+        return Ok(SpeechResult::Done);
     }
 
     // STT
     emit_state(ctx.emitter, VoiceState::Thinking);
     let text = ctx.whisper.transcribe(audio)?;
     if text.is_empty() {
-        return Ok(());
+        return Ok(SpeechResult::Done);
     }
 
     eprintln!("[voice] You: {text}");
@@ -308,49 +326,136 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<(), Stri
         })
     });
 
-    // Main thread: synthesize and play each sentence as it arrives
-    ctx.audio_in.mute();
+    // Synthesize and play sentences while monitoring mic for barge-in.
+    // Mic stays open — requires headphones to avoid echo feedback.
     let tts_sample_rate = ctx.tts_engine.sample_rate();
     let playback = ctx.audio_out.start_streaming(tts_sample_rate)?;
+    let mut spoken_sentences: Vec<String> = Vec::new();
     let mut started_speaking = false;
+    let mut barge_in_speech: Option<Vec<f32>> = None;
 
-    for sentence in sentence_rx {
-        if ctx.stop.load(Ordering::Relaxed) {
-            break;
-        }
-        if !started_speaking {
-            emit_state(ctx.emitter, VoiceState::Speaking);
-            started_speaking = true;
-        }
-        let clean = strip_markdown(&sentence);
-        if clean.is_empty() {
-            continue;
-        }
-        emit_debug(ctx.emitter, &format!("tts: \"{}\"", clean));
-        match ctx.tts_engine.synthesize(&clean) {
-            Ok(samples) => playback.push_samples(&samples),
-            Err(e) => eprintln!("[voice] TTS error: {e}"),
+    loop {
+        crossbeam_channel::select! {
+            recv(sentence_rx) -> msg => {
+                match msg {
+                    Ok(sentence) => {
+                        if ctx.stop.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        if !started_speaking {
+                            emit_state(ctx.emitter, VoiceState::Speaking);
+                            started_speaking = true;
+                        }
+                        let clean = strip_markdown(&sentence);
+                        if clean.is_empty() {
+                            continue;
+                        }
+                        spoken_sentences.push(clean.clone());
+                        emit_debug(ctx.emitter, &format!("tts: \"{}\"", clean));
+                        match ctx.tts_engine.synthesize(&clean) {
+                            Ok(samples) => playback.push_samples(&samples),
+                            Err(e) => eprintln!("[voice] TTS error: {e}"),
+                        }
+                    }
+                    Err(_) => break, // LLM done, channel closed
+                }
+            }
+            recv(ctx.audio_rx) -> msg => {
+                if let Ok(chunk) = msg {
+                    if !started_speaking {
+                        // Not speaking yet, ignore mic input
+                        continue;
+                    }
+                    let normalized = ctx.auto_gain.apply(&chunk);
+                    if let Some(vad::VadEvent::SpeechStart) = ctx.vad_engine.process(&normalized)? {
+                        emit_debug(ctx.emitter, "barge-in: speech detected, cancelling");
+                        // Start collecting the interrupting speech
+                        let mut speech_buf = Vec::new();
+                        speech_buf.extend_from_slice(&normalized);
+                        // Drain any remaining audio from mic channel into the speech buffer
+                        while let Ok(more) = ctx.audio_rx.try_recv() {
+                            let norm = ctx.auto_gain.apply(&more);
+                            speech_buf.extend_from_slice(&norm);
+                        }
+                        barge_in_speech = Some(speech_buf);
+                        break;
+                    }
+                }
+            }
         }
     }
 
-    playback.finish();
-    ctx.audio_in.unmute();
-    emit_debug(ctx.emitter, "tts: done");
+    let interrupted = barge_in_speech.is_some();
+
+    if interrupted {
+        playback.cancel();
+    } else {
+        // Wait for remaining audio to finish playing
+        if !playback.is_done() {
+            // Keep monitoring mic while audio drains
+            while !playback.is_done() {
+                match ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(10)) {
+                    Ok(chunk) => {
+                        let normalized = ctx.auto_gain.apply(&chunk);
+                        if let Some(vad::VadEvent::SpeechStart) =
+                            ctx.vad_engine.process(&normalized)?
+                        {
+                            emit_debug(ctx.emitter, "barge-in: speech detected during drain");
+                            let mut speech_buf = Vec::new();
+                            speech_buf.extend_from_slice(&normalized);
+                            while let Ok(more) = ctx.audio_rx.try_recv() {
+                                let norm = ctx.auto_gain.apply(&more);
+                                speech_buf.extend_from_slice(&norm);
+                            }
+                            barge_in_speech = Some(speech_buf);
+                            playback.cancel();
+                            break;
+                        }
+                    }
+                    Err(_) => {} // timeout, check is_done again
+                }
+            }
+            if barge_in_speech.is_none() {
+                // Finished naturally
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+    }
+
+    emit_debug(ctx.emitter, if barge_in_speech.is_some() { "tts: cancelled (barge-in)" } else { "tts: done" });
     std::thread::sleep(std::time::Duration::from_millis(300));
     ctx.vad_engine.reset();
 
-    // Collect full response from LLM thread
-    let response = match llm_handle.join() {
-        Ok(Ok(r)) => r,
-        Ok(Err(e)) => return Err(e),
-        Err(_) => return Err("LLM thread panicked".to_string()),
-    };
-
-    if !response.is_empty() {
-        ctx.conversation.add_assistant(&response);
+    // Add whatever was spoken to conversation history
+    if interrupted {
+        // LLM thread will finish in background — don't join (it may still be generating)
+        // Record partial response so the LLM knows what it said before being interrupted
+        let partial = spoken_sentences.join(" ");
+        if !partial.is_empty() {
+            eprintln!("[voice] Assistant (interrupted): {partial}");
+            ctx.conversation.add_assistant(&format!("{partial} [interrupted]"));
+            let _ = ctx.emitter.emit(
+                "voice-transcript",
+                &serde_json::json!({"role": "assistant", "text": format!("{partial}…")}).to_string(),
+            );
+        }
+    } else {
+        // Collect full response from LLM thread
+        let response = match llm_handle.join() {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => return Err(e),
+            Err(_) => return Err("LLM thread panicked".to_string()),
+        };
+        if !response.is_empty() {
+            ctx.conversation.add_assistant(&response);
+        }
     }
 
-    Ok(())
+    Ok(if let Some(speech) = barge_in_speech {
+        SpeechResult::Interrupted(speech)
+    } else {
+        SpeechResult::Done
+    })
 }
 
 /// Strip markdown formatting so TTS doesn't read formatting characters aloud.

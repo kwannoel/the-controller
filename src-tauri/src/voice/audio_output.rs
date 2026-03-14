@@ -204,4 +204,20 @@ impl StreamingPlayback {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+
+    /// Cancel playback immediately — clear the buffer and signal done.
+    pub fn cancel(self) {
+        {
+            let mut buf = self.buffer.lock().unwrap();
+            buf.clear();
+        }
+        self.done_writing.store(true, Ordering::Relaxed);
+        // Brief wait for cpal callback to see the empty buffer
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+
+    /// Check if all pushed audio has finished playing.
+    pub fn is_done(&self) -> bool {
+        self.done_playing.load(Ordering::Relaxed)
+    }
 }
