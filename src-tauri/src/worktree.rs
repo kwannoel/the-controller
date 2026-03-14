@@ -85,7 +85,7 @@ impl WorktreeManager {
         Ok(worktree_dir.to_path_buf())
     }
 
-    /// Detect the main branch name (main or master) for a repository.
+    /// Detect the primary branch name, preferring `main` and falling back to `master`.
     pub fn detect_main_branch(repo_path: &str) -> Result<String, String> {
         let repo =
             Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;

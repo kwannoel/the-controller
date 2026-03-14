@@ -2118,7 +2118,7 @@ pub async fn stop_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<()
 }
 
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
-    for name in &["refs/heads/master", "refs/heads/main"] {
+    for name in &["refs/heads/main", "refs/heads/master"] {
         if let Ok(reference) = repo.find_reference(name) {
             if let Ok(commit) = reference.peel_to_commit() {
                 return Some(commit.id());

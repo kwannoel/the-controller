@@ -25,7 +25,7 @@ Tauri v2 + Svelte 5 desktop app for orchestrating multiple Claude Code terminal 
 
 ## Branch Completion Rules
 
-When merging a feature branch back to the base branch (e.g. master), you MUST push to remote after merging. Never leave the base branch out of sync with the remote.
+When merging a feature branch back to the base branch (e.g. main), you MUST push to remote after merging. Never leave the base branch out of sync with the remote.
 
 ```bash
 git checkout <base-branch>

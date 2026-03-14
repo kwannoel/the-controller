@@ -1,6 +1,6 @@
 ---
 name: the-controller-finishing-a-development-branch
-description: Use when implementation is complete and you need to merge the branch — verifies tests, rebases, creates PR, squash merges, deletes remote branch, syncs local master, and closes the issue
+description: Use when implementation is complete and you need to merge the branch — verifies tests, rebases, creates PR, squash merges, deletes remote branch, syncs local main, and closes the issue
 ---
 
 # Finishing a Development Branch
@@ -12,8 +12,8 @@ Run the project's test suite. If tests fail, fix them before proceeding.
 ## Step 2: Execute Merge Workflow
 
 1. Ensure all changes are committed before proceeding
-2. Rebase onto `master`
-3. Create a PR to `master`
+2. Rebase onto `main`
+3. Create a PR to `main`
 4. Squash merge the PR (without `--delete-branch` to avoid worktree checkout errors):
    ```bash
    gh pr merge --squash
@@ -22,18 +22,18 @@ Run the project's test suite. If tests fail, fix them before proceeding.
    ```bash
    git push origin --delete "$(git branch --show-current)"
    ```
-6. Sync local master:
+6. Sync local main:
    ```bash
-   # Find where master is checked out and pull there directly
-   master_worktree=$(git worktree list | grep '\[master\]' | awk '{print $1}')
-   if [ -n "$master_worktree" ]; then
-     git -C "$master_worktree" pull origin master
+   # Find where main is checked out and pull there directly
+   main_worktree=$(git worktree list | grep '\[main\]' | awk '{print $1}')
+   if [ -n "$main_worktree" ]; then
+     git -C "$main_worktree" pull origin main
    else
-     git fetch origin master:master
+     git fetch origin main:main
    fi
    ```
 7. Close the associated issue with a summary of what was done
-8. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree. Syncing master (step 6) may trigger a dev server restart which temporarily kills the socket, so retry for up to 60 seconds:
+8. If running inside The Controller (i.e. `$THE_CONTROLLER_SESSION_ID` is set), signal it to clean up this session's worktree. Syncing main (step 6) may trigger a dev server restart which temporarily kills the socket, so retry for up to 60 seconds:
    ```bash
    if [ -z "$THE_CONTROLLER_SESSION_ID" ]; then
      echo "ERROR: THE_CONTROLLER_SESSION_ID is not set, cannot signal cleanup"
