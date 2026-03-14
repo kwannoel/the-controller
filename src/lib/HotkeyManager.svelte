@@ -578,6 +578,17 @@
       }
     }
 
+    // Voice mode: d = debug, t = transcript
+    if (currentMode === "voice") {
+      if (e.key === "d" || e.key === "t") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "voice-toggle-panel", panel: e.key === "d" ? "debug" : "transcript" });
+        pushKeystroke(e.key);
+        return;
+      }
+    }
+
     // Try to handle as hotkey
     if (handleHotkey(e.key)) {
       e.stopPropagation();

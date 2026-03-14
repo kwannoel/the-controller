@@ -30,6 +30,7 @@
   let promptPickerTarget: { projectId: string } | null = $state(null);
   let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
   let deploySetupOpen = $state(false);
+  let voiceModeRef: { toggleDebug: () => void; toggleTranscript: () => void } | undefined = $state();
   let screenshotPickerState: { path: string; preview: boolean } | null = $state(null);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
@@ -91,6 +92,12 @@
         promptPickerTarget = { projectId: action.projectId };
       } else if (action?.type === "generate-architecture") {
         generateArchitectureForProject(action.projectId, action.repoPath);
+      } else if (action?.type === "voice-toggle-panel") {
+        if (action.panel === "debug") {
+          voiceModeRef?.toggleDebug();
+        } else {
+          voiceModeRef?.toggleTranscript();
+        }
       } else if (action?.type === "deploy-project") {
         command<boolean>("is_deploy_provisioned").then(async (provisioned) => {
           if (!provisioned) {
@@ -490,7 +497,7 @@
       {/if}
       <main class="terminal-area">
         {#if workspaceModeState.current === "voice"}
-          <VoiceMode />
+          <VoiceMode bind:this={voiceModeRef} />
         {:else if workspaceModeState.current === "agents"}
           <AgentDashboard />
         {:else if workspaceModeState.current === "architecture"}
