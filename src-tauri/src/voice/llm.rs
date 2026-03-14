@@ -1,6 +1,6 @@
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -31,13 +31,61 @@ pub fn build_notification(method: &str, params: serde_json::Value) -> serde_json
 }
 
 // ---------------------------------------------------------------------------
+// CancelHandle — thread-safe handle for interrupting an in-progress turn
+// ---------------------------------------------------------------------------
+
+/// A thread-safe handle for cancelling an in-progress turn.
+/// Only writes to stdin — does not read from stdout.
+/// The LLM thread's stream_response() will see the resulting
+/// turn/completed notification and exit naturally.
+#[allow(dead_code)]
+pub struct CancelHandle {
+    writer: Arc<Mutex<BufWriter<ChildStdin>>>,
+    thread_id: String,
+    turn_id: String,
+}
+
+#[allow(dead_code)]
+impl CancelHandle {
+    /// Send turn/interrupt. Does not drain — stream_response sees
+    /// turn/completed and exits naturally.
+    pub fn send_interrupt(&self) -> Result<(), String> {
+        let id = 0u64; // ID doesn't matter for fire-and-forget cancel
+        let msg = build_request(
+            "turn/interrupt",
+            id,
+            serde_json::json!({
+                "threadId": self.thread_id,
+                "turnId": self.turn_id,
+            }),
+        );
+        let line = serde_json::to_string(&msg)
+            .map_err(|e| format!("Failed to serialize cancel: {e}"))?;
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|e| format!("Failed to lock stdin for cancel: {e}"))?;
+        writer
+            .write_all(line.as_bytes())
+            .map_err(|e| format!("Failed to write cancel: {e}"))?;
+        writer
+            .write_all(b"\n")
+            .map_err(|e| format!("Failed to write cancel newline: {e}"))?;
+        writer
+            .flush()
+            .map_err(|e| format!("Failed to flush cancel: {e}"))?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // CodexAppServer
 // ---------------------------------------------------------------------------
 
 pub struct CodexAppServer {
     child: Child,
-    stdin: BufWriter<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
+    writer: Arc<Mutex<BufWriter<ChildStdin>>>,
+    reader: BufReader<ChildStdout>,
     thread_id: String,
     next_id: u64,
     current_turn_id: Option<String>,
@@ -50,7 +98,7 @@ impl CodexAppServer {
     /// 2. Send `initialized` notification
     /// 3. Send `thread/start` request → store `thread_id`
     /// 4. Drain the `thread/started` notification
-    pub async fn start(system_prompt: Option<&str>) -> Result<Self, String> {
+    pub fn start(system_prompt: Option<&str>) -> Result<Self, String> {
         let mut child = Command::new("codex")
             .arg("app-server")
             .env_remove("CLAUDECODE")
@@ -72,8 +120,8 @@ impl CodexAppServer {
 
         let mut server = Self {
             child,
-            stdin: BufWriter::new(stdin),
-            stdout: BufReader::new(stdout),
+            writer: Arc::new(Mutex::new(BufWriter::new(stdin))),
+            reader: BufReader::new(stdout),
             thread_id: String::new(),
             next_id: 0,
             current_turn_id: None,
@@ -90,12 +138,10 @@ impl CodexAppServer {
                 "experimentalApi": true,
             },
         });
-        server.send_request("initialize", init_params).await?;
+        server.send_request("initialize", init_params)?;
 
         // 2. initialized notification
-        server
-            .send_notification("initialized", serde_json::json!({}))
-            .await?;
+        server.send_notification("initialized", serde_json::json!({}))?;
 
         // 3. thread/start
         let base_instructions = system_prompt.unwrap_or(SYSTEM_PROMPT);
@@ -107,7 +153,7 @@ impl CodexAppServer {
             "baseInstructions": base_instructions,
             "personality": "friendly",
         });
-        let thread_resp = server.send_request("thread/start", thread_params).await?;
+        let thread_resp = server.send_request("thread/start", thread_params)?;
 
         let thread_id = thread_resp
             .get("result")
@@ -119,7 +165,7 @@ impl CodexAppServer {
 
         // 4. Drain notifications until thread/started
         loop {
-            let msg = server.read_line().await?;
+            let msg = server.read_line()?;
             if msg.get("method").and_then(|m| m.as_str()) == Some("thread/started") {
                 break;
             }
@@ -132,7 +178,7 @@ impl CodexAppServer {
     ///
     /// Sends `turn/start`, then reads notification lines until `turn/completed`.
     /// Calls `on_token` for each text delta. Returns the full accumulated response.
-    pub async fn stream_response(
+    pub fn stream_response(
         &mut self,
         text: &str,
         on_token: &mut dyn FnMut(&str),
@@ -142,7 +188,7 @@ impl CodexAppServer {
             "input": [{"type": "text", "text": text}],
             "effort": "low",
         });
-        let turn_resp = self.send_request("turn/start", turn_params).await?;
+        let turn_resp = self.send_request("turn/start", turn_params)?;
 
         let turn_id = turn_resp
             .get("result")
@@ -155,7 +201,7 @@ impl CodexAppServer {
         let mut full_response = String::new();
 
         loop {
-            let msg = self.read_line().await?;
+            let msg = self.read_line()?;
             let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
 
             match method {
@@ -217,7 +263,7 @@ impl CodexAppServer {
     ///
     /// Sends `turn/interrupt` and drains until `turn/completed`.
     /// No-op if no turn is active.
-    pub async fn cancel_turn(&mut self) -> Result<(), String> {
+    pub fn cancel_turn(&mut self) -> Result<(), String> {
         let turn_id = match self.current_turn_id.take() {
             Some(id) => id,
             None => return Ok(()),
@@ -227,12 +273,11 @@ impl CodexAppServer {
             "threadId": self.thread_id,
             "turnId": turn_id,
         });
-        self.send_request("turn/interrupt", interrupt_params)
-            .await?;
+        self.send_request("turn/interrupt", interrupt_params)?;
 
         // Drain until turn/completed (also handle fatal errors to avoid hanging)
         loop {
-            let msg = self.read_line().await?;
+            let msg = self.read_line()?;
             let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
             match method {
                 "turn/completed" => break,
@@ -252,59 +297,46 @@ impl CodexAppServer {
         Ok(())
     }
 
+    /// Create a cancel handle for the current turn. Returns None if no turn is active.
+    #[allow(dead_code)]
+    pub fn cancel_handle(&self) -> Option<CancelHandle> {
+        self.current_turn_id.as_ref().map(|turn_id| CancelHandle {
+            writer: self.writer.clone(),
+            thread_id: self.thread_id.clone(),
+            turn_id: turn_id.clone(),
+        })
+    }
+
     // -----------------------------------------------------------------------
     // Internal I/O helpers
     // -----------------------------------------------------------------------
 
-    /// Send a JSON-RPC request and read the matching response.
-    async fn send_request(
-        &mut self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
-        let id = self.next_id;
-        self.next_id += 1;
-        let msg = build_request(method, id, params);
-        self.write_message(&msg).await?;
-        self.read_response(id).await
-    }
-
-    /// Send a JSON-RPC notification (no response expected).
-    async fn send_notification(
-        &mut self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<(), String> {
-        let msg = build_notification(method, params);
-        self.write_message(&msg).await
-    }
-
     /// Serialize a message to JSON, write it as a single line + newline, and flush.
-    async fn write_message(&mut self, msg: &serde_json::Value) -> Result<(), String> {
+    fn write_message(&mut self, msg: &serde_json::Value) -> Result<(), String> {
         let line = serde_json::to_string(msg)
             .map_err(|e| format!("Failed to serialize message: {e}"))?;
-        self.stdin
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|e| format!("Failed to lock stdin: {e}"))?;
+        writer
             .write_all(line.as_bytes())
-            .await
             .map_err(|e| format!("Failed to write to codex stdin: {e}"))?;
-        self.stdin
+        writer
             .write_all(b"\n")
-            .await
             .map_err(|e| format!("Failed to write newline to codex stdin: {e}"))?;
-        self.stdin
+        writer
             .flush()
-            .await
             .map_err(|e| format!("Failed to flush codex stdin: {e}"))?;
         Ok(())
     }
 
     /// Read one line from stdout and parse it as JSON.
-    async fn read_line(&mut self) -> Result<serde_json::Value, String> {
+    fn read_line(&mut self) -> Result<serde_json::Value, String> {
         let mut line = String::new();
         let bytes_read = self
-            .stdout
+            .reader
             .read_line(&mut line)
-            .await
             .map_err(|e| format!("Failed to read from codex stdout: {e}"))?;
         if bytes_read == 0 {
             return Err("codex app-server closed stdout (EOF)".to_string());
@@ -313,12 +345,35 @@ impl CodexAppServer {
             .map_err(|e| format!("Failed to parse codex output as JSON: {e}"))
     }
 
+    /// Send a JSON-RPC request and read the matching response.
+    fn send_request(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let id = self.next_id;
+        self.next_id += 1;
+        let msg = build_request(method, id, params);
+        self.write_message(&msg)?;
+        self.read_response(id)
+    }
+
+    /// Send a JSON-RPC notification (no response expected).
+    fn send_notification(
+        &mut self,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<(), String> {
+        let msg = build_notification(method, params);
+        self.write_message(&msg)
+    }
+
     /// Read lines until we get a response with the expected `id`.
     /// Skips notifications (messages without an `id` field).
     /// Checks for an `error` field in the response.
-    async fn read_response(&mut self, expected_id: u64) -> Result<serde_json::Value, String> {
+    fn read_response(&mut self, expected_id: u64) -> Result<serde_json::Value, String> {
         loop {
-            let msg = self.read_line().await?;
+            let msg = self.read_line()?;
 
             // Skip notifications (no id field)
             let msg_id = match msg.get("id") {
@@ -348,7 +403,7 @@ impl CodexAppServer {
 
 impl Drop for CodexAppServer {
     fn drop(&mut self) {
-        let _ = self.child.start_kill();
+        let _ = self.child.kill();
     }
 }
 
@@ -402,6 +457,8 @@ pub async fn stream_response(
     conversation: &Conversation,
     on_token: &mut dyn FnMut(&str),
 ) -> Result<String, String> {
+    use tokio::io::AsyncBufReadExt;
+
     let prompt = conversation
         .messages
         .last()
@@ -410,7 +467,7 @@ pub async fn stream_response(
 
     let is_first_turn = conversation.messages.len() <= 1;
 
-    let mut cmd = Command::new("claude");
+    let mut cmd = tokio::process::Command::new("claude");
     cmd.arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
