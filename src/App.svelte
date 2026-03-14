@@ -81,7 +81,7 @@
       } else if (action?.type === "assign-issue-to-session") {
         createSessionWithIssue(action.projectId, action.repoPath, action.issue);
       } else if (action?.type === "screenshot-to-session") {
-        captureScreenshot(action.preview ?? false, action.cropped ?? false);
+        captureScreenshot(action.direct ?? false, action.cropped ?? false);
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
       } else if (action?.type === "toggle-auto-worker-enabled") {
@@ -285,17 +285,17 @@
     return `I just took a screenshot of the app. The screenshot is saved at: ${path}\nPlease read the screenshot image and share what you see, but wait for further prompts before taking any action.`;
   }
 
-  async function captureScreenshot(preview: boolean, cropped: boolean) {
+  async function captureScreenshot(direct: boolean, cropped: boolean) {
     try {
       showToast(cropped ? "Select area to capture..." : "Capturing screenshot...", "info");
       const screenshotPath: string = await command("capture_app_screenshot", { cropped });
 
-      if (preview) {
-        import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
+      if (direct) {
+        await createScreenshotSession(screenshotPath);
+      } else {
+        // Show session picker
+        screenshotPickerState = { path: screenshotPath, preview: false };
       }
-
-      // Show session picker
-      screenshotPickerState = { path: screenshotPath, preview };
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -307,6 +307,8 @@
     screenshotPickerState = null;
 
     try {
+      // Ensure the PTY is spawned before writing (it may not be active yet)
+      await command("connect_session", { sessionId, rows: 24, cols: 80 });
       await command("write_to_pty", { sessionId, data: prompt + "\n" });
       activeSessionId.set(sessionId);
       expandedProjects.update((s: Set<string>) => {
@@ -320,12 +322,7 @@
     }
   }
 
-  async function sendScreenshotToNewSession() {
-    if (!screenshotPickerState) return;
-    const path = screenshotPickerState.path;
-    screenshotPickerState = null;
-
-    // Target the-controller project for self-debugging screenshots
+  async function createScreenshotSession(screenshotPath: string) {
     const project = projectsState.current.find((p) => p.name === "the-controller");
     if (!project) {
       showToast("The controller project must be loaded to use screenshot sessions", "error");
@@ -336,13 +333,20 @@
       const sessionId: string = await command("create_session", {
         projectId: project.id,
         kind: currentSessionProvider,
-        initialPrompt: screenshotPrompt(path),
+        initialPrompt: screenshotPrompt(screenshotPath),
       });
       await activateNewSession(sessionId, project.id);
       focusTerminalSoon();
     } catch (e) {
       showToast(String(e), "error");
     }
+  }
+
+  async function sendScreenshotToNewSession() {
+    if (!screenshotPickerState) return;
+    const path = screenshotPickerState.path;
+    screenshotPickerState = null;
+    await createScreenshotSession(path);
   }
 
   function updateWindowTitle(branch: string, commit: string) {

@@ -170,6 +170,7 @@ describe("App screenshot flow", () => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
       if (cmd === "capture_app_screenshot") return "/tmp/the-controller-screenshot.png";
+      if (cmd === "connect_session") return;
       if (cmd === "create_session") return "sess-new";
       if (cmd === "list_projects") {
         return {
@@ -198,7 +199,48 @@ describe("App screenshot flow", () => {
     });
   }
 
-  it("Cmd+S: captures screenshot and shows session picker", async () => {
+  it("Cmd+S (direct): captures screenshot and spawns session for the-controller", async () => {
+    setupMocks();
+    render(App);
+    hotkeyAction.set({ type: "screenshot-to-session", direct: true });
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
+    });
+
+    // Should directly create session without showing picker
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
+        projectId: "proj-1",
+        kind: "claude",
+        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
+      }));
+    });
+
+    expect(screen.queryByText("Send Screenshot To")).not.toBeInTheDocument();
+  });
+
+  it("Cmd+D (direct): captures cropped screenshot and spawns session for the-controller", async () => {
+    setupMocks();
+    render(App);
+    hotkeyAction.set({ type: "screenshot-to-session", direct: true, cropped: true });
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+    });
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
+        projectId: "proj-1",
+        kind: "claude",
+        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
+      }));
+    });
+
+    expect(screen.queryByText("Send Screenshot To")).not.toBeInTheDocument();
+  });
+
+  it("Cmd+Shift+S (picker): captures screenshot and shows session picker", async () => {
     setupMocks();
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session" });
@@ -212,8 +254,6 @@ describe("App screenshot flow", () => {
       expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
       expect(screen.getByText("+ New session")).toBeInTheDocument();
     });
-
-    expect(mocks.openPath).not.toHaveBeenCalled();
   });
 
   it("new session option in picker routes to the-controller project", async () => {
@@ -273,6 +313,10 @@ describe("App screenshot flow", () => {
     await fireEvent.click(screen.getByText("session-1"));
 
     await waitFor(() => {
+      // Should connect the PTY first, then write
+      expect(command).toHaveBeenCalledWith("connect_session", expect.objectContaining({
+        sessionId: "sess-existing",
+      }));
       expect(command).toHaveBeenCalledWith("write_to_pty", expect.objectContaining({
         sessionId: "sess-existing",
         data: expect.stringContaining("/tmp/the-controller-screenshot.png"),
@@ -280,18 +324,7 @@ describe("App screenshot flow", () => {
     });
   });
 
-  it("Cmd+Shift+S: captures screenshot with preview", async () => {
-    setupMocks();
-    render(App);
-    hotkeyAction.set({ type: "screenshot-to-session", preview: true });
-
-    await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
-      expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
-    });
-  });
-
-  it("Cmd+D: captures cropped screenshot without preview", async () => {
+  it("Cmd+Shift+D (picker): captures cropped screenshot and shows picker", async () => {
     setupMocks();
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session", cropped: true });
@@ -300,17 +333,8 @@ describe("App screenshot flow", () => {
       expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
     });
 
-    expect(mocks.openPath).not.toHaveBeenCalled();
-  });
-
-  it("Cmd+Shift+D: captures cropped screenshot with preview", async () => {
-    setupMocks();
-    render(App);
-    hotkeyAction.set({ type: "screenshot-to-session", preview: true, cropped: true });
-
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
-      expect(mocks.openPath).toHaveBeenCalledWith("/tmp/the-controller-screenshot.png");
+      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
     });
   });
 });

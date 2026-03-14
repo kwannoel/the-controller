@@ -68,9 +68,9 @@ export const commands: CommandDef[] = [
   { id: "save-prompt", key: "P", section: "Sessions", description: "Save focused session's prompt", mode: "development" },
   { id: "load-prompt", key: "p", section: "Sessions", description: "Load saved prompt into new session", mode: "development" },
   { id: "stage", key: "v", section: "Sessions", description: "Stage/unstage session as separate instance", mode: "development" },
-  { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → pick session", handledExternally: true },
-  { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → pick session", handledExternally: true },
-  { id: "screenshot-preview", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot with preview → pick session", handledExternally: true },
+  { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
+  { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
+  { id: "screenshot-picker", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot → pick session", handledExternally: true },
   { id: "toggle-session-provider", key: "⌘t", section: "Sessions", description: "Toggle session provider", handledExternally: true, mode: "development" },
 
   // ── Projects ──
@@ -122,7 +122,7 @@ export interface HelpSection {
 export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
   if (mode === "development") {
     const essentialIds = new Set(["create-session", "navigate-next", "navigate-prev", "finish-branch", "new-project", "delete", "fuzzy-finder", "expand-collapse", "escape-focus", "escape-forward"]);
-    const debugIds = new Set(["screenshot", "screenshot-cropped", "screenshot-preview"]);
+    const debugIds = new Set(["screenshot", "screenshot-cropped", "screenshot-picker"]);
 
     const essentials: HelpSection = {
       label: "Essentials",

@@ -23,6 +23,7 @@
   let items: PickerItem[] = $derived.by(() => {
     const result: PickerItem[] = [{ type: "new" }];
     for (const project of projectsState.current) {
+      if (project.name !== "the-controller") continue;
       for (const session of project.sessions) {
         if (session.archived || session.auto_worker_session) continue;
         result.push({
@@ -114,11 +115,17 @@
               class:selected={selectedIndex === index}
               onclick={() => { selectedIndex = index; confirm(); }}
             >
-              <span class="project-name">{item.projectName}</span>
-              <span class="session-label">{item.session?.label}</span>
-              {#if item.session?.github_issue}
-                <span class="issue-tag">#{item.session.github_issue.number}</span>
-              {/if}
+              <div class="session-info">
+                <div class="session-top-row">
+                  <span class="session-label">{item.session?.label}</span>
+                  {#if item.session?.github_issue}
+                    <span class="issue-tag">#{item.session.github_issue.number}</span>
+                  {/if}
+                </div>
+                {#if item.session?.initial_prompt}
+                  <div class="session-summary">{item.session.initial_prompt}</div>
+                {/if}
+              </div>
             </button>
           {/if}
         </li>
@@ -191,15 +198,27 @@
     color: var(--text-emphasis);
     font-weight: 500;
   }
-  .project-name {
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-weight: 500;
-    white-space: nowrap;
-    flex-shrink: 0;
+  .session-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    flex: 1;
+  }
+  .session-top-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
   }
   .session-label {
     color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .session-summary {
+    color: var(--text-secondary);
+    font-size: 11px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

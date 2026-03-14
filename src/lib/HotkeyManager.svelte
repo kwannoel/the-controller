@@ -447,14 +447,14 @@
     // Ignore held-down key repeats to prevent toast/action spam
     if (e.repeat) return;
 
-    // Cmd+S/Cmd+Shift+S: full window screenshot (shift = preview)
-    // Cmd+D/Cmd+Shift+D: cropped screenshot (shift = preview)
+    // Cmd+S/Cmd+D: screenshot → direct to the-controller session
+    // Cmd+Shift+S/Cmd+Shift+D: screenshot → session picker
     if (e.metaKey && (e.key === "s" || e.key === "d")) {
       e.stopPropagation();
       e.preventDefault();
       dispatchAction({
         type: "screenshot-to-session",
-        preview: e.shiftKey,
+        direct: !e.shiftKey,
         cropped: e.key === "d",
       });
       pushKeystroke("⌘" + e.key.toUpperCase());
