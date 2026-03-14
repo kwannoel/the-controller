@@ -39,7 +39,7 @@ whisper-rs = "0.12"
 ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
 hound = "3.5"
 crossbeam-channel = "0.5"
-ndarray = "0.16"
+ndarray = "0.17"
 
 [features]
 default = []
