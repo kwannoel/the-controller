@@ -14,6 +14,7 @@
   import PromptPickerModal from "./lib/PromptPickerModal.svelte";
   import SecureEnvModal from "./lib/SecureEnvModal.svelte";
   import DeploySetupModal from "./lib/DeploySetupModal.svelte";
+  import SessionPickerModal from "./lib/SessionPickerModal.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
@@ -28,6 +29,7 @@
   let promptPickerTarget: { projectId: string } | null = $state(null);
   let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
   let deploySetupOpen = $state(false);
+  let screenshotPickerState: { path: string; preview: boolean } | null = $state(null);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
@@ -77,7 +79,7 @@
       } else if (action?.type === "assign-issue-to-session") {
         createSessionWithIssue(action.projectId, action.repoPath, action.issue);
       } else if (action?.type === "screenshot-to-session") {
-        screenshotToNewSession(action.preview ?? false, action.cropped ?? false);
+        captureScreenshot(action.preview ?? false, action.cropped ?? false);
       } else if (action?.type === "toggle-maintainer-enabled") {
         toggleMaintainerEnabled();
       } else if (action?.type === "toggle-auto-worker-enabled") {
@@ -271,35 +273,63 @@
     }
   }
 
-  async function screenshotToNewSession(preview: boolean, cropped: boolean) {
-    // IMPORTANT: Screenshot sessions are a core personalization feature — they let
-    // users debug and modify the controller from within itself. This must always
-    // target the controller project, never the focused project.
-    const project = projectsState.current.find((p) => p.name === "the-controller");
+  function screenshotPrompt(path: string): string {
+    return `I just took a screenshot of the app. The screenshot is saved at: ${path}\nPlease read the screenshot image and share what you see, but wait for further prompts before taking any action.`;
+  }
 
+  async function captureScreenshot(preview: boolean, cropped: boolean) {
+    try {
+      showToast(cropped ? "Select area to capture..." : "Capturing screenshot...", "info");
+      const screenshotPath: string = await command("capture_app_screenshot", { cropped });
+
+      if (preview) {
+        import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
+      }
+
+      // Show session picker
+      screenshotPickerState = { path: screenshotPath, preview };
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function sendScreenshotToSession(sessionId: string, projectId: string) {
+    if (!screenshotPickerState) return;
+    const prompt = screenshotPrompt(screenshotPickerState.path);
+    screenshotPickerState = null;
+
+    try {
+      await command("write_to_pty", { sessionId, data: prompt + "\n" });
+      activeSessionId.set(sessionId);
+      expandedProjects.update((s: Set<string>) => {
+        const next = new Set(s);
+        next.add(projectId);
+        return next;
+      });
+      focusTerminalSoon();
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
+  async function sendScreenshotToNewSession() {
+    if (!screenshotPickerState) return;
+    const path = screenshotPickerState.path;
+    screenshotPickerState = null;
+
+    // Target the-controller project for self-debugging screenshots
+    const project = projectsState.current.find((p) => p.name === "the-controller");
     if (!project) {
       showToast("The controller project must be loaded to use screenshot sessions", "error");
       return;
     }
 
     try {
-      // 1. Capture screenshot
-      showToast(cropped ? "Select area to capture..." : "Capturing screenshot...", "info");
-      const screenshotPath: string = await command("capture_app_screenshot", { cropped });
-
-      // Open in Preview only when preview is requested
-      if (preview) {
-        import("@tauri-apps/plugin-opener").then(({ openPath }) => openPath(screenshotPath));
-      }
-
-      // 2. Create a new session with initial prompt referencing the screenshot file.
-      // Tell Claude to share the path and wait for further instructions.
       const sessionId: string = await command("create_session", {
         projectId: project.id,
         kind: currentSessionProvider,
-        initialPrompt: `I just took a screenshot of the app. The screenshot is saved at: ${screenshotPath}\nPlease read the screenshot image and share what you see, but wait for further prompts before taking any action.`,
+        initialPrompt: screenshotPrompt(path),
       });
-
       await activateNewSession(sessionId, project.id);
       focusTerminalSoon();
     } catch (e) {
@@ -512,6 +542,13 @@
         envKey={secureEnvRequest.key}
         onSubmit={submitSecureEnvValue}
         onClose={cancelSecureEnvRequest}
+      />
+    {/if}
+    {#if screenshotPickerState}
+      <SessionPickerModal
+        onSelect={(s) => sendScreenshotToSession(s.sessionId, s.projectId)}
+        onNewSession={sendScreenshotToNewSession}
+        onClose={() => { screenshotPickerState = null; }}
       />
     {/if}
     {#if workspaceModePickerVisibleState.current}

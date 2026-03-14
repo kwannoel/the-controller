@@ -198,33 +198,40 @@ describe("App screenshot flow", () => {
     });
   }
 
-  it("Cmd+S: captures screenshot without preview", async () => {
+  it("Cmd+S: captures screenshot and shows session picker", async () => {
     setupMocks();
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
-      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
-        kind: "claude",
-        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
-      }));
+    });
+
+    // Session picker modal should appear
+    await waitFor(() => {
+      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
+      expect(screen.getByText("+ New session")).toBeInTheDocument();
     });
 
     expect(mocks.openPath).not.toHaveBeenCalled();
   });
 
-  it("always routes screenshot sessions to the controller project, ignoring focus", async () => {
+  it("new session option in picker routes to the-controller project", async () => {
     const controllerProject = { ...baseProject, id: "proj-controller", name: "the-controller", repo_path: "/tmp/the-controller" };
     const otherProject = { ...baseProject, id: "proj-other", name: "client-app", repo_path: "/tmp/client-app" };
     setupMocks();
     projects.set([otherProject, controllerProject]);
-    // Focus is on a different project — screenshot should still go to the-controller
     focusTarget.set({ type: "project", projectId: "proj-other" });
 
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
+    });
+
+    // Click "+ New session" — should create session in the-controller project
+    await fireEvent.click(screen.getByText("+ New session"));
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
@@ -235,18 +242,40 @@ describe("App screenshot flow", () => {
     });
   });
 
-  it("uses the selected provider for screenshot sessions", async () => {
+  it("sends screenshot to an existing session when picked", async () => {
+    const projectWithSession = {
+      ...baseProject,
+      sessions: [
+        {
+          id: "sess-existing",
+          label: "session-1",
+          worktree_path: null,
+          worktree_branch: null,
+          archived: false,
+          kind: "claude",
+          github_issue: null,
+          initial_prompt: null,
+          auto_worker_session: false,
+        },
+      ],
+    };
     setupMocks();
-    selectedSessionProvider.set("codex");
+    projects.set([projectWithSession]);
 
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
-        kind: "codex",
-        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
+      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
+    });
+
+    // Click the existing session
+    await fireEvent.click(screen.getByText("session-1"));
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("write_to_pty", expect.objectContaining({
+        sessionId: "sess-existing",
+        data: expect.stringContaining("/tmp/the-controller-screenshot.png"),
       }));
     });
   });
