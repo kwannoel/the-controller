@@ -322,8 +322,12 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<(), Stri
             emit_state(ctx.emitter, VoiceState::Speaking);
             started_speaking = true;
         }
-        emit_debug(ctx.emitter, &format!("tts: \"{}\"", sentence));
-        match ctx.tts_engine.synthesize(&sentence) {
+        let clean = strip_markdown(&sentence);
+        if clean.is_empty() {
+            continue;
+        }
+        emit_debug(ctx.emitter, &format!("tts: \"{}\"", clean));
+        match ctx.tts_engine.synthesize(&clean) {
             Ok(samples) => playback.push_samples(&samples),
             Err(e) => eprintln!("[voice] TTS error: {e}"),
         }
@@ -347,4 +351,103 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<(), Stri
     }
 
     Ok(())
+}
+
+/// Strip markdown formatting so TTS doesn't read formatting characters aloud.
+fn strip_markdown(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    for line in text.lines() {
+        let line = line.trim();
+        // Strip heading markers
+        let line = line.trim_start_matches('#').trim_start();
+        // Strip blockquote markers
+        let line = line.trim_start_matches('>').trim_start();
+        // Strip list markers ("- ", "* ", "1. ", "2. ", etc.)
+        let line = if line.starts_with("- ") || line.starts_with("* ") {
+            &line[2..]
+        } else if line.len() >= 3
+            && line.as_bytes()[0].is_ascii_digit()
+            && line.as_bytes().get(1) == Some(&b'.')
+            && line.as_bytes().get(2) == Some(&b' ')
+        {
+            &line[3..]
+        } else {
+            line
+        };
+        if !result.is_empty() && !line.is_empty() {
+            result.push(' ');
+        }
+        result.push_str(line);
+    }
+    // Remove inline formatting: *, `, ~
+    result.retain(|c| !matches!(c, '*' | '`' | '~'));
+    // Collapse multiple spaces
+    let mut prev_space = false;
+    result = result
+        .chars()
+        .filter(|&c| {
+            if c == ' ' {
+                if prev_space {
+                    return false;
+                }
+                prev_space = true;
+            } else {
+                prev_space = false;
+            }
+            true
+        })
+        .collect();
+    result.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_markdown;
+
+    #[test]
+    fn strips_bold_and_italic() {
+        assert_eq!(strip_markdown("**hello** world"), "hello world");
+        assert_eq!(strip_markdown("*italic* text"), "italic text");
+        assert_eq!(strip_markdown("***both***"), "both");
+    }
+
+    #[test]
+    fn strips_backticks() {
+        assert_eq!(strip_markdown("use `println!` here"), "use println! here");
+        assert_eq!(strip_markdown("```code block```"), "code block");
+    }
+
+    #[test]
+    fn strips_headings() {
+        assert_eq!(strip_markdown("## My Heading"), "My Heading");
+        assert_eq!(strip_markdown("# Title"), "Title");
+    }
+
+    #[test]
+    fn strips_list_markers() {
+        assert_eq!(strip_markdown("- item one\n- item two"), "item one item two");
+        assert_eq!(strip_markdown("* bullet"), "bullet");
+        assert_eq!(strip_markdown("1. first\n2. second"), "first second");
+    }
+
+    #[test]
+    fn strips_blockquotes() {
+        assert_eq!(strip_markdown("> quoted text"), "quoted text");
+    }
+
+    #[test]
+    fn strips_strikethrough() {
+        assert_eq!(strip_markdown("~~removed~~ kept"), "removed kept");
+    }
+
+    #[test]
+    fn preserves_plain_text() {
+        assert_eq!(strip_markdown("Hello, how are you?"), "Hello, how are you?");
+    }
+
+    #[test]
+    fn handles_empty_input() {
+        assert_eq!(strip_markdown(""), "");
+        assert_eq!(strip_markdown("***"), "");
+    }
 }

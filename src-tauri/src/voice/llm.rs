@@ -16,9 +16,7 @@ fn live_chat_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-const SYSTEM_PROMPT: &str = "You are a voice assistant. Reply in 1–2 sentences max. \
-Be direct — no filler like \"Sure!\", \"Great question!\", \"Of course!\". Just answer. \
-Never use lists, bullet points, markdown, or code blocks. Speak as briefly as a human would in casual conversation.";
+const SYSTEM_PROMPT: &str = "You are in a live voice chat. Your replies are spoken aloud via TTS.";
 
 #[derive(Clone)]
 pub struct Conversation {
