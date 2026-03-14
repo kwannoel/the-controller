@@ -129,7 +129,7 @@ export interface Config {
   default_provider?: ConfigDefaultProvider;
 }
 
-export type ConfigDefaultProvider = "claude-code" | "codex";
+export type ConfigDefaultProvider = "claude-code" | "codex" | "cursor-agent";
 
 export interface NoteEntry {
   filename: string;
@@ -185,13 +185,15 @@ export type WorkspaceMode =
   | "voice";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
-export type SessionProvider = "claude" | "codex";
+export type SessionProvider = "claude" | "codex" | "cursor-agent";
 export const selectedSessionProvider = writable<SessionProvider>("claude");
 
 export function sessionProviderFromConfig(
   provider: ConfigDefaultProvider | undefined,
 ): SessionProvider {
-  return provider === "codex" ? "codex" : "claude";
+  if (provider === "codex") return "codex";
+  if (provider === "cursor-agent") return "cursor-agent";
+  return "claude";
 }
 
 export const activeNote = writable<{
@@ -252,13 +254,13 @@ export type HotkeyAction =
   | { type: "delete-project"; projectId?: string }
   | { type: "open-issues-modal"; projectId: string; repoPath: string }
   | {
-      type: "assign-issue-to-session";
-      projectId: string;
-      repoPath: string;
-      issue: GithubIssue;
-    }
+    type: "assign-issue-to-session";
+    projectId: string;
+    repoPath: string;
+    issue: GithubIssue;
+  }
   | { type: "merge-session"; sessionId: string; projectId: string }
-  | { type: "finish-branch"; sessionId: string; kind?: "claude" | "codex" }
+  | { type: "finish-branch"; sessionId: string; kind?: "claude" | "codex" | "cursor-agent" }
   | { type: "screenshot-to-session"; direct?: boolean; cropped?: boolean }
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-auto-worker-enabled" }

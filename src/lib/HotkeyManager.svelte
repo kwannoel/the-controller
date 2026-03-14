@@ -475,7 +475,11 @@
       if (isEditableElementFocused() && !isTerminalFocused()) return;
       e.stopPropagation();
       e.preventDefault();
-      selectedSessionProvider.update((provider) => provider === "claude" ? "codex" : "claude");
+      selectedSessionProvider.update((provider) => {
+        if (provider === "claude") return "codex";
+        if (provider === "codex") return "cursor-agent";
+        return "claude";
+      });
       pushKeystroke("⌘T");
       return;
     }

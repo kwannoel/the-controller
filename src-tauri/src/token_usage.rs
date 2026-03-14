@@ -17,6 +17,7 @@ pub fn get_token_usage(working_dir: &str, kind: &str) -> Result<Vec<TokenDataPoi
     match kind {
         "claude" => get_claude_token_usage(working_dir),
         "codex" => get_codex_token_usage(working_dir),
+        "cursor-agent" => Err("Token usage tracking is not yet supported for cursor-agent".into()),
         _ => Err(format!("Unknown session kind: {}", kind)),
     }
 }

@@ -511,10 +511,12 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('Cmd+T toggles the selected provider', () => {
+    it('Cmd+T cycles the selected provider', () => {
       expect(get(selectedSessionProvider)).toBe('claude');
       pressMetaKey('t');
       expect(get(selectedSessionProvider)).toBe('codex');
+      pressMetaKey('t');
+      expect(get(selectedSessionProvider)).toBe('cursor-agent');
       pressMetaKey('t');
       expect(get(selectedSessionProvider)).toBe('claude');
     });

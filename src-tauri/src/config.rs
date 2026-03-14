@@ -9,6 +9,7 @@ pub enum ConfigDefaultProvider {
     #[default]
     ClaudeCode,
     Codex,
+    CursorAgent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

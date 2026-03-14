@@ -72,7 +72,7 @@ export const commands: CommandDef[] = [
   { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
   { id: "screenshot-picker", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot → pick session", handledExternally: true },
-  { id: "toggle-session-provider", key: "⌘t", section: "Sessions", description: "Toggle session provider", handledExternally: true, mode: "development" },
+  { id: "toggle-session-provider", key: "⌘t", section: "Sessions", description: "Cycle session provider", handledExternally: true, mode: "development" },
 
   // ── Projects ──
   { id: "new-project", key: "n", section: "Projects", description: "New project", mode: "development" },

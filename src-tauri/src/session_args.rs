@@ -23,6 +23,8 @@ const CODEX_FULL_PERMISSION_ARGS: [&str; 4] = [
     "never",
 ];
 
+const CURSOR_FULL_PERMISSION_ARGS: [&str; 1] = ["--yolo"];
+
 /// Build command-line arguments for spawned assistant sessions.
 /// Keeps Claude-specific hooks and applies full permissions for Codex.
 /// When an `initial_prompt` is provided (e.g. from a GitHub issue), it is
@@ -55,6 +57,12 @@ pub fn build_session_args(
                 args.push("--last".to_string());
             }
             args.extend(CODEX_FULL_PERMISSION_ARGS.iter().map(|s| s.to_string()));
+        }
+        "cursor-agent" => {
+            if continue_session {
+                args.push("--continue".to_string());
+            }
+            args.extend(CURSOR_FULL_PERMISSION_ARGS.iter().map(|s| s.to_string()));
         }
         _ => {
             if continue_session {
@@ -224,5 +232,26 @@ mod tests {
         assert_eq!(args[3], "--append-system-prompt");
         assert_eq!(args[4], "do stuff");
         assert_eq!(args[5], "do stuff"); // positional prompt at end
+    }
+
+    #[test]
+    fn cursor_agent_args_include_yolo() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("cursor-agent", session_id, false, None);
+        assert_eq!(args, vec!["--yolo".to_string()]);
+    }
+
+    #[test]
+    fn cursor_agent_args_use_continue_flag() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("cursor-agent", session_id, true, None);
+        assert_eq!(args, vec!["--continue".to_string(), "--yolo".to_string()]);
+    }
+
+    #[test]
+    fn cursor_agent_args_include_positional_prompt() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("cursor-agent", session_id, false, Some("fix this"));
+        assert_eq!(args, vec!["--yolo".to_string(), "fix this".to_string()]);
     }
 }

@@ -28,12 +28,12 @@
   let mergeSessionTarget: { sessionId: string; projectId: string; label: string } | null = $state(null);
   let mergeInProgress = $state(false);
   let staging = $state(false);
-  let finishBranchTarget: { sessionId: string; kind?: "claude" | "codex" } | null = $state(null);
+  let finishBranchTarget: { sessionId: string; kind?: "claude" | "codex" | "cursor-agent" } | null = $state(null);
   const workspaceModeState = fromStore(workspaceMode);
   let currentMode = $derived(workspaceModeState.current);
   const selectedSessionProviderState = fromStore(selectedSessionProvider);
   let currentSessionProvider = $derived(selectedSessionProviderState.current);
-  let currentSessionProviderLabel = $derived(currentSessionProvider === "codex" ? "Codex" : "Claude");
+  let currentSessionProviderLabel = $derived(currentSessionProvider === "codex" ? "Codex" : currentSessionProvider === "cursor-agent" ? "Cursor" : "Claude");
   let deleteNoteTarget: { folder: string; filename: string } | null = $state(null);
   let renameNoteTarget: { folder: string; filename: string } | null = $state(null);
   let showNewNoteModal = $state(false);

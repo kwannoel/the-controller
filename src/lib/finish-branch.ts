@@ -1,4 +1,4 @@
-type SessionKind = "claude" | "codex" | undefined;
+type SessionKind = "claude" | "codex" | "cursor-agent" | undefined;
 
 type InvokeFn = (
   command: string,

@@ -61,6 +61,7 @@ impl PtyManager {
 
         let command = match kind {
             "codex" => "codex",
+            "cursor-agent" => "cursor-agent",
             _ => "claude",
         };
         if TmuxManager::is_available() {
