@@ -491,21 +491,24 @@
 
     const inTerminal = isTerminalFocused();
 
-    // --- Terminal focused: Escape moves focus to sidebar session ---
+    // --- Terminal focused ---
     if (inTerminal) {
+      // Option+Tab: move focus to active session in sidebar
+      if (e.key === "Tab" && e.altKey) {
+        e.stopPropagation();
+        e.preventDefault();
+        focusActiveSession();
+        pushKeystroke("⌥Tab");
+        return;
+      }
+      // Escape double-tap: forward escape to terminal
       if (e.key === "Escape") {
         const now = Date.now();
         if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
-          // Double-tap Escape: forward to terminal
           forwardEscape();
           lastEscapeTime = 0;
         } else {
-          // Single Escape: move focus to active session in sidebar
-          e.stopPropagation();
-          e.preventDefault();
           lastEscapeTime = now;
-          focusActiveSession();
-          pushKeystroke("Esc");
         }
       }
       // All other keys pass through to terminal
@@ -542,36 +545,34 @@
     if (isEditableElementFocused()) return;
     if (currentFocus?.type === "notes-editor") return;
 
-    // Escape: check for double-tap (forward to terminal), else walk up focus hierarchy
+    // Option+Tab: walk up focus hierarchy
+    if (e.key === "Tab" && e.altKey) {
+      if (currentFocus?.type === "note") {
+        focusTarget.set({ type: "folder", folder: currentFocus.folder });
+      } else if (currentFocus?.type === "session") {
+        focusTarget.set({ type: "project", projectId: currentFocus.projectId });
+      } else if (currentFocus?.type === "agent-panel") {
+        dispatchAction({ type: "agent-panel-escape" });
+      } else if (currentFocus?.type === "agent") {
+        focusTarget.set({ type: "project", projectId: currentFocus.projectId });
+      }
+      e.stopPropagation();
+      e.preventDefault();
+      pushKeystroke("⌥Tab");
+      return;
+    }
+
+    // Escape double-tap: forward escape to terminal and refocus it
     if (e.key === "Escape") {
       const now = Date.now();
       if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
-        // Double-tap Escape: forward to terminal and refocus it
         forwardEscape();
         lastEscapeTime = 0;
         dispatchAction({ type: "focus-terminal" });
         e.stopPropagation();
         e.preventDefault();
-      } else if (currentFocus?.type === "note") {
-        focusTarget.set({ type: "folder", folder: currentFocus.folder });
-        e.stopPropagation();
-        e.preventDefault();
-        pushKeystroke("Esc");
-      } else if (currentFocus?.type === "session") {
-        focusTarget.set({ type: "project", projectId: currentFocus.projectId });
-        e.stopPropagation();
-        e.preventDefault();
-        pushKeystroke("Esc");
-      } else if (currentFocus?.type === "agent-panel") {
-        dispatchAction({ type: "agent-panel-escape" });
-        e.stopPropagation();
-        e.preventDefault();
-        pushKeystroke("Esc");
-      } else if (currentFocus?.type === "agent") {
-        focusTarget.set({ type: "project", projectId: currentFocus.projectId });
-        e.stopPropagation();
-        e.preventDefault();
-        pushKeystroke("Esc");
+      } else {
+        lastEscapeTime = now;
       }
       return;
     }

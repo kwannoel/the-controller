@@ -60,7 +60,7 @@ export const commands: CommandDef[] = [
   { id: "expand-collapse", key: "l", section: "Navigation", description: "Expand/collapse project or focus terminal", helpKey: "l / Enter" },
   { id: "expand-collapse", key: "Enter", section: "Navigation", description: "Expand/collapse project or focus terminal", hidden: true },
   { id: "fuzzy-finder", key: "f", section: "Navigation", description: "Find project (fuzzy finder)" },
-  { id: "escape-focus", key: "Esc", section: "Navigation", description: "Move focus up (terminal → session → project)", handledExternally: true },
+  { id: "escape-focus", key: "⌥Tab", section: "Navigation", description: "Move focus up (terminal → session → project)", handledExternally: true },
   { id: "escape-forward", key: "Esc Esc", section: "Navigation", description: "Forward escape to terminal", handledExternally: true },
 
   // ── Sessions ──
@@ -135,7 +135,7 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
         { key: "m", description: "Merge session branch" },
         { key: "f", description: "Find project (fuzzy finder)" },
         { key: "l / Enter", description: "Expand/collapse or focus terminal" },
-        { key: "Esc", description: "Move focus up" },
+        { key: "⌥Tab", description: "Move focus up" },
         { key: "Esc Esc", description: "Forward escape to terminal" },
       ],
     };
