@@ -3,7 +3,12 @@ import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { command } from '$lib/backend';
 import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, activeNote, noteEntries, type Project, type SessionConfig } from './stores';
+import { showToast } from './toast';
 import HotkeyManager from './HotkeyManager.svelte';
+
+vi.mock('./toast', () => ({
+  showToast: vi.fn(),
+}));
 
 function makeSession(id: string, label: string, kind = 'claude'): SessionConfig {
   return {
@@ -512,6 +517,34 @@ describe('HotkeyManager', () => {
       expect(get(selectedSessionProvider)).toBe('codex');
       pressMetaKey('t');
       expect(get(selectedSessionProvider)).toBe('claude');
+    });
+
+    it('c with no projects shows "no projects" toast', () => {
+      projects.set([]);
+      focusTarget.set(null);
+      pressKey('c');
+      expect(showToast).toHaveBeenCalledWith(
+        "No projects yet — press 'f' to find a directory or 'n' to create a new project",
+        'error',
+      );
+      expect(get(hotkeyAction)).toBeNull();
+    });
+
+    it('c with projects but no focus shows "select a project" toast', () => {
+      projects.set([testProject]);
+      focusTarget.set(null);
+      pressKey('c');
+      expect(showToast).toHaveBeenCalledWith(
+        "Select a project first (j/k to navigate, or 'f' to find a directory)",
+        'error',
+      );
+      expect(get(hotkeyAction)).toBeNull();
+    });
+
+    it('held key repeat does not fire hotkeys', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', repeat: true, bubbles: true }));
+      expect(get(hotkeyAction)).toBeNull();
     });
 
     it('Cmd+T does not toggle while typing in an input', () => {

@@ -444,6 +444,9 @@
     // Ignore modifier-only keypresses
     if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
 
+    // Ignore held-down key repeats to prevent toast/action spam
+    if (e.repeat) return;
+
     // Cmd+S/Cmd+Shift+S: full window screenshot (shift = preview)
     // Cmd+D/Cmd+Shift+D: cropped screenshot (shift = preview)
     if (e.metaKey && (e.key === "s" || e.key === "d")) {
