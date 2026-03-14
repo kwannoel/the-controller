@@ -1,8 +1,45 @@
 <script lang="ts">
+  import { onMount } from "svelte";
+  import { command, listen } from "$lib/backend";
+
+  let voiceState = $state<string>("voice mode");
+
+  const STATE_LABELS: Record<string, string> = {
+    listening: "listening...",
+    thinking: "thinking...",
+    speaking: "speaking...",
+    downloading: "downloading models...",
+  };
+
+  onMount(() => {
+    // Listen for state changes from Rust
+    const unlisten = listen<string>("voice-state-changed", (payload) => {
+      try {
+        const data = JSON.parse(payload);
+        voiceState = STATE_LABELS[data.state] ?? "voice mode";
+      } catch {
+        // Ignore malformed events
+      }
+    });
+
+    // Start the pipeline
+    command("start_voice_pipeline").catch((e: unknown) => {
+      console.error("[voice] Failed to start pipeline:", e);
+      voiceState = "error";
+    });
+
+    return () => {
+      unlisten();
+      // Stop the pipeline when leaving voice mode
+      command("stop_voice_pipeline").catch((e: unknown) => {
+        console.error("[voice] Failed to stop pipeline:", e);
+      });
+    };
+  });
 </script>
 
 <div class="voice-mode">
-  <span class="label">voice mode</span>
+  <span class="label">{voiceState}</span>
 </div>
 
 <style>
