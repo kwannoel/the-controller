@@ -21,8 +21,8 @@ impl ModelPaths {
         Self {
             silero_vad: base.join("silero_vad.onnx"),
             whisper: base.join("ggml-base.bin"),
-            piper_onnx: base.join("en_US-lessac-medium.onnx"),
-            piper_config: base.join("en_US-lessac-medium.onnx.json"),
+            piper_onnx: base.join("en_US-amy-medium.onnx"),
+            piper_config: base.join("en_US-amy-medium.onnx.json"),
         }
     }
 
@@ -51,13 +51,13 @@ impl ModelPaths {
         }
         if !self.piper_onnx.exists() {
             missing.push((
-                "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx",
+                "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx",
                 &self.piper_onnx,
             ));
         }
         if !self.piper_config.exists() {
             missing.push((
-                "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json",
+                "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json",
                 &self.piper_config,
             ));
         }
