@@ -16,6 +16,7 @@ Install prerequisites:
 - [Rust](https://rustup.rs/) + Tauri v2
 - [Node.js](https://nodejs.org/) + npm
 - tmux (`brew install tmux`)
+- espeak-ng (`brew install espeak-ng`) — required for voice mode TTS
 
 Then:
 
