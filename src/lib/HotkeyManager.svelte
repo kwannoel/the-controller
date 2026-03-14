@@ -20,6 +20,7 @@
     type FocusTarget,
   } from "./stores";
   import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
+  import { showToast } from "./toast";
   import { buildKeyMap, type CommandId } from "./commands";
   import { focusForModeSwitch } from "./focus-helpers";
 
@@ -282,7 +283,14 @@
         return true;
       case "create-session": {
         const project = getFocusedProject();
-        if (!project) return true;
+        if (!project) {
+          if (projectList.length === 0) {
+            showToast("No projects yet — press 'f' to find a directory or 'n' to create a new project", "error");
+          } else {
+            showToast("Select a project first (j/k to navigate, or 'f' to find a directory)", "error");
+          }
+          return true;
+        }
         dispatchAction({ type: "create-session", projectId: project.id, kind: currentSessionProvider });
         return true;
       }
