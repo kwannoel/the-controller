@@ -303,13 +303,13 @@
 
   async function sendScreenshotToSession(sessionId: string, projectId: string) {
     if (!screenshotPickerState) return;
-    const prompt = screenshotPrompt(screenshotPickerState.path);
+    const path = screenshotPickerState.path;
     screenshotPickerState = null;
 
     try {
       // Ensure the PTY is spawned before writing (it may not be active yet)
       await command("connect_session", { sessionId, rows: 24, cols: 80 });
-      await command("write_to_pty", { sessionId, data: prompt + "\n" });
+      await command("write_to_pty", { sessionId, data: path + "\n" });
       activeSessionId.set(sessionId);
       expandedProjects.update((s: Set<string>) => {
         const next = new Set(s);
