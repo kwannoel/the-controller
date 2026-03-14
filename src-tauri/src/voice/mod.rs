@@ -115,6 +115,15 @@ fn emit_state(emitter: &Arc<dyn EventEmitter>, state: VoiceState) {
     let _ = emitter.emit("voice-state-changed", &payload);
 }
 
+fn emit_debug(emitter: &Arc<dyn EventEmitter>, msg: &str) {
+    let payload = serde_json::json!({
+        "ts": chrono::Local::now().format("%H:%M:%S").to_string(),
+        "msg": msg,
+    })
+    .to_string();
+    let _ = emitter.emit("voice-debug", &payload);
+}
+
 /// Main pipeline loop. Runs on a dedicated thread.
 fn run_pipeline(
     vad_path: &std::path::Path,
@@ -139,6 +148,7 @@ fn run_pipeline(
     emit_state(&emitter, VoiceState::Listening);
     let mut speech_buffer: Vec<f32> = Vec::new();
     let mut in_speech = false;
+    let mut chunk_count: u64 = 0;
 
     while !stop.load(Ordering::Relaxed) {
         let chunk = match rx.recv_timeout(std::time::Duration::from_millis(100)) {
@@ -149,8 +159,18 @@ fn run_pipeline(
 
         let normalized = auto_gain.apply(&chunk);
 
+        chunk_count += 1;
+        if chunk_count % 15 == 0 {
+            let rms_i16 = (chunk.iter().map(|&s| (s as f32) * (s as f32)).sum::<f32>()
+                / chunk.len() as f32)
+                .sqrt();
+            let prob = vad_engine.last_prob();
+            emit_debug(&emitter, &format!("mic rms={:.0} vad prob={:.3}", rms_i16, prob));
+        }
+
         match vad_engine.process(&normalized)? {
             Some(vad::VadEvent::SpeechStart) => {
+                emit_debug(&emitter, "speech_start");
                 in_speech = true;
                 speech_buffer.clear();
                 speech_buffer.extend_from_slice(&normalized);
@@ -159,6 +179,7 @@ fn run_pipeline(
                 if in_speech {
                     speech_buffer.extend_from_slice(&normalized);
                     in_speech = false;
+                    emit_debug(&emitter, &format!("speech_end ({:.1}s)", speech_buffer.len() as f32 / 16000.0));
 
                     process_speech(
                         &speech_buffer,
@@ -219,8 +240,11 @@ fn process_speech(
 
     eprintln!("[voice] You: {text}");
     conversation.add_user(&text);
+    emit_debug(emitter, &format!("stt: \"{}\"", text));
+    let _ = emitter.emit("voice-transcript", &serde_json::json!({"role": "user", "text": text}).to_string());
 
     // LLM — need a tokio runtime since we're on a std thread
+    emit_debug(emitter, "llm: streaming...");
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
 
@@ -239,9 +263,12 @@ fn process_speech(
 
     eprintln!("[voice] Assistant: {response}");
     conversation.add_assistant(&response);
+    emit_debug(emitter, "llm: done");
+    let _ = emitter.emit("voice-transcript", &serde_json::json!({"role": "assistant", "text": response}).to_string());
 
     // TTS
     emit_state(emitter, VoiceState::Speaking);
+    emit_debug(emitter, "tts: synthesizing...");
     audio_in.mute();
 
     let tts_sample_rate = tts_engine.sample_rate();
@@ -259,6 +286,7 @@ fn process_speech(
     }
 
     audio_in.unmute();
+    emit_debug(emitter, "tts: done");
     std::thread::sleep(std::time::Duration::from_millis(300));
     vad_engine.reset();
 
