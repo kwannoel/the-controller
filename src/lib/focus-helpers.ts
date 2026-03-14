@@ -112,5 +112,9 @@ export function focusForModeSwitch(
     }
   }
 
+  if (newMode === "voice") {
+    return null;
+  }
+
   return current;
 }

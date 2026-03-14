@@ -21,6 +21,7 @@
   import NotesEditor from "./lib/NotesEditor.svelte";
   import ArchitectureExplorer from "./lib/ArchitectureExplorer.svelte";
   import InfrastructureDashboard from "./lib/InfrastructureDashboard.svelte";
+  import VoiceMode from "./lib/VoiceMode.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
   import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
@@ -484,11 +485,13 @@
     <Onboarding />
   {:else}
     <div class="app-layout">
-      {#if sidebarVisibleState.current}
+      {#if sidebarVisibleState.current && workspaceModeState.current !== "voice"}
         <Sidebar />
       {/if}
       <main class="terminal-area">
-        {#if workspaceModeState.current === "agents"}
+        {#if workspaceModeState.current === "voice"}
+          <VoiceMode />
+        {:else if workspaceModeState.current === "agents"}
           <AgentDashboard />
         {:else if workspaceModeState.current === "architecture"}
           <ArchitectureExplorer

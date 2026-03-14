@@ -123,6 +123,12 @@
       if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
+    if (key === "v") {
+      workspaceMode.set("voice");
+      const newFocus = focusForModeSwitch(currentFocus, "voice", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      return;
+    }
     // Any other key (including Escape) cancels
   }
 
