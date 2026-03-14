@@ -12,6 +12,38 @@
   import { activeSessionId, projects, type Project } from "./stores";
   import "@xterm/xterm/css/xterm.css";
 
+  type TerminalTheme = {
+    background: string;
+    foreground: string;
+    cursor: string;
+    selectionBackground: string;
+    selectionForeground?: string;
+    cursorAccent?: string;
+    black?: string;
+    red?: string;
+    green?: string;
+    yellow?: string;
+    blue?: string;
+    magenta?: string;
+    cyan?: string;
+    white?: string;
+    brightBlack?: string;
+    brightRed?: string;
+    brightGreen?: string;
+    brightYellow?: string;
+    brightBlue?: string;
+    brightMagenta?: string;
+    brightCyan?: string;
+    brightWhite?: string;
+  };
+
+  const DEFAULT_TERMINAL_THEME: TerminalTheme = {
+    background: "#000000",
+    foreground: "#e0e0e0",
+    cursor: "#ffffff",
+    selectionBackground: "#2e2e2e",
+  };
+
   interface Props {
     sessionId: string;
     kind?: string;
@@ -94,20 +126,25 @@
     return IMAGE_EXTENSIONS.has(ext);
   }
 
+  async function resolveTerminalTheme(): Promise<TerminalTheme> {
+    try {
+      return await command<TerminalTheme>("load_terminal_theme");
+    } catch (err) {
+      console.error("Failed to load terminal theme:", err);
+      return DEFAULT_TERMINAL_THEME;
+    }
+  }
+
   onMount(async () => {
     if (!containerEl) return;
+    const theme = await resolveTerminalTheme();
 
     term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
       fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
       scrollback: 10000,
-      theme: {
-        background: "#000000",
-        foreground: "#e0e0e0",
-        cursor: "#ffffff",
-        selectionBackground: "#2e2e2e",
-      },
+      theme,
     });
 
     fitAddon = new FitAddon();

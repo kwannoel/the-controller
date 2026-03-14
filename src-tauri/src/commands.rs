@@ -8,6 +8,7 @@ use crate::config;
 use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
 use crate::state::AppState;
 use crate::storage::ProjectInventory;
+use crate::terminal_theme;
 use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
@@ -1309,6 +1310,21 @@ pub fn save_onboarding_config(state: State<AppState>, projects_root: String) -> 
 }
 
 #[tauri::command]
+pub async fn load_terminal_theme(
+    state: State<'_, AppState>,
+) -> Result<terminal_theme::TerminalTheme, String> {
+    let base_dir = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        storage.base_dir()
+    };
+
+    tokio::task::spawn_blocking(move || terminal_theme::load_terminal_theme(&base_dir))
+        .await
+        .map_err(|e| format!("Task failed: {e}"))?
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn check_claude_cli() -> Result<String, String> {
     let result = tokio::task::spawn_blocking(config::check_claude_cli_status)
         .await
@@ -2258,6 +2274,48 @@ mod tests {
             );
             assert_eq!(checks.load(Ordering::SeqCst), 2);
         });
+    }
+
+    #[test]
+    fn test_load_terminal_theme_returns_default_when_theme_file_is_missing() {
+        let tmp = TempDir::new().expect("temp dir");
+        let projects_root = tmp.path().join("projects-root");
+        fs::create_dir_all(&projects_root).expect("create projects root");
+        let state = make_test_state(tmp.path(), &projects_root);
+
+        let theme = run_async_test(load_terminal_theme(state_from_ref(&state)))
+            .expect("theme command should succeed");
+
+        assert_eq!(theme.background, "#000000");
+        assert_eq!(theme.foreground, "#e0e0e0");
+        assert_eq!(theme.cursor, "#ffffff");
+        assert_eq!(theme.selection_background, "#2e2e2e");
+    }
+
+    #[test]
+    fn test_load_terminal_theme_reads_kitty_style_theme_file_from_base_dir() {
+        let tmp = TempDir::new().expect("temp dir");
+        let projects_root = tmp.path().join("projects-root");
+        fs::create_dir_all(&projects_root).expect("create projects root");
+        fs::write(
+            tmp.path().join("current-theme.conf"),
+            "\
+background #121212
+foreground #f0f0f0
+cursor #ff9900
+selection_background #444444
+",
+        )
+        .expect("write theme file");
+        let state = make_test_state(tmp.path(), &projects_root);
+
+        let theme = run_async_test(load_terminal_theme(state_from_ref(&state)))
+            .expect("theme command should succeed");
+
+        assert_eq!(theme.background, "#121212");
+        assert_eq!(theme.foreground, "#f0f0f0");
+        assert_eq!(theme.cursor, "#ff9900");
+        assert_eq!(theme.selection_background, "#444444");
     }
 
     #[test]

@@ -19,6 +19,7 @@ pub mod skills;
 pub mod state;
 pub mod status_socket;
 pub mod storage;
+pub mod terminal_theme;
 pub mod tmux;
 pub mod token_usage;
 pub mod voice;
@@ -80,6 +81,7 @@ pub fn run() {
             commands::home_dir,
             commands::check_onboarding,
             commands::save_onboarding_config,
+            commands::load_terminal_theme,
             commands::check_claude_cli,
             commands::list_directories_at,
             commands::list_root_directories,

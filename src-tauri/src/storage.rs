@@ -524,6 +524,16 @@ mod tests {
     }
 
     #[test]
+    fn test_default_base_dir_uses_the_controller_directory() {
+        let home = PathBuf::from("/tmp/test-home");
+
+        let base_dir =
+            Storage::default_base_dir(Some(home)).expect("default base dir should resolve");
+
+        assert_eq!(base_dir, PathBuf::from("/tmp/test-home/.the-controller"));
+    }
+
+    #[test]
     fn test_save_and_get_agents_md_roundtrip() {
         let tmp = TempDir::new().unwrap();
         let storage = make_storage(&tmp);
