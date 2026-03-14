@@ -1,6 +1,21 @@
-# Keyboard Mode State Machine
+# Keyboard Shortcuts & Modes
 
-All keyboard input flows through `HotkeyManager.svelte`. The active states are terminal passthrough, ambient mode, toggle mode, and workspace mode:
+All keyboard input flows through `HotkeyManager.svelte`. Hotkey definitions live in `src/lib/commands.ts`.
+
+## Workspace Modes
+
+The Controller has six workspace modes, each with its own hotkeys. Press `Space` then a key to switch:
+
+| Key | Mode |
+|-----|------|
+| d | Development — manage sessions, branches, projects |
+| a | Agents — toggle auto-workers and maintainers |
+| r | Architecture — generate project architecture docs |
+| n | Notes — markdown notes organized by folder |
+| i | Infrastructure — deploy and rollback projects |
+| v | Voice — voice interaction mode |
+
+## Keyboard State Machine
 
 ```
 +-----------------+
@@ -8,117 +23,149 @@ All keyboard input flows through `HotkeyManager.svelte`. The active states are t
 |   Passthrough   |
 +--------+--------+
          |
-    Esc (single) → focus moves to sidebar session
+    Esc (single) → focus moves to sidebar
          |
          v
 +------------------+
 |   Ambient Mode   |
 | (sidebar/no      |
 |  focus on input) |
-+----+--------+----+
-     |        |
-   o |        | Space
-     v        v
-+---------+  +-------------+
-| Toggle  |  | Workspace   |
-| Mode    |  | Mode Picker |
-+---------+  +-------------+
++----+-------------+
+     |
+     | Space
+     v
++-------------------+
+| Workspace Mode    |
+| Picker (d/a/r/n/  |
+|          i/v)     |
++-------------------+
 ```
 
-## Focus Target
-
-The `focusTarget` store tracks what's currently focused:
-- `{ type: "terminal" }` — terminal panel is focused
-- `{ type: "session", sessionId, projectId }` — a specific session in the sidebar
-- `{ type: "project", projectId }` — a project in the sidebar
-- `null` — nothing specific
-
-Visual borders highlight the focused element:
-- Blue left border on the focused project header
-- Blue left border on the focused session item
-- Blue left border on the terminal panel
-
-## Modes
-
-### Terminal Passthrough
+## Terminal Passthrough
 
 **When**: Terminal (xterm) is focused.
 
 | Key | Action |
 |-----|--------|
-| Esc (single) | Move focus to active session in sidebar (ambient mode) |
+| Esc (single) | Move focus to active session in sidebar |
 | Esc (double, <300ms) | Forward Esc to terminal PTY |
 | Any other key | Passes through to terminal |
 
-### Ambient Mode
+## Ambient Mode — Global Keys
 
-**When**: No terminal or editable element is focused (e.g. sidebar, empty area).
-
-Hotkeys work directly. Input/textarea/contenteditable elements are excluded.
+These work in all workspace modes when no terminal or editable element is focused.
 
 | Key | Action |
 |-----|--------|
-| j / k | Move focus through visible projects and sessions |
-| J / K | Move focus between projects only |
-| l / Enter | Expand/collapse project, focus terminal from session, or open the focused panel |
-| c | Create session for the focused project |
-| d | Delete focused project or session |
-| a | Archive focused project or session |
-| A | Toggle archive view |
-| f | Open fuzzy finder |
-| n | New project |
-| i | Create issue for the focused project |
-| m | Finish branch for the active session |
-| o | Enter toggle mode |
-| Space | Open workspace mode picker |
-| s | Toggle sidebar visibility |
+| j / k | Next / previous item in sidebar |
+| l / Enter | Expand/collapse project, focus terminal, or open panel |
+| f | Fuzzy finder (find project by directory) |
 | ? | Toggle help overlay |
+| Space | Open workspace mode picker |
+| Esc | Move focus up (note → folder, session → project, agent → project) |
+| Esc Esc | Forward escape to terminal and refocus it |
 
-### Toggle Mode
-
-**When**: User pressed `o` from Ambient mode in development workspace.
-
-The next key is interpreted as a maintainer/worker toggle command.
-
-| Key | Action |
-|-----|--------|
-| m | Toggle maintainer |
-| w | Toggle auto-worker |
-| Esc | Cancel toggle mode |
-| Any other key | Cancel toggle mode |
-
-### Workspace Mode Picker
-
-**When**: User pressed `Space` from Ambient mode.
-
-The next key switches workspace modes.
+## Ambient Mode — Development Keys
 
 | Key | Action |
 |-----|--------|
-| d | Switch to Development |
-| a | Switch to Agents |
-| n | Switch to Notes |
-| Esc | Cancel picker |
-| Any other key | Cancel picker |
+| c | Create session for focused project |
+| n | New project |
+| d | Delete focused item (session or project) |
+| i | Issues — create, find, assign for focused project |
+| m | Merge/finish branch for active session (creates PR) |
+| v | **Stage / unstage session** (see [Staging](#staging-hot-reload--preview)) |
+| p | Load a saved prompt into a new session |
+| P | Save focused session's prompt |
+| ⌘T | Toggle session provider (Claude ↔ Codex) |
+| ⌘S | Screenshot (full window) → pick session to send to |
+| ⌘D | Screenshot (cropped) → pick session to send to |
+| ⌘⇧S / ⌘⇧D | Screenshot with preview before sending |
+| ⌘K | Toggle keystroke visualizer |
 
-## Transitions
+## Ambient Mode — Agents Keys
 
-```
-Terminal Passthrough
-  --[Esc single]--> Ambient Mode (focusTarget → active session in sidebar)
-  --[Esc double]--> Terminal Passthrough (forwards Esc to PTY)
+| Key | Action |
+|-----|--------|
+| o | Toggle focused agent on/off |
+| r | Run maintainer check for focused project |
+| c | Clear maintainer reports |
+| t | Toggle between Runs / Issues view |
 
-Ambient Mode
-  --[o]--> Toggle Mode
-  --[Space]--> Workspace Mode Picker
-  --[l/Enter on session]--> Terminal Passthrough (focusTarget → terminal)
-  --[hotkey]--> Ambient Mode (executes action)
+## Ambient Mode — Architecture Keys
 
-Toggle Mode
-  --[m/w]--> Ambient Mode (dispatches toggle action)
-  --[Esc/other]--> Ambient Mode
+| Key | Action |
+|-----|--------|
+| r | Generate / regenerate architecture for focused project |
 
-Workspace Mode Picker
-  --[d/a/n]--> Ambient Mode (switches workspace)
-  --[Esc/other]--> Ambient Mode
-```
+## Ambient Mode — Notes Keys
+
+| Key | Action |
+|-----|--------|
+| n | Create new note |
+| d | Delete focused note or folder |
+| r | Rename focused note or folder |
+| y | Duplicate focused note |
+| p | Cycle note preview mode (edit / preview / split) |
+| o / i / a | Open note for editing (vim-style) |
+
+## Ambient Mode — Infrastructure Keys
+
+| Key | Action |
+|-----|--------|
+| d | Deploy focused project |
+| r | Rollback last deployment |
+
+## Ambient Mode — Voice Keys
+
+| Key | Action |
+|-----|--------|
+| d | Toggle debug panel |
+| t | Toggle transcript panel |
+
+## Agent Panel Keys
+
+When an agent panel is focused (after pressing `l` on an agent):
+
+| Key | Action |
+|-----|--------|
+| j / k | Navigate through items |
+| l / Enter | Select item |
+| o | Open issue in browser |
+| Esc | Return to agent list |
+
+## Staging (Hot Reload / Preview)
+
+**This is how you preview or hot-reload changes from a session's branch.**
+
+Press `v` in development mode to stage the active session. This launches a **separate Controller instance** from the session's git worktree, running on a different port (base port + 1000, e.g. 2420). The staged instance is a full Controller with its own Vite HMR and Rust backend — it picks up both frontend and backend changes from that branch.
+
+Press `v` again to unstage (kills the staged instance).
+
+**What happens when you stage:**
+1. Worktree is committed (prompts Claude to commit if dirty)
+2. Branch is rebased onto main if behind
+3. `npm install` runs in the worktree if needed
+4. `./dev.sh <port>` launches a separate Controller instance
+5. Main Controller title bar shows "staging: session-label"
+
+**What the staged instance gives you:**
+- Full Vite HMR for frontend changes
+- Full cargo rebuild for backend changes
+- Independent process — doesn't affect your main Controller
+- Same tmux sessions accessible from both instances
+
+See `docs/plans/2026-03-11-staging-separate-instance-design.md` for architecture details.
+
+## Focus Target
+
+The `focusTarget` store tracks what's currently focused:
+- `{ type: "session", sessionId, projectId }` — a session in the sidebar
+- `{ type: "project", projectId }` — a project header
+- `{ type: "agent", agentKind, projectId }` — an agent in agents mode
+- `{ type: "agent-panel", agentKind, projectId }` — an agent's detail panel
+- `{ type: "folder", folder }` — a note folder
+- `{ type: "note", filename, folder }` — a note entry
+- `{ type: "notes-editor", folder }` — the note editor
+
+Visual borders highlight the focused element (blue left border).
