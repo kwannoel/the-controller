@@ -2,9 +2,9 @@ use std::process::Stdio;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 
-const SYSTEM_PROMPT: &str = "You are a voice assistant. Keep responses concise and conversational. \
-Speak naturally as if in a real-time voice conversation. Avoid markdown formatting, \
-code blocks, or bullet points — respond as you would speak.";
+const SYSTEM_PROMPT: &str = "You are a voice assistant. Reply in 1–2 sentences max. \
+Be direct — no filler like \"Sure!\", \"Great question!\", \"Of course!\". Just answer. \
+Never use lists, bullet points, markdown, or code blocks. Speak as briefly as a human would in casual conversation.";
 
 pub struct Conversation {
     pub messages: Vec<(String, String)>, // (role, content)
@@ -50,6 +50,8 @@ pub async fn stream_response(
         .arg("stream-json")
         .arg("--verbose")
         .arg("--no-session-persistence")
+        .arg("--model")
+        .arg("haiku")
         .arg("--system-prompt")
         .arg(conversation.system_prompt())
         .arg("-p")
