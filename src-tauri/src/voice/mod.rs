@@ -31,6 +31,11 @@ struct VoiceStateEvent {
     percent: Option<u8>,
 }
 
+/// Wrapper to send a raw pointer across thread boundaries.
+/// SAFETY: Callers must ensure exclusive access (no data races).
+struct SendPtr<T>(*mut T);
+unsafe impl<T> Send for SendPtr<T> {}
+
 const MIN_SPEECH_SAMPLES: usize = 8000; // 0.5s at 16kHz
 const MIN_SPEECH_RMS: f32 = 0.02;
 const MIN_BARGEIN_SAMPLES: usize = 4800; // 300ms at 16kHz — sustained speech required to confirm barge-in
@@ -44,7 +49,6 @@ struct SpeechContext<'a> {
     whisper: &'a stt::WhisperStt,
     tts_engine: &'a mut tts::PiperTts,
     audio_out: &'a audio_output::AudioOutput,
-    conversation: &'a mut llm::Conversation,
     vad_engine: &'a mut vad::Vad,
     auto_gain: &'a mut gain::AutoGain,
     audio_rx: &'a Receiver<Vec<i16>>,
@@ -166,7 +170,12 @@ fn run_pipeline(
     let mut tts_engine = tts::PiperTts::new(piper_onnx_path, piper_config_path)?;
     let audio_out = audio_output::AudioOutput::new()?;
     let mut auto_gain = gain::AutoGain::new();
-    let mut conversation = llm::Conversation::new(None);
+
+    let rt = tokio::runtime::Runtime::new()
+        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
+    let mut app_server = rt
+        .block_on(llm::CodexAppServer::start(None))
+        .map_err(|e| format!("Failed to start codex app-server: {e}"))?;
 
     // Start mic capture
     let (tx, rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = crossbeam_channel::bounded(64);
@@ -218,7 +227,6 @@ fn run_pipeline(
                         whisper: &whisper,
                         tts_engine: &mut tts_engine,
                         audio_out: &audio_out,
-                        conversation: &mut conversation,
                         vad_engine: &mut vad_engine,
                         auto_gain: &mut auto_gain,
                         audio_rx: &rx,
@@ -226,7 +234,8 @@ fn run_pipeline(
                         stop: &stop,
                     };
 
-                    let result = process_speech(&speech_buffer, &mut speech_ctx)?;
+                    let result =
+                        process_speech(&speech_buffer, &mut speech_ctx, &mut app_server)?;
 
                     speech_buffer.clear();
 
@@ -254,7 +263,11 @@ fn run_pipeline(
     Ok(())
 }
 
-fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechResult, String> {
+fn process_speech(
+    audio: &[f32],
+    ctx: &mut SpeechContext<'_>,
+    app_server: &mut llm::CodexAppServer,
+) -> Result<SpeechResult, String> {
     if audio.len() < MIN_SPEECH_SAMPLES {
         return Ok(SpeechResult::Done);
     }
@@ -272,7 +285,6 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
     }
 
     eprintln!("[voice] You: {text}");
-    ctx.conversation.add_user(&text);
     emit_debug(ctx.emitter, &format!("stt: \"{}\"", text));
     let _ = ctx.emitter.emit(
         "voice-transcript",
@@ -284,43 +296,53 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
     // Main thread synthesizes each sentence via TTS and streams audio immediately.
     emit_debug(ctx.emitter, "llm: streaming...");
 
-    let conv_clone = ctx.conversation.clone();
     let emitter_for_llm = ctx.emitter.clone();
     let (sentence_tx, sentence_rx) = crossbeam_channel::bounded::<String>(8);
+    let user_text = text.clone();
+
+    // SAFETY: app_server is exclusively accessed by one thread at a time.
+    // The LLM thread uses it for stream_response().
+    // The main thread only uses it for cancel_turn() after the LLM thread
+    // is no longer reading (barge-in breaks out of select, LLM thread abandoned).
+    let app_server_ptr = SendPtr(app_server as *mut llm::CodexAppServer);
 
     let llm_handle = std::thread::spawn(move || -> Result<String, String> {
+        // Force the closure to capture the whole SendPtr (not just .0) so that
+        // the Send impl on SendPtr is visible to the compiler (edition 2021
+        // captures individual fields otherwise).
+        let app_server_ptr = app_server_ptr;
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
         rt.block_on(async {
+            let server = unsafe { &mut *app_server_ptr.0 };
             let mut sentence_buf = String::new();
             let mut full_response = String::new();
-            llm::stream_response(&conv_clone, &mut |token| {
-                sentence_buf.push_str(token);
-                full_response.push_str(token);
-                // Send complete sentences as they form
-                while let Some(pos) =
-                    sentence_buf.find(|c: char| matches!(c, '.' | '!' | '?'))
-                {
-                    let sentence = sentence_buf[..=pos].trim().to_string();
-                    sentence_buf = sentence_buf[pos + 1..].to_string();
-                    if !sentence.is_empty() {
-                        let _ = sentence_tx.send(sentence);
+            server
+                .stream_response(&user_text, &mut |token| {
+                    sentence_buf.push_str(token);
+                    full_response.push_str(token);
+                    while let Some(pos) =
+                        sentence_buf.find(|c: char| matches!(c, '.' | '!' | '?'))
+                    {
+                        let sentence = sentence_buf[..=pos].trim().to_string();
+                        sentence_buf = sentence_buf[pos + 1..].to_string();
+                        if !sentence.is_empty() {
+                            let _ = sentence_tx.send(sentence);
+                        }
                     }
-                }
-            })
-            .await?;
-            // Flush remaining text (no trailing punctuation)
+                })
+                .await?;
             let remaining = sentence_buf.trim().to_string();
             if !remaining.is_empty() {
                 let _ = sentence_tx.send(remaining);
             }
-            // Emit transcript as soon as LLM finishes (before audio finishes)
             if !full_response.is_empty() {
                 eprintln!("[voice] Assistant: {full_response}");
                 emit_debug(&emitter_for_llm, "llm: done");
                 let _ = emitter_for_llm.emit(
                     "voice-transcript",
-                    &serde_json::json!({"role": "assistant", "text": full_response}).to_string(),
+                    &serde_json::json!({"role": "assistant", "text": full_response})
+                        .to_string(),
                 );
             }
             Ok(full_response)
@@ -405,6 +427,12 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
 
     if interrupted {
         playback.cancel();
+        // Cancel the server-side turn so it stops generating
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| format!("Failed to create runtime for cancel: {e}"))?;
+        if let Err(e) = rt.block_on(app_server.cancel_turn()) {
+            eprintln!("[voice] Failed to cancel turn: {e}");
+        }
     } else {
         // Signal no more audio will be pushed so is_done() can return true
         playback.seal();
@@ -466,14 +494,11 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
     }
     // On barge-in: don't reset VAD — it's in triggered state tracking the ongoing speech
 
-    // Add whatever was spoken to conversation history
     if interrupted {
         // LLM thread will finish in background — don't join (it may still be generating)
-        // Record partial response so the LLM knows what it said before being interrupted
         let partial = spoken_sentences.join(" ");
         if !partial.is_empty() {
             eprintln!("[voice] Assistant (interrupted): {partial}");
-            ctx.conversation.add_assistant(&format!("{partial} [interrupted]"));
             let _ = ctx.emitter.emit(
                 "voice-transcript",
                 &serde_json::json!({"role": "assistant", "text": format!("{partial}…")}).to_string(),
@@ -481,14 +506,11 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
         }
     } else {
         // Collect full response from LLM thread
-        let response = match llm_handle.join() {
-            Ok(Ok(r)) => r,
+        match llm_handle.join() {
+            Ok(Ok(_)) => {}
             Ok(Err(e)) => return Err(e),
             Err(_) => return Err("LLM thread panicked".to_string()),
         };
-        if !response.is_empty() {
-            ctx.conversation.add_assistant(&response);
-        }
     }
 
     Ok(if let Some(speech) = barge_in_speech {
