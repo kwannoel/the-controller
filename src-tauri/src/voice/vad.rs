@@ -9,10 +9,15 @@ pub enum VadEvent {
     SpeechEnd,
 }
 
+/// Context size prepended to each chunk (last N samples from previous chunk).
+/// Required by Silero VAD ONNX model — without this, probabilities stay near zero.
+const CONTEXT_SIZE: usize = 64;
+const STATE_SIZE: usize = 2 * 1 * 128;
+
 pub struct Vad {
     session: Session,
-    // Silero VAD internal state: shape [2, 1, 128]
     state: Vec<f32>,
+    context: Vec<f32>,
     triggered: bool,
     temp_end: usize,
     current_sample: usize,
@@ -20,8 +25,6 @@ pub struct Vad {
     min_silence_samples: usize,
     last_prob: f32,
 }
-
-const STATE_SIZE: usize = 2 * 1 * 128; // [2, 1, 128]
 
 impl Vad {
     pub fn new(model_path: &Path, min_silence_ms: u32) -> Result<Self, String> {
@@ -37,6 +40,7 @@ impl Vad {
         Ok(Self {
             session,
             state: vec![0.0f32; STATE_SIZE],
+            context: vec![0.0f32; CONTEXT_SIZE],
             triggered: false,
             temp_end: 0,
             current_sample: 0,
@@ -52,12 +56,16 @@ impl Vad {
         let chunk_len = chunk.len();
         self.current_sample += chunk_len;
 
-        // Prepare inputs matching actual Silero VAD ONNX model:
-        //   input: [1, chunk_len] float32
-        //   state: [2, 1, 128] float32
-        //   sr: scalar int64
-        let input_tensor = Tensor::from_array(([1usize, chunk_len], chunk.to_vec()))
-            .map_err(|e| format!("Failed to create input tensor: {e}"))?;
+        // Prepend context (last 64 samples from previous chunk) — required by Silero ONNX model
+        let mut input_with_context = Vec::with_capacity(CONTEXT_SIZE + chunk_len);
+        input_with_context.extend_from_slice(&self.context);
+        input_with_context.extend_from_slice(chunk);
+
+        let full_len = input_with_context.len();
+
+        let input_tensor =
+            Tensor::from_array(([1usize, full_len], input_with_context))
+                .map_err(|e| format!("Failed to create input tensor: {e}"))?;
         let state_tensor =
             Tensor::from_array(([2usize, 1, 128], self.state.clone()))
                 .map_err(|e| format!("Failed to create state tensor: {e}"))?;
@@ -85,6 +93,15 @@ impl Vad {
             .try_extract_tensor::<f32>()
             .map_err(|e| format!("Failed to extract stateN: {e}"))?;
         self.state = state_data.to_vec();
+
+        // Update context: last CONTEXT_SIZE samples from this chunk
+        if chunk_len >= CONTEXT_SIZE {
+            self.context.copy_from_slice(&chunk[chunk_len - CONTEXT_SIZE..]);
+        } else {
+            let keep = CONTEXT_SIZE - chunk_len;
+            self.context.copy_within(chunk_len.., 0);
+            self.context[keep..].copy_from_slice(chunk);
+        }
 
         // State machine
         if prob >= self.threshold && !self.triggered {
@@ -117,6 +134,7 @@ impl Vad {
     /// Reset state for a new conversation turn.
     pub fn reset(&mut self) {
         self.state = vec![0.0f32; STATE_SIZE];
+        self.context = vec![0.0f32; CONTEXT_SIZE];
         self.triggered = false;
         self.temp_end = 0;
         self.current_sample = 0;
