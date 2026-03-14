@@ -101,20 +101,14 @@ fn test_voice_pipeline_e2e() {
     assert!(!text.is_empty(), "STT produced empty transcription");
 
     // 4. LLM
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let mut conv = the_controller_lib::voice::llm::Conversation::new(None);
-    conv.add_user(&text);
+    let mut app_server =
+        the_controller_lib::voice::llm::CodexAppServer::start(None).expect("Failed to start codex app-server");
 
-    let response = rt
-        .block_on(async {
-            let mut full = String::new();
-            the_controller_lib::voice::llm::stream_response(&conv, &mut |token| {
-                full.push_str(token);
-            })
-            .await
-            .map(|_| full)
-        })
-        .expect("LLM failed");
+    let mut response = String::new();
+    let result = app_server.stream_response(&text, &mut |token| {
+        response.push_str(token);
+    });
+    result.expect("LLM failed");
 
     println!("LLM: \"{}\"", response);
     assert!(!response.is_empty(), "LLM produced empty response");
