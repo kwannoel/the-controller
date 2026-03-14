@@ -390,6 +390,8 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
     if interrupted {
         playback.cancel();
     } else {
+        // Signal no more audio will be pushed so is_done() can return true
+        playback.seal();
         // Wait for remaining audio to finish playing
         if !playback.is_done() {
             // Keep monitoring mic while audio drains

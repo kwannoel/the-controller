@@ -205,6 +205,11 @@ impl StreamingPlayback {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
+    /// Signal that no more audio will be pushed, without waiting for drain.
+    pub fn seal(&self) {
+        self.done_writing.store(true, Ordering::Relaxed);
+    }
+
     /// Cancel playback immediately — clear the buffer and signal done.
     pub fn cancel(self) {
         {
