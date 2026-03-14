@@ -25,6 +25,10 @@ pub enum VoiceState {
 #[derive(Serialize)]
 struct VoiceStateEvent {
     state: VoiceState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    filename: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    percent: Option<u8>,
 }
 
 const MIN_SPEECH_SAMPLES: usize = 8000; // 0.5s at 16kHz
@@ -41,9 +45,16 @@ impl VoicePipeline {
         let stop_flag = Arc::new(AtomicBool::new(false));
 
         // Ensure models are downloaded
-        emit_state(&emitter, VoiceState::Downloading);
-        let model_paths = models::ensure_models(|filename| {
-            eprintln!("[voice] Downloading {filename}...");
+        let dl_emitter = emitter.clone();
+        let model_paths = models::ensure_models(|filename, downloaded, total| {
+            let percent = total.map(|t| if t > 0 { ((downloaded * 100) / t).min(100) as u8 } else { 0 });
+            let payload = serde_json::to_string(&VoiceStateEvent {
+                state: VoiceState::Downloading,
+                filename: Some(filename.to_string()),
+                percent,
+            })
+            .unwrap_or_default();
+            let _ = dl_emitter.emit("voice-state-changed", &payload);
         })
         .await?;
 
@@ -89,7 +100,12 @@ impl Drop for VoicePipeline {
 }
 
 fn emit_state(emitter: &Arc<dyn EventEmitter>, state: VoiceState) {
-    let payload = serde_json::to_string(&VoiceStateEvent { state }).unwrap_or_default();
+    let payload = serde_json::to_string(&VoiceStateEvent {
+        state,
+        filename: None,
+        percent: None,
+    })
+    .unwrap_or_default();
     let _ = emitter.emit("voice-state-changed", &payload);
 }
 

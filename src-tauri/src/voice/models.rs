@@ -65,8 +65,14 @@ impl ModelPaths {
     }
 }
 
-/// Download all missing models. Calls `on_progress` with the filename being downloaded.
-pub async fn ensure_models(on_progress: impl Fn(&str)) -> Result<ModelPaths, String> {
+/// Download all missing models with progress reporting.
+/// `on_progress(filename, bytes_downloaded, total_bytes)` is called periodically.
+/// `total_bytes` is `None` if the server didn't send a Content-Length header.
+pub async fn ensure_models(
+    on_progress: impl Fn(&str, u64, Option<u64>),
+) -> Result<ModelPaths, String> {
+    use futures_util::StreamExt;
+
     let paths = ModelPaths::new();
     let downloads = paths.missing_downloads();
 
@@ -77,7 +83,7 @@ pub async fn ensure_models(on_progress: impl Fn(&str)) -> Result<ModelPaths, Str
 
     for (url, dest) in &downloads {
         let filename = dest.file_name().unwrap().to_string_lossy();
-        on_progress(&filename);
+        on_progress(&filename, 0, None);
 
         let response = reqwest::get(*url)
             .await
@@ -90,12 +96,20 @@ pub async fn ensure_models(on_progress: impl Fn(&str)) -> Result<ModelPaths, Str
             ));
         }
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| format!("Failed to read {filename}: {e}"))?;
+        let total = response.content_length();
+        let mut stream = response.bytes_stream();
+        let mut downloaded: u64 = 0;
+        let mut body = Vec::new();
 
-        std::fs::write(dest, &bytes)
+        while let Some(chunk) = stream.next().await {
+            let chunk =
+                chunk.map_err(|e| format!("Failed to read {filename}: {e}"))?;
+            downloaded += chunk.len() as u64;
+            body.extend_from_slice(&chunk);
+            on_progress(&filename, downloaded, total);
+        }
+
+        std::fs::write(dest, &body)
             .map_err(|e| format!("Failed to write {filename}: {e}"))?;
     }
 

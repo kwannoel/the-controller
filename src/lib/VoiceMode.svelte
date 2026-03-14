@@ -8,7 +8,6 @@
     listening: "listening...",
     thinking: "thinking...",
     speaking: "speaking...",
-    downloading: "downloading models...",
   };
 
   onMount(() => {
@@ -16,7 +15,12 @@
     const unlisten = listen<string>("voice-state-changed", (payload) => {
       try {
         const data = JSON.parse(payload);
-        voiceState = STATE_LABELS[data.state] ?? "voice mode";
+        if (data.state === "downloading" && data.filename) {
+          const pct = data.percent != null ? ` ${data.percent}%` : "";
+          voiceState = `downloading ${data.filename}${pct}`;
+        } else {
+          voiceState = STATE_LABELS[data.state] ?? "voice mode";
+        }
       } catch {
         // Ignore malformed events
       }
