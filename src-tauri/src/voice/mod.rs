@@ -33,6 +33,7 @@ struct VoiceStateEvent {
 
 const MIN_SPEECH_SAMPLES: usize = 8000; // 0.5s at 16kHz
 const MIN_SPEECH_RMS: f32 = 0.02;
+const MIN_BARGEIN_SAMPLES: usize = 4800; // 300ms at 16kHz — sustained speech required to confirm barge-in
 
 pub struct VoicePipeline {
     stop_flag: Arc<AtomicBool>,
@@ -363,22 +364,37 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
             recv(ctx.audio_rx) -> msg => {
                 if let Ok(chunk) = msg {
                     if !started_speaking {
-                        // Not speaking yet, ignore mic input
                         continue;
                     }
                     let normalized = ctx.auto_gain.apply(&chunk);
                     if let Some(vad::VadEvent::SpeechStart) = ctx.vad_engine.process(&normalized)? {
-                        emit_debug(ctx.emitter, "barge-in: speech detected, cancelling");
-                        // Start collecting the interrupting speech
+                        // Require sustained speech to confirm barge-in (not just a noise spike)
                         let mut speech_buf = Vec::new();
                         speech_buf.extend_from_slice(&normalized);
-                        // Drain any remaining audio from mic channel into the speech buffer
-                        while let Ok(more) = ctx.audio_rx.try_recv() {
-                            let norm = ctx.auto_gain.apply(&more);
-                            speech_buf.extend_from_slice(&norm);
+                        let mut confirmed = true;
+                        while speech_buf.len() < MIN_BARGEIN_SAMPLES {
+                            match ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+                                Ok(more) => {
+                                    let norm = ctx.auto_gain.apply(&more);
+                                    if let Some(vad::VadEvent::SpeechEnd) = ctx.vad_engine.process(&norm)? {
+                                        confirmed = false; // Noise spike, not real speech
+                                        break;
+                                    }
+                                    speech_buf.extend_from_slice(&norm);
+                                }
+                                Err(_) => { confirmed = false; break; }
+                            }
                         }
-                        barge_in_speech = Some(speech_buf);
-                        break;
+                        if confirmed {
+                            emit_debug(ctx.emitter, "barge-in: confirmed, cancelling");
+                            while let Ok(more) = ctx.audio_rx.try_recv() {
+                                let norm = ctx.auto_gain.apply(&more);
+                                speech_buf.extend_from_slice(&norm);
+                            }
+                            barge_in_speech = Some(speech_buf);
+                            break;
+                        }
+                        // False alarm — VAD reset via SpeechEnd, continue
                     }
                 }
             }
@@ -402,16 +418,33 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
                         if let Some(vad::VadEvent::SpeechStart) =
                             ctx.vad_engine.process(&normalized)?
                         {
-                            emit_debug(ctx.emitter, "barge-in: speech detected during drain");
+                            // Confirm sustained speech before triggering barge-in
                             let mut speech_buf = Vec::new();
                             speech_buf.extend_from_slice(&normalized);
-                            while let Ok(more) = ctx.audio_rx.try_recv() {
-                                let norm = ctx.auto_gain.apply(&more);
-                                speech_buf.extend_from_slice(&norm);
+                            let mut confirmed = true;
+                            while speech_buf.len() < MIN_BARGEIN_SAMPLES {
+                                match ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+                                    Ok(more) => {
+                                        let norm = ctx.auto_gain.apply(&more);
+                                        if let Some(vad::VadEvent::SpeechEnd) = ctx.vad_engine.process(&norm)? {
+                                            confirmed = false;
+                                            break;
+                                        }
+                                        speech_buf.extend_from_slice(&norm);
+                                    }
+                                    Err(_) => { confirmed = false; break; }
+                                }
                             }
-                            barge_in_speech = Some(speech_buf);
-                            playback.cancel();
-                            break;
+                            if confirmed {
+                                emit_debug(ctx.emitter, "barge-in: confirmed during drain");
+                                while let Ok(more) = ctx.audio_rx.try_recv() {
+                                    let norm = ctx.auto_gain.apply(&more);
+                                    speech_buf.extend_from_slice(&norm);
+                                }
+                                barge_in_speech = Some(speech_buf);
+                                playback.cancel();
+                                break;
+                            }
                         }
                     }
                     Err(_) => {} // timeout, check is_done again
@@ -425,8 +458,13 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<SpeechRe
     }
 
     emit_debug(ctx.emitter, if barge_in_speech.is_some() { "tts: cancelled (barge-in)" } else { "tts: done" });
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    ctx.vad_engine.reset();
+
+    if barge_in_speech.is_none() {
+        // Normal completion — pause for audio settle and reset VAD
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        ctx.vad_engine.reset();
+    }
+    // On barge-in: don't reset VAD — it's in triggered state tracking the ongoing speech
 
     // Add whatever was spoken to conversation history
     if interrupted {
