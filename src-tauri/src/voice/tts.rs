@@ -1,15 +1,17 @@
 use ort::session::Session;
 use ort::value::Tensor;
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
 pub struct PiperTts {
     session: Session,
     sample_rate: u32,
+    phoneme_id_map: HashMap<char, Vec<i64>>,
 }
 
 impl PiperTts {
-    pub fn new(model_path: &Path, _config_path: &Path) -> Result<Self, String> {
+    pub fn new(model_path: &Path, config_path: &Path) -> Result<Self, String> {
         let mut builder = Session::builder()
             .map_err(|e| format!("Failed to create TTS session builder: {e}"))?
             .with_intra_threads(1)
@@ -19,9 +21,40 @@ impl PiperTts {
             .commit_from_file(model_path)
             .map_err(|e| format!("Failed to load Piper model: {e}"))?;
 
+        // Load phoneme ID map from config JSON
+        let config_str = std::fs::read_to_string(config_path)
+            .map_err(|e| format!("Failed to read Piper config: {e}"))?;
+        let config: serde_json::Value = serde_json::from_str(&config_str)
+            .map_err(|e| format!("Failed to parse Piper config: {e}"))?;
+
+        let mut phoneme_id_map = HashMap::new();
+        if let Some(map) = config.get("phoneme_id_map").and_then(|m| m.as_object()) {
+            for (key, value) in map {
+                if let Some(ids) = value.as_array() {
+                    let id_vec: Vec<i64> = ids.iter().filter_map(|v| v.as_i64()).collect();
+                    // Key is a single character
+                    if let Some(ch) = key.chars().next() {
+                        phoneme_id_map.insert(ch, id_vec);
+                    }
+                }
+            }
+        }
+
+        if phoneme_id_map.is_empty() {
+            return Err("Piper config missing phoneme_id_map".to_string());
+        }
+
+        // Read sample rate from config, default to 22050
+        let sample_rate = config
+            .get("audio")
+            .and_then(|a| a.get("sample_rate"))
+            .and_then(|s| s.as_u64())
+            .unwrap_or(22050) as u32;
+
         Ok(Self {
             session,
-            sample_rate: 22050,
+            sample_rate,
+            phoneme_id_map,
         })
     }
 
@@ -29,8 +62,8 @@ impl PiperTts {
         self.sample_rate
     }
 
-    /// Convert text to phoneme IDs using espeak-ng.
-    fn phonemize(text: &str) -> Result<Vec<i64>, String> {
+    /// Convert text to phoneme IDs using espeak-ng + the Piper phoneme_id_map.
+    fn phonemize(&self, text: &str) -> Result<Vec<i64>, String> {
         let output = Command::new("espeak-ng")
             .args(["--ipa", "-q", "--sep= ", "-v", "en-us", text])
             .output()
@@ -47,15 +80,28 @@ impl PiperTts {
 
         let phonemes = String::from_utf8_lossy(&output.stdout);
 
-        let mut ids: Vec<i64> = vec![0]; // BOS pad
+        // Piper convention: BOS = '^', EOS = '$', pad = '_'
+        let mut ids: Vec<i64> = Vec::new();
+
+        // Add BOS
+        if let Some(bos_ids) = self.phoneme_id_map.get(&'^') {
+            ids.extend(bos_ids);
+        }
+
         for ch in phonemes.trim().chars() {
-            if ch == ' ' {
-                ids.push(0);
-            } else {
-                ids.push(ch as i64);
+            if let Some(char_ids) = self.phoneme_id_map.get(&ch) {
+                ids.extend(char_ids);
+            }
+            // Insert pad (id 0) between each phoneme for better synthesis
+            if let Some(pad_ids) = self.phoneme_id_map.get(&'_') {
+                ids.extend(pad_ids);
             }
         }
-        ids.push(0); // EOS pad
+
+        // Add EOS
+        if let Some(eos_ids) = self.phoneme_id_map.get(&'$') {
+            ids.extend(eos_ids);
+        }
 
         Ok(ids)
     }
@@ -66,7 +112,7 @@ impl PiperTts {
             return Ok(Vec::new());
         }
 
-        let phoneme_ids = Self::phonemize(text)?;
+        let phoneme_ids = self.phonemize(text)?;
         let id_count = phoneme_ids.len();
 
         let input = Tensor::from_array(([1, id_count], phoneme_ids))
