@@ -29,7 +29,10 @@ pub struct WsBroadcastEmitter {
 #[cfg(feature = "server")]
 impl WsBroadcastEmitter {
     #[allow(clippy::new_ret_no_self)]
-    pub fn new() -> (Arc<dyn EventEmitter>, tokio::sync::broadcast::Sender<String>) {
+    pub fn new() -> (
+        Arc<dyn EventEmitter>,
+        tokio::sync::broadcast::Sender<String>,
+    ) {
         let (tx, _) = tokio::sync::broadcast::channel(4096);
         let sender = tx.clone();
         (Arc::new(Self { tx }), sender)

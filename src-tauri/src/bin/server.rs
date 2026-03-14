@@ -11,11 +11,7 @@ use axum::{
 use serde_json::Value;
 use std::sync::Arc;
 use the_controller_lib::{
-    config,
-    emitter::WsBroadcastEmitter,
-    note_ai_chat,
-    notes,
-    state::AppState,
+    config, emitter::WsBroadcastEmitter, note_ai_chat, notes, state::AppState,
 };
 
 use tokio::sync::broadcast;
@@ -448,9 +444,7 @@ async fn merge_session_branch(
     ))
 }
 
-async fn send_note_ai_chat(
-    Json(args): Json<Value>,
-) -> Result<Json<Value>, (StatusCode, String)> {
+async fn send_note_ai_chat(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
     let note_content = args["noteContent"]
         .as_str()
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing noteContent".to_string()))?
@@ -465,8 +459,7 @@ async fn send_note_ai_chat(
         .to_string();
 
     let conversation_history: Vec<note_ai_chat::NoteAiChatMessage> =
-        serde_json::from_value(args["conversationHistory"].clone())
-            .unwrap_or_default();
+        serde_json::from_value(args["conversationHistory"].clone()).unwrap_or_default();
 
     let response = note_ai_chat::send_note_ai_message(
         std::env::temp_dir().to_string_lossy().to_string(),
@@ -499,7 +492,10 @@ async fn api_list_notes(
         .as_str()
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?
         .to_string();
-    let base_dir = state.app.storage.lock()
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let entries = notes::list_notes(&base_dir, &folder)
@@ -511,11 +507,18 @@ async fn api_read_note(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let folder = args["folder"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?.to_string();
-    let filename = args["filename"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?.to_string();
-    let base_dir = state.app.storage.lock()
+    let folder = args["folder"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?
+        .to_string();
+    let filename = args["filename"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?
+        .to_string();
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let content = notes::read_note(&base_dir, &folder, &filename)
@@ -527,13 +530,22 @@ async fn api_write_note(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let folder = args["folder"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?.to_string();
-    let filename = args["filename"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?.to_string();
-    let content = args["content"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing content".to_string()))?.to_string();
-    let base_dir = state.app.storage.lock()
+    let folder = args["folder"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?
+        .to_string();
+    let filename = args["filename"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?
+        .to_string();
+    let content = args["content"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing content".to_string()))?
+        .to_string();
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     notes::write_note(&base_dir, &folder, &filename, &content)
@@ -545,11 +557,18 @@ async fn api_create_note(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let folder = args["folder"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?.to_string();
-    let title = args["title"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing title".to_string()))?.to_string();
-    let base_dir = state.app.storage.lock()
+    let folder = args["folder"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?
+        .to_string();
+    let title = args["title"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing title".to_string()))?
+        .to_string();
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let filename = notes::create_note(&base_dir, &folder, &title)
@@ -562,11 +581,18 @@ async fn api_delete_note(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let folder = args["folder"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?.to_string();
-    let filename = args["filename"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?.to_string();
-    let base_dir = state.app.storage.lock()
+    let folder = args["folder"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?
+        .to_string();
+    let filename = args["filename"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing filename".to_string()))?
+        .to_string();
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     notes::delete_note(&base_dir, &folder, &filename)
@@ -579,18 +605,30 @@ async fn api_rename_note(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let folder = args["folder"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?.to_string();
-    let old_name = args["oldName"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing oldName".to_string()))?.to_string();
-    let new_name = args["newName"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing newName".to_string()))?.to_string();
-    let base_dir = state.app.storage.lock()
+    let folder = args["folder"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing folder".to_string()))?
+        .to_string();
+    let old_name = args["oldName"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing oldName".to_string()))?
+        .to_string();
+    let new_name = args["newName"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing newName".to_string()))?
+        .to_string();
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let filename = notes::rename_note(&base_dir, &folder, &old_name, &new_name)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    server_try_commit(&state, &format!("rename {}/{} → {}", folder, old_name, filename));
+    server_try_commit(
+        &state,
+        &format!("rename {}/{} → {}", folder, old_name, filename),
+    );
     Ok(Json(serde_json::to_value(filename).unwrap()))
 }
 
@@ -598,7 +636,10 @@ async fn api_list_folders(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(_args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let base_dir = state.app.storage.lock()
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let folders = notes::list_folders(&base_dir)
@@ -610,9 +651,14 @@ async fn api_create_folder(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let name = args["name"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing name".to_string()))?.to_string();
-    let base_dir = state.app.storage.lock()
+    let name = args["name"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing name".to_string()))?
+        .to_string();
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     notes::create_folder(&base_dir, &name)
@@ -625,16 +671,26 @@ async fn api_rename_folder(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let old_name = args["oldName"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing oldName".to_string()))?.to_string();
-    let new_name = args["newName"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing newName".to_string()))?.to_string();
-    let base_dir = state.app.storage.lock()
+    let old_name = args["oldName"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing oldName".to_string()))?
+        .to_string();
+    let new_name = args["newName"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing newName".to_string()))?
+        .to_string();
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     notes::rename_folder(&base_dir, &old_name, &new_name)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    server_try_commit(&state, &format!("rename folder {} → {}", old_name, new_name));
+    server_try_commit(
+        &state,
+        &format!("rename folder {} → {}", old_name, new_name),
+    );
     Ok(Json(Value::Null))
 }
 
@@ -642,10 +698,15 @@ async fn api_delete_folder(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let name = args["name"].as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing name".to_string()))?.to_string();
+    let name = args["name"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing name".to_string()))?
+        .to_string();
     let force = args["force"].as_bool().unwrap_or(false);
-    let base_dir = state.app.storage.lock()
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     notes::delete_folder(&base_dir, &name, force)
@@ -657,7 +718,10 @@ async fn api_delete_folder(
 async fn api_commit_notes(
     AxumState(state): AxumState<Arc<ServerState>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let base_dir = state.app.storage.lock()
+    let base_dir = state
+        .app
+        .storage
+        .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let committed = notes::commit_notes(&base_dir, "update notes")

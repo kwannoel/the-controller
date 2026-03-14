@@ -567,7 +567,6 @@ pub fn delete_project(
     Ok(())
 }
 
-
 #[tauri::command]
 pub fn get_agents_md(state: State<AppState>, project_id: String) -> Result<String, String> {
     let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -793,10 +792,7 @@ pub async fn submit_secure_env_value(
 }
 
 #[tauri::command]
-pub fn cancel_secure_env_request(
-    state: State<AppState>,
-    request_id: String,
-) -> Result<(), String> {
+pub fn cancel_secure_env_request(state: State<AppState>, request_id: String) -> Result<(), String> {
     crate::secure_env::cancel_secure_env_request(&state, &request_id)
 }
 
@@ -830,15 +826,19 @@ fn find_staging_port(base_port: u16) -> Result<u16, String> {
 pub(crate) fn kill_process_group(pid: u32) {
     #[cfg(unix)]
     {
-        use libc::{kill, SIGTERM, SIGKILL};
+        use libc::{kill, SIGKILL, SIGTERM};
         if let Ok(pgid) = i32::try_from(pid) {
-            unsafe { kill(-pgid, SIGTERM); }
+            unsafe {
+                kill(-pgid, SIGTERM);
+            }
             std::thread::spawn(move || {
                 std::thread::sleep(std::time::Duration::from_secs(2));
                 // Only send SIGKILL if the process group is still alive
                 // (kill with signal 0 checks existence without sending a signal)
                 if unsafe { kill(-pgid, 0) } == 0 {
-                    unsafe { kill(-pgid, SIGKILL); }
+                    unsafe {
+                        kill(-pgid, SIGKILL);
+                    }
                 }
             });
         }
@@ -1060,7 +1060,10 @@ pub async fn stage_session(
     let mut child = std::process::Command::new("bash")
         .args(["./dev.sh", &port.to_string()])
         .current_dir(&wt)
-        .env("CONTROLLER_SOCKET", crate::status_socket::staged_socket_path())
+        .env(
+            "CONTROLLER_SOCKET",
+            crate::status_socket::staged_socket_path(),
+        )
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_stderr))
         .process_group(0)
@@ -1213,7 +1216,6 @@ pub fn list_project_prompts(
         .map_err(|e| e.to_string())?;
     Ok(project.prompts)
 }
-
 
 #[tauri::command]
 pub fn close_session(
@@ -1536,7 +1538,11 @@ pub fn create_folder(state: State<'_, AppState>, name: String) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn rename_folder(state: State<'_, AppState>, old_name: String, new_name: String) -> Result<(), String> {
+pub fn rename_folder(
+    state: State<'_, AppState>,
+    old_name: String,
+    new_name: String,
+) -> Result<(), String> {
     notes::rename_folder(state, old_name, new_name)
 }
 
@@ -1557,11 +1563,7 @@ pub fn save_note_image(
     image_bytes: Vec<u8>,
     extension: String,
 ) -> Result<String, String> {
-    let base_dir = state
-        .storage
-        .lock()
-        .map_err(|e| e.to_string())?
-        .base_dir();
+    let base_dir = state.storage.lock().map_err(|e| e.to_string())?.base_dir();
     crate::notes::save_note_image(&base_dir, &folder, &image_bytes, &extension)
         .map_err(|e| e.to_string())
 }
@@ -1572,11 +1574,7 @@ pub fn resolve_note_asset_path(
     folder: String,
     relative_path: String,
 ) -> Result<String, String> {
-    let base_dir = state
-        .storage
-        .lock()
-        .map_err(|e| e.to_string())?
-        .base_dir();
+    let base_dir = state.storage.lock().map_err(|e| e.to_string())?.base_dir();
     crate::notes::resolve_note_asset_path(&base_dir, &folder, &relative_path)
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| e.to_string())
@@ -2099,9 +2097,7 @@ pub fn log_frontend_error(message: String) {
 }
 
 #[tauri::command]
-pub async fn start_voice_pipeline(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn start_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut pipeline = state.voice_pipeline.lock().await;
     if pipeline.is_some() {
         return Ok(()); // Already running
@@ -2113,9 +2109,7 @@ pub async fn start_voice_pipeline(
 }
 
 #[tauri::command]
-pub async fn stop_voice_pipeline(
-    state: tauri::State<'_, AppState>,
-) -> Result<(), String> {
+pub async fn stop_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut pipeline = state.voice_pipeline.lock().await;
     if let Some(mut p) = pipeline.take() {
         p.stop();
@@ -3121,7 +3115,11 @@ mod tests {
                 .save_project(&Project {
                     id: Uuid::new_v4(),
                     name: "stored-project".to_string(),
-                    repo_path: projects_root.path().join("stored-project").to_string_lossy().to_string(),
+                    repo_path: projects_root
+                        .path()
+                        .join("stored-project")
+                        .to_string_lossy()
+                        .to_string(),
                     created_at: "2026-03-10T00:00:00Z".to_string(),
                     archived: true,
                     maintainer: crate::models::MaintainerConfig::default(),
@@ -3258,13 +3256,26 @@ mod tests {
     #[test]
     fn test_build_auto_worker_queue_filters_and_pins_active_issue() {
         let issues = vec![
-            make_issue(11, "Eligible queued issue", &["priority:high", "complexity:low"]),
-            make_issue(12, "Busy issue", &["priority:high", "complexity:low", "in-progress"]),
+            make_issue(
+                11,
+                "Eligible queued issue",
+                &["priority:high", "complexity:low"],
+            ),
+            make_issue(
+                12,
+                "Busy issue",
+                &["priority:high", "complexity:low", "in-progress"],
+            ),
         ];
         let active_issue = Some(make_issue(
             12,
             "Busy issue",
-            &["priority:high", "complexity:low", "in-progress", "assigned-to-auto-worker"],
+            &[
+                "priority:high",
+                "complexity:low",
+                "in-progress",
+                "assigned-to-auto-worker",
+            ],
         ));
 
         let queue = build_auto_worker_queue(issues, active_issue);
@@ -3278,8 +3289,16 @@ mod tests {
 
     #[test]
     fn test_build_auto_worker_queue_avoids_duplicate_active_issue() {
-        let issues = vec![make_issue(21, "Already active", &["priority:high", "complexity:low"])];
-        let active_issue = Some(make_issue(21, "Already active", &["priority:high", "complexity:low"]));
+        let issues = vec![make_issue(
+            21,
+            "Already active",
+            &["priority:high", "complexity:low"],
+        )];
+        let active_issue = Some(make_issue(
+            21,
+            "Already active",
+            &["priority:high", "complexity:low"],
+        ));
 
         let queue = build_auto_worker_queue(issues, active_issue);
 
@@ -3335,7 +3354,11 @@ mod tests {
             issue_cache.insert(
                 repo_path.to_string_lossy().to_string(),
                 vec![
-                    make_issue(33, "Active worker issue", &["priority:high", "complexity:low"]),
+                    make_issue(
+                        33,
+                        "Active worker issue",
+                        &["priority:high", "complexity:low"],
+                    ),
                     make_issue(34, "Queued issue", &["priority:high", "complexity:low"]),
                     make_issue(35, "Ineligible issue", &["priority:high"]),
                 ],
@@ -3411,11 +3434,8 @@ mod tests {
         )
         .expect("begin secure env request");
 
-        cancel_secure_env_request(
-            state_from_ref(&app_state),
-            "req-123".to_string(),
-        )
-        .expect("cancel secure env request");
+        cancel_secure_env_request(state_from_ref(&app_state), "req-123".to_string())
+            .expect("cancel secure env request");
 
         assert!(app_state.secure_env_request.lock().unwrap().is_none());
     }

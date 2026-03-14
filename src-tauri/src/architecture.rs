@@ -1571,8 +1571,14 @@ That should be enough to render the view."#;
         }"#;
 
         let parsed = parse_architecture_output(output).expect("aliased fields should parse");
-        assert_eq!(parsed.components[0].outgoing_relationships[0].component_id, "worker");
-        assert_eq!(parsed.components[1].incoming_relationships[0].component_id, "api");
+        assert_eq!(
+            parsed.components[0].outgoing_relationships[0].component_id,
+            "worker"
+        );
+        assert_eq!(
+            parsed.components[1].incoming_relationships[0].component_id,
+            "api"
+        );
     }
 
     #[test]
@@ -1608,8 +1614,13 @@ That should be enough to render the view."#;
           ]
         }"#;
 
-        let error = parse_architecture_output(output).expect_err("missing component_id should fail in validation");
-        assert!(error.contains("missing component id"), "error should mention missing component id: {}", error);
+        let error = parse_architecture_output(output)
+            .expect_err("missing component_id should fail in validation");
+        assert!(
+            error.contains("missing component id"),
+            "error should mention missing component id: {}",
+            error
+        );
     }
 
     #[test]

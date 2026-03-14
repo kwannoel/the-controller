@@ -56,8 +56,9 @@ fn claude_project_dir(working_dir: &str) -> Result<PathBuf, String> {
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if (name.contains(&encoded) || encoded.contains(&name))
-            && entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                best = Some(entry.path());
+            && entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+        {
+            best = Some(entry.path());
         }
     }
 
@@ -109,8 +110,14 @@ fn parse_claude_jsonl(path: &Path) -> Result<Vec<TokenDataPoint>, String> {
             None => continue,
         };
 
-        let input = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let output = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let input = usage
+            .get("input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let output = usage
+            .get("output_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
         let cache_read = usage
             .get("cache_read_input_tokens")
             .and_then(|v| v.as_u64())
@@ -262,8 +269,14 @@ fn parse_codex_jsonl(path: &Path) -> Result<Vec<TokenDataPoint>, String> {
             None => continue,
         };
 
-        let total_input = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let total_output = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+        let total_input = usage
+            .get("input_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        let total_output = usage
+            .get("output_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
         let cached = usage
             .get("cached_input_tokens")
             .and_then(|v| v.as_u64())
@@ -316,7 +329,11 @@ mod tests {
         let jsonl_path = dir.path().join("test.jsonl");
         let mut f = fs::File::create(&jsonl_path).unwrap();
         // Write a non-assistant entry (should be ignored)
-        writeln!(f, r#"{{"type":"progress","timestamp":"2026-01-01T00:00:00Z"}}"#).unwrap();
+        writeln!(
+            f,
+            r#"{{"type":"progress","timestamp":"2026-01-01T00:00:00Z"}}"#
+        )
+        .unwrap();
         // Write an assistant entry with usage
         writeln!(
             f,
@@ -409,9 +426,6 @@ mod tests {
             &jsonl_path,
             "/Users/noel/project"
         ));
-        assert!(!codex_session_matches_cwd(
-            &jsonl_path,
-            "/Users/noel/other"
-        ));
+        assert!(!codex_session_matches_cwd(&jsonl_path, "/Users/noel/other"));
     }
 }

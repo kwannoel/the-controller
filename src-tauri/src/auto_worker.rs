@@ -12,7 +12,10 @@ use crate::models::GithubIssue;
 use crate::state::AppState;
 
 #[allow(clippy::type_complexity)]
-static IDLE_CHANNEL: Lazy<(std::sync::Mutex<mpsc::Sender<Uuid>>, std::sync::Mutex<mpsc::Receiver<Uuid>>)> = Lazy::new(|| {
+static IDLE_CHANNEL: Lazy<(
+    std::sync::Mutex<mpsc::Sender<Uuid>>,
+    std::sync::Mutex<mpsc::Receiver<Uuid>>,
+)> = Lazy::new(|| {
     let (tx, rx) = mpsc::channel();
     (std::sync::Mutex::new(tx), std::sync::Mutex::new(rx))
 });
@@ -57,7 +60,10 @@ fn worker_cleanup_label_plan(issue_closed: Option<bool>) -> WorkerLabelPlan {
     if issue_closed == Some(false) {
         remove.push(LABEL_ASSIGNED_TO_AUTO_WORKER);
     }
-    WorkerLabelPlan { add: vec![], remove }
+    WorkerLabelPlan {
+        add: vec![],
+        remove,
+    }
 }
 
 fn label_definition(label: &str) -> Option<LabelDefinition> {
@@ -78,7 +84,12 @@ fn label_definition(label: &str) -> Option<LabelDefinition> {
     }
 }
 
-fn apply_worker_label_plan_sync(state: &AppState, repo_path: &str, issue_number: u64, plan: &WorkerLabelPlan) {
+fn apply_worker_label_plan_sync(
+    state: &AppState,
+    repo_path: &str,
+    issue_number: u64,
+    plan: &WorkerLabelPlan,
+) {
     for label in &plan.add {
         let _ = add_label_sync(state, repo_path, issue_number, label);
     }
@@ -125,7 +136,10 @@ impl AutoWorkerScheduler {
     /// Called on startup before any sessions exist — any `in-progress` label
     /// is orphaned from a previous run and must be cleaned up so the issue
     /// becomes eligible again.
-    fn cleanup_stale_labels(app_handle: &AppHandle, protected_issues: &HashMap<String, HashSet<u64>>) {
+    fn cleanup_stale_labels(
+        app_handle: &AppHandle,
+        protected_issues: &HashMap<String, HashSet<u64>>,
+    ) {
         let state = match app_handle.try_state::<AppState>() {
             Some(s) => s,
             None => return,
@@ -160,8 +174,16 @@ impl AutoWorkerScheduler {
                     .map(|issues| issues.contains(&issue.number))
                     .unwrap_or(false);
                 if labels.contains(&LABEL_IN_PROGRESS) && !protected {
-                    eprintln!("Auto-worker: removing stale in-progress label from #{}", issue.number);
-                    let _ = remove_label_sync(state.inner(), &project.repo_path, issue.number, LABEL_IN_PROGRESS);
+                    eprintln!(
+                        "Auto-worker: removing stale in-progress label from #{}",
+                        issue.number
+                    );
+                    let _ = remove_label_sync(
+                        state.inner(),
+                        &project.repo_path,
+                        issue.number,
+                        LABEL_IN_PROGRESS,
+                    );
                 }
             }
         }
@@ -193,16 +215,28 @@ impl AutoWorkerScheduler {
                 // 1. Check timed-out sessions
                 let timed_out: Vec<Uuid> = active_sessions
                     .iter()
-                    .filter(|(_, s)| s.spawned_at.elapsed() > Duration::from_secs(SESSION_TIMEOUT_SECS))
+                    .filter(|(_, s)| {
+                        s.spawned_at.elapsed() > Duration::from_secs(SESSION_TIMEOUT_SECS)
+                    })
                     .map(|(pid, _)| *pid)
                     .collect();
 
                 for project_id in timed_out {
                     if let Some(session) = active_sessions.remove(&project_id) {
-                        eprintln!("Auto-worker: session timed out for #{}", session.issue_number);
+                        eprintln!(
+                            "Auto-worker: session timed out for #{}",
+                            session.issue_number
+                        );
                         let (issue_number, issue_title) = session_issue_context(&session);
                         kill_session(&state, &session);
-                        emit_status(&state, project_id, "idle", Some("Session timed out"), issue_number, issue_title);
+                        emit_status(
+                            &state,
+                            project_id,
+                            "idle",
+                            Some("Session timed out"),
+                            issue_number,
+                            issue_title,
+                        );
                     }
                 }
 
@@ -211,7 +245,9 @@ impl AutoWorkerScheduler {
                     .iter()
                     .filter(|(_, s)| {
                         s.last_idle_at.is_some()
-                            && s.last_nudge_at.is_none_or(|t| t.elapsed() > Duration::from_secs(NUDGE_COOLDOWN_SECS))
+                            && s.last_nudge_at.is_none_or(|t| {
+                                t.elapsed() > Duration::from_secs(NUDGE_COOLDOWN_SECS)
+                            })
                     })
                     .map(|(pid, _)| *pid)
                     .collect();
@@ -220,10 +256,20 @@ impl AutoWorkerScheduler {
                     if let Some(session) = active_sessions.get_mut(&project_id) {
                         if session.nudge_count >= MAX_NUDGES {
                             let session = active_sessions.remove(&project_id).unwrap();
-                            eprintln!("Auto-worker: killed after {} nudges for #{}", MAX_NUDGES, session.issue_number);
+                            eprintln!(
+                                "Auto-worker: killed after {} nudges for #{}",
+                                MAX_NUDGES, session.issue_number
+                            );
                             let (issue_number, issue_title) = session_issue_context(&session);
                             kill_session(&state, &session);
-                            emit_status(&state, project_id, "idle", Some("Killed after max nudges"), issue_number, issue_title);
+                            emit_status(
+                                &state,
+                                project_id,
+                                "idle",
+                                Some("Killed after max nudges"),
+                                issue_number,
+                                issue_title,
+                            );
                         } else {
                             nudge_session(&state, session);
                         }
@@ -245,7 +291,10 @@ impl AutoWorkerScheduler {
 
                 for project_id in exited {
                     if let Some(session) = active_sessions.remove(&project_id) {
-                        eprintln!("Auto-worker: session completed for #{}", session.issue_number);
+                        eprintln!(
+                            "Auto-worker: session completed for #{}",
+                            session.issue_number
+                        );
                         let (issue_number, issue_title) = session_issue_context(&session);
                         mark_issue_finished(state.inner(), &session);
                         cleanup_session(&state, &session);
@@ -286,7 +335,10 @@ impl AutoWorkerScheduler {
                     let issues = match fetch_issues_sync(&project.repo_path) {
                         Ok(issues) => issues,
                         Err(e) => {
-                            eprintln!("Auto-worker: failed to fetch issues for {}: {}", project.name, e);
+                            eprintln!(
+                                "Auto-worker: failed to fetch issues for {}: {}",
+                                project.name, e
+                            );
                             continue;
                         }
                     };
@@ -304,21 +356,34 @@ impl AutoWorkerScheduler {
                                 eligible.number,
                                 &worker_claim_label_plan(),
                             );
-                            emit_status(&state, project.id, "working", None, Some(eligible.number), Some(&eligible.title));
-                            active_sessions.insert(project.id, ActiveSession {
-                                session_id,
-                                project_id: project.id,
-                                issue_number: eligible.number,
-                                issue_title: eligible.title.clone(),
-                                repo_path: project.repo_path.clone(),
-                                spawned_at: Instant::now(),
-                                nudge_count: 0,
-                                last_idle_at: None,
-                                last_nudge_at: None,
-                            });
+                            emit_status(
+                                &state,
+                                project.id,
+                                "working",
+                                None,
+                                Some(eligible.number),
+                                Some(&eligible.title),
+                            );
+                            active_sessions.insert(
+                                project.id,
+                                ActiveSession {
+                                    session_id,
+                                    project_id: project.id,
+                                    issue_number: eligible.number,
+                                    issue_title: eligible.title.clone(),
+                                    repo_path: project.repo_path.clone(),
+                                    spawned_at: Instant::now(),
+                                    nudge_count: 0,
+                                    last_idle_at: None,
+                                    last_nudge_at: None,
+                                },
+                            );
                         }
                         Err(e) => {
-                            eprintln!("Auto-worker: failed to spawn session for #{}: {}", eligible.number, e);
+                            eprintln!(
+                                "Auto-worker: failed to spawn session for #{}: {}",
+                                eligible.number, e
+                            );
                         }
                     }
                 }
@@ -426,18 +491,31 @@ impl AutoWorkerScheduler {
     }
 }
 
-fn emit_status(state: &AppState, project_id: Uuid, status: &str, message: Option<&str>, issue_number: Option<u64>, issue_title: Option<&str>) {
+fn emit_status(
+    state: &AppState,
+    project_id: Uuid,
+    status: &str,
+    message: Option<&str>,
+    issue_number: Option<u64>,
+    issue_title: Option<&str>,
+) {
     let payload = serde_json::json!({
         "status": status,
         "message": message.unwrap_or(""),
         "issue_number": issue_number,
         "issue_title": issue_title.unwrap_or(""),
     });
-    let _ = state.emitter.emit(&format!("auto-worker-status:{}", project_id), &payload.to_string());
+    let _ = state.emitter.emit(
+        &format!("auto-worker-status:{}", project_id),
+        &payload.to_string(),
+    );
 }
 
 fn session_issue_context(session: &ActiveSession) -> (Option<u64>, Option<&str>) {
-    (Some(session.issue_number), Some(session.issue_title.as_str()))
+    (
+        Some(session.issue_number),
+        Some(session.issue_title.as_str()),
+    )
 }
 
 fn startup_candidate_to_active_session(candidate: &StartupWorkerCandidate) -> ActiveSession {
@@ -496,7 +574,9 @@ fn finalize_startup_restoration(
     finalized
 }
 
-fn protected_issue_numbers_by_repo(candidates: &[StartupWorkerCandidate]) -> HashMap<String, HashSet<u64>> {
+fn protected_issue_numbers_by_repo(
+    candidates: &[StartupWorkerCandidate],
+) -> HashMap<String, HashSet<u64>> {
     let mut protected = HashMap::new();
 
     for candidate in candidates {
@@ -511,7 +591,14 @@ fn protected_issue_numbers_by_repo(candidates: &[StartupWorkerCandidate]) -> Has
 
 fn fetch_issues_sync(repo_path: &str) -> Result<Vec<GithubIssue>, String> {
     let output = Command::new("gh")
-        .args(["issue", "list", "--json", "number,title,url,body,labels", "--limit", "50"])
+        .args([
+            "issue",
+            "list",
+            "--json",
+            "number,title,url,body,labels",
+            "--limit",
+            "50",
+        ])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run gh: {}", e))?;
@@ -521,8 +608,7 @@ fn fetch_issues_sync(repo_path: &str) -> Result<Vec<GithubIssue>, String> {
         return Err(format!("gh issue list failed: {}", stderr));
     }
 
-    serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
 }
 
 fn finish_label_edit<F>(state: &AppState, repo_path: &str, edit: F) -> Result<(), String>
@@ -538,7 +624,12 @@ where
     Ok(())
 }
 
-fn edit_label_sync(repo_path: &str, issue_number: u64, mode: &str, label: &str) -> Result<(), String> {
+fn edit_label_sync(
+    repo_path: &str,
+    issue_number: u64,
+    mode: &str,
+    label: &str,
+) -> Result<(), String> {
     if mode == "--add-label" {
         if let Some(definition) = label_definition(label) {
             let _ = Command::new("gh")
@@ -570,17 +661,37 @@ fn edit_label_sync(repo_path: &str, issue_number: u64, mode: &str, label: &str) 
     Ok(())
 }
 
-fn add_label_sync(state: &AppState, repo_path: &str, issue_number: u64, label: &str) -> Result<(), String> {
-    finish_label_edit(state, repo_path, || edit_label_sync(repo_path, issue_number, "--add-label", label))
+fn add_label_sync(
+    state: &AppState,
+    repo_path: &str,
+    issue_number: u64,
+    label: &str,
+) -> Result<(), String> {
+    finish_label_edit(state, repo_path, || {
+        edit_label_sync(repo_path, issue_number, "--add-label", label)
+    })
 }
 
-fn remove_label_sync(state: &AppState, repo_path: &str, issue_number: u64, label: &str) -> Result<(), String> {
-    finish_label_edit(state, repo_path, || edit_label_sync(repo_path, issue_number, "--remove-label", label))
+fn remove_label_sync(
+    state: &AppState,
+    repo_path: &str,
+    issue_number: u64,
+    label: &str,
+) -> Result<(), String> {
+    finish_label_edit(state, repo_path, || {
+        edit_label_sync(repo_path, issue_number, "--remove-label", label)
+    })
 }
 
 fn issue_is_closed_sync(repo_path: &str, issue_number: u64) -> Result<bool, String> {
     let output = Command::new("gh")
-        .args(["issue", "view", &issue_number.to_string(), "--json", "state"])
+        .args([
+            "issue",
+            "view",
+            &issue_number.to_string(),
+            "--json",
+            "state",
+        ])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to run gh: {}", e))?;
@@ -610,28 +721,30 @@ fn spawn_auto_worker_session(
     };
     let worktree_dir = base_dir.join("worktrees").join(&project.name).join(&label);
 
-    let (session_dir, wt_path, wt_branch) =
-        match crate::worktree::WorktreeManager::create_worktree(&project.repo_path, &label, &worktree_dir) {
-            Ok(worktree_path) => {
-                let wt_str = worktree_path
-                    .to_str()
-                    .ok_or_else(|| "worktree path is not valid UTF-8".to_string())?
-                    .to_string();
-                (wt_str.clone(), Some(wt_str), Some(label.clone()))
-            }
-            Err(e) if e == "unborn_branch" => {
-                (project.repo_path.clone(), None, None)
-            }
-            Err(e) => return Err(e),
-        };
+    let (session_dir, wt_path, wt_branch) = match crate::worktree::WorktreeManager::create_worktree(
+        &project.repo_path,
+        &label,
+        &worktree_dir,
+    ) {
+        Ok(worktree_path) => {
+            let wt_str = worktree_path
+                .to_str()
+                .ok_or_else(|| "worktree path is not valid UTF-8".to_string())?
+                .to_string();
+            (wt_str.clone(), Some(wt_str), Some(label.clone()))
+        }
+        Err(e) if e == "unborn_branch" => (project.repo_path.clone(), None, None),
+        Err(e) => return Err(e),
+    };
 
-    let initial_prompt = crate::session_args::build_issue_prompt(
-        issue.number, &issue.title, &issue.url, true,
-    );
+    let initial_prompt =
+        crate::session_args::build_issue_prompt(issue.number, &issue.title, &issue.url, true);
 
     {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let mut proj = storage.load_project(project.id).map_err(|e| e.to_string())?;
+        let mut proj = storage
+            .load_project(project.id)
+            .map_err(|e| e.to_string())?;
         proj.sessions.push(crate::models::SessionConfig {
             id: session_id,
             label: label.clone(),
@@ -669,7 +782,10 @@ fn nudge_session(state: &AppState, session: &mut ActiveSession) {
     }
     session.nudge_count += 1;
     session.last_nudge_at = Some(Instant::now());
-    eprintln!("Auto-worker: nudged session for #{} (nudge {})", session.issue_number, session.nudge_count);
+    eprintln!(
+        "Auto-worker: nudged session for #{} (nudge {})",
+        session.issue_number, session.nudge_count
+    );
 }
 
 fn kill_session(state: &AppState, session: &ActiveSession) {
@@ -690,25 +806,35 @@ fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
     let search_query = format!("#{}", issue_number);
     let output = Command::new("gh")
         .args([
-            "pr", "list",
-            "--search", &search_query,
-            "--state", "merged",
-            "--json", "number",
-            "--limit", "1",
+            "pr",
+            "list",
+            "--search",
+            &search_query,
+            "--state",
+            "merged",
+            "--json",
+            "number",
+            "--limit",
+            "1",
         ])
         .current_dir(repo_path)
         .output();
 
     match output {
-        Ok(o) if o.status.success() => {
-            json_has_results(&String::from_utf8_lossy(&o.stdout))
-        }
+        Ok(o) if o.status.success() => json_has_results(&String::from_utf8_lossy(&o.stdout)),
         Ok(o) => {
-            eprintln!("Auto-worker: gh pr list failed for #{}: {}", issue_number, String::from_utf8_lossy(&o.stderr));
+            eprintln!(
+                "Auto-worker: gh pr list failed for #{}: {}",
+                issue_number,
+                String::from_utf8_lossy(&o.stderr)
+            );
             false
         }
         Err(e) => {
-            eprintln!("Auto-worker: failed to run gh pr list for #{}: {}", issue_number, e);
+            eprintln!(
+                "Auto-worker: failed to run gh pr list for #{}: {}",
+                issue_number, e
+            );
             false
         }
     }
@@ -731,9 +857,11 @@ fn close_issue_sync(repo_path: &str, issue_number: u64) -> Result<(), String> {
 fn mark_issue_finished(state: &AppState, session: &ActiveSession) {
     let mut issue_closed = issue_is_closed_sync(&session.repo_path, session.issue_number).ok();
 
-    if issue_closed != Some(true) && has_merged_pr_sync(&session.repo_path, session.issue_number)
-        && close_issue_sync(&session.repo_path, session.issue_number).is_ok() {
-            issue_closed = Some(true);
+    if issue_closed != Some(true)
+        && has_merged_pr_sync(&session.repo_path, session.issue_number)
+        && close_issue_sync(&session.repo_path, session.issue_number).is_ok()
+    {
+        issue_closed = Some(true);
     }
 
     apply_worker_label_plan_sync(
@@ -744,13 +872,32 @@ fn mark_issue_finished(state: &AppState, session: &ActiveSession) {
     );
 
     if issue_closed == Some(true) {
-        let _ = add_label_sync(state, &session.repo_path, session.issue_number, LABEL_FINISHED_BY_WORKER);
-        eprintln!("Auto-worker: finalized #{} as completed", session.issue_number);
+        let _ = add_label_sync(
+            state,
+            &session.repo_path,
+            session.issue_number,
+            LABEL_FINISHED_BY_WORKER,
+        );
+        eprintln!(
+            "Auto-worker: finalized #{} as completed",
+            session.issue_number
+        );
     } else if issue_closed == Some(false) {
-        let _ = remove_label_sync(state, &session.repo_path, session.issue_number, LABEL_FINISHED_BY_WORKER);
-        eprintln!("Auto-worker: #{} exited while still open", session.issue_number);
+        let _ = remove_label_sync(
+            state,
+            &session.repo_path,
+            session.issue_number,
+            LABEL_FINISHED_BY_WORKER,
+        );
+        eprintln!(
+            "Auto-worker: #{} exited while still open",
+            session.issue_number
+        );
     } else {
-        eprintln!("Auto-worker: #{} cleanup could not confirm issue state", session.issue_number);
+        eprintln!(
+            "Auto-worker: #{} cleanup could not confirm issue state",
+            session.issue_number
+        );
     }
 }
 fn cleanup_startup_worker(
@@ -777,14 +924,20 @@ fn cleanup_startup_worker(
 fn cleanup_session(state: &AppState, session: &ActiveSession) {
     if let Ok(storage) = state.storage.lock() {
         if let Ok(mut project) = storage.load_project(session.project_id) {
-            let sess = project.sessions.iter().find(|s| s.id == session.session_id).cloned();
+            let sess = project
+                .sessions
+                .iter()
+                .find(|s| s.id == session.session_id)
+                .cloned();
             project.sessions.retain(|s| s.id != session.session_id);
             let _ = storage.save_project(&project);
 
             if let Some(sess) = sess {
                 if let (Some(wt_path), Some(branch)) = (sess.worktree_path, sess.worktree_branch) {
                     let _ = crate::worktree::WorktreeManager::remove_worktree(
-                        &wt_path, &project.repo_path, &branch,
+                        &wt_path,
+                        &project.repo_path,
+                        &branch,
                     );
                 }
             }
@@ -820,7 +973,12 @@ mod tests {
             title: "Test".to_string(),
             url: "https://github.com/o/r/issues/1".to_string(),
             body: None,
-            labels: labels.iter().map(|l| GithubLabel { name: l.to_string() }).collect(),
+            labels: labels
+                .iter()
+                .map(|l| GithubLabel {
+                    name: l.to_string(),
+                })
+                .collect(),
         }
     }
 
@@ -868,7 +1026,12 @@ mod tests {
 
     #[test]
     fn finished_by_worker_not_eligible() {
-        let issue = make_issue(&["priority:high", "complexity:low", "triaged", "finished-by-worker"]);
+        let issue = make_issue(&[
+            "priority:high",
+            "complexity:low",
+            "triaged",
+            "finished-by-worker",
+        ]);
         assert!(!is_eligible(&issue));
     }
 
@@ -931,7 +1094,11 @@ mod tests {
     #[test]
     fn successful_label_edit_invalidates_issue_cache() {
         let tmp = TempDir::new().unwrap();
-        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf()), crate::emitter::NoopEmitter::new()).unwrap();
+        let state = AppState::from_storage(
+            Storage::new(tmp.path().to_path_buf()),
+            crate::emitter::NoopEmitter::new(),
+        )
+        .unwrap();
         let repo_path = "/tmp/repo";
 
         {
@@ -948,7 +1115,11 @@ mod tests {
     #[test]
     fn failed_label_edit_keeps_issue_cache() {
         let tmp = TempDir::new().unwrap();
-        let state = AppState::from_storage(Storage::new(tmp.path().to_path_buf()), crate::emitter::NoopEmitter::new()).unwrap();
+        let state = AppState::from_storage(
+            Storage::new(tmp.path().to_path_buf()),
+            crate::emitter::NoopEmitter::new(),
+        )
+        .unwrap();
         let repo_path = "/tmp/repo";
 
         {

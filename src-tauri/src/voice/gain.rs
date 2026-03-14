@@ -9,6 +9,12 @@ pub struct AutoGain {
     window_size: usize,
 }
 
+impl Default for AutoGain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AutoGain {
     pub fn new() -> Self {
         Self {

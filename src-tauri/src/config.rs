@@ -196,7 +196,10 @@ mod tests {
     #[test]
     fn test_config_path_returns_expected() {
         let base = Path::new("/tmp/test-base");
-        assert_eq!(config_path(base), PathBuf::from("/tmp/test-base/config.json"));
+        assert_eq!(
+            config_path(base),
+            PathBuf::from("/tmp/test-base/config.json")
+        );
     }
 
     #[test]

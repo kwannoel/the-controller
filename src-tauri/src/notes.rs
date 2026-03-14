@@ -13,7 +13,11 @@ pub struct NoteEntry {
 
 /// Validates that a filename does not escape the notes directory.
 fn validate_filename(filename: &str) -> std::io::Result<()> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") || filename.is_empty() {
+    if filename.contains('/')
+        || filename.contains('\\')
+        || filename.contains("..")
+        || filename.is_empty()
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("invalid note filename: {}", filename),
@@ -37,9 +41,7 @@ fn validate_folder_name(name: &str) -> std::io::Result<()> {
 /// `~/.the-controller/notes/{folder}/`
 pub fn notes_dir(folder: &str) -> PathBuf {
     let home = dirs::home_dir().expect("could not determine home directory");
-    home.join(".the-controller")
-        .join("notes")
-        .join(folder)
+    home.join(".the-controller").join("notes").join(folder)
 }
 
 /// Returns the notes directory for a folder under a custom base path (for testing).
@@ -53,10 +55,7 @@ pub fn notes_root_with_base(base: &std::path::Path) -> PathBuf {
 }
 
 /// List all `.md` files in the folder's notes directory, sorted by modified time (newest first).
-pub fn list_notes(
-    base: &std::path::Path,
-    folder: &str,
-) -> std::io::Result<Vec<NoteEntry>> {
+pub fn list_notes(base: &std::path::Path, folder: &str) -> std::io::Result<Vec<NoteEntry>> {
     let dir = notes_dir_with_base(base, folder);
     if !dir.exists() {
         return Ok(Vec::new());
@@ -86,22 +85,14 @@ pub fn list_notes(
 }
 
 /// Read the content of a note file.
-pub fn read_note(
-    base: &std::path::Path,
-    folder: &str,
-    filename: &str,
-) -> std::io::Result<String> {
+pub fn read_note(base: &std::path::Path, folder: &str, filename: &str) -> std::io::Result<String> {
     validate_filename(filename)?;
     let path = notes_dir_with_base(base, folder).join(filename);
     fs::read_to_string(path)
 }
 
 /// Check whether a note file exists after validating its filename.
-pub fn note_exists(
-    base: &std::path::Path,
-    folder: &str,
-    filename: &str,
-) -> std::io::Result<bool> {
+pub fn note_exists(base: &std::path::Path, folder: &str, filename: &str) -> std::io::Result<bool> {
     validate_filename(filename)?;
     let path = notes_dir_with_base(base, folder).join(filename);
     Ok(path.exists())
@@ -123,11 +114,7 @@ pub fn write_note(
 /// Create a new note with the given title. Auto-appends `.md` if not present.
 /// The file content is initialized to `# {title}\n`.
 /// Returns an error if a note with that filename already exists.
-pub fn create_note(
-    base: &std::path::Path,
-    folder: &str,
-    title: &str,
-) -> std::io::Result<String> {
+pub fn create_note(base: &std::path::Path, folder: &str, title: &str) -> std::io::Result<String> {
     let filename = if title.ends_with(".md") {
         title.to_string()
     } else {
@@ -198,7 +185,10 @@ fn strip_uuid_suffixes(stem: &str) -> &str {
             break;
         }
         let (head, tail) = s.split_at(s.len() - 9);
-        if tail.starts_with('-') && tail[1..].bytes().all(|b| b.is_ascii_hexdigit()) && !head.is_empty() {
+        if tail.starts_with('-')
+            && tail[1..].bytes().all(|b| b.is_ascii_hexdigit())
+            && !head.is_empty()
+        {
             s = head;
         } else {
             break;
@@ -237,11 +227,7 @@ pub fn duplicate_note(
 }
 
 /// Delete a note file. Returns Ok(()) even if the file doesn't exist (idempotent).
-pub fn delete_note(
-    base: &std::path::Path,
-    folder: &str,
-    filename: &str,
-) -> std::io::Result<()> {
+pub fn delete_note(base: &std::path::Path, folder: &str, filename: &str) -> std::io::Result<()> {
     validate_filename(filename)?;
     let path = notes_dir_with_base(base, folder).join(filename);
     match fs::remove_file(path) {
@@ -284,7 +270,11 @@ pub fn create_folder(base: &std::path::Path, name: &str) -> std::io::Result<()> 
 }
 
 /// Rename a folder. Returns error if target already exists.
-pub fn rename_folder(base: &std::path::Path, old_name: &str, new_name: &str) -> std::io::Result<()> {
+pub fn rename_folder(
+    base: &std::path::Path,
+    old_name: &str,
+    new_name: &str,
+) -> std::io::Result<()> {
     validate_folder_name(old_name)?;
     validate_folder_name(new_name)?;
     let old_dir = notes_dir_with_base(base, old_name);
@@ -325,7 +315,11 @@ const ALLOWED_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp"]
 
 /// Validate that a relative asset path (e.g. "assets/foo.png") is safe.
 fn validate_asset_path(relative_path: &str) -> std::io::Result<()> {
-    if relative_path.starts_with('/') || relative_path.contains("..") || relative_path.contains('\\') || relative_path.is_empty() {
+    if relative_path.starts_with('/')
+        || relative_path.contains("..")
+        || relative_path.contains('\\')
+        || relative_path.is_empty()
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             format!("invalid asset path: {}", relative_path),
@@ -382,9 +376,8 @@ fn notes_root(base: &Path) -> PathBuf {
 /// Open or initialize the notes git repo at `{base}/notes/`.
 fn open_or_init_repo(base: &Path) -> Result<Repository, git2::Error> {
     let root = notes_root(base);
-    fs::create_dir_all(&root).map_err(|e| {
-        git2::Error::from_str(&format!("failed to create notes dir: {}", e))
-    })?;
+    fs::create_dir_all(&root)
+        .map_err(|e| git2::Error::from_str(&format!("failed to create notes dir: {}", e)))?;
     match Repository::open(&root) {
         Ok(repo) => Ok(repo),
         Err(_) => {
@@ -489,7 +482,10 @@ mod tests {
         create_note(tmp.path(), "proj", "dup").unwrap();
         let result = create_note(tmp.path(), "proj", "dup");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
     }
 
     #[test]
@@ -529,7 +525,10 @@ mod tests {
         create_note(tmp.path(), "proj", "b").unwrap();
         let result = rename_note(tmp.path(), "proj", "a.md", "b");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
     }
 
     #[test]
@@ -569,7 +568,11 @@ mod tests {
         write_note(base, "proj", "original.md", "hello world").unwrap();
 
         let copy = duplicate_note(base, "proj", "original.md").unwrap();
-        assert!(copy.starts_with("original-"), "expected 'original-<uuid>.md', got '{}'", copy);
+        assert!(
+            copy.starts_with("original-"),
+            "expected 'original-<uuid>.md', got '{}'",
+            copy
+        );
         assert!(copy.ends_with(".md"));
         assert_ne!(copy, "original.md");
 
@@ -589,7 +592,11 @@ mod tests {
 
         // Second duplicate of the copy: should still be blog-<uuid2>, not blog-<uuid1>-<uuid2>
         let copy2 = duplicate_note(base, "proj", &copy1).unwrap();
-        assert!(copy2.starts_with("blog-"), "expected 'blog-<uuid>.md', got '{}'", copy2);
+        assert!(
+            copy2.starts_with("blog-"),
+            "expected 'blog-<uuid>.md', got '{}'",
+            copy2
+        );
         // Should only have one UUID segment (blog + dash + 8 hex + .md = stem of length 13)
         let stem2 = copy2.strip_suffix(".md").unwrap();
         assert_eq!(stem2.len(), 13, "expected 'blog-<8hex>', got '{}'", stem2);
@@ -643,15 +650,24 @@ mod tests {
 
         let read_result = read_note(tmp.path(), "proj", malicious);
         assert!(read_result.is_err());
-        assert_eq!(read_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            read_result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
 
         let write_result = write_note(tmp.path(), "proj", malicious, "pwned");
         assert!(write_result.is_err());
-        assert_eq!(write_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            write_result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
 
         let delete_result = delete_note(tmp.path(), "proj", malicious);
         assert!(delete_result.is_err());
-        assert_eq!(delete_result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            delete_result.unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
     }
 
     #[test]
@@ -691,7 +707,10 @@ mod tests {
         create_folder(tmp.path(), "dup").unwrap();
         let result = create_folder(tmp.path(), "dup");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
     }
 
     #[test]
@@ -712,7 +731,10 @@ mod tests {
         create_folder(tmp.path(), "b").unwrap();
         let result = rename_folder(tmp.path(), "a", "b");
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
     }
 
     #[test]

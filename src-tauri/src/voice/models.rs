@@ -15,6 +15,12 @@ pub struct ModelPaths {
     pub piper_config: PathBuf,
 }
 
+impl Default for ModelPaths {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModelPaths {
     pub fn new() -> Self {
         let base = models_dir();
@@ -102,15 +108,13 @@ pub async fn ensure_models(
         let mut body = Vec::new();
 
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| format!("Failed to read {filename}: {e}"))?;
+            let chunk = chunk.map_err(|e| format!("Failed to read {filename}: {e}"))?;
             downloaded += chunk.len() as u64;
             body.extend_from_slice(&chunk);
             on_progress(&filename, downloaded, total);
         }
 
-        std::fs::write(dest, &body)
-            .map_err(|e| format!("Failed to write {filename}: {e}"))?;
+        std::fs::write(dest, &body).map_err(|e| format!("Failed to write {filename}: {e}"))?;
     }
 
     Ok(paths)

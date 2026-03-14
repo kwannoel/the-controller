@@ -18,8 +18,7 @@ pub fn staged_socket_path() -> &'static str {
 
 /// Return the socket path, checking the CONTROLLER_SOCKET env var first.
 pub fn socket_path() -> String {
-    std::env::var("CONTROLLER_SOCKET")
-        .unwrap_or_else(|_| DEFAULT_SOCKET_PATH.to_string())
+    std::env::var("CONTROLLER_SOCKET").unwrap_or_else(|_| DEFAULT_SOCKET_PATH.to_string())
 }
 
 /// Parse a "working:uuid", "idle:uuid", or "cleanup:uuid" message.
@@ -57,7 +56,10 @@ fn parse_socket_message(msg: &str) -> Result<SocketMessage, String> {
 }
 
 fn write_socket_response(stream: &mut UnixStream, response: &crate::secure_env::SecureEnvResponse) {
-    let line = format!("{}\n", crate::secure_env::format_secure_env_response(response));
+    let line = format!(
+        "{}\n",
+        crate::secure_env::format_secure_env_response(response)
+    );
     if let Err(err) = stream.write_all(line.as_bytes()) {
         eprintln!("Failed to write socket response: {}", err);
     }
@@ -282,11 +284,9 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
                     if let (Some(wt_path), Some(branch)) =
                         (&session.worktree_path, &session.worktree_branch)
                     {
-                        if let Err(e) = WorktreeManager::remove_worktree(
-                            wt_path,
-                            &project.repo_path,
-                            branch,
-                        ) {
+                        if let Err(e) =
+                            WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch)
+                        {
                             eprintln!("cleanup: failed to remove worktree: {}", e);
                         }
                     }
@@ -418,8 +418,11 @@ mod tests {
     }
 
     fn make_app_state(tmp: &TempDir) -> AppState {
-        AppState::from_storage(Storage::new(tmp.path().to_path_buf()), crate::emitter::NoopEmitter::new())
-            .unwrap()
+        AppState::from_storage(
+            Storage::new(tmp.path().to_path_buf()),
+            crate::emitter::NoopEmitter::new(),
+        )
+        .unwrap()
     }
 
     fn save_project(state: &AppState, name: &str, repo_path: PathBuf) {
@@ -436,7 +439,12 @@ mod tests {
             staged_session: None,
         };
 
-        state.storage.lock().unwrap().save_project(&project).unwrap();
+        state
+            .storage
+            .lock()
+            .unwrap()
+            .save_project(&project)
+            .unwrap();
     }
 
     #[test]
@@ -470,7 +478,13 @@ mod tests {
         assert!(hooks.get("Notification").is_some());
 
         // Verify new hooks format: each event entry must have a nested "hooks" array
-        for event_name in &["UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop", "Notification"] {
+        for event_name in &[
+            "UserPromptSubmit",
+            "PreToolUse",
+            "PostToolUse",
+            "Stop",
+            "Notification",
+        ] {
             let entries = hooks.get(*event_name).unwrap().as_array().unwrap();
             for entry in entries {
                 assert!(
@@ -578,8 +592,8 @@ mod tests {
 
     #[test]
     fn parses_secure_env_message() {
-        let message = parse_socket_message("secure-env:set|demo-project|OPENAI_API_KEY|req-123")
-            .unwrap();
+        let message =
+            parse_socket_message("secure-env:set|demo-project|OPENAI_API_KEY|req-123").unwrap();
 
         match message {
             SocketMessage::SecureEnv(request) => {
@@ -600,13 +614,17 @@ mod tests {
         save_project(&state, "demo-project", repo_path);
         let emitter = RecordingEmitter::new();
         let (tx, _rx) = std::sync::mpsc::sync_channel(1);
-        let request = crate::secure_env::parse_secure_env_request(
-            "set|demo-project|OPENAI_API_KEY|req-123",
+        let request =
+            crate::secure_env::parse_secure_env_request("set|demo-project|OPENAI_API_KEY|req-123")
+                .unwrap();
+
+        dispatch_secure_env_request(
+            &state,
+            &(emitter.clone() as Arc<dyn EventEmitter>),
+            request,
+            tx,
         )
         .unwrap();
-
-        dispatch_secure_env_request(&state, &(emitter.clone() as Arc<dyn EventEmitter>), request, tx)
-            .unwrap();
 
         let events = emitter.events.lock().unwrap();
         assert_eq!(events.len(), 1);
@@ -665,18 +683,13 @@ mod tests {
         save_project(&state, "demo-project", repo_path);
         let emitter = FailingEmitter::new();
         let (tx, _rx) = std::sync::mpsc::sync_channel(1);
-        let request = crate::secure_env::parse_secure_env_request(
-            "set|demo-project|OPENAI_API_KEY|req-123",
-        )
-        .unwrap();
+        let request =
+            crate::secure_env::parse_secure_env_request("set|demo-project|OPENAI_API_KEY|req-123")
+                .unwrap();
 
-        let response = dispatch_secure_env_request(
-            &state,
-            &(emitter as Arc<dyn EventEmitter>),
-            request,
-            tx,
-        )
-        .unwrap_err();
+        let response =
+            dispatch_secure_env_request(&state, &(emitter as Arc<dyn EventEmitter>), request, tx)
+                .unwrap_err();
 
         assert_eq!(
             response,

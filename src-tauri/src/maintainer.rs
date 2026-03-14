@@ -177,8 +177,9 @@ impl MaintainerScheduler {
 
                     last_run.insert(project.id, Instant::now());
 
-                    let _ =
-                        state.emitter.emit(&format!("maintainer-status:{}", project.id), "running");
+                    let _ = state
+                        .emitter
+                        .emit(&format!("maintainer-status:{}", project.id), "running");
 
                     let github_repo = project.maintainer.github_repo.as_deref();
                     let result = run_maintainer_check(&project.repo_path, project.id, github_repo);
@@ -192,14 +193,17 @@ impl MaintainerScheduler {
                                 }
                             }
 
-                            let _ = state.emitter
+                            let _ = state
+                                .emitter
                                 .emit(&format!("maintainer-status:{}", project.id), "idle");
                         }
                         Err(e) => {
                             eprintln!("Maintainer check failed for {}: {}", project.name, e);
-                            let _ = state.emitter
+                            let _ = state
+                                .emitter
                                 .emit(&format!("maintainer-status:{}", project.id), "error");
-                            let _ = state.emitter
+                            let _ = state
+                                .emitter
                                 .emit(&format!("maintainer-error:{}", project.id), &e.to_string());
                         }
                     }
@@ -335,7 +339,8 @@ fn sanitize_finding(finding: CandidateFinding) -> Option<CandidateFinding> {
 }
 
 fn normalize_text_for_matching(input: &str) -> String {
-    input.chars()
+    input
+        .chars()
         .map(|ch| {
             if ch.is_ascii_alphanumeric() {
                 ch.to_ascii_lowercase()
@@ -1055,7 +1060,11 @@ pub fn run_maintainer_check(
             if skipped_closed > 0 {
                 skip_reasons.push(format!("{} closed", skipped_closed));
             }
-            parts.push(format!("skipped {} ({})", issues_skipped, skip_reasons.join(", ")));
+            parts.push(format!(
+                "skipped {} ({})",
+                issues_skipped,
+                skip_reasons.join(", ")
+            ));
         }
         parts.join(", ")
     };

@@ -39,7 +39,10 @@ where
     Err: Write,
 {
     let Some((project, key)) = parse_args(args) else {
-        let _ = writeln!(stderr, "Usage: controller-cli env set --project <project> --key <ENV_KEY>");
+        let _ = writeln!(
+            stderr,
+            "Usage: controller-cli env set --project <project> --key <ENV_KEY>"
+        );
         return 2;
     };
 
@@ -175,7 +178,12 @@ mod tests {
                 "--key",
                 "OPENAI_API_KEY",
             ],
-            || Ok(Box::new(FakeStream::new("ok|updated|req-123\n", writes.clone()))),
+            || {
+                Ok(Box::new(FakeStream::new(
+                    "ok|updated|req-123\n",
+                    writes.clone(),
+                )))
+            },
             &mut stdout,
             &mut stderr,
             "req-123",
@@ -207,7 +215,12 @@ mod tests {
                 "--key",
                 "OPENAI_API_KEY",
             ],
-            || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "missing socket")),
+            || {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "missing socket",
+                ))
+            },
             &mut stdout,
             &mut stderr,
             "req-123",
@@ -236,7 +249,12 @@ mod tests {
                 "--key",
                 "OPENAI_API_KEY",
             ],
-            || Ok(Box::new(FakeStream::new("error|cancelled|req-123\n", writes.clone()))),
+            || {
+                Ok(Box::new(FakeStream::new(
+                    "error|cancelled|req-123\n",
+                    writes.clone(),
+                )))
+            },
             &mut stdout,
             &mut stderr,
             "req-123",

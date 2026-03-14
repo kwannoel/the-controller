@@ -12,7 +12,7 @@ pub enum VadEvent {
 /// Context size prepended to each chunk (last N samples from previous chunk).
 /// Required by Silero VAD ONNX model — without this, probabilities stay near zero.
 const CONTEXT_SIZE: usize = 64;
-const STATE_SIZE: usize = 2 * 1 * 128;
+const STATE_SIZE: usize = 256;
 
 pub struct Vad {
     session: Session,
@@ -63,12 +63,10 @@ impl Vad {
 
         let full_len = input_with_context.len();
 
-        let input_tensor =
-            Tensor::from_array(([1usize, full_len], input_with_context))
-                .map_err(|e| format!("Failed to create input tensor: {e}"))?;
-        let state_tensor =
-            Tensor::from_array(([2usize, 1, 128], self.state.clone()))
-                .map_err(|e| format!("Failed to create state tensor: {e}"))?;
+        let input_tensor = Tensor::from_array(([1usize, full_len], input_with_context))
+            .map_err(|e| format!("Failed to create input tensor: {e}"))?;
+        let state_tensor = Tensor::from_array(([2usize, 1, 128], self.state.clone()))
+            .map_err(|e| format!("Failed to create state tensor: {e}"))?;
         let sr_tensor = Tensor::from_array(((), vec![16000i64]))
             .map_err(|e| format!("Failed to create sr tensor: {e}"))?;
 
@@ -96,7 +94,8 @@ impl Vad {
 
         // Update context: last CONTEXT_SIZE samples from this chunk
         if chunk_len >= CONTEXT_SIZE {
-            self.context.copy_from_slice(&chunk[chunk_len - CONTEXT_SIZE..]);
+            self.context
+                .copy_from_slice(&chunk[chunk_len - CONTEXT_SIZE..]);
         } else {
             let keep = CONTEXT_SIZE - chunk_len;
             self.context.copy_within(chunk_len.., 0);

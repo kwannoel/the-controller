@@ -241,7 +241,9 @@ pub(crate) async fn add_github_label(
 ) -> Result<(), String> {
     let nwo = extract_github_repo_async(repo_path.clone()).await?;
 
-    let desc = description.as_deref().unwrap_or("Issue is being worked on in a session");
+    let desc = description
+        .as_deref()
+        .unwrap_or("Issue is being worked on in a session");
     let col = color.as_deref().unwrap_or("F9E2AF");
 
     // Ensure the label exists on the repo (ignore errors if it already exists)
@@ -353,8 +355,7 @@ pub(crate) async fn get_maintainer_issues(
         return Err(format!("gh issue list failed: {}", stderr));
     }
 
-    serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
 }
 
 pub(crate) async fn get_maintainer_issue_detail(
@@ -386,8 +387,7 @@ pub(crate) async fn get_maintainer_issue_detail(
         return Err(format!("gh issue view failed: {}", stderr));
     }
 
-    serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
 }
 
 pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue>, String> {
@@ -430,12 +430,18 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
 
     let output = tokio::process::Command::new("gh")
         .args([
-            "issue", "list",
-            "--repo", &nwo,
-            "--label", LABEL_ASSIGNED_TO_AUTO_WORKER,
-            "--state", "all",
-            "--json", "number,title,state,comments,updatedAt",
-            "--limit", "50",
+            "issue",
+            "list",
+            "--repo",
+            &nwo,
+            "--label",
+            LABEL_ASSIGNED_TO_AUTO_WORKER,
+            "--state",
+            "all",
+            "--json",
+            "number,title,state,comments,updatedAt",
+            "--limit",
+            "50",
         ])
         .output()
         .await

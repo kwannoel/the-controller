@@ -32,7 +32,10 @@ pub(crate) async fn copy_image_file_to_clipboard(
 /// When `cropped` is true, launches interactive crop selection via `screencapture -i`.
 /// Returns the path to the screenshot file so the caller can pass it to `initial_prompt`.
 #[allow(unused_variables)]
-pub(crate) async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<String, String> {
+pub(crate) async fn capture_app_screenshot(
+    app: AppHandle,
+    cropped: bool,
+) -> Result<String, String> {
     #[cfg(not(target_os = "macos"))]
     return Err("Screenshot capture is only supported on macOS".into());
 

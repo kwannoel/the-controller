@@ -20,9 +20,7 @@ fn read_wav_f32(path: &Path) -> Vec<f32> {
                 .map(|s| s.unwrap() as f32 / max_val)
                 .collect()
         }
-        hound::SampleFormat::Float => {
-            reader.samples::<f32>().map(|s| s.unwrap()).collect()
-        }
+        hound::SampleFormat::Float => reader.samples::<f32>().map(|s| s.unwrap()).collect(),
     }
 }
 
@@ -43,14 +41,19 @@ fn test_voice_pipeline_e2e() {
     // 1. Read WAV
     let audio = read_wav_f32(&wav_path);
     assert!(audio.len() > 16000, "WAV too short (need >1s)");
-    println!("WAV: {} samples ({:.1}s)", audio.len(), audio.len() as f32 / 16000.0);
+    println!(
+        "WAV: {} samples ({:.1}s)",
+        audio.len(),
+        audio.len() as f32 / 16000.0
+    );
 
     // 2. Feed through VAD
     let mut vad = the_controller_lib::voice::vad::Vad::new(&paths.silero_vad, 800)
         .expect("Failed to load VAD");
 
     let silence = vec![0.0f32; 8000];
-    let padded: Vec<f32> = silence.iter()
+    let padded: Vec<f32> = silence
+        .iter()
         .chain(audio.iter())
         .chain(silence.iter())
         .copied()
@@ -61,7 +64,9 @@ fn test_voice_pipeline_e2e() {
     let mut in_speech = false;
 
     for chunk in padded.chunks(512) {
-        if chunk.len() < 512 { break; }
+        if chunk.len() < 512 {
+            break;
+        }
         match vad.process(chunk).expect("VAD failed") {
             Some(the_controller_lib::voice::vad::VadEvent::SpeechStart) => {
                 in_speech = true;
@@ -100,25 +105,32 @@ fn test_voice_pipeline_e2e() {
     let mut conv = the_controller_lib::voice::llm::Conversation::new(None);
     conv.add_user(&text);
 
-    let response = rt.block_on(async {
-        let mut full = String::new();
-        the_controller_lib::voice::llm::stream_response(&conv, &mut |token| {
-            full.push_str(token);
+    let response = rt
+        .block_on(async {
+            let mut full = String::new();
+            the_controller_lib::voice::llm::stream_response(&conv, &mut |token| {
+                full.push_str(token);
+            })
+            .await
+            .map(|_| full)
         })
-        .await
-        .map(|_| full)
-    })
-    .expect("LLM failed");
+        .expect("LLM failed");
 
     println!("LLM: \"{}\"", response);
     assert!(!response.is_empty(), "LLM produced empty response");
 
     // 5. TTS
-    let mut tts = the_controller_lib::voice::tts::PiperTts::new(&paths.piper_onnx, &paths.piper_config)
-        .expect("Failed to load TTS");
+    let mut tts =
+        the_controller_lib::voice::tts::PiperTts::new(&paths.piper_onnx, &paths.piper_config)
+            .expect("Failed to load TTS");
 
     let tts_audio = tts.synthesize(&response).expect("TTS failed");
-    println!("TTS: {} samples ({:.1}s at {}Hz)", tts_audio.len(), tts_audio.len() as f32 / tts.sample_rate() as f32, tts.sample_rate());
+    println!(
+        "TTS: {} samples ({:.1}s at {}Hz)",
+        tts_audio.len(),
+        tts_audio.len() as f32 / tts.sample_rate() as f32,
+        tts.sample_rate()
+    );
     assert!(!tts_audio.is_empty(), "TTS produced no audio");
 
     println!("\n=== E2E PASS: WAV → VAD → STT → LLM → TTS ===");

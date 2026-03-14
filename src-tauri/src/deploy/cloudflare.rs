@@ -52,7 +52,8 @@ impl CloudflareClient {
             "ttl": 1,
         });
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
                 self.zone_id
@@ -74,11 +75,14 @@ impl CloudflareClient {
             return Err(format!("Cloudflare error: {}", msgs.join(", ")));
         }
 
-        cf_resp.result.ok_or_else(|| "No result in Cloudflare response".to_string())
+        cf_resp
+            .result
+            .ok_or_else(|| "No result in Cloudflare response".to_string())
     }
 
     pub async fn list_dns_records(&self) -> Result<Vec<DnsRecord>, String> {
-        let resp = self.client
+        let resp = self
+            .client
             .get(format!(
                 "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
                 self.zone_id
@@ -98,7 +102,9 @@ impl CloudflareClient {
             return Err(format!("Cloudflare error: {}", msgs.join(", ")));
         }
 
-        cf_resp.result.ok_or_else(|| "No result in Cloudflare response".to_string())
+        cf_resp
+            .result
+            .ok_or_else(|| "No result in Cloudflare response".to_string())
     }
 }
 

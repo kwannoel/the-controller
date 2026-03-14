@@ -150,7 +150,8 @@ pub fn run() {
                             for project in &inventory.projects {
                                 if let Some(staged) = &project.staged_session {
                                     commands::kill_process_group(staged.pid);
-                                    let _ = std::fs::remove_file(status_socket::staged_socket_path());
+                                    let _ =
+                                        std::fs::remove_file(status_socket::staged_socket_path());
                                     // Clear stale staged_session record
                                     let mut p = project.clone();
                                     p.staged_session = None;

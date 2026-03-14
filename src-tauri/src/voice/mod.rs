@@ -39,6 +39,17 @@ pub struct VoicePipeline {
     audio_thread: Option<std::thread::JoinHandle<()>>,
 }
 
+struct SpeechContext<'a> {
+    whisper: &'a stt::WhisperStt,
+    tts_engine: &'a mut tts::PiperTts,
+    audio_out: &'a audio_output::AudioOutput,
+    audio_in: &'a mut audio_input::AudioInput,
+    conversation: &'a mut llm::Conversation,
+    vad_engine: &'a mut vad::Vad,
+    emitter: &'a Arc<dyn EventEmitter>,
+    stop: &'a Arc<AtomicBool>,
+}
+
 impl VoicePipeline {
     /// Start the voice pipeline. Downloads models if needed, then begins listening.
     pub async fn start(emitter: Arc<dyn EventEmitter>) -> Result<Self, String> {
@@ -47,7 +58,13 @@ impl VoicePipeline {
         // Ensure models are downloaded
         let dl_emitter = emitter.clone();
         let model_paths = models::ensure_models(|filename, downloaded, total| {
-            let percent = total.map(|t| if t > 0 { ((downloaded * 100) / t).min(100) as u8 } else { 0 });
+            let percent = total.map(|t| {
+                if t > 0 {
+                    ((downloaded * 100) / t).min(100) as u8
+                } else {
+                    0
+                }
+            });
             let payload = serde_json::to_string(&VoiceStateEvent {
                 state: VoiceState::Downloading,
                 filename: Some(filename.to_string()),
@@ -160,12 +177,15 @@ fn run_pipeline(
         let normalized = auto_gain.apply(&chunk);
 
         chunk_count += 1;
-        if chunk_count % 15 == 0 {
+        if chunk_count.is_multiple_of(15) {
             let rms_i16 = (chunk.iter().map(|&s| (s as f32) * (s as f32)).sum::<f32>()
                 / chunk.len() as f32)
                 .sqrt();
             let prob = vad_engine.last_prob();
-            emit_debug(&emitter, &format!("mic rms={:.0} vad prob={:.3}", rms_i16, prob));
+            emit_debug(
+                &emitter,
+                &format!("mic rms={:.0} vad prob={:.3}", rms_i16, prob),
+            );
         }
 
         match vad_engine.process(&normalized)? {
@@ -179,19 +199,23 @@ fn run_pipeline(
                 if in_speech {
                     speech_buffer.extend_from_slice(&normalized);
                     in_speech = false;
-                    emit_debug(&emitter, &format!("speech_end ({:.1}s)", speech_buffer.len() as f32 / 16000.0));
-
-                    process_speech(
-                        &speech_buffer,
-                        &whisper,
-                        &mut tts_engine,
-                        &audio_out,
-                        &mut audio_in,
-                        &mut conversation,
-                        &mut vad_engine,
+                    emit_debug(
                         &emitter,
-                        &stop,
-                    )?;
+                        &format!("speech_end ({:.1}s)", speech_buffer.len() as f32 / 16000.0),
+                    );
+
+                    let mut speech_ctx = SpeechContext {
+                        whisper: &whisper,
+                        tts_engine: &mut tts_engine,
+                        audio_out: &audio_out,
+                        audio_in: &mut audio_in,
+                        conversation: &mut conversation,
+                        vad_engine: &mut vad_engine,
+                        emitter: &emitter,
+                        stop: &stop,
+                    };
+
+                    process_speech(&speech_buffer, &mut speech_ctx)?;
 
                     speech_buffer.clear();
                     if !stop.load(Ordering::Relaxed) {
@@ -211,17 +235,7 @@ fn run_pipeline(
     Ok(())
 }
 
-fn process_speech(
-    audio: &[f32],
-    whisper: &stt::WhisperStt,
-    tts_engine: &mut tts::PiperTts,
-    audio_out: &audio_output::AudioOutput,
-    audio_in: &mut audio_input::AudioInput,
-    conversation: &mut llm::Conversation,
-    vad_engine: &mut vad::Vad,
-    emitter: &Arc<dyn EventEmitter>,
-    stop: &Arc<AtomicBool>,
-) -> Result<(), String> {
+fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<(), String> {
     if audio.len() < MIN_SPEECH_SAMPLES {
         return Ok(());
     }
@@ -232,61 +246,67 @@ fn process_speech(
     }
 
     // STT
-    emit_state(emitter, VoiceState::Thinking);
-    let text = whisper.transcribe(audio)?;
+    emit_state(ctx.emitter, VoiceState::Thinking);
+    let text = ctx.whisper.transcribe(audio)?;
     if text.is_empty() {
         return Ok(());
     }
 
     eprintln!("[voice] You: {text}");
-    conversation.add_user(&text);
-    emit_debug(emitter, &format!("stt: \"{}\"", text));
-    let _ = emitter.emit("voice-transcript", &serde_json::json!({"role": "user", "text": text}).to_string());
+    ctx.conversation.add_user(&text);
+    emit_debug(ctx.emitter, &format!("stt: \"{}\"", text));
+    let _ = ctx.emitter.emit(
+        "voice-transcript",
+        &serde_json::json!({"role": "user", "text": text}).to_string(),
+    );
 
     // LLM — need a tokio runtime since we're on a std thread
-    emit_debug(emitter, "llm: streaming...");
+    emit_debug(ctx.emitter, "llm: streaming...");
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
 
     let response = rt.block_on(async {
         let mut full = String::new();
-        llm::stream_response(conversation, &mut |token| {
+        llm::stream_response(ctx.conversation, &mut |token| {
             full.push_str(token);
         })
         .await
         .map(|_| full)
     })?;
 
-    if response.is_empty() || stop.load(Ordering::Relaxed) {
+    if response.is_empty() || ctx.stop.load(Ordering::Relaxed) {
         return Ok(());
     }
 
     eprintln!("[voice] Assistant: {response}");
-    conversation.add_assistant(&response);
-    emit_debug(emitter, "llm: done");
-    let _ = emitter.emit("voice-transcript", &serde_json::json!({"role": "assistant", "text": response}).to_string());
+    ctx.conversation.add_assistant(&response);
+    emit_debug(ctx.emitter, "llm: done");
+    let _ = ctx.emitter.emit(
+        "voice-transcript",
+        &serde_json::json!({"role": "assistant", "text": response}).to_string(),
+    );
 
     // TTS
-    emit_state(emitter, VoiceState::Speaking);
-    emit_debug(emitter, "tts: synthesizing...");
-    audio_in.mute();
+    emit_state(ctx.emitter, VoiceState::Speaking);
+    emit_debug(ctx.emitter, "tts: synthesizing...");
+    ctx.audio_in.mute();
 
-    let tts_sample_rate = tts_engine.sample_rate();
+    let tts_sample_rate = ctx.tts_engine.sample_rate();
     let mut all_samples: Vec<i16> = Vec::new();
-    for chunk_result in tts_engine.synthesize_streaming(&response) {
+    for chunk_result in ctx.tts_engine.synthesize_streaming(&response) {
         match chunk_result {
             Ok(samples) => all_samples.extend_from_slice(&samples),
             Err(e) => eprintln!("[voice] TTS error: {e}"),
         }
     }
-    if !all_samples.is_empty() && !stop.load(Ordering::Relaxed) {
-        audio_out.play_i16(&all_samples, tts_sample_rate)?;
+    if !all_samples.is_empty() && !ctx.stop.load(Ordering::Relaxed) {
+        ctx.audio_out.play_i16(&all_samples, tts_sample_rate)?;
     }
 
-    audio_in.unmute();
-    emit_debug(emitter, "tts: done");
+    ctx.audio_in.unmute();
+    emit_debug(ctx.emitter, "tts: done");
     std::thread::sleep(std::time::Duration::from_millis(300));
-    vad_engine.reset();
+    ctx.vad_engine.reset();
 
     Ok(())
 }

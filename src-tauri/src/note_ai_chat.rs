@@ -39,15 +39,18 @@ fn build_note_ai_prompt(
         Do NOT wrap JSON in markdown code fences. Return raw JSON only.".to_string(),
     );
 
-    parts.push(format!("--- NOTE CONTENT ---\n{}\n--- END NOTE CONTENT ---", note_content));
+    parts.push(format!(
+        "--- NOTE CONTENT ---\n{}\n--- END NOTE CONTENT ---",
+        note_content
+    ));
     parts.push(format!(
         "--- SELECTED TEXT ---\n{}\n--- END SELECTED TEXT ---",
         selected_text
     ));
 
     if !conversation_history.is_empty() {
-        let history_json = serde_json::to_string(conversation_history)
-            .unwrap_or_else(|_| "[]".to_string());
+        let history_json =
+            serde_json::to_string(conversation_history).unwrap_or_else(|_| "[]".to_string());
         parts.push(format!(
             "--- CONVERSATION HISTORY ---\n{}\n--- END CONVERSATION HISTORY ---",
             history_json
@@ -90,8 +93,12 @@ pub async fn send_note_ai_message(
     conversation_history: Vec<NoteAiChatMessage>,
     prompt: String,
 ) -> Result<NoteAiResponse, String> {
-    let full_prompt =
-        build_note_ai_prompt(&note_content, &selected_text, &conversation_history, &prompt);
+    let full_prompt = build_note_ai_prompt(
+        &note_content,
+        &selected_text,
+        &conversation_history,
+        &prompt,
+    );
 
     tokio::task::spawn_blocking(move || run_note_ai_turn(repo_path, full_prompt))
         .await
@@ -178,6 +185,9 @@ mod tests {
     #[test]
     fn build_prompt_mentions_image_syntax() {
         let prompt = build_note_ai_prompt("note", "selected", &[], "help");
-        assert!(prompt.contains("!["), "prompt should mention image markdown syntax");
+        assert!(
+            prompt.contains("!["),
+            "prompt should mention image markdown syntax"
+        );
     }
 }

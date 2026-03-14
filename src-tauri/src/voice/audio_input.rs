@@ -72,8 +72,7 @@ impl AudioInput {
                             resample_buf.push(s);
 
                             if resample_buf.len() >= BLOCK_SIZE {
-                                let chunk: Vec<i16> =
-                                    resample_buf.drain(..BLOCK_SIZE).collect();
+                                let chunk: Vec<i16> = resample_buf.drain(..BLOCK_SIZE).collect();
                                 let _ = sender.try_send(chunk);
                             }
                         }

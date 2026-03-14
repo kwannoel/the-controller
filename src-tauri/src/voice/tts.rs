@@ -68,9 +68,7 @@ impl PiperTts {
             .args(["--ipa", "-q", "-v", "en-us", text])
             .output()
             .map_err(|e| {
-                format!(
-                    "Failed to run espeak-ng (is it installed? brew install espeak-ng): {e}"
-                )
+                format!("Failed to run espeak-ng (is it installed? brew install espeak-ng): {e}")
             })?;
 
         if !output.status.success() {
