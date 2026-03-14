@@ -21,6 +21,7 @@ pub mod status_socket;
 pub mod storage;
 pub mod tmux;
 pub mod token_usage;
+pub mod voice;
 pub mod worktree;
 
 fn show_startup_error(error: &std::io::Error) {
