@@ -272,17 +272,15 @@ fn process_speech(
     audio_in.mute();
 
     let tts_sample_rate = tts_engine.sample_rate();
+    let mut all_samples: Vec<i16> = Vec::new();
     for chunk_result in tts_engine.synthesize_streaming(&response) {
-        if stop.load(Ordering::Relaxed) {
-            break;
-        }
         match chunk_result {
-            Ok(samples) if !samples.is_empty() => {
-                audio_out.play_i16(&samples, tts_sample_rate)?;
-            }
+            Ok(samples) => all_samples.extend_from_slice(&samples),
             Err(e) => eprintln!("[voice] TTS error: {e}"),
-            _ => {}
         }
+    }
+    if !all_samples.is_empty() && !stop.load(Ordering::Relaxed) {
+        audio_out.play_i16(&all_samples, tts_sample_rate)?;
     }
 
     audio_in.unmute();
