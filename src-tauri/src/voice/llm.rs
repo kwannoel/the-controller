@@ -20,6 +20,7 @@ const SYSTEM_PROMPT: &str = "You are a voice assistant. Reply in 1–2 sentences
 Be direct — no filler like \"Sure!\", \"Great question!\", \"Of course!\". Just answer. \
 Never use lists, bullet points, markdown, or code blocks. Speak as briefly as a human would in casual conversation.";
 
+#[derive(Clone)]
 pub struct Conversation {
     pub messages: Vec<(String, String)>, // (role, content)
     persona: Option<String>,

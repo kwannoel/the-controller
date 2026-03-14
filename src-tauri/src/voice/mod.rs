@@ -260,53 +260,91 @@ fn process_speech(audio: &[f32], ctx: &mut SpeechContext<'_>) -> Result<(), Stri
         &serde_json::json!({"role": "user", "text": text}).to_string(),
     );
 
-    // LLM — need a tokio runtime since we're on a std thread
+    // Stream LLM → TTS → Audio concurrently.
+    // LLM runs in a background thread, splitting tokens into sentences.
+    // Main thread synthesizes each sentence via TTS and streams audio immediately.
     emit_debug(ctx.emitter, "llm: streaming...");
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
 
-    let response = rt.block_on(async {
-        let mut full = String::new();
-        llm::stream_response(ctx.conversation, &mut |token| {
-            full.push_str(token);
+    let conv_clone = ctx.conversation.clone();
+    let emitter_for_llm = ctx.emitter.clone();
+    let (sentence_tx, sentence_rx) = crossbeam_channel::bounded::<String>(8);
+
+    let llm_handle = std::thread::spawn(move || -> Result<String, String> {
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| format!("Failed to create tokio runtime: {e}"))?;
+        rt.block_on(async {
+            let mut sentence_buf = String::new();
+            let mut full_response = String::new();
+            llm::stream_response(&conv_clone, &mut |token| {
+                sentence_buf.push_str(token);
+                full_response.push_str(token);
+                // Send complete sentences as they form
+                while let Some(pos) =
+                    sentence_buf.find(|c: char| matches!(c, '.' | '!' | '?'))
+                {
+                    let sentence = sentence_buf[..=pos].trim().to_string();
+                    sentence_buf = sentence_buf[pos + 1..].to_string();
+                    if !sentence.is_empty() {
+                        let _ = sentence_tx.send(sentence);
+                    }
+                }
+            })
+            .await?;
+            // Flush remaining text (no trailing punctuation)
+            let remaining = sentence_buf.trim().to_string();
+            if !remaining.is_empty() {
+                let _ = sentence_tx.send(remaining);
+            }
+            // Emit transcript as soon as LLM finishes (before audio finishes)
+            if !full_response.is_empty() {
+                eprintln!("[voice] Assistant: {full_response}");
+                emit_debug(&emitter_for_llm, "llm: done");
+                let _ = emitter_for_llm.emit(
+                    "voice-transcript",
+                    &serde_json::json!({"role": "assistant", "text": full_response}).to_string(),
+                );
+            }
+            Ok(full_response)
         })
-        .await
-        .map(|_| full)
-    })?;
+    });
 
-    if response.is_empty() || ctx.stop.load(Ordering::Relaxed) {
-        return Ok(());
-    }
-
-    eprintln!("[voice] Assistant: {response}");
-    ctx.conversation.add_assistant(&response);
-    emit_debug(ctx.emitter, "llm: done");
-    let _ = ctx.emitter.emit(
-        "voice-transcript",
-        &serde_json::json!({"role": "assistant", "text": response}).to_string(),
-    );
-
-    // TTS
-    emit_state(ctx.emitter, VoiceState::Speaking);
-    emit_debug(ctx.emitter, "tts: synthesizing...");
+    // Main thread: synthesize and play each sentence as it arrives
     ctx.audio_in.mute();
-
     let tts_sample_rate = ctx.tts_engine.sample_rate();
-    let mut all_samples: Vec<i16> = Vec::new();
-    for chunk_result in ctx.tts_engine.synthesize_streaming(&response) {
-        match chunk_result {
-            Ok(samples) => all_samples.extend_from_slice(&samples),
+    let playback = ctx.audio_out.start_streaming(tts_sample_rate)?;
+    let mut started_speaking = false;
+
+    for sentence in sentence_rx {
+        if ctx.stop.load(Ordering::Relaxed) {
+            break;
+        }
+        if !started_speaking {
+            emit_state(ctx.emitter, VoiceState::Speaking);
+            started_speaking = true;
+        }
+        emit_debug(ctx.emitter, &format!("tts: \"{}\"", sentence));
+        match ctx.tts_engine.synthesize(&sentence) {
+            Ok(samples) => playback.push_samples(&samples),
             Err(e) => eprintln!("[voice] TTS error: {e}"),
         }
     }
-    if !all_samples.is_empty() && !ctx.stop.load(Ordering::Relaxed) {
-        ctx.audio_out.play_i16(&all_samples, tts_sample_rate)?;
-    }
 
+    playback.finish();
     ctx.audio_in.unmute();
     emit_debug(ctx.emitter, "tts: done");
     std::thread::sleep(std::time::Duration::from_millis(300));
     ctx.vad_engine.reset();
+
+    // Collect full response from LLM thread
+    let response = match llm_handle.join() {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err("LLM thread panicked".to_string()),
+    };
+
+    if !response.is_empty() {
+        ctx.conversation.add_assistant(&response);
+    }
 
     Ok(())
 }
