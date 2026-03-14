@@ -105,6 +105,12 @@ Both agents are fully supported. Skills are symlinked to both on app startup, an
 
 Not sure what a feature does or how something works? Just ask Claude. The default setup has you clone the repository, so your agent already has full access to the source code and can trace through the implementation to answer your questions.
 
+Or browse the docs directly:
+
+- [Keyboard Shortcuts & Modes](docs/keyboard-modes.md) — all hotkeys, workspace modes, and how to stage/preview changes
+- [Domain Knowledge](docs/domain-knowledge.md) — hard-won lessons about Tauri, tmux, and session architecture
+- [Demo Recording](docs/demo.md) — how to record demos of The Controller
+
 ## Caveats
 
 The Controller is a strongly opinionated power tool — built for efficiency, simplicity, and elegant design, maintained under a benevolent-dictator model. This is still a period of experimentation, so even the roadmap is unstable.
