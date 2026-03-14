@@ -134,6 +134,8 @@ pub fn run() {
             deploy::commands::is_deploy_provisioned,
             deploy::commands::deploy_project,
             deploy::commands::list_deployed_services,
+            commands::start_voice_pipeline,
+            commands::stop_voice_pipeline,
             commands::log_frontend_error,
         ])
         .build(tauri::generate_context!())

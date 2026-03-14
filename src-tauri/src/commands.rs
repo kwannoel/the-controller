@@ -2098,6 +2098,31 @@ pub fn log_frontend_error(message: String) {
     eprintln!("[FRONTEND] {}", message);
 }
 
+#[tauri::command]
+pub async fn start_voice_pipeline(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut pipeline = state.voice_pipeline.lock().await;
+    if pipeline.is_some() {
+        return Ok(()); // Already running
+    }
+    let emitter = state.emitter.clone();
+    let new_pipeline = crate::voice::VoicePipeline::start(emitter).await?;
+    *pipeline = Some(new_pipeline);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn stop_voice_pipeline(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut pipeline = state.voice_pipeline.lock().await;
+    if let Some(mut p) = pipeline.take() {
+        p.stop();
+    }
+    Ok(())
+}
+
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     for name in &["refs/heads/master", "refs/heads/main"] {
         if let Ok(reference) = repo.find_reference(name) {

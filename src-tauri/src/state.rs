@@ -2,6 +2,7 @@ use crate::emitter::EventEmitter;
 use crate::models::{GithubIssue, GithubLabel};
 use crate::pty_manager::PtyManager;
 use crate::storage::Storage;
+use crate::voice::VoicePipeline;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -87,6 +88,7 @@ pub struct AppState {
     pub(crate) secure_env_request: Mutex<Option<crate::secure_env::ActiveSecureEnvRequest>>,
     pub emitter: Arc<dyn EventEmitter>,
     pub staging_lock: TokioMutex<()>,
+    pub voice_pipeline: Arc<TokioMutex<Option<VoicePipeline>>>,
 }
 
 impl AppState {
@@ -99,6 +101,7 @@ impl AppState {
             secure_env_request: Mutex::new(None),
             emitter,
             staging_lock: TokioMutex::new(()),
+            voice_pipeline: Arc::new(TokioMutex::new(None)),
         })
     }
 
