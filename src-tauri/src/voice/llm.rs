@@ -1,10 +1,24 @@
+use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::AsyncBufReadExt;
 use tokio::process::Command;
 
-const SYSTEM_PROMPT: &str = "You are a voice assistant. Keep responses concise and conversational. \
-Speak naturally as if in a real-time voice conversation. Avoid markdown formatting, \
-code blocks, or bullet points — respond as you would speak.";
+/// Persistent directory for voice chat sessions (`~/.the-controller/live-chat/`).
+/// Claude CLI stores its session state per-directory, so anchoring here means
+/// `--continue` always resumes the same ongoing conversation.
+fn live_chat_dir() -> Result<PathBuf, String> {
+    let dir = dirs::home_dir()
+        .ok_or("Cannot determine home directory")?
+        .join(".the-controller")
+        .join("live-chat");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("Failed to create live-chat dir: {e}"))?;
+    Ok(dir)
+}
+
+const SYSTEM_PROMPT: &str = "You are a voice assistant. Reply in 1–2 sentences max. \
+Be direct — no filler like \"Sure!\", \"Great question!\", \"Of course!\". Just answer. \
+Never use lists, bullet points, markdown, or code blocks. Speak as briefly as a human would in casual conversation.";
 
 pub struct Conversation {
     pub messages: Vec<(String, String)>, // (role, content)
@@ -31,6 +45,7 @@ impl Conversation {
     pub fn system_prompt(&self) -> &str {
         self.persona.as_deref().unwrap_or(SYSTEM_PROMPT)
     }
+
 }
 
 /// Spawn claude CLI and stream response tokens.
@@ -45,15 +60,25 @@ pub async fn stream_response(
         .map(|(_, content)| content.as_str())
         .unwrap_or("");
 
+    let is_first_turn = conversation.messages.len() <= 1;
+
     let mut cmd = Command::new("claude");
     cmd.arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
-        .arg("--no-session-persistence")
-        .arg("--system-prompt")
-        .arg(conversation.system_prompt())
-        .arg("-p")
+        .arg("--model")
+        .arg("haiku");
+
+    if is_first_turn {
+        cmd.arg("--system-prompt")
+            .arg(conversation.system_prompt());
+    } else {
+        cmd.arg("--continue");
+    }
+
+    cmd.arg("-p")
         .arg(prompt)
+        .current_dir(live_chat_dir()?)
         .env_remove("CLAUDECODE")
         .env_remove("CLAUDE_CODE_ENTRYPOINT")
         .stdin(Stdio::null())
