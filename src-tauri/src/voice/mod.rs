@@ -73,9 +73,15 @@ impl VoicePipeline {
                 &piper_onnx_path,
                 &piper_config_path,
                 stop,
-                emitter_clone,
+                emitter_clone.clone(),
             ) {
                 eprintln!("[voice] Pipeline error: {e}");
+                let payload = serde_json::json!({
+                    "state": "error",
+                    "error": e,
+                })
+                .to_string();
+                let _ = emitter_clone.emit("voice-state-changed", &payload);
             }
         });
 

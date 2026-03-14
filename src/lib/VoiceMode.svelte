@@ -18,6 +18,8 @@
         if (data.state === "downloading" && data.filename) {
           const pct = data.percent != null ? ` ${data.percent}%` : "";
           voiceState = `downloading ${data.filename}${pct}`;
+        } else if (data.state === "error") {
+          voiceState = `error: ${data.error ?? "unknown"}`;
         } else {
           voiceState = STATE_LABELS[data.state] ?? "voice mode";
         }
