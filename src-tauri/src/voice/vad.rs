@@ -18,6 +18,7 @@ pub struct Vad {
     current_sample: usize,
     threshold: f32,
     min_silence_samples: usize,
+    last_prob: f32,
 }
 
 const STATE_SIZE: usize = 2 * 1 * 128; // [2, 1, 128]
@@ -41,6 +42,7 @@ impl Vad {
             current_sample: 0,
             threshold: 0.5,
             min_silence_samples,
+            last_prob: 0.0,
         })
     }
 
@@ -76,6 +78,7 @@ impl Vad {
             .try_extract_tensor::<f32>()
             .map_err(|e| format!("Failed to extract output: {e}"))?;
         let prob = output_data[0];
+        self.last_prob = prob;
 
         // Extract and update state
         let (_, state_data) = outputs["stateN"]
@@ -106,11 +109,17 @@ impl Vad {
         Ok(None)
     }
 
+    /// Returns the probability from the last `process()` call.
+    pub fn last_prob(&self) -> f32 {
+        self.last_prob
+    }
+
     /// Reset state for a new conversation turn.
     pub fn reset(&mut self) {
         self.state = vec![0.0f32; STATE_SIZE];
         self.triggered = false;
         self.temp_end = 0;
         self.current_sample = 0;
+        self.last_prob = 0.0;
     }
 }
