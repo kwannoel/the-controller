@@ -65,7 +65,7 @@ impl PiperTts {
     /// Convert text to phoneme IDs using espeak-ng + the Piper phoneme_id_map.
     fn phonemize(&self, text: &str) -> Result<Vec<i64>, String> {
         let output = Command::new("espeak-ng")
-            .args(["--ipa", "-q", "--sep= ", "-v", "en-us", text])
+            .args(["--ipa", "-q", "-v", "en-us", text])
             .output()
             .map_err(|e| {
                 format!(
