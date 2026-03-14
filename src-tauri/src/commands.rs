@@ -2176,6 +2176,7 @@ mod tests {
             secure_env_request: Mutex::new(None),
             emitter: crate::emitter::NoopEmitter::new(),
             staging_lock: tokio::sync::Mutex::new(()),
+            voice_pipeline: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
