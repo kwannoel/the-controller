@@ -157,9 +157,10 @@ impl CodexAppServer {
 
         let thread_id = thread_resp
             .get("result")
-            .and_then(|r| r.get("threadId"))
-            .and_then(|t| t.as_str())
-            .ok_or("thread/start response missing threadId")?
+            .and_then(|r| r.get("thread"))
+            .and_then(|t| t.get("id"))
+            .and_then(|id| id.as_str())
+            .ok_or("thread/start response missing result.thread.id")?
             .to_string();
         server.thread_id = thread_id;
 
@@ -192,9 +193,10 @@ impl CodexAppServer {
 
         let turn_id = turn_resp
             .get("result")
-            .and_then(|r| r.get("turnId"))
-            .and_then(|t| t.as_str())
-            .ok_or("turn/start response missing turnId")?
+            .and_then(|r| r.get("turn"))
+            .and_then(|t| t.get("id"))
+            .and_then(|id| id.as_str())
+            .ok_or("turn/start response missing result.turn.id")?
             .to_string();
         self.current_turn_id = Some(turn_id);
 
@@ -438,13 +440,14 @@ mod tests {
         let resp = serde_json::json!({
             "id": 2,
             "result": {
-                "threadId": "thread-abc-123",
+                "thread": {"id": "thread-abc-123"},
             },
         });
         let thread_id = resp
             .get("result")
-            .and_then(|r| r.get("threadId"))
-            .and_then(|t| t.as_str())
+            .and_then(|r| r.get("thread"))
+            .and_then(|t| t.get("id"))
+            .and_then(|id| id.as_str())
             .unwrap();
         assert_eq!(thread_id, "thread-abc-123");
     }
@@ -454,13 +457,14 @@ mod tests {
         let resp = serde_json::json!({
             "id": 3,
             "result": {
-                "turnId": "turn-xyz-456",
+                "turn": {"id": "turn-xyz-456"},
             },
         });
         let turn_id = resp
             .get("result")
-            .and_then(|r| r.get("turnId"))
-            .and_then(|t| t.as_str())
+            .and_then(|r| r.get("turn"))
+            .and_then(|t| t.get("id"))
+            .and_then(|id| id.as_str())
             .unwrap();
         assert_eq!(turn_id, "turn-xyz-456");
     }
