@@ -3,17 +3,23 @@ use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-pub struct AudioOutput {
-    device: cpal::Device,
-}
+pub struct AudioOutput;
 
 impl AudioOutput {
     pub fn new() -> Result<Self, String> {
+        // Verify an output device exists at construction time
         let host = cpal::default_host();
-        let device = host
-            .default_output_device()
+        host.default_output_device()
             .ok_or("No output device available")?;
-        Ok(Self { device })
+        Ok(Self)
+    }
+
+    /// Get a fresh device handle. macOS CoreAudio invalidates cached handles
+    /// between audio sessions, so we re-query each time.
+    fn device(&self) -> Result<cpal::Device, String> {
+        let host = cpal::default_host();
+        host.default_output_device()
+            .ok_or("No output device available".to_string())
     }
 
     /// Play int16 mono audio at the given sample rate. Blocks until playback completes.
@@ -23,8 +29,8 @@ impl AudioOutput {
             return Ok(());
         }
 
-        let default_config = self
-            .device
+        let device = self.device()?;
+        let default_config = device
             .default_output_config()
             .map_err(|e| format!("Failed to get default output config: {e}"))?;
 
@@ -59,8 +65,7 @@ impl AudioOutput {
         let pos_clone = position.clone();
         let done_clone = done.clone();
 
-        let stream = self
-            .device
+        let stream = device
             .build_output_stream(
                 &config,
                 move |output: &mut [f32], _info: &cpal::OutputCallbackInfo| {
@@ -100,8 +105,8 @@ impl AudioOutput {
     /// Start a streaming audio output. Audio can be pushed incrementally via the returned handle.
     /// The cpal stream outputs silence when the buffer is empty (between chunks).
     pub fn start_streaming(&self, source_sample_rate: u32) -> Result<StreamingPlayback, String> {
-        let default_config = self
-            .device
+        let device = self.device()?;
+        let default_config = device
             .default_output_config()
             .map_err(|e| format!("Failed to get default output config: {e}"))?;
 
@@ -117,8 +122,7 @@ impl AudioOutput {
         let dw_cb = done_writing.clone();
         let dp_cb = done_playing.clone();
 
-        let stream = self
-            .device
+        let stream = device
             .build_output_stream(
                 &config,
                 move |output: &mut [f32], _info: &cpal::OutputCallbackInfo| {
