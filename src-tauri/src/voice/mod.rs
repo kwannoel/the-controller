@@ -311,7 +311,7 @@ fn process_speech(
                 sentence_buf.push_str(token);
                 full_response.push_str(token);
                 while let Some(pos) =
-                    sentence_buf.find(|c: char| matches!(c, '.' | '!' | '?'))
+                    sentence_buf.find(['.', '!', '?'])
                 {
                     let sentence = sentence_buf[..=pos].trim().to_string();
                     sentence_buf = sentence_buf[pos + 1..].to_string();
@@ -431,43 +431,40 @@ fn process_speech(
         if !playback.is_done() {
             // Keep monitoring mic while audio drains
             while !playback.is_done() {
-                match ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(10)) {
-                    Ok(chunk) => {
-                        let normalized = ctx.auto_gain.apply(&chunk);
-                        if let Some(vad::VadEvent::SpeechStart) =
-                            ctx.vad_engine.process(&normalized)?
-                        {
-                            // Confirm sustained speech before triggering barge-in
-                            let mut speech_buf = Vec::new();
-                            speech_buf.extend_from_slice(&normalized);
-                            let mut confirmed = true;
-                            while speech_buf.len() < MIN_BARGEIN_SAMPLES {
-                                match ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(50)) {
-                                    Ok(more) => {
-                                        let norm = ctx.auto_gain.apply(&more);
-                                        if let Some(vad::VadEvent::SpeechEnd) = ctx.vad_engine.process(&norm)? {
-                                            confirmed = false;
-                                            break;
-                                        }
-                                        speech_buf.extend_from_slice(&norm);
-                                    }
-                                    Err(_) => { confirmed = false; break; }
-                                }
-                            }
-                            if confirmed {
-                                emit_debug(ctx.emitter, "barge-in: confirmed during drain");
-                                while let Ok(more) = ctx.audio_rx.try_recv() {
+                if let Ok(chunk) = ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(10)) {
+                    let normalized = ctx.auto_gain.apply(&chunk);
+                    if let Some(vad::VadEvent::SpeechStart) =
+                        ctx.vad_engine.process(&normalized)?
+                    {
+                        // Confirm sustained speech before triggering barge-in
+                        let mut speech_buf = Vec::new();
+                        speech_buf.extend_from_slice(&normalized);
+                        let mut confirmed = true;
+                        while speech_buf.len() < MIN_BARGEIN_SAMPLES {
+                            match ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+                                Ok(more) => {
                                     let norm = ctx.auto_gain.apply(&more);
+                                    if let Some(vad::VadEvent::SpeechEnd) = ctx.vad_engine.process(&norm)? {
+                                        confirmed = false;
+                                        break;
+                                    }
                                     speech_buf.extend_from_slice(&norm);
                                 }
-                                barge_in_speech = Some(speech_buf);
-                                playback.cancel();
-                                break;
+                                Err(_) => { confirmed = false; break; }
                             }
                         }
+                        if confirmed {
+                            emit_debug(ctx.emitter, "barge-in: confirmed during drain");
+                            while let Ok(more) = ctx.audio_rx.try_recv() {
+                                let norm = ctx.auto_gain.apply(&more);
+                                speech_buf.extend_from_slice(&norm);
+                            }
+                            barge_in_speech = Some(speech_buf);
+                            playback.cancel();
+                            break;
+                        }
                     }
-                    Err(_) => {} // timeout, check is_done again
-                }
+                } // timeout: check is_done again
             }
             if barge_in_speech.is_none() {
                 // Finished naturally
@@ -503,7 +500,7 @@ fn process_speech(
         }
     } else {
         // Check the LLM result for errors
-        llm_result.map_err(|e| e)?;
+        llm_result?;
     }
 
     let speech_result = if let Some(speech) = barge_in_speech {
