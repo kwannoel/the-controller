@@ -117,8 +117,13 @@ impl CodexAppServer {
             .to_string();
         server.thread_id = thread_id;
 
-        // 4. Drain the thread/started notification
-        server.read_line().await?;
+        // 4. Drain notifications until thread/started
+        loop {
+            let msg = server.read_line().await?;
+            if msg.get("method").and_then(|m| m.as_str()) == Some("thread/started") {
+                break;
+            }
+        }
 
         Ok(server)
     }
@@ -225,12 +230,22 @@ impl CodexAppServer {
         self.send_request("turn/interrupt", interrupt_params)
             .await?;
 
-        // Drain until turn/completed
+        // Drain until turn/completed (also handle fatal errors to avoid hanging)
         loop {
             let msg = self.read_line().await?;
             let method = msg.get("method").and_then(|m| m.as_str()).unwrap_or("");
-            if method == "turn/completed" {
-                break;
+            match method {
+                "turn/completed" => break,
+                "error" => {
+                    let will_retry = msg["params"]["willRetry"].as_bool().unwrap_or(false);
+                    if !will_retry {
+                        let err_msg = msg["params"]["error"]["message"]
+                            .as_str()
+                            .unwrap_or("unknown");
+                        return Err(format!("App-server error during cancel: {err_msg}"));
+                    }
+                }
+                _ => {} // skip other notifications
             }
         }
 
