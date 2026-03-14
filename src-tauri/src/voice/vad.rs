@@ -1,5 +1,5 @@
 use ort::session::Session;
-use ort::value::{Tensor, TensorRef};
+use ort::value::Tensor;
 use std::path::Path;
 
 /// Voice Activity Detection events.
@@ -11,15 +11,16 @@ pub enum VadEvent {
 
 pub struct Vad {
     session: Session,
-    // Silero VAD internal state
-    h: ndarray::Array2<f32>,
-    c: ndarray::Array2<f32>,
+    // Silero VAD internal state: shape [2, 1, 128]
+    state: Vec<f32>,
     triggered: bool,
     temp_end: usize,
     current_sample: usize,
     threshold: f32,
     min_silence_samples: usize,
 }
+
+const STATE_SIZE: usize = 2 * 1 * 128; // [2, 1, 128]
 
 impl Vad {
     pub fn new(model_path: &Path, min_silence_ms: u32) -> Result<Self, String> {
@@ -34,8 +35,7 @@ impl Vad {
 
         Ok(Self {
             session,
-            h: ndarray::Array2::zeros((2, 64)),
-            c: ndarray::Array2::zeros((2, 64)),
+            state: vec![0.0f32; STATE_SIZE],
             triggered: false,
             temp_end: 0,
             current_sample: 0,
@@ -50,25 +50,24 @@ impl Vad {
         let chunk_len = chunk.len();
         self.current_sample += chunk_len;
 
-        // Prepare inputs as ort Tensors
+        // Prepare inputs matching actual Silero VAD ONNX model:
+        //   input: [1, chunk_len] float32
+        //   state: [2, 1, 128] float32
+        //   sr: scalar int64
         let input_tensor = Tensor::from_array(([1usize, chunk_len], chunk.to_vec()))
             .map_err(|e| format!("Failed to create input tensor: {e}"))?;
+        let state_tensor =
+            Tensor::from_array(([2usize, 1, 128], self.state.clone()))
+                .map_err(|e| format!("Failed to create state tensor: {e}"))?;
         let sr_tensor = Tensor::from_array(((), vec![16000i64]))
             .map_err(|e| format!("Failed to create sr tensor: {e}"))?;
-        let h_tensor =
-            TensorRef::from_array_view(self.h.view())
-                .map_err(|e| format!("Failed to create h tensor: {e}"))?;
-        let c_tensor =
-            TensorRef::from_array_view(self.c.view())
-                .map_err(|e| format!("Failed to create c tensor: {e}"))?;
 
         let outputs = self
             .session
             .run(ort::inputs! {
                 "input" => input_tensor,
+                "state" => state_tensor,
                 "sr" => sr_tensor,
-                "h" => h_tensor,
-                "c" => c_tensor
             })
             .map_err(|e| format!("VAD inference failed: {e}"))?;
 
@@ -78,16 +77,11 @@ impl Vad {
             .map_err(|e| format!("Failed to extract output: {e}"))?;
         let prob = output_data[0];
 
-        // Extract and update hidden states
-        let hn_view = outputs["hn"]
-            .try_extract_array::<f32>()
-            .map_err(|e| format!("Failed to extract hn: {e}"))?;
-        self.h = hn_view.into_owned().into_dimensionality().map_err(|e| format!("Wrong hn shape: {e}"))?;
-
-        let cn_view = outputs["cn"]
-            .try_extract_array::<f32>()
-            .map_err(|e| format!("Failed to extract cn: {e}"))?;
-        self.c = cn_view.into_owned().into_dimensionality().map_err(|e| format!("Wrong cn shape: {e}"))?;
+        // Extract and update state
+        let (_, state_data) = outputs["stateN"]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| format!("Failed to extract stateN: {e}"))?;
+        self.state = state_data.to_vec();
 
         // State machine
         if prob >= self.threshold && !self.triggered {
@@ -114,8 +108,7 @@ impl Vad {
 
     /// Reset state for a new conversation turn.
     pub fn reset(&mut self) {
-        self.h = ndarray::Array2::zeros((2, 64));
-        self.c = ndarray::Array2::zeros((2, 64));
+        self.state = vec![0.0f32; STATE_SIZE];
         self.triggered = false;
         self.temp_end = 0;
         self.current_sample = 0;
