@@ -63,10 +63,13 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    let port = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(3001);
+    let port: u16 = match std::env::var("PORT") {
+        Ok(val) => val.parse().unwrap_or_else(|_| {
+            eprintln!("Invalid PORT value '{}', must be a u16", val);
+            std::process::exit(1);
+        }),
+        Err(_) => 3001,
+    };
     println!("Server listening on http://localhost:{}", port);
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
