@@ -7,18 +7,18 @@ use uuid::Uuid;
 use crate::state::AppState;
 
 #[allow(dead_code)]
-pub(crate) struct EnvWriteResult {
-    pub(crate) created: bool,
+pub struct EnvWriteResult {
+    pub created: bool,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PendingSecureEnvRequest {
-    pub(crate) request_id: String,
-    pub(crate) project_id: Uuid,
-    pub(crate) project_name: String,
-    pub(crate) env_path: PathBuf,
-    pub(crate) key: String,
+pub struct PendingSecureEnvRequest {
+    pub request_id: String,
+    pub project_id: Uuid,
+    pub project_name: String,
+    pub env_path: PathBuf,
+    pub key: String,
 }
 
 #[allow(dead_code)]
@@ -38,17 +38,17 @@ pub(crate) struct SecureEnvRequest {
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SecureEnvResponseKind {
+pub enum SecureEnvResponseKind {
     Ok,
     Error,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct SecureEnvResponse {
-    pub(crate) kind: SecureEnvResponseKind,
-    pub(crate) status: String,
-    pub(crate) request_id: String,
+pub struct SecureEnvResponse {
+    pub kind: SecureEnvResponseKind,
+    pub status: String,
+    pub request_id: String,
 }
 
 #[allow(dead_code)]
@@ -173,7 +173,7 @@ pub(crate) fn begin_secure_env_request_with_response(
 }
 
 #[allow(dead_code)]
-pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> Result<(), String> {
+pub fn cancel_secure_env_request(state: &AppState, request_id: &str) -> Result<(), String> {
     let mut active = state
         .secure_env_request
         .lock()
@@ -197,7 +197,7 @@ pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> R
 }
 
 #[allow(dead_code)]
-pub(crate) fn take_secure_env_submission(
+pub fn take_secure_env_submission(
     state: &AppState,
     request_id: &str,
 ) -> Result<
@@ -224,7 +224,7 @@ pub(crate) fn take_secure_env_submission(
 }
 
 #[allow(dead_code)]
-pub(crate) fn finish_secure_env_submission(
+pub fn finish_secure_env_submission(
     request_id: &str,
     response_tx: Option<SyncSender<SecureEnvResponse>>,
     result: Result<EnvWriteResult, String>,
@@ -272,11 +272,7 @@ pub(crate) fn submit_secure_env_value(
 }
 
 #[allow(dead_code)]
-pub(crate) fn update_env_file(
-    env_path: &Path,
-    key: &str,
-    value: &str,
-) -> Result<EnvWriteResult, String> {
+pub fn update_env_file(env_path: &Path, key: &str, value: &str) -> Result<EnvWriteResult, String> {
     validate_env_key(key)?;
 
     let existing = match fs::read_to_string(env_path) {

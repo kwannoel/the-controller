@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
-  import { command, listen } from "$lib/backend";
+  import { command, listen, authError } from "$lib/backend";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
@@ -35,6 +35,7 @@
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
+  const authErrorState = fromStore(authError);
 
   const workspaceModePickerVisibleState = fromStore(workspaceModePickerVisible);
   const workspaceModeState = fromStore(workspaceMode);
@@ -492,7 +493,19 @@
   }
 </script>
 
-{#if ready}
+{#if authErrorState.current}
+  <div class="auth-error-overlay">
+    <div class="auth-error-card">
+      <div class="auth-error-icon">⚠</div>
+      <h2>Authentication Required</h2>
+      <p>The access token is missing or invalid.</p>
+      <p class="auth-error-hint">
+        Make sure the URL contains a valid <code>?token=</code> parameter matching the server's <code>CONTROLLER_AUTH_TOKEN</code>.
+      </p>
+      <button onclick={() => { sessionStorage.removeItem("authToken"); window.location.reload(); }}>Retry</button>
+    </div>
+  </div>
+{:else if ready}
   {#if !onboardingCompleteState.current}
     <Onboarding />
   {:else}
@@ -591,5 +604,63 @@
   .terminal-area {
     flex: 1;
     overflow: hidden;
+  }
+  .auth-error-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-void);
+    z-index: 9999;
+  }
+  .auth-error-card {
+    text-align: center;
+    max-width: 420px;
+    padding: 40px;
+  }
+  .auth-error-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.6;
+  }
+  .auth-error-card h2 {
+    color: var(--text-emphasis);
+    font-family: var(--font-sans);
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 8px;
+  }
+  .auth-error-card p {
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 8px;
+  }
+  .auth-error-hint {
+    margin-top: 16px;
+  }
+  .auth-error-card code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid var(--border-subtle);
+  }
+  .auth-error-card button {
+    margin-top: 24px;
+    padding: 8px 24px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .auth-error-card button:hover {
+    background: var(--bg-hover);
   }
 </style>

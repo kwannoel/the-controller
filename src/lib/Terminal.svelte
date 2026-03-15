@@ -4,7 +4,7 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { openUrl } from "$lib/platform";
   import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";

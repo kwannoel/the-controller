@@ -34,7 +34,7 @@ pub fn ensure_claude_md_symlink(dir: &Path) -> Result<(), String> {
 
 /// Validate a project name. Rejects empty names, names containing `/` or `\`,
 /// and names starting with `.`.
-pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
+pub fn validate_project_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.contains('/') || name.contains('\\') || name.starts_with('.') {
         return Err(format!("Invalid project name: {}", name));
     }
@@ -45,7 +45,7 @@ pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
 /// and returning "session-N-<6-char-uuid>" where N = max + 1. The UUID suffix
 /// guarantees uniqueness even when branches from deleted sessions persist on the
 /// remote.
-pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
+pub fn next_session_label(sessions: &[SessionConfig]) -> String {
     let max_num = sessions
         .iter()
         .filter_map(|s| s.label.strip_prefix("session-"))
@@ -229,7 +229,7 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
     }
 }
 
-fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project, String> {
+pub fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project, String> {
     let parent_dir = repo_path
         .parent()
         .ok_or_else(|| format!("Invalid repo path: {}", repo_path.display()))?;
@@ -824,7 +824,7 @@ fn find_staging_port(base_port: u16) -> Result<u16, String> {
 
 /// Kill a process group by PID. Sends SIGTERM to the group, then SIGKILL after 2s
 /// if the group is still alive.
-pub(crate) fn kill_process_group(pid: u32) {
+pub fn kill_process_group(pid: u32) {
     #[cfg(unix)]
     {
         use libc::{kill, SIGKILL, SIGTERM};
@@ -1840,7 +1840,7 @@ fn discover_branch_commits(worktree_path: &str) -> Result<Vec<CommitInfo>, Strin
     Ok(commits)
 }
 
-pub(crate) fn validate_maintainer_interval(minutes: u64) -> Result<(), String> {
+pub fn validate_maintainer_interval(minutes: u64) -> Result<(), String> {
     if minutes < 5 {
         return Err("Interval must be at least 5 minutes".to_string());
     }

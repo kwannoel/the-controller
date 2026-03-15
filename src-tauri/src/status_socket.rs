@@ -172,7 +172,72 @@ pub fn start_listener(app_handle: AppHandle) {
     });
 }
 
+/// Start the Unix domain socket listener using `AppState` directly (no `AppHandle` needed).
+/// This is used by the standalone server binary which doesn't have a Tauri runtime.
+pub fn start_listener_with_state(state: Arc<AppState>) {
+    let path = socket_path();
+
+    // Clean up stale socket
+    if std::path::Path::new(&path).exists() {
+        match UnixStream::connect(&path) {
+            Ok(_) => {
+                eprintln!(
+                    "Warning: another instance appears to be running (socket {} is active)",
+                    path
+                );
+                return;
+            }
+            Err(_) => {
+                // Connection refused — stale socket, safe to remove
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+
+    let listener = match UnixListener::bind(&path) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("Failed to bind Unix socket at {}: {}", path, e);
+            return;
+        }
+    };
+
+    let emitter = state.emitter.clone();
+
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    let state = state.clone();
+                    let emitter = emitter.clone();
+                    std::thread::spawn(move || {
+                        handle_connection_with_state(stream, &state, &emitter);
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Error accepting connection on status socket: {}", e);
+                }
+            }
+        }
+    });
+}
+
 fn handle_connection(stream: UnixStream, app_handle: &AppHandle, emitter: &Arc<dyn EventEmitter>) {
+    let state = match app_handle.try_state::<AppState>() {
+        Some(s) => s,
+        None => {
+            eprintln!("handle_connection: AppState not available");
+            return;
+        }
+    };
+    handle_connection_with_state(stream, &state, emitter);
+}
+
+fn handle_connection_with_state(
+    stream: UnixStream,
+    state: &AppState,
+    emitter: &Arc<dyn EventEmitter>,
+) {
     let mut writer = match stream.try_clone() {
         Ok(stream) => stream,
         Err(err) => {
@@ -188,7 +253,7 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle, emitter: &Arc<d
                 match parse_socket_message(msg) {
                     Ok(SocketMessage::Status { status, session_id }) => {
                         if status == "cleanup" {
-                            handle_cleanup(app_handle, session_id);
+                            handle_cleanup_with_state(state, session_id);
                             return;
                         }
                         let event_name = format!("session-status-hook:{}", session_id);
@@ -200,20 +265,8 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle, emitter: &Arc<d
                         }
                     }
                     Ok(SocketMessage::SecureEnv(request)) => {
-                        let Some(state) = app_handle.try_state::<AppState>() else {
-                            write_socket_response(
-                                &mut writer,
-                                &crate::secure_env::SecureEnvResponse {
-                                    kind: crate::secure_env::SecureEnvResponseKind::Error,
-                                    status: "app-state-unavailable".to_string(),
-                                    request_id: request.request_id,
-                                },
-                            );
-                            return;
-                        };
-
                         let (response_tx, response_rx) = std::sync::mpsc::sync_channel(1);
-                        match dispatch_secure_env_request(&state, emitter, request, response_tx) {
+                        match dispatch_secure_env_request(state, emitter, request, response_tx) {
                             Ok(()) => match response_rx.recv() {
                                 Ok(response) => write_socket_response(&mut writer, &response),
                                 Err(err) => {
@@ -257,7 +310,8 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle, emitter: &Arc<d
 
 /// Handle a cleanup message by deleting the session and worktree directly
 /// on the backend, then telling the frontend to refresh.
-fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
+/// Accepts an `AppHandle` and extracts `AppState` from it.
+pub fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
     let state = match app_handle.try_state::<AppState>() {
         Some(s) => s,
         None => {
@@ -265,7 +319,11 @@ fn handle_cleanup(app_handle: &AppHandle, session_id: Uuid) {
             return;
         }
     };
+    handle_cleanup_with_state(&state, session_id);
+}
 
+/// Handle a cleanup message using `AppState` directly (no `AppHandle` needed).
+fn handle_cleanup_with_state(state: &AppState, session_id: Uuid) {
     // Find and remove the session from its project, delete worktree
     // IMPORTANT: acquire storage lock BEFORE pty_manager to match
     // the lock ordering used by Tauri commands (storage → pty_manager).
