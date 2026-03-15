@@ -23,9 +23,11 @@ Read project.json files to find the staged session's worktree:
 cat ~/.the-controller/projects/*/project.json | jq -r '
   select(.staged_session != null) |
   .staged_session.session_id as $sid |
-  .sessions[] | select(.id == $sid) | .worktree_path
-'
+  .sessions[] | select(.id == $sid) | .worktree_path // empty
+' | grep .
 ```
+
+If this returns nothing, no session is staged — ask the user to press `v`.
 
 ### 2. Write a targeted Playwright test
 
@@ -45,6 +47,8 @@ test("description of what the UI change does", async ({ page }) => {
 Use helpers from `e2e/helpers/` if you need seeded projects or test repos.
 
 ### 3. Run the targeted test
+
+Run from the repo root (the directory containing `e2e/eval.sh` and `playwright.config.ts`):
 
 ```bash
 ./e2e/eval.sh <worktree-path> e2e/specs/<your-test>.spec.ts
