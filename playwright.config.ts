@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: "./e2e/specs",
   timeout: 300_000, // 5 minutes for slow Codex workflows
   use: {
-    baseURL: "http://localhost:1420",
+    baseURL: process.env.BASE_URL ?? "http://localhost:1420",
     video: "retain-on-failure",
   },
   webServer: [

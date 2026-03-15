@@ -65,7 +65,7 @@ wait_for_port() {
   local pid=$4
   local elapsed=0
   echo "Waiting for $label (port $port)..."
-  while ! curl -sf "http://localhost:$port" >/dev/null 2>&1; do
+  while ! curl -so /dev/null "http://localhost:$port" 2>/dev/null; do
     sleep 2
     elapsed=$((elapsed + 2))
     if ! kill -0 "$pid" 2>/dev/null; then
@@ -85,13 +85,13 @@ wait_for_port "$AXUM_PORT" "Axum" 180 "$AXUM_PID"
 
 # --- Run Playwright ---
 echo "Running Playwright tests..."
-PLAYWRIGHT_ARGS=(--project=e2e --base-url "http://localhost:$VITE_PORT")
+PLAYWRIGHT_ARGS=(--project=e2e)
 if [[ ${#TEST_FILES[@]} -gt 0 ]]; then
   PLAYWRIGHT_ARGS+=("${TEST_FILES[@]}")
 fi
 
 set +e
-npx playwright test "${PLAYWRIGHT_ARGS[@]}"
+BASE_URL="http://localhost:$VITE_PORT" npx playwright test "${PLAYWRIGHT_ARGS[@]}"
 EXIT_CODE=$?
 set -e
 
