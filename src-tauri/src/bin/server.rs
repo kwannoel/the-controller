@@ -63,8 +63,14 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    println!("Server listening on http://localhost:3001");
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3001").await.unwrap();
+    let port = std::env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(3001);
+    println!("Server listening on http://localhost:{}", port);
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+        .await
+        .unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
