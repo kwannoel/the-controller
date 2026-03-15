@@ -18,25 +18,27 @@ TEST_FILES=("$@")
 AXUM_PID=""
 VITE_PID=""
 cleanup() {
+  set +e
   echo "Cleaning up..."
-  [[ -n "$VITE_PID" ]] && kill "$VITE_PID" 2>/dev/null && wait "$VITE_PID" 2>/dev/null || true
-  [[ -n "$AXUM_PID" ]] && kill "$AXUM_PID" 2>/dev/null && wait "$AXUM_PID" 2>/dev/null || true
+  [[ -n "$VITE_PID" ]] && kill "$VITE_PID" 2>/dev/null; wait "$VITE_PID" 2>/dev/null
+  [[ -n "$AXUM_PID" ]] && kill "$AXUM_PID" 2>/dev/null; wait "$AXUM_PID" 2>/dev/null
 }
 trap cleanup EXIT
 
-# --- Find free ports ---
-find_free_port() {
-  python3 -c "
+# --- Find two distinct free ports in a single call ---
+read -r AXUM_PORT VITE_PORT < <(python3 -c "
 import socket
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.bind(('127.0.0.1', 0))
-print(s.getsockname()[1])
-s.close()
-"
-}
-
-AXUM_PORT=$(find_free_port)
-VITE_PORT=$(find_free_port)
+def free():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('127.0.0.1', 0))
+    p = s.getsockname()[1]
+    s.close()
+    return p
+p1, p2 = free(), free()
+while p1 == p2:
+    p2 = free()
+print(p1, p2)
+")
 echo "Eval ports: Axum=$AXUM_PORT, Vite=$VITE_PORT"
 
 # --- Ensure node_modules ---
@@ -66,12 +68,12 @@ wait_for_port() {
   while ! curl -sf "http://localhost:$port" >/dev/null 2>&1; do
     sleep 2
     elapsed=$((elapsed + 2))
-    if [[ $elapsed -ge $timeout ]]; then
-      echo "ERROR: $label did not start within ${timeout}s"
-      exit 1
-    fi
     if ! kill -0 "$pid" 2>/dev/null; then
       echo "ERROR: $label process died"
+      exit 1
+    fi
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "ERROR: $label did not start within ${timeout}s"
       exit 1
     fi
   done
@@ -83,13 +85,13 @@ wait_for_port "$AXUM_PORT" "Axum" 180 "$AXUM_PID"
 
 # --- Run Playwright ---
 echo "Running Playwright tests..."
-PLAYWRIGHT_ARGS=(--project=e2e)
+PLAYWRIGHT_ARGS=(--project=e2e --base-url "http://localhost:$VITE_PORT")
 if [[ ${#TEST_FILES[@]} -gt 0 ]]; then
   PLAYWRIGHT_ARGS+=("${TEST_FILES[@]}")
 fi
 
 set +e
-BASE_URL="http://localhost:$VITE_PORT" npx playwright test "${PLAYWRIGHT_ARGS[@]}"
+npx playwright test "${PLAYWRIGHT_ARGS[@]}"
 EXIT_CODE=$?
 set -e
 
