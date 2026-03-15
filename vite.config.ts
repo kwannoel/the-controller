@@ -10,6 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const host = process.env.TAURI_DEV_HOST;
 // @ts-expect-error process is a nodejs global
 const port = parseInt(process.env.DEV_PORT || "1420", 10);
+const axumPort = process.env.AXUM_PORT || "3001";
 
 function git(cmd: string): string {
   try {
@@ -56,9 +57,9 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
     proxy: {
-      "/api": "http://localhost:3001",
+      "/api": `http://localhost:${axumPort}`,
       "/ws": {
-        target: "ws://localhost:3001",
+        target: `ws://localhost:${axumPort}`,
         ws: true,
       },
     },
