@@ -9,6 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "dev:app": "pnpm build && cd src-tauri && cargo run",
+    "dev:server": "pnpm build && cd src-tauri && CONTROLLER_DIST_DIR=../dist cargo run --features server --bin server",
     "tauri": "tauri",
     "test": "vitest run",
     "test:e2e": "playwright test --project=e2e",
