@@ -11,7 +11,7 @@ use axum::{
 use serde_json::Value;
 use std::sync::Arc;
 use the_controller_lib::{
-    config, emitter::WsBroadcastEmitter, note_ai_chat, notes, state::AppState,
+    config, emitter::WsBroadcastEmitter, note_ai_chat, notes, state::AppState, voice,
 };
 
 use tokio::sync::broadcast;
@@ -58,8 +58,16 @@ async fn main() {
         .route("/api/rename_folder", post(api_rename_folder))
         .route("/api/delete_folder", post(api_delete_folder))
         .route("/api/commit_notes", post(api_commit_notes))
+        .route(
+            "/api/start_voice_pipeline",
+            post(start_voice_pipeline),
+        )
+        .route(
+            "/api/stop_voice_pipeline",
+            post(stop_voice_pipeline),
+        )
         .route("/ws", get(ws_upgrade))
-        .fallback(post(fallback_handler))
+        .fallback(fallback_handler)
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -77,8 +85,11 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn fallback_handler() -> Json<Value> {
-    Json(Value::Null)
+async fn fallback_handler(req: axum::http::Request<axum::body::Body>) -> (StatusCode, String) {
+    (
+        StatusCode::NOT_FOUND,
+        format!("Unknown route: {}", req.uri().path()),
+    )
 }
 
 // --- Route handlers ---
@@ -736,6 +747,53 @@ async fn api_commit_notes(
     let committed = notes::commit_notes(&base_dir, "update notes")
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(serde_json::to_value(committed).unwrap()))
+}
+
+// --- Voice pipeline ---
+
+async fn start_voice_pipeline(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    // Check if already running
+    {
+        let pipeline = state.app.voice_pipeline.lock().await;
+        if pipeline.is_some() {
+            return Ok(Json(Value::Null));
+        }
+    }
+    // Release lock during init to avoid blocking stop
+    let emitter = state.app.emitter.clone();
+    let new_pipeline = voice::VoicePipeline::start(emitter)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    // Re-acquire lock to store the pipeline
+    let mut pipeline = state.app.voice_pipeline.lock().await;
+    if pipeline.is_some() {
+        // Another start raced us
+        return Ok(Json(Value::Null));
+    }
+    *pipeline = Some(new_pipeline);
+    Ok(Json(Value::Null))
+}
+
+async fn stop_voice_pipeline(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let mut pipeline = state.app.voice_pipeline.lock().await;
+    if let Some(p) = pipeline.take() {
+        tokio::task::spawn_blocking(move || {
+            let mut p = p;
+            p.stop();
+        })
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to stop pipeline: {e}"),
+            )
+        })?;
+    }
+    Ok(Json(Value::Null))
 }
 
 // --- WebSocket ---
