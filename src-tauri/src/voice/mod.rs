@@ -143,12 +143,7 @@ impl VoicePipeline {
         });
 
         // Wait for pipeline initialization with timeout — propagate errors to caller
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            init_rx,
-        )
-        .await
-        {
+        match tokio::time::timeout(std::time::Duration::from_secs(30), init_rx).await {
             Ok(Ok(Ok(()))) => Ok(Self {
                 stop_flag,
                 pause_flag,
@@ -411,8 +406,8 @@ fn process_speech(
 
     // The LLM thread takes ownership of app_server and returns it when done.
     // No unsafe code, no raw pointers, no data races.
-    let llm_handle = std::thread::spawn(
-        move || -> (llm::CodexAppServer, Result<String, String>) {
+    let llm_handle =
+        std::thread::spawn(move || -> (llm::CodexAppServer, Result<String, String>) {
             let mut app_server = app_server;
             let mut sentence_buf = String::new();
             let mut full_response = String::new();
@@ -420,9 +415,7 @@ fn process_speech(
             let result = app_server.stream_response(&user_text, &mut |token| {
                 sentence_buf.push_str(token);
                 full_response.push_str(token);
-                while let Some(pos) =
-                    sentence_buf.find(['.', '!', '?'])
-                {
+                while let Some(pos) = sentence_buf.find(['.', '!', '?']) {
                     let sentence = sentence_buf[..=pos].trim().to_string();
                     sentence_buf = sentence_buf[pos + 1..].to_string();
                     if !sentence.is_empty() {
@@ -450,8 +443,7 @@ fn process_speech(
                 }
                 Err(e) => (app_server, Err(e)),
             }
-        },
-    );
+        });
 
     // Synthesize and play sentences while monitoring mic for barge-in.
     // Mic stays open — requires headphones to avoid echo feedback.
@@ -541,26 +533,35 @@ fn process_speech(
         if !playback.is_done() {
             // Keep monitoring mic while audio drains
             while !playback.is_done() {
-                if let Ok(chunk) = ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(10)) {
+                if let Ok(chunk) = ctx
+                    .audio_rx
+                    .recv_timeout(std::time::Duration::from_millis(10))
+                {
                     let normalized = ctx.auto_gain.apply(&chunk);
-                    if let Some(vad::VadEvent::SpeechStart) =
-                        ctx.vad_engine.process(&normalized)?
-                    {
+                    if let Some(vad::VadEvent::SpeechStart) = ctx.vad_engine.process(&normalized)? {
                         // Confirm sustained speech before triggering barge-in
                         let mut speech_buf = Vec::new();
                         speech_buf.extend_from_slice(&normalized);
                         let mut confirmed = true;
                         while speech_buf.len() < MIN_BARGEIN_SAMPLES {
-                            match ctx.audio_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+                            match ctx
+                                .audio_rx
+                                .recv_timeout(std::time::Duration::from_millis(50))
+                            {
                                 Ok(more) => {
                                     let norm = ctx.auto_gain.apply(&more);
-                                    if let Some(vad::VadEvent::SpeechEnd) = ctx.vad_engine.process(&norm)? {
+                                    if let Some(vad::VadEvent::SpeechEnd) =
+                                        ctx.vad_engine.process(&norm)?
+                                    {
                                         confirmed = false;
                                         break;
                                     }
                                     speech_buf.extend_from_slice(&norm);
                                 }
-                                Err(_) => { confirmed = false; break; }
+                                Err(_) => {
+                                    confirmed = false;
+                                    break;
+                                }
                             }
                         }
                         if confirmed {
@@ -583,7 +584,14 @@ fn process_speech(
         }
     }
 
-    emit_debug(ctx.emitter, if barge_in_speech.is_some() { "tts: cancelled (barge-in)" } else { "tts: done" });
+    emit_debug(
+        ctx.emitter,
+        if barge_in_speech.is_some() {
+            "tts: cancelled (barge-in)"
+        } else {
+            "tts: done"
+        },
+    );
 
     if barge_in_speech.is_none() {
         // Normal completion — pause for audio settle and reset VAD
@@ -605,7 +613,8 @@ fn process_speech(
             eprintln!("[voice] Assistant (interrupted): {partial}");
             let _ = ctx.emitter.emit(
                 "voice-transcript",
-                &serde_json::json!({"role": "assistant", "text": format!("{partial}…")}).to_string(),
+                &serde_json::json!({"role": "assistant", "text": format!("{partial}…")})
+                    .to_string(),
             );
         }
     } else {
@@ -694,7 +703,10 @@ mod tests {
 
     #[test]
     fn strips_list_markers() {
-        assert_eq!(strip_markdown("- item one\n- item two"), "item one item two");
+        assert_eq!(
+            strip_markdown("- item one\n- item two"),
+            "item one item two"
+        );
         assert_eq!(strip_markdown("* bullet"), "bullet");
         assert_eq!(strip_markdown("1. first\n2. second"), "first second");
     }

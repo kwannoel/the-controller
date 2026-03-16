@@ -59,8 +59,8 @@ impl CancelHandle {
                 "turnId": self.turn_id,
             }),
         );
-        let line = serde_json::to_string(&msg)
-            .map_err(|e| format!("Failed to serialize cancel: {e}"))?;
+        let line =
+            serde_json::to_string(&msg).map_err(|e| format!("Failed to serialize cancel: {e}"))?;
         let mut writer = self
             .writer
             .lock()
@@ -109,10 +109,7 @@ impl CodexAppServer {
             .spawn()
             .map_err(|e| format!("Failed to spawn codex app-server: {e}"))?;
 
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or("Failed to capture codex stdin")?;
+        let stdin = child.stdin.take().ok_or("Failed to capture codex stdin")?;
         let stdout = child
             .stdout
             .take()
@@ -315,8 +312,8 @@ impl CodexAppServer {
 
     /// Serialize a message to JSON, write it as a single line + newline, and flush.
     fn write_message(&mut self, msg: &serde_json::Value) -> Result<(), String> {
-        let line = serde_json::to_string(msg)
-            .map_err(|e| format!("Failed to serialize message: {e}"))?;
+        let line =
+            serde_json::to_string(msg).map_err(|e| format!("Failed to serialize message: {e}"))?;
         let mut writer = self
             .writer
             .lock()
@@ -361,11 +358,7 @@ impl CodexAppServer {
     }
 
     /// Send a JSON-RPC notification (no response expected).
-    fn send_notification(
-        &mut self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> Result<(), String> {
+    fn send_notification(&mut self, method: &str, params: serde_json::Value) -> Result<(), String> {
         let msg = build_notification(method, params);
         self.write_message(&msg)
     }

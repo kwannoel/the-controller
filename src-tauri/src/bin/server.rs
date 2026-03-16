@@ -58,18 +58,9 @@ async fn main() {
         .route("/api/rename_folder", post(api_rename_folder))
         .route("/api/delete_folder", post(api_delete_folder))
         .route("/api/commit_notes", post(api_commit_notes))
-        .route(
-            "/api/start_voice_pipeline",
-            post(start_voice_pipeline),
-        )
-        .route(
-            "/api/stop_voice_pipeline",
-            post(stop_voice_pipeline),
-        )
-        .route(
-            "/api/toggle_voice_pause",
-            post(toggle_voice_pause),
-        )
+        .route("/api/start_voice_pipeline", post(start_voice_pipeline))
+        .route("/api/stop_voice_pipeline", post(stop_voice_pipeline))
+        .route("/api/toggle_voice_pause", post(toggle_voice_pause))
         .route("/ws", get(ws_upgrade))
         .fallback(fallback_handler)
         .layer(CorsLayer::permissive())
@@ -758,7 +749,10 @@ async fn api_commit_notes(
 async fn start_voice_pipeline(
     AxumState(state): AxumState<Arc<ServerState>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let gen_before = state.app.voice_generation.load(std::sync::atomic::Ordering::SeqCst);
+    let gen_before = state
+        .app
+        .voice_generation
+        .load(std::sync::atomic::Ordering::SeqCst);
     // Check if already running
     {
         let pipeline = state.app.voice_pipeline.lock().await;
@@ -773,7 +767,10 @@ async fn start_voice_pipeline(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     // Re-acquire lock to store the pipeline
     let mut pipeline = state.app.voice_pipeline.lock().await;
-    let gen_after = state.app.voice_generation.load(std::sync::atomic::Ordering::SeqCst);
+    let gen_after = state
+        .app
+        .voice_generation
+        .load(std::sync::atomic::Ordering::SeqCst);
     if pipeline.is_some() || gen_before != gen_after {
         // Another start raced us, or stop was called during init — drop
         return Ok(Json(Value::Null));
@@ -785,7 +782,10 @@ async fn start_voice_pipeline(
 async fn stop_voice_pipeline(
     AxumState(state): AxumState<Arc<ServerState>>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    state.app.voice_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    state
+        .app
+        .voice_generation
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut pipeline = state.app.voice_pipeline.lock().await;
     if let Some(p) = pipeline.take() {
         tokio::task::spawn_blocking(move || {

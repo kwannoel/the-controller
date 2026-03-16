@@ -111,8 +111,8 @@ fn test_voice_pipeline_e2e() {
     assert!(!text.is_empty(), "STT produced empty transcription");
 
     // 4. LLM
-    let mut app_server =
-        the_controller_lib::voice::llm::CodexAppServer::start(None).expect("Failed to start codex app-server");
+    let mut app_server = the_controller_lib::voice::llm::CodexAppServer::start(None)
+        .expect("Failed to start codex app-server");
 
     let mut response = String::new();
     let result = app_server.stream_response(&text, &mut |token| {

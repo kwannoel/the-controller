@@ -25,7 +25,7 @@ Tauri v2 + Svelte 5 desktop app for orchestrating multiple Claude Code terminal 
 
 ## Branch Completion Rules
 
-When merging a feature branch back to the base branch (e.g. master), you MUST push to remote after merging. Never leave the base branch out of sync with the remote.
+When merging a feature branch back to the base branch (e.g. main), you MUST push to remote after merging. Never leave the base branch out of sync with the remote.
 
 ```bash
 git checkout <base-branch>
@@ -38,11 +38,11 @@ git branch -d <feature-branch>
 
 ## Dependencies
 
-- **New worktrees:** Always run `npm install` immediately after creating a worktree. Worktrees don't share `node_modules` — without this, `npx vitest run` and the dev server will fail.
-- **After merging:** Run `npm install` in the project root (not the worktree) if `package.json` was modified. The dev server won't auto-install — missing packages cause a white screen.
+- **New worktrees:** Always run `pnpm install` immediately after creating a worktree. Worktrees don't share `node_modules` — without this, `pnpm test` and the dev server will fail.
+- **After merging:** Run `pnpm install` in the project root (not the worktree) if `package.json` was modified. The dev server won't auto-install — missing packages cause a white screen.
 
 ## Dev Commands
 
-- `npm run tauri dev` — Run the app in development mode
+- `pnpm tauri dev` — Run the app in development mode
 - `cd src-tauri && cargo test` — Run Rust tests
-- `npx vitest run` — Run frontend tests
+- `pnpm test` — Run frontend tests

@@ -221,10 +221,7 @@ fn handle_connection(stream: UnixStream, app_handle: &AppHandle, emitter: &Arc<d
                         tauri::async_runtime::spawn(async move {
                             let state = app_handle.state::<AppState>();
                             let result = crate::commands::stage_session_core(
-                                &state,
-                                project_id,
-                                session_id,
-                                false,
+                                &state, project_id, session_id, false,
                             )
                             .await;
                             let _ = tx.send(result);
