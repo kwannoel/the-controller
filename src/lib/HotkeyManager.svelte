@@ -503,6 +503,8 @@
       }
       // Escape double-tap: forward escape to terminal
       if (e.key === "Escape") {
+        // Prevent macOS from exiting native fullscreen on Escape
+        e.preventDefault();
         const now = Date.now();
         if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
           forwardEscape();
@@ -564,13 +566,14 @@
 
     // Escape double-tap: forward escape to terminal and refocus it
     if (e.key === "Escape") {
+      // Prevent macOS from exiting native fullscreen on Escape
+      e.stopPropagation();
+      e.preventDefault();
       const now = Date.now();
       if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
         forwardEscape();
         lastEscapeTime = 0;
         dispatchAction({ type: "focus-terminal" });
-        e.stopPropagation();
-        e.preventDefault();
       } else {
         lastEscapeTime = now;
       }
