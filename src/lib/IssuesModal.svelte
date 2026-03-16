@@ -138,7 +138,7 @@
         e.preventDefault();
         e.stopPropagation();
         enterCreate();
-      } else if (e.key === "f") {
+      } else if (e.key === "f" || e.key === "Enter") {
         e.preventDefault();
         e.stopPropagation();
         enterFind();
