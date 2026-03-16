@@ -14,6 +14,42 @@ WORKTREE="${1:?Usage: $0 <worktree-path> [test-file...]}"
 shift
 TEST_FILES=("$@")
 
+# --- Stage: ensure worktree is clean and rebased onto main ---
+echo "Staging worktree..."
+
+if [[ -n "$(git -C "$WORKTREE" status --porcelain)" ]]; then
+  echo "ERROR: Worktree has uncommitted changes — commit before running eval"
+  exit 1
+fi
+
+# Detect main branch
+MAIN_BRANCH=""
+for candidate in main master; do
+  if git -C "$WORKTREE" rev-parse --verify "$candidate" &>/dev/null; then
+    MAIN_BRANCH="$candidate"
+    break
+  fi
+done
+if [[ -z "$MAIN_BRANCH" ]]; then
+  MAIN_BRANCH=$(git -C "$WORKTREE" rev-parse --abbrev-ref HEAD)
+fi
+
+# Fetch and rebase onto main if behind
+git -C "$WORKTREE" fetch origin "$MAIN_BRANCH" --quiet 2>/dev/null || true
+MERGE_BASE=$(git -C "$WORKTREE" merge-base HEAD "origin/$MAIN_BRANCH" 2>/dev/null || true)
+MAIN_COMMIT=$(git -C "$WORKTREE" rev-parse "origin/$MAIN_BRANCH" 2>/dev/null || true)
+
+if [[ -n "$MERGE_BASE" && -n "$MAIN_COMMIT" && "$MERGE_BASE" != "$MAIN_COMMIT" ]]; then
+  echo "Rebasing onto origin/$MAIN_BRANCH..."
+  if ! git -C "$WORKTREE" rebase "origin/$MAIN_BRANCH"; then
+    echo "ERROR: Rebase has conflicts — resolve before running eval"
+    git -C "$WORKTREE" rebase --abort 2>/dev/null || true
+    exit 1
+  fi
+fi
+
+echo "Staging complete."
+
 # --- Cleanup trap ---
 AXUM_PID=""
 VITE_PID=""

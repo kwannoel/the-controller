@@ -11,34 +11,20 @@ You've made a UI change in a session's worktree and want to verify it actually w
 
 ## Steps
 
-### 1. Stage the session
+### 1. Commit your changes
 
-Commit all your changes first, then trigger staging via the Controller socket. Find the project and session IDs from project.json using the current branch:
+`eval.sh` requires a clean worktree. Commit all your work before proceeding.
+
+### 2. Find your worktree path
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-read PROJECT_ID SESSION_ID WORKTREE_PATH < <(
-  cat ~/.the-controller/projects/*/project.json | jq -r --arg b "$BRANCH" '
-    . as $p |
-    .sessions[] | select(.worktree_branch == $b) |
-    "\($p.id) \(.id) \(.worktree_path)"
-  ' | head -1
-)
+WORKTREE_PATH=$(cat ~/.the-controller/projects/*/project.json | jq -r --arg b "$BRANCH" '
+  .sessions[] | select(.worktree_branch == $b) | .worktree_path
+' | head -1)
 ```
 
-If a session is already staged, the response will say so. Unstage it first if needed or skip this step.
-
-Send the stage command and wait for the response (staging includes rebase + npm install + launching dev server, which takes a few minutes):
-
-```bash
-printf 'stage:%s:%s\n' "$PROJECT_ID" "$SESSION_ID" | nc -U -w 300 /tmp/the-controller.sock
-```
-
-The response will be either `staged:<port>` on success or `error:<message>` on failure. If you get an error about uncommitted changes, commit first and retry.
-
-The `$WORKTREE_PATH` variable from above is the path to pass to `eval.sh`.
-
-### 2. Write a targeted Playwright test
+### 3. Write a targeted Playwright test
 
 Create a spec file in `e2e/specs/` following existing patterns (see `e2e/specs/smoke.spec.ts` for the simplest example):
 
@@ -55,25 +41,25 @@ test("description of what the UI change does", async ({ page }) => {
 
 Use helpers from `e2e/helpers/` if you need seeded projects or test repos.
 
-### 3. Run the targeted test
+### 4. Run the targeted test
 
 Run from the repo root (the directory containing `e2e/eval.sh` and `playwright.config.ts`):
 
 ```bash
-./e2e/eval.sh <worktree-path> e2e/specs/<your-test>.spec.ts
+./e2e/eval.sh "$WORKTREE_PATH" e2e/specs/<your-test>.spec.ts
 ```
 
-The script handles everything: finds free ports, starts Axum + Vite from the worktree, runs Playwright, tears down.
+The script handles staging (clean check, rebase onto main, npm install), starts Axum + Vite, runs Playwright, and tears down.
 
-### 4. Run the regression suite
+### 5. Run the regression suite
 
 ```bash
-./e2e/eval.sh <worktree-path>
+./e2e/eval.sh "$WORKTREE_PATH"
 ```
 
 This runs ALL specs to catch regressions.
 
-### 5. Interpret results
+### 6. Interpret results
 
 - **All pass:** Commit the new test to the worktree. It becomes part of the regression suite.
 - **Targeted test fails:** Your UI change has a bug. Fix the code, re-run.
@@ -82,6 +68,7 @@ This runs ALL specs to catch regressions.
 
 ## Common Mistakes
 
-- **Staging with uncommitted changes:** The socket staging command fails if the worktree is dirty. Always commit before sending the `stage:` command.
+- **Uncommitted changes:** `eval.sh` fails fast if the worktree is dirty. Always commit before running.
+- **Rebase conflicts:** If your branch conflicts with main, eval.sh aborts the rebase and exits. Resolve conflicts manually, then re-run.
 - **Testing against wrong servers:** Always use `eval.sh` — never manually start servers, as port conflicts with the main dev setup will cause false results.
 - **Flaky waits:** Use `await expect(...).toBeVisible({ timeout: 10_000 })` instead of `waitForTimeout()` for assertions.
