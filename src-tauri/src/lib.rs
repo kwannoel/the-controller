@@ -95,6 +95,7 @@ pub fn run() {
             commands::list_assigned_issues,
             commands::generate_issue_body,
             commands::create_github_issue,
+            commands::close_github_issue,
             commands::delete_github_issue,
             commands::post_github_comment,
             commands::add_github_label,

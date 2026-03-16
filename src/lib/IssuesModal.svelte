@@ -36,6 +36,11 @@
   let selectedIndex = $state(0);
   let searchInput: HTMLInputElement | undefined = $state();
 
+  // -- Close issue state --
+  let closingIssue: GithubIssue | null = $state(null);
+  let closeComment = $state("");
+  let closeCommentInput: HTMLInputElement | undefined = $state();
+
   let filteredIssues = $derived.by(() => {
     if (!searchQuery.trim()) return allIssues;
     const q = searchQuery.toLowerCase();
@@ -111,7 +116,11 @@
           goToHub();
         }
       } else if (view === "find") {
-        if (searchQuery) {
+        if (closingIssue) {
+          closingIssue = null;
+          closeComment = "";
+          requestAnimationFrame(() => searchInput?.focus());
+        } else if (searchQuery) {
           searchQuery = "";
           selectedIndex = 0;
         } else {
@@ -200,6 +209,31 @@
         e.preventDefault();
         e.stopPropagation();
         onAssignIssue(selectedIssue);
+        return;
+      }
+
+      // Close issue comment submission
+      if (closingIssue && e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        const issueToClose = closingIssue;
+        allIssues = allIssues.filter(i => i.number !== issueToClose.number);
+        closingIssue = null;
+        command("close_github_issue", { repoPath, issueNumber: issueToClose.number, comment: closeComment.trim() });
+        closeComment = "";
+        requestAnimationFrame(() => searchInput?.focus());
+        return;
+      }
+
+      // Don't process other keys while in close-comment mode
+      if (closingIssue) return;
+
+      if (!inSearch && e.key === "c" && selectedIssue) {
+        e.preventDefault();
+        e.stopPropagation();
+        closingIssue = selectedIssue;
+        closeComment = "";
+        requestAnimationFrame(() => closeCommentInput?.focus());
         return;
       }
 
@@ -336,11 +370,27 @@
             {#if selectedIssue.body}
               <div class="detail-body">{selectedIssue.body}</div>
             {/if}
-            <div class="detail-actions">
-              <span class="action-hint"><kbd>a</kbd> assign to session</span>
-              <span class="action-hint"><kbd>d</kbd> delete</span>
-              <span class="action-hint"><kbd>Enter</kbd> open in browser</span>
-            </div>
+            {#if closingIssue?.number === selectedIssue.number}
+              <div class="close-comment-box">
+                <div class="close-comment-label">Close with comment:</div>
+                <input
+                  bind:this={closeCommentInput}
+                  bind:value={closeComment}
+                  placeholder="Reason for closing..."
+                  class="input"
+                />
+                <div class="close-comment-hint">
+                  <kbd>Enter</kbd> close &middot; <kbd>Esc</kbd> cancel
+                </div>
+              </div>
+            {:else}
+              <div class="detail-actions">
+                <span class="action-hint"><kbd>a</kbd> assign to session</span>
+                <span class="action-hint"><kbd>c</kbd> close issue</span>
+                <span class="action-hint"><kbd>d</kbd> delete</span>
+                <span class="action-hint"><kbd>Enter</kbd> open in browser</span>
+              </div>
+            {/if}
           {:else}
             <div class="status">Select an issue</div>
           {/if}
@@ -676,6 +726,35 @@
   }
 
   .action-hint kbd {
+    background: var(--bg-hover);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--text-primary);
+  }
+
+  /* -- Close comment -- */
+  .close-comment-box {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-default);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .close-comment-label {
+    color: var(--status-error);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .close-comment-hint {
+    color: var(--text-secondary);
+    font-size: 11px;
+  }
+
+  .close-comment-hint kbd {
     background: var(--bg-hover);
     padding: 1px 5px;
     border-radius: 3px;

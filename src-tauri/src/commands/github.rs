@@ -322,6 +322,46 @@ pub(crate) async fn remove_github_label(
     Ok(())
 }
 
+pub(crate) async fn close_github_issue(
+    state: State<'_, AppState>,
+    repo_path: String,
+    issue_number: u64,
+    comment: String,
+) -> Result<(), String> {
+    let nwo = extract_github_repo_async(repo_path.clone()).await?;
+
+    let mut args = vec![
+        "issue".to_string(),
+        "close".to_string(),
+        issue_number.to_string(),
+        "--repo".to_string(),
+        nwo,
+    ];
+
+    if !comment.trim().is_empty() {
+        args.push("--comment".to_string());
+        args.push(comment);
+    }
+
+    let output = tokio::process::Command::new("gh")
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue close failed: {}", stderr));
+    }
+
+    // Remove from cache since list only shows open issues
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.remove_issue(&repo_path, issue_number);
+    }
+
+    Ok(())
+}
+
 pub(crate) async fn delete_github_issue(
     state: State<'_, AppState>,
     repo_path: String,
