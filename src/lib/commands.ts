@@ -34,6 +34,7 @@ export type CommandId =
 export type ExternalCommandId =
   | "screenshot"
   | "screenshot-cropped"
+  | "screenshot-picker"
   | "screenshot-preview"
   | "toggle-session-provider"
   | "keystroke-visualizer"
