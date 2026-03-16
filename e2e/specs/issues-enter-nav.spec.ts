@@ -4,7 +4,11 @@ test("issues hub: Enter opens find view with j/k navigation (not search focus)",
   await page.goto("/");
   await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
-  // Open issues modal with 'i' key
+  // Focus a project in the sidebar by pressing j (navigate down)
+  await page.keyboard.press("j");
+  await page.waitForTimeout(200);
+
+  // Open issues modal with 'i' key (requires focused project)
   await page.keyboard.press("i");
   await expect(page.locator(".issues-modal")).toBeVisible({ timeout: 3_000 });
 
