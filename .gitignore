@@ -12,3 +12,4 @@ e2e/results/
 test-results/
 playwright-report/
 staging.log
+package-lock.json
