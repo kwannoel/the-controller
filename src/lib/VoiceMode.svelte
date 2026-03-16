@@ -77,7 +77,8 @@
 
     command("start_voice_pipeline").catch((e: unknown) => {
       console.error("[voice] Failed to start pipeline:", e);
-      voiceState = "error";
+      const msg = e instanceof Error ? e.message : String(e);
+      voiceState = `error: ${msg}`;
     });
 
     return () => {
