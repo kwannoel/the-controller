@@ -101,15 +101,16 @@ describe("command registry", () => {
   it("buildKeyMap for notes includes notes commands but not dev or agents commands", () => {
     const map = buildKeyMap("notes");
     expect(map.has("j")).toBe(true);  // global nav
-    expect(map.has("n")).toBe(true);  // create-note (notes)
-    expect(map.get("n")).toBe("create-note");
+    expect(map.has("n")).toBe(true);  // create-folder (notes)
+    expect(map.get("n")).toBe("create-folder");
+    expect(map.has("c")).toBe(true);  // create-note (notes)
+    expect(map.get("c")).toBe("create-note");
     expect(map.has("d")).toBe(true);  // delete-note (notes)
     expect(map.get("d")).toBe("delete-note");
     expect(map.has("r")).toBe(true);  // rename-note (notes)
     expect(map.get("r")).toBe("rename-note");
     expect(map.has("p")).toBe(true);  // toggle-note-preview (notes)
     expect(map.get("p")).toBe("toggle-note-preview");
-    expect(map.has("c")).toBe(false); // create-session is dev-only
     expect(map.get("o")).toBe("expand-collapse"); // open note for editing
     expect(map.get("i")).toBe("expand-collapse"); // open note for editing
     expect(map.get("a")).toBe("expand-collapse"); // open note for editing
@@ -172,7 +173,7 @@ describe("command registry", () => {
     expect(panels.entries).toHaveLength(2);
 
     const notes = sections.find(s => s.label === "Notes")!;
-    expect(notes.entries).toHaveLength(5);
+    expect(notes.entries).toHaveLength(6);
     expect(notes.entries).toContainEqual({
       key: "p",
       description: "Cycle edit / preview / split",

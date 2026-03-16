@@ -18,6 +18,7 @@ export type CommandId =
   | "toggle-help"
   | "clear-agent-reports"
   | "create-note"
+  | "create-folder"
   | "delete-note"
   | "rename-note"
   | "duplicate-note"
@@ -94,7 +95,8 @@ export const commands: CommandDef[] = [
   { id: "toggle-maintainer-view", key: "t", section: "Agents", description: "Toggle between Runs / Issues view", mode: "agents" },
 
   // ── Notes ──
-  { id: "create-note", key: "n", section: "Notes", description: "Create new note", mode: "notes" },
+  { id: "create-folder", key: "n", section: "Notes", description: "New folder", mode: "notes" },
+  { id: "create-note", key: "c", section: "Notes", description: "Create new note", mode: "notes" },
   { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note or folder", mode: "notes" },
   { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note or folder", mode: "notes" },
   { id: "duplicate-note", key: "y", section: "Notes", description: "Duplicate focused note", mode: "notes" },

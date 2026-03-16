@@ -403,6 +403,9 @@
       case "create-note":
         dispatchAction({ type: "create-note" });
         return true;
+      case "create-folder":
+        dispatchAction({ type: "create-folder" });
+        return true;
       case "delete-note":
         if (currentFocus?.type === "note") {
           dispatchAction({ type: "delete-note", folder: currentFocus.folder, filename: currentFocus.filename });

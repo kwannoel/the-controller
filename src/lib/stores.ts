@@ -262,6 +262,7 @@ export type HotkeyAction =
   | { type: "agent-panel-select" }
   | { type: "agent-panel-escape" }
   | { type: "create-note" }
+  | { type: "create-folder" }
   | { type: "delete-note"; folder: string; filename: string }
   | { type: "rename-note"; folder: string; filename: string }
   | { type: "duplicate-note"; folder: string; filename: string }

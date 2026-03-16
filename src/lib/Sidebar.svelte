@@ -15,6 +15,7 @@
   import AgentTree from "./sidebar/AgentTree.svelte";
   import NotesTree from "./sidebar/NotesTree.svelte";
   import NewNoteModal from "./NewNoteModal.svelte";
+  import NewFolderModal from "./NewFolderModal.svelte";
   import RenameNoteModal from "./RenameNoteModal.svelte";
 
   let sidebarEl: HTMLElement | undefined = $state();
@@ -37,6 +38,7 @@
   let deleteNoteTarget: { folder: string; filename: string } | null = $state(null);
   let renameNoteTarget: { folder: string; filename: string } | null = $state(null);
   let showNewNoteModal = $state(false);
+  let showNewFolderModal = $state(false);
   let renameFolderTarget: string | null = $state(null);
   let deleteFolderTarget: string | null = $state(null);
   const activeNoteState = fromStore(activeNote);
@@ -201,6 +203,10 @@
         }
         case "create-note": {
           showNewNoteModal = true;
+          break;
+        }
+        case "create-folder": {
+          showNewFolderModal = true;
           break;
         }
         case "delete-note": {
@@ -525,6 +531,19 @@
     }
   }
 
+  async function handleCreateFolder(name: string) {
+    showNewFolderModal = false;
+    try {
+      await command("create_folder", { name });
+      const folders = await command<string[]>("list_folders", {});
+      noteFolders.set(folders);
+      expandedProjects.update(s => { const next = new Set(s); next.add(name); return next; });
+      focusTarget.set({ type: "folder", folder: name });
+    } catch (e) {
+      showToast(String(e), "error");
+    }
+  }
+
   async function handleDeleteNote(folder: string, filename: string) {
     try {
       await command("delete_note", { folder, filename });
@@ -791,6 +810,13 @@
       folders={folderList}
       onSubmit={handleCreateNote}
       onClose={() => { showNewNoteModal = false; }}
+    />
+  {/if}
+
+  {#if showNewFolderModal}
+    <NewFolderModal
+      onSubmit={handleCreateFolder}
+      onClose={() => { showNewFolderModal = false; }}
     />
   {/if}
 
