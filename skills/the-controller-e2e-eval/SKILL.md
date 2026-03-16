@@ -15,14 +15,25 @@ You've made a UI change in a session's worktree and want to verify it actually w
 
 `eval.sh` requires a clean worktree. Commit all your work before proceeding.
 
-### 2. Find your worktree path
+### 2. Determine the worktree path
+
+Your current working directory IS the worktree. Use it directly:
 
 ```bash
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-WORKTREE_PATH=$(cat ~/.the-controller/projects/*/project.json | jq -r --arg b "$BRANCH" '
-  .sessions[] | select(.worktree_branch == $b) | .worktree_path
-' | head -1)
+WORKTREE_PATH=$(pwd)
 ```
+
+Verify it's a git worktree (not the main repo) by checking for `.git` being a file, not a directory:
+
+```bash
+if [[ -f "$WORKTREE_PATH/.git" ]]; then
+  echo "Worktree: $WORKTREE_PATH"
+else
+  echo "WARNING: Not a worktree — you may be in the main repo. Proceeding anyway."
+fi
+```
+
+**Do NOT** look up `staged_session` in project.json or ask the user to press `v` — that is unrelated to e2e eval. The `eval.sh` script handles its own staging (clean check, rebase) automatically.
 
 ### 3. Write a targeted Playwright test
 
