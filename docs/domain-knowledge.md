@@ -51,6 +51,12 @@ Affected files:
 - `src-tauri/src/pty_manager.rs` — `spawn_session`, `close_session`, `attach_tmux_session`
 - `src-tauri/src/lib.rs` — exit handler that kills tmux sessions
 
+## Shell Environment Inheritance (macOS GUI)
+
+macOS GUI apps inherit a minimal launchd environment missing `.zshrc` vars. `shell_env::inherit_shell_env()` resolves the user's full shell env at startup and applies it to the process. Must run before any threads (`set_var` is not thread-safe). For tmux, all process env vars are passed via `-e` flags in `build_create_args` because tmux sessions inherit the **server's** environment, not the client's.
+
+Affected files: `src-tauri/src/shell_env.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/tmux.rs`
+
 ## CLAUDECODE Environment Variable
 
 Claude Code sets a `CLAUDECODE` env var to detect nested sessions. All `Command::new("claude")` calls and PTY `CommandBuilder` spawns must include `.env_remove("CLAUDECODE")` to prevent "cannot be launched inside another Claude Code session" errors.

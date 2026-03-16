@@ -72,6 +72,23 @@ impl TmuxManager {
             args.push("-e".to_string());
             args.push(format!("PATH={}", path_val));
         }
+        // Pass all current process env vars so the tmux session inherits
+        // the full shell environment even when the tmux server was started
+        // with a different (e.g. minimal launchd) environment.
+        for (key, val) in std::env::vars() {
+            match key.as_str() {
+                // Already handled explicitly above, or must be excluded
+                "CLAUDECODE" | "THE_CONTROLLER_SESSION_ID" | "PATH" => continue,
+                // tmux-internal vars that should not be overridden
+                "TERM" | "TMUX" | "TMUX_PANE" => continue,
+                // Shell-internal vars
+                "_" | "SHLVL" | "OLDPWD" | "PWD" => continue,
+                _ => {
+                    args.push("-e".to_string());
+                    args.push(format!("{}={}", key, val));
+                }
+            }
+        }
         args.push(command.to_string());
         args.extend(crate::session_args::build_session_args(
             command,

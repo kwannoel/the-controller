@@ -15,6 +15,7 @@ pub mod notes;
 pub mod pty_manager;
 pub mod secure_env;
 pub mod session_args;
+pub mod shell_env;
 pub mod skills;
 pub mod state;
 pub mod status_socket;
@@ -38,6 +39,10 @@ fn show_startup_error(error: &std::io::Error) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Resolve the user's shell environment (e.g. vars from .zshrc) before
+    // spawning any threads so PTY sessions and tmux inherit them.
+    shell_env::inherit_shell_env();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
