@@ -1446,6 +1446,16 @@ pub async fn create_github_issue(
 }
 
 #[tauri::command]
+pub async fn close_github_issue(
+    state: State<'_, AppState>,
+    repo_path: String,
+    issue_number: u64,
+    comment: String,
+) -> Result<(), String> {
+    github::close_github_issue(state, repo_path, issue_number, comment).await
+}
+
+#[tauri::command]
 pub async fn delete_github_issue(
     state: State<'_, AppState>,
     repo_path: String,
