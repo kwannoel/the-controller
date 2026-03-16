@@ -513,6 +513,19 @@
     }
 
     // --- Ambient mode (not in terminal) ---
+
+    // Voice mode: d = debug, t = transcript — checked early to bypass focus guards
+    // (voice mode has no terminal/input elements, but stale focus state could block)
+    if (currentMode === "voice") {
+      if (e.key === "d" || e.key === "t") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "voice-toggle-panel", panel: e.key === "d" ? "debug" : "transcript" });
+        pushKeystroke(e.key);
+        return;
+      }
+    }
+
     // Allow dialog-local keyboard handlers to own key events.
     if (isDialogOpen()) return;
 
@@ -584,17 +597,6 @@
         e.stopPropagation();
         e.preventDefault();
         dispatchAction({ type: "open-issue-in-browser" });
-        pushKeystroke(e.key);
-        return;
-      }
-    }
-
-    // Voice mode: d = debug, t = transcript
-    if (currentMode === "voice") {
-      if (e.key === "d" || e.key === "t") {
-        e.stopPropagation();
-        e.preventDefault();
-        dispatchAction({ type: "voice-toggle-panel", panel: e.key === "d" ? "debug" : "transcript" });
         pushKeystroke(e.key);
         return;
       }

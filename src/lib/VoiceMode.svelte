@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { command, listen } from "$lib/backend";
+  import { command, listenAsync } from "$lib/backend";
 
   let voiceState = $state<string>("voice mode");
   let showDebug = $state(false);
@@ -41,51 +41,66 @@
   });
 
   onMount(() => {
-    const unlistenState = listen<string>("voice-state-changed", (payload) => {
-      try {
-        const data = JSON.parse(payload);
-        if (data.state === "downloading" && data.filename) {
-          const pct = data.percent != null ? ` ${data.percent}%` : "";
-          voiceState = `downloading ${data.filename}${pct}`;
-        } else if (data.state === "error") {
-          voiceState = `error: ${data.error ?? "unknown"}`;
-        } else {
-          voiceState = STATE_LABELS[data.state] ?? "voice mode";
-        }
-      } catch {
-        // Ignore malformed events
-      }
-    });
+    let cleanups: (() => void)[] = [];
+    let unmounted = false;
 
-    const unlistenDebug = listen<string>("voice-debug", (payload) => {
-      try {
-        const data = JSON.parse(payload);
-        const line = `[${data.ts}] ${data.msg}`;
-        debugLog = [...debugLog.slice(-(MAX_DEBUG_LINES - 1)), line];
-      } catch {
-        // Ignore
-      }
-    });
+    // Await listener registration before starting the pipeline to avoid
+    // a race where events are emitted before listeners are active.
+    (async () => {
+      const [unlistenState, unlistenDebug, unlistenTranscript] = await Promise.all([
+        listenAsync<string>("voice-state-changed", (payload) => {
+          try {
+            const data = JSON.parse(payload);
+            if (data.state === "downloading" && data.filename) {
+              const pct = data.percent != null ? ` ${data.percent}%` : "";
+              voiceState = `downloading ${data.filename}${pct}`;
+            } else if (data.state === "error") {
+              voiceState = `error: ${data.error ?? "unknown"}`;
+            } else {
+              voiceState = STATE_LABELS[data.state] ?? "voice mode";
+            }
+          } catch {
+            // Ignore malformed events
+          }
+        }),
+        listenAsync<string>("voice-debug", (payload) => {
+          try {
+            const data = JSON.parse(payload);
+            const line = `[${data.ts}] ${data.msg}`;
+            debugLog = [...debugLog.slice(-(MAX_DEBUG_LINES - 1)), line];
+          } catch {
+            // Ignore
+          }
+        }),
+        listenAsync<string>("voice-transcript", (payload) => {
+          try {
+            const data = JSON.parse(payload);
+            transcript = [...transcript, { role: data.role, text: data.text }];
+          } catch {
+            // Ignore
+          }
+        }),
+      ]);
 
-    const unlistenTranscript = listen<string>("voice-transcript", (payload) => {
-      try {
-        const data = JSON.parse(payload);
-        transcript = [...transcript, { role: data.role, text: data.text }];
-      } catch {
-        // Ignore
+      if (unmounted) {
+        unlistenState();
+        unlistenDebug();
+        unlistenTranscript();
+        return;
       }
-    });
 
-    command("start_voice_pipeline").catch((e: unknown) => {
-      console.error("[voice] Failed to start pipeline:", e);
-      const msg = e instanceof Error ? e.message : String(e);
-      voiceState = `error: ${msg}`;
-    });
+      cleanups = [unlistenState, unlistenDebug, unlistenTranscript];
+
+      command("start_voice_pipeline").catch((e: unknown) => {
+        console.error("[voice] Failed to start pipeline:", e);
+        const msg = e instanceof Error ? e.message : String(e);
+        voiceState = `error: ${msg}`;
+      });
+    })();
 
     return () => {
-      unlistenState();
-      unlistenDebug();
-      unlistenTranscript();
+      unmounted = true;
+      cleanups.forEach((fn) => fn());
       command("stop_voice_pipeline").catch((e: unknown) => {
         console.error("[voice] Failed to stop pipeline:", e);
       });
