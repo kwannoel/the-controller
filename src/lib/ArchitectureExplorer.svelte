@@ -13,6 +13,7 @@
     onGenerateArchitecture?: () => void;
     isGenerating?: boolean;
     error?: string | null;
+    logs?: string[];
   }
 
   let {
@@ -23,7 +24,16 @@
     onGenerateArchitecture = () => {},
     isGenerating = false,
     error = null,
+    logs = [],
   }: Props = $props();
+
+  let logContainerRef = $state<HTMLDivElement | null>(null);
+
+  $effect(() => {
+    if (logContainerRef && logs.length > 0) {
+      logContainerRef.scrollTop = logContainerRef.scrollHeight;
+    }
+  });
 
   let components = $derived(architecture?.components ?? []);
   let diagramContainer = $state<HTMLDivElement | null>(null);
@@ -174,7 +184,13 @@
     </div>
 
     <div class="diagram-surface" class:is-generating={isGenerating && architecture}>
-      {#if architecture}
+      {#if isGenerating && logs.length > 0}
+        <div class="log-output" bind:this={logContainerRef}>
+          {#each logs as line}
+            <div class="log-line">{line}</div>
+          {/each}
+        </div>
+      {:else if architecture}
         <div class="diagram-render" bind:this={diagramContainer}></div>
         {#if diagramError}
           <div class="diagram-error">
@@ -182,6 +198,10 @@
             <span>{diagramError}</span>
           </div>
         {/if}
+      {:else if isGenerating}
+        <div class="empty-state">
+          <span>Starting generation…</span>
+        </div>
       {:else}
         <div class="empty-state">
           <span>No architecture generated yet</span>
@@ -366,6 +386,21 @@
 
   .diagram-surface.is-generating {
     opacity: 0.5;
+  }
+
+  .log-output {
+    height: 100%;
+    overflow: auto;
+    padding: 12px 16px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .log-line {
+    white-space: pre-wrap;
+    word-break: break-all;
   }
 
   .diagram-render {

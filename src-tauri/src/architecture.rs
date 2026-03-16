@@ -5,9 +5,12 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::mpsc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+
+use crate::emitter::EventEmitter;
 
 pub(crate) const MAX_TOP_LEVEL_DIRECTORIES: usize = 6;
 pub(crate) const MAX_EVIDENCE_FILES: usize = 8;
@@ -312,20 +315,54 @@ fn format_prompt_snippet(snippet: &str) -> String {
 }
 
 pub fn generate_architecture_blocking(repo_path: &Path) -> Result<ArchitectureResult, String> {
-    generate_architecture_blocking_with_config(repo_path, &CodexExecConfig::default())
+    generate_architecture_blocking_with_emitter(
+        repo_path,
+        &crate::emitter::NoopEmitter::new(),
+    )
 }
 
-fn generate_architecture_blocking_with_config(
+pub fn generate_architecture_blocking_with_emitter(
+    repo_path: &Path,
+    emitter: &Arc<dyn EventEmitter>,
+) -> Result<ArchitectureResult, String> {
+    let config = &CodexExecConfig::default();
+    generate_architecture_blocking_with_emitter_and_config(repo_path, config, emitter)
+}
+
+fn generate_architecture_blocking_with_emitter_and_config(
     repo_path: &Path,
     config: &CodexExecConfig,
+    emitter: &Arc<dyn EventEmitter>,
 ) -> Result<ArchitectureResult, String> {
+    let _ = emitter.emit("architecture-log", "Scanning repository for evidence…");
     let evidence = collect_repo_evidence(repo_path)?;
     if evidence.files.is_empty() {
         return Err(
             "No usable evidence files were captured for architecture generation".to_string(),
         );
     }
+    let _ = emitter.emit(
+        "architecture-log",
+        &format!(
+            "Collected {} evidence files from {} directories",
+            evidence.files.len(),
+            evidence.top_level_directories.len()
+        ),
+    );
+    for file in &evidence.files {
+        let _ = emitter.emit("architecture-log", &format!("  {}", file.path));
+    }
+
+    let _ = emitter.emit("architecture-log", "Building prompt…");
     let prompt = build_architecture_prompt(repo_path, &evidence);
+
+    let _ = emitter.emit(
+        "architecture-log",
+        &format!(
+            "Running codex exec (timeout {}s)…",
+            config.timeout.as_secs()
+        ),
+    );
     let output = run_codex_exec(&prompt, config)?;
 
     if !output.status.success() {
@@ -333,7 +370,29 @@ fn generate_architecture_blocking_with_config(
         return Err(format!("codex exec failed: {}", stderr.trim()));
     }
 
-    parse_architecture_output_with_evidence(&String::from_utf8_lossy(&output.stdout), &evidence)
+    let _ = emitter.emit("architecture-log", "Parsing architecture output…");
+    let result =
+        parse_architecture_output_with_evidence(&String::from_utf8_lossy(&output.stdout), &evidence)?;
+    let _ = emitter.emit(
+        "architecture-log",
+        &format!(
+            "Done — {} components generated",
+            result.components.len()
+        ),
+    );
+    Ok(result)
+}
+
+#[cfg(test)]
+fn generate_architecture_blocking_with_config(
+    repo_path: &Path,
+    config: &CodexExecConfig,
+) -> Result<ArchitectureResult, String> {
+    generate_architecture_blocking_with_emitter_and_config(
+        repo_path,
+        config,
+        &crate::emitter::NoopEmitter::new(),
+    )
 }
 
 fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, String> {

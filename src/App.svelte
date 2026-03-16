@@ -388,12 +388,27 @@
         ...currentView,
         isGenerating: true,
         error: null,
+        logs: [],
       });
       return next;
     });
 
+    const unlistenLogs = listen<string>("architecture-log", (message) => {
+      architectureViews.update((views) => {
+        const next = new Map(views);
+        const currentView = next.get(projectId);
+        if (!currentView?.isGenerating) return next;
+        next.set(projectId, {
+          ...currentView,
+          logs: [...currentView.logs, message],
+        });
+        return next;
+      });
+    });
+
     try {
       const result = await command<ArchitectureResult>("generate_architecture", { repoPath });
+      unlistenLogs();
       architectureViews.update((views) => {
         const next = new Map(views);
         const currentView = next.get(projectId) ?? createArchitectureViewState();
@@ -408,10 +423,12 @@
           selectedComponentId,
           isGenerating: false,
           error: null,
+          logs: [],
         });
         return next;
       });
     } catch (error) {
+      unlistenLogs();
       architectureViews.update((views) => {
         const next = new Map(views);
         const currentView = next.get(projectId) ?? createArchitectureViewState();
@@ -520,6 +537,7 @@
             }}
             isGenerating={currentArchitectureView?.isGenerating ?? false}
             error={currentArchitectureView?.error ?? null}
+            logs={currentArchitectureView?.logs ?? []}
           />
         {:else if workspaceModeState.current === "notes"}
           <NotesEditor />
