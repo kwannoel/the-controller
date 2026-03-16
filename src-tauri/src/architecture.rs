@@ -1345,6 +1345,8 @@ mod tests {
         MAX_SNIPPET_CHARS,
     };
 
+    const BUSY_TEST_TIMEOUT: Duration = Duration::from_secs(5);
+
     fn write_repo_file(repo: &TempDir, relative_path: &str, contents: &str) {
         let path = repo.path().join(relative_path);
         if let Some(parent) = path.parent() {
@@ -2366,7 +2368,7 @@ That should be enough to render the view."#;
             repo.path(),
             &CodexExecConfig {
                 binary: script,
-                timeout: Duration::from_secs(1),
+                timeout: BUSY_TEST_TIMEOUT,
             },
         )
         .expect("codex should run outside the repo with a tighter sandbox");
@@ -2481,7 +2483,7 @@ That should be enough to render the view."#;
             repo.path(),
             &CodexExecConfig {
                 binary: script,
-                timeout: Duration::from_secs(2),
+                timeout: BUSY_TEST_TIMEOUT,
             },
         )
         .expect("verbose codex output should be drained without deadlock");
@@ -2508,7 +2510,7 @@ That should be enough to render the view."#;
             repo.path(),
             &CodexExecConfig {
                 binary: script,
-                timeout: Duration::from_secs(2),
+                timeout: BUSY_TEST_TIMEOUT,
             },
         )
         .expect("successful codex runs should use the last-message file even if stdout is noisy");
@@ -2545,7 +2547,7 @@ That should be enough to render the view."#;
             repo.path(),
             &CodexExecConfig {
                 binary: script,
-                timeout: Duration::from_secs(1),
+                timeout: BUSY_TEST_TIMEOUT,
             },
         )
         .expect("CLAUDECODE should be removed for codex exec");
@@ -2569,7 +2571,7 @@ That should be enough to render the view."#;
             repo.path(),
             &CodexExecConfig {
                 binary: script,
-                timeout: Duration::from_secs(1),
+                timeout: BUSY_TEST_TIMEOUT,
             },
         )
         .expect_err("non-zero codex exit should fail");

@@ -35,15 +35,19 @@
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      e.stopPropagation();
       selectedIndex = Math.min(selectedIndex + 1, filtered.length - 1);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      e.stopPropagation();
       selectedIndex = Math.max(selectedIndex - 1, 0);
     } else if (e.key === "Enter" && filtered.length > 0) {
       e.preventDefault();
+      e.stopPropagation();
       onSelect(filtered[selectedIndex]);
     } else if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation();
       onClose();
     }
   }

@@ -2,7 +2,10 @@
 //! Feeds audio through: WAV → VAD → STT → LLM → TTS
 //!
 //! Run with: cargo test --test voice_e2e -- --nocapture
-//! Requires: models downloaded (~/.the-controller/voice-models/), claude CLI installed
+//! Requires:
+//! - THE_CONTROLLER_RUN_VOICE_E2E=1
+//! - models downloaded (~/.the-controller/voice-models/)
+//! - codex CLI installed and authenticated
 
 use std::path::Path;
 
@@ -26,6 +29,13 @@ fn read_wav_f32(path: &Path) -> Vec<f32> {
 
 #[test]
 fn test_voice_pipeline_e2e() {
+    if std::env::var("THE_CONTROLLER_RUN_VOICE_E2E").as_deref() != Ok("1") {
+        eprintln!(
+            "Skipping: set THE_CONTROLLER_RUN_VOICE_E2E=1 to enable the external voice E2E test."
+        );
+        return;
+    }
+
     let wav_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/speech_sample.wav");
     if !wav_path.exists() {
         eprintln!("Skipping: speech_sample.wav not found.");

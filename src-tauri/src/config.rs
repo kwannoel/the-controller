@@ -41,14 +41,18 @@ pub fn save_config(base_dir: &Path, config: &Config) -> std::io::Result<()> {
 /// - "authenticated" if `claude --print "say ok"` succeeds
 /// - "not_authenticated" otherwise
 pub fn check_claude_cli_status() -> String {
-    let which_result = Command::new("which").arg("claude").output();
+    check_claude_cli_status_with_binaries(Path::new("which"), Path::new("claude"))
+}
+
+fn check_claude_cli_status_with_binaries(which_bin: &Path, claude_bin: &Path) -> String {
+    let which_result = Command::new(which_bin).arg("claude").output();
 
     match which_result {
         Ok(output) if output.status.success() => {}
         _ => return "not_installed".to_string(),
     }
 
-    let auth_result = Command::new("claude")
+    let auth_result = Command::new(claude_bin)
         .arg("--print")
         .arg("say ok")
         .env_remove("CLAUDECODE")
@@ -139,7 +143,21 @@ pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
     use tempfile::TempDir;
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, body: &str) {
+        fs::write(path, body).expect("write fake executable");
+        let mut perms = fs::metadata(path)
+            .expect("stat fake executable")
+            .permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms).expect("chmod fake executable");
+    }
 
     #[test]
     fn test_load_config_missing() {
@@ -161,15 +179,46 @@ mod tests {
         assert_eq!(loaded.projects_root, "/home/user/projects");
     }
 
+    #[cfg(unix)]
     #[test]
-    fn test_check_claude_cli_returns_valid_status() {
-        let status = check_claude_cli_status();
-        let valid = ["not_installed", "authenticated", "not_authenticated"];
-        assert!(
-            valid.contains(&status.as_str()),
-            "unexpected status: {}",
-            status
-        );
+    fn test_check_claude_cli_reports_not_installed_when_which_fails() {
+        let tmp = TempDir::new().unwrap();
+        let which_bin = tmp.path().join("which");
+        let claude_bin = tmp.path().join("claude");
+        write_executable(&which_bin, "#!/bin/sh\nexit 1\n");
+        write_executable(&claude_bin, "#!/bin/sh\nexit 0\n");
+
+        let status = check_claude_cli_status_with_binaries(&which_bin, &claude_bin);
+
+        assert_eq!(status, "not_installed");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_check_claude_cli_reports_authenticated_when_claude_succeeds() {
+        let tmp = TempDir::new().unwrap();
+        let which_bin = tmp.path().join("which");
+        let claude_bin = tmp.path().join("claude");
+        write_executable(&which_bin, "#!/bin/sh\nexit 0\n");
+        write_executable(&claude_bin, "#!/bin/sh\nexit 0\n");
+
+        let status = check_claude_cli_status_with_binaries(&which_bin, &claude_bin);
+
+        assert_eq!(status, "authenticated");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_check_claude_cli_reports_not_authenticated_when_claude_fails() {
+        let tmp = TempDir::new().unwrap();
+        let which_bin = tmp.path().join("which");
+        let claude_bin = tmp.path().join("claude");
+        write_executable(&which_bin, "#!/bin/sh\nexit 0\n");
+        write_executable(&claude_bin, "#!/bin/sh\nexit 7\n");
+
+        let status = check_claude_cli_status_with_binaries(&which_bin, &claude_bin);
+
+        assert_eq!(status, "not_authenticated");
     }
 
     #[test]
