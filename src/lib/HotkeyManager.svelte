@@ -514,7 +514,7 @@
 
     // --- Ambient mode (not in terminal) ---
 
-    // Voice mode: d = debug, t = transcript — checked early to bypass focus guards
+    // Voice mode: d = debug, t = transcript, p = pause/play — checked early to bypass focus guards
     // (voice mode has no terminal/input elements, but stale focus state could block)
     if (currentMode === "voice") {
       if (e.key === "d" || e.key === "t") {
@@ -522,6 +522,15 @@
         e.preventDefault();
         dispatchAction({ type: "voice-toggle-panel", panel: e.key === "d" ? "debug" : "transcript" });
         pushKeystroke(e.key);
+        return;
+      }
+      if (e.key === "p") {
+        e.stopPropagation();
+        e.preventDefault();
+        command("toggle_voice_pause").catch((err: unknown) => {
+          console.error("[voice] Failed to toggle pause:", err);
+        });
+        pushKeystroke("p");
         return;
       }
     }
@@ -567,18 +576,10 @@
       return;
     }
 
-    // Space: workspace mode picker (or pause/resume voice mode)
+    // Space: workspace mode picker
     if (e.key === " ") {
       e.stopPropagation();
       e.preventDefault();
-      if (currentMode === "voice") {
-        // Toggle pause/resume in-place
-        command("toggle_voice_pause").catch((err: unknown) => {
-          console.error("[voice] Failed to toggle pause:", err);
-        });
-        pushKeystroke("␣");
-        return;
-      }
       workspaceModeActive = true;
       workspaceModePickerVisible.set(true);
       pushKeystroke("␣");
