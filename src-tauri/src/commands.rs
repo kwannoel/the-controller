@@ -845,19 +845,21 @@ pub(crate) fn kill_process_group(pid: u32) {
     }
 }
 
-#[tauri::command]
-pub async fn stage_session(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
-    project_id: String,
-    session_id: String,
-) -> Result<(), String> {
+/// Core staging logic. Returns the port on success.
+///
+/// When `allow_pty_prompts` is true (Tauri command path), dirty worktrees and
+/// rebase conflicts are handled by prompting the session's Claude via PTY.
+/// When false (socket path), these conditions return an error immediately —
+/// the caller is expected to commit and resolve conflicts before staging.
+pub(crate) async fn stage_session_core(
+    state: &AppState,
+    project_id: Uuid,
+    session_id: Uuid,
+    allow_pty_prompts: bool,
+) -> Result<u16, String> {
     use crate::models::StagedSession;
     use std::os::unix::process::CommandExt;
     use std::process::Stdio;
-
-    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
-    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
     let _staging_guard = state.staging_lock.lock().await;
 
@@ -865,7 +867,7 @@ pub async fn stage_session(
     let (repo_path, branch, worktree_path) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let project = storage
-            .load_project(project_uuid)
+            .load_project(project_id)
             .map_err(|e| e.to_string())?;
 
         if project.name != "the-controller" {
@@ -893,7 +895,7 @@ pub async fn stage_session(
         let session = project
             .sessions
             .iter()
-            .find(|s| s.id == session_uuid)
+            .find(|s| s.id == session_id)
             .ok_or("Session not found")?;
 
         let branch = session
@@ -911,7 +913,7 @@ pub async fn stage_session(
         (project.repo_path.clone(), branch, worktree_path)
     };
 
-    // 1. Ensure worktree is clean — prompt Claude to commit if needed
+    // 1. Ensure worktree is clean
     {
         let wt = worktree_path.clone();
         let is_clean = tokio::task::spawn_blocking(move || WorktreeManager::is_worktree_clean(&wt))
@@ -919,10 +921,16 @@ pub async fn stage_session(
             .map_err(|e| format!("Task failed: {}", e))??;
 
         if !is_clean {
+            if !allow_pty_prompts {
+                return Err(
+                    "Worktree has uncommitted changes — commit before staging".to_string(),
+                );
+            }
+
             let prompt = "\nYou have uncommitted changes. Please commit all your work now.\r";
             {
                 let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-                let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
+                let _ = pty_manager.write_to_session(session_id, prompt.as_bytes());
             }
 
             let _ = state
@@ -980,11 +988,17 @@ pub async fn stage_session(
                     .map_err(|e| format!("Task failed: {}", e))??;
 
             if !rebase_clean {
+                if !allow_pty_prompts {
+                    return Err(
+                        "Rebase has conflicts — resolve before staging".to_string(),
+                    );
+                }
+
                 // Rebase has conflicts — ask Claude to resolve
                 let prompt = "\nThere are rebase conflicts. Please resolve all conflicts, then run `git rebase --continue`.\r";
                 {
                     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-                    let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
+                    let _ = pty_manager.write_to_session(session_id, prompt.as_bytes());
                 }
 
                 let _ = state
@@ -1082,11 +1096,11 @@ pub async fn stage_session(
     let save_result = (|| -> Result<(), String> {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let mut project = storage
-            .load_project(project_uuid)
+            .load_project(project_id)
             .map_err(|e| e.to_string())?;
 
         project.staged_session = Some(StagedSession {
-            session_id: session_uuid,
+            session_id,
             pid,
             port,
         });
@@ -1099,6 +1113,19 @@ pub async fn stage_session(
         return Err(e);
     }
 
+    Ok(port)
+}
+
+#[tauri::command]
+pub async fn stage_session(
+    state: State<'_, AppState>,
+    _app_handle: AppHandle,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+    stage_session_core(&state, project_uuid, session_uuid, true).await?;
     Ok(())
 }
 

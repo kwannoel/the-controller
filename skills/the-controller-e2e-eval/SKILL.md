@@ -9,25 +9,34 @@ description: Use when validating UI changes end-to-end before claiming work is c
 
 You've made a UI change in a session's worktree and want to verify it actually works in a browser — not just "it compiles" but "the user can see and interact with it correctly."
 
-## Prerequisites
-
-The session must be staged (user pressed `v` in development mode). If not staged, ask the user to stage it first.
-
 ## Steps
 
-### 1. Find the worktree path
+### 1. Stage the session
 
-Read project.json files to find the staged session's worktree:
+Commit all your changes first, then trigger staging via the Controller socket. Find the project and session IDs from project.json using the current branch:
 
 ```bash
-cat ~/.the-controller/projects/*/project.json | jq -r '
-  select(.staged_session != null) |
-  .staged_session.session_id as $sid |
-  .sessions[] | select(.id == $sid) | .worktree_path // empty
-' | grep .
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+read PROJECT_ID SESSION_ID WORKTREE_PATH < <(
+  cat ~/.the-controller/projects/*/project.json | jq -r --arg b "$BRANCH" '
+    . as $p |
+    .sessions[] | select(.worktree_branch == $b) |
+    "\($p.id) \(.id) \(.worktree_path)"
+  ' | head -1
+)
 ```
 
-If this returns nothing, no session is staged — ask the user to press `v`.
+If a session is already staged, the response will say so. Unstage it first if needed or skip this step.
+
+Send the stage command and wait for the response (staging includes rebase + npm install + launching dev server, which takes a few minutes):
+
+```bash
+printf 'stage:%s:%s\n' "$PROJECT_ID" "$SESSION_ID" | nc -U -w 300 /tmp/the-controller.sock
+```
+
+The response will be either `staged:<port>` on success or `error:<message>` on failure. If you get an error about uncommitted changes, commit first and retry.
+
+The `$WORKTREE_PATH` variable from above is the path to pass to `eval.sh`.
 
 ### 2. Write a targeted Playwright test
 
@@ -73,6 +82,6 @@ This runs ALL specs to catch regressions.
 
 ## Common Mistakes
 
-- **Forgetting to stage first:** The eval needs a worktree path. Stage the session with `v`.
+- **Staging with uncommitted changes:** The socket staging command fails if the worktree is dirty. Always commit before sending the `stage:` command.
 - **Testing against wrong servers:** Always use `eval.sh` — never manually start servers, as port conflicts with the main dev setup will cause false results.
 - **Flaky waits:** Use `await expect(...).toBeVisible({ timeout: 10_000 })` instead of `waitForTimeout()` for assertions.
