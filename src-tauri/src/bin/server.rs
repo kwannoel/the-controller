@@ -11,7 +11,7 @@ use axum::{
 use serde_json::Value;
 use std::sync::Arc;
 use the_controller_lib::{
-    config, emitter::WsBroadcastEmitter, note_ai_chat, notes, state::AppState, voice,
+    architecture, config, emitter::WsBroadcastEmitter, note_ai_chat, notes, state::AppState, voice,
 };
 
 use tokio::sync::broadcast;
@@ -312,13 +312,29 @@ async fn create_session(
 }
 
 async fn generate_architecture(
-    AxumState(_state): AxumState<Arc<ServerState>>,
-    Json(_args): Json<Value>,
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        "generate_architecture not yet wired".to_string(),
-    ))
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing repoPath".to_string()))?
+        .to_string();
+    let emitter = state.app.emitter.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        architecture::generate_architecture_blocking_with_emitter(
+            std::path::Path::new(&repo_path),
+            &emitter,
+        )
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Task failed: {}", e),
+        )
+    })?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(result).unwrap()))
 }
 
 async fn list_archived_projects(

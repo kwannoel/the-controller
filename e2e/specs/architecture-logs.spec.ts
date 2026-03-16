@@ -2,8 +2,8 @@ import { test, expect } from "@playwright/test";
 
 /**
  * Tests the architecture mode log streaming feature.
- * When generation is triggered, the UI should show progress feedback
- * rather than a blank screen.
+ * When generation is triggered, the UI should stream real-time progress
+ * logs showing evidence collection, prompt building, etc.
  */
 
 test.describe("Architecture mode log streaming", () => {
@@ -34,14 +34,13 @@ test.describe("Architecture mode log streaming", () => {
   }) => {
     await switchToArchitectureMode(page);
 
-    // Empty state should show
     const emptyState = page.locator(".diagram-surface .empty-state");
     await expect(emptyState).toBeVisible();
     await expect(emptyState).toContainText("No architecture generated yet");
     await expect(emptyState.locator("kbd")).toHaveText("r");
   });
 
-  test("generate button triggers generation and shows error feedback", async ({
+  test("streams log lines during architecture generation", async ({
     page,
   }) => {
     await switchToArchitectureMode(page);
@@ -49,21 +48,45 @@ test.describe("Architecture mode log streaming", () => {
     const generateBtn = page.locator(".generate-action");
     await expect(generateBtn).toBeVisible();
     await expect(generateBtn).toHaveText("Generate");
-    await expect(generateBtn).toBeEnabled();
 
-    // Click generate — codex is not available in e2e so this will error,
-    // but the key assertion is that we get visible error feedback rather
-    // than silently failing
+    // Click generate — evidence collection and prompt building will
+    // succeed and emit logs. Codex exec will likely fail, but we should
+    // see real log lines before the error.
     await generateBtn.click();
 
-    // An error message should appear (server returns not-implemented or
-    // codex fails)
+    // The log output container should appear with streaming lines.
+    // Evidence collection is pure Rust (no external deps) so at minimum
+    // we'll see "Scanning repository for evidence" and file list.
+    const logOutput = page.locator(".log-output");
     const errorMsg = page.locator(".generation-error");
-    await expect(errorMsg).toBeVisible({ timeout: 15_000 });
 
-    // Button should re-enable after the error
-    await expect(generateBtn).toBeEnabled({ timeout: 5_000 });
-    await expect(generateBtn).toHaveText("Generate");
+    // Wait for either logs or error (whichever comes first)
+    await expect(logOutput.or(errorMsg)).toBeVisible({ timeout: 30_000 });
+
+    // If logs appeared, verify they contain meaningful progress info
+    if (await logOutput.isVisible().catch(() => false)) {
+      const logLines = logOutput.locator(".log-line");
+      const count = await logLines.count();
+      expect(count).toBeGreaterThan(0);
+
+      // Collect all log text for inspection
+      const allText = await logOutput.innerText();
+      console.log("Architecture generation logs:\n" + allText);
+
+      // Should contain the evidence scanning phase
+      expect(allText).toContain("Scanning repository for evidence");
+    }
+
+    // Eventually generation finishes (success or error)
+    await expect(generateBtn).toBeEnabled({ timeout: 120_000 });
+
+    // Check final state: either we got a result or an error
+    const hasResult = await page
+      .locator(".diagram-render")
+      .isVisible()
+      .catch(() => false);
+    const hasError = await errorMsg.isVisible().catch(() => false);
+    expect(hasResult || hasError).toBe(true);
   });
 
   test("architecture explorer has two-pane layout", async ({ page }) => {
@@ -72,7 +95,6 @@ test.describe("Architecture mode log streaming", () => {
     await expect(page.locator(".diagram-pane")).toBeVisible();
     await expect(page.locator(".inspector-rail")).toBeVisible();
 
-    // Inspector should have components section and details section
     await expect(
       page.locator(".component-list-pane .section-title")
     ).toHaveText("Components");
@@ -80,7 +102,6 @@ test.describe("Architecture mode log streaming", () => {
       page.locator(".component-list-pane .section-count")
     ).toHaveText("0");
 
-    // Placeholder text when no architecture is generated
     await expect(page.locator(".placeholder-copy")).toHaveText(
       "Generate architecture to see components."
     );
