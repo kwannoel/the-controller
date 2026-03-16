@@ -61,6 +61,10 @@ enum SpeechResult {
 
 impl VoicePipeline {
     /// Start the voice pipeline. Downloads models if needed, then begins listening.
+    ///
+    /// Waits for pipeline initialization to complete before returning, so any
+    /// init errors (model loading, codex app-server, mic capture) are propagated
+    /// to the caller instead of being silently lost on the background thread.
     pub async fn start(emitter: Arc<dyn EventEmitter>) -> Result<Self, String> {
         let stop_flag = Arc::new(AtomicBool::new(false));
 
@@ -92,29 +96,53 @@ impl VoicePipeline {
         let piper_onnx_path = model_paths.piper_onnx.clone();
         let piper_config_path = model_paths.piper_config.clone();
 
+        let (init_tx, init_rx) = tokio::sync::oneshot::channel::<Result<(), String>>();
+
         let audio_thread = std::thread::spawn(move || {
-            if let Err(e) = run_pipeline(
+            let init_result = pipeline_init(
                 &vad_path,
                 &whisper_path,
                 &piper_onnx_path,
                 &piper_config_path,
-                stop,
-                emitter_clone.clone(),
-            ) {
-                eprintln!("[voice] Pipeline error: {e}");
-                let payload = serde_json::json!({
-                    "state": "error",
-                    "error": e,
-                })
-                .to_string();
-                let _ = emitter_clone.emit("voice-state-changed", &payload);
+            );
+
+            match init_result {
+                Err(e) => {
+                    eprintln!("[voice] Pipeline init error: {e}");
+                    let _ = init_tx.send(Err(e.clone()));
+                    let payload = serde_json::json!({
+                        "state": "error",
+                        "error": e,
+                    })
+                    .to_string();
+                    let _ = emitter_clone.emit("voice-state-changed", &payload);
+                }
+                Ok(components) => {
+                    let _ = init_tx.send(Ok(()));
+                    if let Err(e) =
+                        run_pipeline_loop(components, stop, emitter_clone.clone())
+                    {
+                        eprintln!("[voice] Pipeline error: {e}");
+                        let payload = serde_json::json!({
+                            "state": "error",
+                            "error": e,
+                        })
+                        .to_string();
+                        let _ = emitter_clone.emit("voice-state-changed", &payload);
+                    }
+                }
             }
         });
 
-        Ok(Self {
-            stop_flag,
-            audio_thread: Some(audio_thread),
-        })
+        // Wait for pipeline initialization — propagate errors to caller
+        match init_rx.await {
+            Ok(Ok(())) => Ok(Self {
+                stop_flag,
+                audio_thread: Some(audio_thread),
+            }),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err("Pipeline thread panicked during initialization".to_string()),
+        }
     }
 
     pub fn stop(&mut self) {
@@ -150,29 +178,63 @@ fn emit_debug(emitter: &Arc<dyn EventEmitter>, msg: &str) {
     let _ = emitter.emit("voice-debug", &payload);
 }
 
-/// Main pipeline loop. Runs on a dedicated thread.
-fn run_pipeline(
+/// Holds all initialized pipeline components.
+struct PipelineComponents {
+    vad_engine: vad::Vad,
+    whisper: stt::WhisperStt,
+    tts_engine: tts::PiperTts,
+    audio_out: audio_output::AudioOutput,
+    auto_gain: gain::AutoGain,
+    app_server: llm::CodexAppServer,
+    audio_in: audio_input::AudioInput,
+    audio_rx: Receiver<Vec<i16>>,
+}
+
+/// Initialize all pipeline components. Called on the pipeline thread.
+fn pipeline_init(
     vad_path: &std::path::Path,
     whisper_path: &std::path::Path,
     piper_onnx_path: &std::path::Path,
     piper_config_path: &std::path::Path,
+) -> Result<PipelineComponents, String> {
+    let vad_engine = vad::Vad::new(vad_path, 800)?;
+    let whisper = stt::WhisperStt::new(whisper_path)?;
+    let tts_engine = tts::PiperTts::new(piper_onnx_path, piper_config_path)?;
+    let audio_out = audio_output::AudioOutput::new()?;
+    let auto_gain = gain::AutoGain::new();
+    let app_server = llm::CodexAppServer::start(None)
+        .map_err(|e| format!("Failed to start codex app-server: {e}"))?;
+    let (tx, audio_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = crossbeam_channel::bounded(64);
+    let audio_in = audio_input::AudioInput::start(tx)?;
+
+    Ok(PipelineComponents {
+        vad_engine,
+        whisper,
+        tts_engine,
+        audio_out,
+        auto_gain,
+        app_server,
+        audio_in,
+        audio_rx,
+    })
+}
+
+/// Main pipeline loop. Runs on a dedicated thread after initialization.
+fn run_pipeline_loop(
+    components: PipelineComponents,
     stop: Arc<AtomicBool>,
     emitter: Arc<dyn EventEmitter>,
 ) -> Result<(), String> {
-    // Initialize components
-    let mut vad_engine = vad::Vad::new(vad_path, 800)?;
-    let whisper = stt::WhisperStt::new(whisper_path)?;
-    let mut tts_engine = tts::PiperTts::new(piper_onnx_path, piper_config_path)?;
-    let audio_out = audio_output::AudioOutput::new()?;
-    let mut auto_gain = gain::AutoGain::new();
-
-    // CodexAppServer is now blocking — no tokio runtime needed
-    let mut app_server = llm::CodexAppServer::start(None)
-        .map_err(|e| format!("Failed to start codex app-server: {e}"))?;
-
-    // Start mic capture
-    let (tx, rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = crossbeam_channel::bounded(64);
-    let mut audio_in = audio_input::AudioInput::start(tx)?;
+    let PipelineComponents {
+        mut vad_engine,
+        whisper,
+        mut tts_engine,
+        audio_out,
+        mut auto_gain,
+        mut app_server,
+        mut audio_in,
+        audio_rx: rx,
+    } = components;
 
     emit_state(&emitter, VoiceState::Listening);
     let mut speech_buffer: Vec<f32> = Vec::new();
