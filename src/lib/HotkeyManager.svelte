@@ -494,6 +494,8 @@
     // --- Terminal focused: Escape moves focus to sidebar session ---
     if (inTerminal) {
       if (e.key === "Escape") {
+        // Prevent macOS from exiting native fullscreen on Escape
+        e.preventDefault();
         const now = Date.now();
         if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
           // Double-tap Escape: forward to terminal
@@ -544,6 +546,8 @@
 
     // Escape: check for double-tap (forward to terminal), else walk up focus hierarchy
     if (e.key === "Escape") {
+      // Prevent macOS from exiting native fullscreen on Escape
+      e.preventDefault();
       const now = Date.now();
       if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
         // Double-tap Escape: forward to terminal and refocus it
