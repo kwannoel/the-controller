@@ -103,6 +103,18 @@ impl AudioInput {
         self.muted.store(false, Ordering::Relaxed);
     }
 
+    pub fn pause(&self) {
+        if let Some(ref s) = self.stream {
+            let _ = s.pause();
+        }
+    }
+
+    pub fn resume(&self) {
+        if let Some(ref s) = self.stream {
+            let _ = s.play();
+        }
+    }
+
     pub fn stop(&mut self) {
         self.stream.take();
     }

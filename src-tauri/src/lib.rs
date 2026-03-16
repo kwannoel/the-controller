@@ -137,6 +137,7 @@ pub fn run() {
             deploy::commands::list_deployed_services,
             commands::start_voice_pipeline,
             commands::stop_voice_pipeline,
+            commands::toggle_voice_pause,
             commands::log_frontend_error,
         ])
         .build(tauri::generate_context!())
