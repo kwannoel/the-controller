@@ -4,7 +4,7 @@ let sharedWs: WebSocket | null = null;
 
 function getSharedWebSocket(): WebSocket {
   if (!sharedWs || sharedWs.readyState === WebSocket.CLOSED || sharedWs.readyState === WebSocket.CLOSING) {
-    const wsUrl = `ws://${window.location.hostname}:3001/ws`;
+    const wsUrl = `ws://${window.location.host}/ws`;
     sharedWs = new WebSocket(wsUrl);
   }
   return sharedWs;

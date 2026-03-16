@@ -43,49 +43,58 @@ test.describe("Architecture mode log streaming", () => {
   test("streams log lines during architecture generation", async ({
     page,
   }) => {
+    test.setTimeout(180_000); // codex exec has 120s timeout
+
     await switchToArchitectureMode(page);
 
     const generateBtn = page.locator(".generate-action");
     await expect(generateBtn).toBeVisible();
     await expect(generateBtn).toHaveText("Generate");
 
-    // Click generate — evidence collection and prompt building will
-    // succeed and emit logs. Codex exec will likely fail, but we should
-    // see real log lines before the error.
+    // Click generate
     await generateBtn.click();
 
+    // Button should become disabled with "Generate…"
+    await expect(generateBtn).toBeDisabled({ timeout: 2_000 });
+
     // The log output container should appear with streaming lines.
-    // Evidence collection is pure Rust (no external deps) so at minimum
-    // we'll see "Scanning repository for evidence" and file list.
+    // Evidence collection is pure Rust (no external deps) so we'll
+    // see scanning and evidence logs before codex even starts.
     const logOutput = page.locator(".log-output");
-    const errorMsg = page.locator(".generation-error");
+    await expect(logOutput).toBeVisible({ timeout: 30_000 });
 
-    // Wait for either logs or error (whichever comes first)
-    await expect(logOutput.or(errorMsg)).toBeVisible({ timeout: 30_000 });
+    // Verify meaningful progress content
+    const logLines = logOutput.locator(".log-line");
+    await expect(logLines.first()).toBeVisible({ timeout: 5_000 });
 
-    // If logs appeared, verify they contain meaningful progress info
+    // Should contain the evidence scanning phase
+    await expect(logOutput).toContainText("Scanning repository for evidence", {
+      timeout: 5_000,
+    });
+
+    // Should list collected evidence
+    await expect(logOutput).toContainText("evidence files", {
+      timeout: 10_000,
+    });
+
+    // Wait for generation to complete (success or failure)
+    await expect(generateBtn).toBeEnabled({ timeout: 150_000 });
+
+    // Collect final log text for the test output
     if (await logOutput.isVisible().catch(() => false)) {
-      const logLines = logOutput.locator(".log-line");
-      const count = await logLines.count();
-      expect(count).toBeGreaterThan(0);
-
-      // Collect all log text for inspection
       const allText = await logOutput.innerText();
       console.log("Architecture generation logs:\n" + allText);
-
-      // Should contain the evidence scanning phase
-      expect(allText).toContain("Scanning repository for evidence");
     }
 
-    // Eventually generation finishes (success or error)
-    await expect(generateBtn).toBeEnabled({ timeout: 120_000 });
-
-    // Check final state: either we got a result or an error
+    // Check final state: either a rendered diagram or an error
     const hasResult = await page
       .locator(".diagram-render")
       .isVisible()
       .catch(() => false);
-    const hasError = await errorMsg.isVisible().catch(() => false);
+    const hasError = await page
+      .locator(".generation-error")
+      .isVisible()
+      .catch(() => false);
     expect(hasResult || hasError).toBe(true);
   });
 
