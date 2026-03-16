@@ -32,9 +32,8 @@
 <div class="container">
   {#if services.length === 0}
     <div class="empty-state">
-      <div class="title">Infrastructure</div>
-      <div class="subtitle">No services deployed yet</div>
-      <div class="hint">Deploy a project with <kbd>d</kbd> from the infrastructure workspace</div>
+      <div class="empty-title">No services deployed yet</div>
+      <div class="empty-hint">press <kbd>d</kbd> to deploy a project</div>
     </div>
   {:else}
     <div class="dashboard">
@@ -97,10 +96,9 @@
     justify-content: center;
   }
 
-  .title { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
-  .subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 16px; }
-  .hint { font-size: 12px; color: var(--text-tertiary); }
-  kbd { background: var(--bg-active); padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 11px; }
+  .empty-title { color: var(--text-primary); font-size: 16px; font-weight: 500; margin-bottom: 8px; }
+  .empty-hint { color: var(--text-secondary); font-size: 13px; }
+  .empty-hint kbd { background: var(--bg-hover); color: var(--text-emphasis); padding: 1px 6px; border-radius: 3px; font-family: var(--font-mono); font-size: 12px; }
 
   .dashboard {
     flex: 1;

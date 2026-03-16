@@ -523,7 +523,7 @@
   {#if !focusedAgent || !project}
     <div class="empty-state">
       <div class="empty-title">No agent selected</div>
-      <div class="empty-hint">Navigate to an agent with <kbd>j</kbd> / <kbd>k</kbd> and press <kbd>l</kbd></div>
+      <div class="empty-hint">navigate to an agent with <kbd>j</kbd> / <kbd>k</kbd> and press <kbd>l</kbd></div>
     </div>
   {:else if focusedAgent.agentKind === "auto-worker"}
     <div class="dashboard-header">

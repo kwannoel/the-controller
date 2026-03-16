@@ -329,14 +329,14 @@ test.describe("Infrastructure mode empty state", () => {
     if (pickerVisible) {
       await page.keyboard.press("i");
 
-      // Infrastructure empty state
-      const emptyState = page.locator(".empty-state .title");
-      const visible = await emptyState.isVisible({ timeout: 3_000 }).catch(() => false);
+      // Infrastructure empty state (two-line pattern)
+      const emptyTitle = page.locator(".empty-state .empty-title");
+      const visible = await emptyTitle.isVisible({ timeout: 3_000 }).catch(() => false);
 
       if (visible) {
-        await expect(emptyState).toHaveText("Infrastructure");
-        await expect(page.locator(".empty-state .subtitle")).toHaveText(
-          "No services deployed yet"
+        await expect(emptyTitle).toHaveText("No services deployed yet");
+        await expect(page.locator(".empty-state .empty-hint")).toContainText(
+          "press"
         );
       }
 

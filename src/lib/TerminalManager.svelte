@@ -61,7 +61,7 @@
     <div class="empty-state">
       <div class="empty-content">
         <div class="empty-title">No active session</div>
-        <div class="empty-hint">Press <kbd>c</kbd> to create a session, or <kbd>n</kbd> to add a project</div>
+        <div class="empty-hint">press <kbd>c</kbd> to create a session, or <kbd>n</kbd> to add a project</div>
       </div>
     </div>
   {/if}
