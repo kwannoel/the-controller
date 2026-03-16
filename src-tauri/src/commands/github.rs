@@ -322,6 +322,38 @@ pub(crate) async fn remove_github_label(
     Ok(())
 }
 
+pub(crate) async fn delete_github_issue(
+    state: State<'_, AppState>,
+    repo_path: String,
+    issue_number: u64,
+) -> Result<(), String> {
+    let nwo = extract_github_repo_async(repo_path.clone()).await?;
+
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "delete",
+            &issue_number.to_string(),
+            "--repo",
+            &nwo,
+            "--yes",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run gh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gh issue delete failed: {}", stderr));
+    }
+
+    if let Ok(mut cache) = state.issue_cache.lock() {
+        cache.remove_issue(&repo_path, issue_number);
+    }
+
+    Ok(())
+}
+
 pub(crate) async fn get_maintainer_issues(
     repo_path: String,
     github_repo: Option<String>,

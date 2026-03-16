@@ -203,6 +203,15 @@
         return;
       }
 
+      if (!inSearch && e.key === "d" && selectedIssue) {
+        e.preventDefault();
+        e.stopPropagation();
+        const issueToDelete = selectedIssue;
+        allIssues = allIssues.filter(i => i.number !== issueToDelete.number);
+        command("delete_github_issue", { repoPath, issueNumber: issueToDelete.number });
+        return;
+      }
+
       if (!inSearch && e.key === "Enter" && selectedIssue) {
         e.preventDefault();
         e.stopPropagation();
@@ -329,6 +338,7 @@
             {/if}
             <div class="detail-actions">
               <span class="action-hint"><kbd>a</kbd> assign to session</span>
+              <span class="action-hint"><kbd>d</kbd> delete</span>
               <span class="action-hint"><kbd>Enter</kbd> open in browser</span>
             </div>
           {:else}

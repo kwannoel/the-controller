@@ -71,6 +71,13 @@ impl IssueCache {
         }
     }
 
+    /// Remove an issue from the cache.
+    pub fn remove_issue(&mut self, repo_path: &str, issue_number: u64) {
+        if let Some(entry) = self.entries.get_mut(repo_path) {
+            entry.issues.retain(|i| i.number != issue_number);
+        }
+    }
+
     /// Remove a label from a cached issue.
     pub fn remove_label(&mut self, repo_path: &str, issue_number: u64, label: &str) {
         if let Some(entry) = self.entries.get_mut(repo_path) {
@@ -246,6 +253,34 @@ mod tests {
         cache.remove_label("/repo", 1, "in-progress");
         let entry = cache.get("/repo").unwrap();
         assert!(entry.issues[0].labels.is_empty());
+    }
+
+    #[test]
+    fn test_issue_cache_remove_issue() {
+        let mut cache = IssueCache::new();
+        cache.insert(
+            "/repo".to_string(),
+            vec![
+                GithubIssue {
+                    number: 1,
+                    title: "First".to_string(),
+                    url: "https://github.com/o/r/issues/1".to_string(),
+                    body: None,
+                    labels: vec![],
+                },
+                GithubIssue {
+                    number: 2,
+                    title: "Second".to_string(),
+                    url: "https://github.com/o/r/issues/2".to_string(),
+                    body: None,
+                    labels: vec![],
+                },
+            ],
+        );
+        cache.remove_issue("/repo", 1);
+        let entry = cache.get("/repo").unwrap();
+        assert_eq!(entry.issues.len(), 1);
+        assert_eq!(entry.issues[0].number, 2);
     }
 
     #[test]
