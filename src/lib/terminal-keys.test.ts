@@ -8,6 +8,7 @@ function makeEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
     shiftKey: false,
     metaKey: false,
     ctrlKey: false,
+    isComposing: false,
     ...overrides,
   } as unknown as KeyboardEvent;
 }
@@ -70,6 +71,37 @@ describe("makeCustomKeyHandler", () => {
     const result = handler(makeEvent({ key: "a", type: "keypress" }));
 
     expect(result).toBe(true);
+  });
+
+  describe("IME composition", () => {
+    it("blocks keydown events during composition", () => {
+      const write = vi.fn();
+      const handler = makeCustomKeyHandler(write);
+
+      const result = handler(makeEvent({ key: "g", type: "keydown", isComposing: true }));
+
+      expect(result).toBe(false);
+      expect(write).not.toHaveBeenCalled();
+    });
+
+    it("blocks keyup events during composition", () => {
+      const write = vi.fn();
+      const handler = makeCustomKeyHandler(write);
+
+      const result = handler(makeEvent({ key: "g", type: "keyup", isComposing: true }));
+
+      expect(result).toBe(false);
+      expect(write).not.toHaveBeenCalled();
+    });
+
+    it("allows events through when not composing", () => {
+      const write = vi.fn();
+      const handler = makeCustomKeyHandler(write);
+
+      const result = handler(makeEvent({ key: "g", type: "keydown", isComposing: false }));
+
+      expect(result).toBe(true);
+    });
   });
 
   describe("image paste handling", () => {

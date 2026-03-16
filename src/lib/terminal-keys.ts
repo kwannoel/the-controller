@@ -15,6 +15,13 @@ export function makeCustomKeyHandler(
   options?: { onImagePaste?: () => void },
 ) {
   return (event: KeyboardEvent): boolean => {
+    // Block individual keystrokes during IME composition to prevent
+    // duplicate input. Composition events (compositionstart/update/end)
+    // are handled by separate listeners in xterm.js and are not affected.
+    if (event.isComposing) {
+      return false;
+    }
+
     // Shift+Enter must be blocked on ALL event types (keydown, keypress, keyup)
     // to prevent xterm from also processing it as a regular Enter (\r).
     // We only send the CSI u sequence on keydown to avoid duplicates.
