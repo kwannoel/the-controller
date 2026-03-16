@@ -14,7 +14,13 @@ async function switchToArchitectureMode(page: import("@playwright/test").Page) {
   await page.goto("/");
   await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
-  // Real keyboard interactions to switch workspace mode
+  // Click a project in the sidebar to establish focus (required for
+  // hotkeys like 'r' that need a focused project)
+  const firstProject = page.locator(".project-header").first();
+  await expect(firstProject).toBeVisible({ timeout: 5_000 });
+  await firstProject.click();
+
+  // Switch to architecture mode via real keyboard
   await page.keyboard.press("Space");
   await expect(page.locator(".picker")).toBeVisible({ timeout: 3_000 });
   await page.keyboard.press("r");
