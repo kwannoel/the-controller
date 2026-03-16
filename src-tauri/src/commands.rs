@@ -2134,6 +2134,8 @@ pub fn log_frontend_error(message: String) {
 
 #[tauri::command]
 pub async fn start_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    // Snapshot generation before init — if stop is called during init, this will change.
+    let gen_before = state.voice_generation.load(std::sync::atomic::Ordering::SeqCst);
     // Brief lock to check if already running
     {
         let pipeline = state.voice_pipeline.lock().await;
@@ -2146,8 +2148,9 @@ pub async fn start_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(
     let new_pipeline = crate::voice::VoicePipeline::start(emitter).await?;
     // Re-acquire lock to store the pipeline
     let mut pipeline = state.voice_pipeline.lock().await;
-    if pipeline.is_some() {
-        // Another start raced us — drop the one we just created
+    let gen_after = state.voice_generation.load(std::sync::atomic::Ordering::SeqCst);
+    if pipeline.is_some() || gen_before != gen_after {
+        // Another start raced us, or stop was called during init — drop the pipeline
         return Ok(());
     }
     *pipeline = Some(new_pipeline);
@@ -2156,6 +2159,8 @@ pub async fn start_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(
 
 #[tauri::command]
 pub async fn stop_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    // Bump generation so any in-flight start_voice_pipeline knows to discard its result.
+    state.voice_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let mut pipeline = state.voice_pipeline.lock().await;
     if let Some(p) = pipeline.take() {
         // p.stop() calls thread::join which blocks — run on blocking thread pool
@@ -2167,6 +2172,22 @@ pub async fn stop_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<()
         .map_err(|e| format!("Failed to stop pipeline: {e}"))?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn toggle_voice_pause(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let pipeline = state.voice_pipeline.lock().await;
+    match pipeline.as_ref() {
+        Some(p) => {
+            let paused = p.toggle_pause();
+            // Emit state change immediately for responsive UI
+            let voice_state = if paused { "paused" } else { "listening" };
+            let payload = serde_json::json!({ "state": voice_state }).to_string();
+            let _ = state.emitter.emit("voice-state-changed", &payload);
+            Ok(paused)
+        }
+        None => Err("Voice pipeline not running".to_string()),
+    }
 }
 
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
@@ -2223,6 +2244,7 @@ mod tests {
             emitter: crate::emitter::NoopEmitter::new(),
             staging_lock: tokio::sync::Mutex::new(()),
             voice_pipeline: Arc::new(tokio::sync::Mutex::new(None)),
+            voice_generation: std::sync::atomic::AtomicU64::new(0),
         }
     }
 

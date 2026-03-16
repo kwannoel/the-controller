@@ -567,10 +567,18 @@
       return;
     }
 
-    // Space: workspace mode picker
+    // Space: workspace mode picker (or pause/resume voice mode)
     if (e.key === " ") {
       e.stopPropagation();
       e.preventDefault();
+      if (currentMode === "voice") {
+        // Toggle pause/resume in-place
+        command("toggle_voice_pause").catch((err: unknown) => {
+          console.error("[voice] Failed to toggle pause:", err);
+        });
+        pushKeystroke("␣");
+        return;
+      }
       workspaceModeActive = true;
       workspaceModePickerVisible.set(true);
       pushKeystroke("␣");

@@ -21,6 +21,7 @@ pub enum VoiceState {
     Thinking,
     Speaking,
     Downloading,
+    Paused,
 }
 
 #[derive(Serialize)]
@@ -38,6 +39,7 @@ const MIN_BARGEIN_SAMPLES: usize = 4800; // 300ms at 16kHz — sustained speech 
 
 pub struct VoicePipeline {
     stop_flag: Arc<AtomicBool>,
+    pause_flag: Arc<AtomicBool>,
     audio_thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -68,6 +70,7 @@ impl VoicePipeline {
     /// to the caller instead of being silently lost on the background thread.
     pub async fn start(emitter: Arc<dyn EventEmitter>) -> Result<Self, String> {
         let stop_flag = Arc::new(AtomicBool::new(false));
+        let pause_flag = Arc::new(AtomicBool::new(false));
 
         // Ensure models are downloaded
         let dl_emitter = emitter.clone();
@@ -93,6 +96,7 @@ impl VoicePipeline {
         emit_state(&emitter, VoiceState::Initializing);
 
         let stop = stop_flag.clone();
+        let pause = pause_flag.clone();
         let emitter_clone = emitter.clone();
 
         let vad_path = model_paths.silero_vad.clone();
@@ -124,7 +128,7 @@ impl VoicePipeline {
                 Ok(components) => {
                     let _ = init_tx.send(Ok(()));
                     if let Err(e) =
-                        run_pipeline_loop(components, stop, emitter_clone.clone())
+                        run_pipeline_loop(components, stop, pause, emitter_clone.clone())
                     {
                         eprintln!("[voice] Pipeline error: {e}");
                         let payload = serde_json::json!({
@@ -147,6 +151,7 @@ impl VoicePipeline {
         {
             Ok(Ok(Ok(()))) => Ok(Self {
                 stop_flag,
+                pause_flag,
                 audio_thread: Some(audio_thread),
             }),
             Ok(Ok(Err(e))) => Err(e),
@@ -157,6 +162,13 @@ impl VoicePipeline {
                 Err("Pipeline initialization timed out after 30s".to_string())
             }
         }
+    }
+
+    /// Toggle pause state. Returns `true` if now paused.
+    pub fn toggle_pause(&self) -> bool {
+        let was_paused = self.pause_flag.load(Ordering::SeqCst);
+        self.pause_flag.store(!was_paused, Ordering::SeqCst);
+        !was_paused
     }
 
     pub fn stop(&mut self) {
@@ -237,6 +249,7 @@ fn pipeline_init(
 fn run_pipeline_loop(
     components: PipelineComponents,
     stop: Arc<AtomicBool>,
+    pause: Arc<AtomicBool>,
     emitter: Arc<dyn EventEmitter>,
 ) -> Result<(), String> {
     let PipelineComponents {
@@ -254,8 +267,29 @@ fn run_pipeline_loop(
     let mut speech_buffer: Vec<f32> = Vec::new();
     let mut in_speech = false;
     let mut chunk_count: u64 = 0;
+    let mut was_paused = false;
 
     while !stop.load(Ordering::Relaxed) {
+        // Handle pause/resume transitions
+        let is_paused = pause.load(Ordering::SeqCst);
+        if is_paused && !was_paused {
+            audio_in.pause();
+            in_speech = false;
+            speech_buffer.clear();
+            vad_engine.reset();
+            was_paused = true;
+            // Drain any buffered audio chunks
+            while rx.try_recv().is_ok() {}
+            continue;
+        } else if !is_paused && was_paused {
+            audio_in.resume();
+            emit_state(&emitter, VoiceState::Listening);
+            was_paused = false;
+        } else if is_paused {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            continue;
+        }
+
         let chunk = match rx.recv_timeout(std::time::Duration::from_millis(100)) {
             Ok(c) => c,
             Err(crossbeam_channel::RecvTimeoutError::Timeout) => continue,
