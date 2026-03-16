@@ -2098,12 +2098,22 @@ pub fn log_frontend_error(message: String) {
 
 #[tauri::command]
 pub async fn start_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    let mut pipeline = state.voice_pipeline.lock().await;
-    if pipeline.is_some() {
-        return Ok(()); // Already running
+    // Brief lock to check if already running
+    {
+        let pipeline = state.voice_pipeline.lock().await;
+        if pipeline.is_some() {
+            return Ok(()); // Already running
+        }
     }
+    // Release lock during init to avoid blocking stop_voice_pipeline
     let emitter = state.emitter.clone();
     let new_pipeline = crate::voice::VoicePipeline::start(emitter).await?;
+    // Re-acquire lock to store the pipeline
+    let mut pipeline = state.voice_pipeline.lock().await;
+    if pipeline.is_some() {
+        // Another start raced us — drop the one we just created
+        return Ok(());
+    }
     *pipeline = Some(new_pipeline);
     Ok(())
 }
@@ -2111,8 +2121,14 @@ pub async fn start_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(
 #[tauri::command]
 pub async fn stop_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let mut pipeline = state.voice_pipeline.lock().await;
-    if let Some(mut p) = pipeline.take() {
-        p.stop();
+    if let Some(p) = pipeline.take() {
+        // p.stop() calls thread::join which blocks — run on blocking thread pool
+        tokio::task::spawn_blocking(move || {
+            let mut p = p;
+            p.stop();
+        })
+        .await
+        .map_err(|e| format!("Failed to stop pipeline: {e}"))?;
     }
     Ok(())
 }

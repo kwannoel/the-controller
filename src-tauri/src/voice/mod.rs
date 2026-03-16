@@ -16,6 +16,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VoiceState {
+    Initializing,
     Listening,
     Thinking,
     Speaking,
@@ -88,6 +89,9 @@ impl VoicePipeline {
         })
         .await?;
 
+        // Signal the frontend that heavy init is starting (model loading, codex handshake)
+        emit_state(&emitter, VoiceState::Initializing);
+
         let stop = stop_flag.clone();
         let emitter_clone = emitter.clone();
 
@@ -134,14 +138,24 @@ impl VoicePipeline {
             }
         });
 
-        // Wait for pipeline initialization — propagate errors to caller
-        match init_rx.await {
-            Ok(Ok(())) => Ok(Self {
+        // Wait for pipeline initialization with timeout — propagate errors to caller
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            init_rx,
+        )
+        .await
+        {
+            Ok(Ok(Ok(()))) => Ok(Self {
                 stop_flag,
                 audio_thread: Some(audio_thread),
             }),
-            Ok(Err(e)) => Err(e),
-            Err(_) => Err("Pipeline thread panicked during initialization".to_string()),
+            Ok(Ok(Err(e))) => Err(e),
+            Ok(Err(_)) => Err("Pipeline thread panicked during initialization".to_string()),
+            Err(_) => {
+                // Timeout — signal thread to stop and return error
+                stop_flag.store(true, Ordering::Relaxed);
+                Err("Pipeline initialization timed out after 30s".to_string())
+            }
         }
     }
 

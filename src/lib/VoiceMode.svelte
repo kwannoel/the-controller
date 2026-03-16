@@ -11,6 +11,7 @@
   const MAX_DEBUG_LINES = 200;
 
   const STATE_LABELS: Record<string, string> = {
+    initializing: "initializing...",
     listening: "listening...",
     thinking: "thinking...",
     speaking: "speaking...",
