@@ -69,11 +69,11 @@
     requestAnimationFrame(() => titleInput?.focus());
   }
 
-  async function enterFind() {
+  async function enterFind(focusSearch = true) {
     view = "find";
     searchQuery = "";
     selectedIndex = 0;
-    requestAnimationFrame(() => searchInput?.focus());
+    requestAnimationFrame(() => (focusSearch ? searchInput : overlayEl)?.focus());
 
     if (allIssues.length === 0) {
       loading = true;
@@ -138,10 +138,14 @@
         e.preventDefault();
         e.stopPropagation();
         enterCreate();
-      } else if (e.key === "f" || e.key === "Enter") {
+      } else if (e.key === "f") {
         e.preventDefault();
         e.stopPropagation();
         enterFind();
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        enterFind(false);
       }
       return;
     }
