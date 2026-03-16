@@ -179,6 +179,18 @@
           finishBranchTarget = { sessionId: action.sessionId, kind: action.kind };
           break;
         }
+        case "e2e-eval": {
+          const skillCmd = action.kind === "codex"
+            ? "$the-controller-e2e-eval"
+            : "/the-controller-e2e-eval";
+          if (action.kind === "codex") {
+            command("write_to_pty", { sessionId: action.sessionId, data: skillCmd })
+              .then(() => command("send_raw_to_pty", { sessionId: action.sessionId, data: "\r" }));
+          } else {
+            command("write_to_pty", { sessionId: action.sessionId, data: `${skillCmd}\r` });
+          }
+          break;
+        }
         case "stage-session": {
           stageSession(action.projectId, action.sessionId);
           break;

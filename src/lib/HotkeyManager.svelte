@@ -301,6 +301,13 @@
           dispatchHotkeyAction({ type: "finish-branch", sessionId: activeId, kind: sess?.kind as "claude" | "codex" | undefined });
         }
         return true;
+      case "e2e-eval":
+        if (activeId) {
+          const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
+          const sess = proj?.sessions.find((s) => s.id === activeId);
+          dispatchHotkeyAction({ type: "e2e-eval", sessionId: activeId, kind: sess?.kind as "claude" | "codex" | undefined });
+        }
+        return true;
       case "save-prompt": {
         if (currentFocus?.type === "session") {
           dispatchAction({
