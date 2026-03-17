@@ -337,14 +337,14 @@
         return true;
       }
       case "stage": {
-        const stageProj = projectList.find((p) => p.staged_session !== null);
-        if (stageProj) {
-          dispatchHotkeyAction({ type: "unstage-session", projectId: stageProj.id });
-        } else if (activeId) {
-          const proj2 = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
-          if (proj2 && proj2.name === "the-controller") {
-            dispatchHotkeyAction({ type: "stage-session", sessionId: activeId, projectId: proj2.id });
-          }
+        if (!activeId) return true;
+        const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
+        if (!proj || proj.name !== "the-controller") return true;
+        const isStaged = proj.staged_sessions.some((s) => s.session_id === activeId);
+        if (isStaged) {
+          dispatchHotkeyAction({ type: "unstage-session", projectId: proj.id, sessionId: activeId });
+        } else {
+          dispatchHotkeyAction({ type: "stage-session", sessionId: activeId, projectId: proj.id });
         }
         return true;
       }
