@@ -703,31 +703,6 @@ mod tests {
     }
 
     #[test]
-    fn test_staged_session_new_format_roundtrip() {
-        let project = Project {
-            id: Uuid::new_v4(),
-            name: "test".to_string(),
-            repo_path: "/tmp".to_string(),
-            created_at: "2026-03-11T00:00:00Z".to_string(),
-            archived: false,
-            maintainer: MaintainerConfig::default(),
-            auto_worker: AutoWorkerConfig::default(),
-            prompts: vec![],
-            sessions: vec![],
-            staged_sessions: vec![StagedSession {
-                session_id: Uuid::new_v4(),
-                pid: 12345,
-                port: 2420,
-            }],
-        };
-        let json = serde_json::to_string(&project).expect("serialize");
-        let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(deserialized.staged_sessions.len(), 1);
-        assert_eq!(deserialized.staged_sessions[0].pid, 12345);
-        assert_eq!(deserialized.staged_sessions[0].port, 2420);
-    }
-
-    #[test]
     fn test_run_log_includes_issues_skipped_field() {
         let run_log = MaintainerRunLog {
             id: Uuid::new_v4(),
@@ -845,5 +820,20 @@ mod tests {
         assert_eq!(project.staged_sessions.len(), 1);
         assert_eq!(project.staged_sessions[0].pid, 12345);
         assert_eq!(project.staged_sessions[0].port, 2420);
+    }
+
+    #[test]
+    fn test_staged_session_null_migrates_to_empty() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "test",
+            "repo_path": "/tmp",
+            "created_at": "2026-03-16T00:00:00Z",
+            "archived": false,
+            "sessions": [],
+            "staged_session": null
+        }"#;
+        let project: Project = serde_json::from_str(json).expect("deserialize null staged_session");
+        assert!(project.staged_sessions.is_empty());
     }
 }
