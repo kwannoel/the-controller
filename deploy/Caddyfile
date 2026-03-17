@@ -61,6 +61,15 @@ controller.example.com {
 		}
 	}
 
+	# ─── Security headers ────────────────────────────────────────────
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
 	# ─── Request limits ──────────────────────────────────────────────
 	request_body {
 		max_size 50MB

@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
@@ -16,6 +17,7 @@ const PRIORITY_LOW_LABEL: &str = labels::PRIORITY_LOW;
 const PRIORITY_HIGH_LABEL: &str = labels::PRIORITY_HIGH;
 const COMPLEXITY_LOW_LABEL: &str = labels::COMPLEXITY_LOW;
 const COMPLEXITY_HIGH_LABEL: &str = labels::COMPLEXITY_HIGH;
+const CODEX_EXEC_TIMEOUT: Duration = Duration::from_secs(120);
 
 const STOPWORDS: &[&str] = &[
     "a",
@@ -929,21 +931,90 @@ pub fn has_changes(log: &MaintainerRunLog) -> bool {
     !log.issues_filed.is_empty() || !log.issues_updated.is_empty()
 }
 
+fn terminate_maintainer_process(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        unsafe extern "C" {
+            fn kill(pid: i32, sig: i32) -> i32;
+        }
+        const SIGKILL: i32 = 9;
+        if let Ok(pid) = i32::try_from(child.id()) {
+            // process_group(0) puts the subprocess in its own group,
+            // so negative pid targets its subtree.
+            unsafe {
+                let _ = kill(-pid, SIGKILL);
+            }
+        }
+    }
+    // Non-Unix platforms fall back to killing the direct child only.
+    let _ = child.kill();
+}
+
 pub fn run_maintainer_check(
     repo_path: &str,
     project_id: Uuid,
     github_repo: Option<&str>,
 ) -> Result<MaintainerRunLog, String> {
     let prompt = build_issue_filing_prompt(repo_path, github_repo);
-    let output = std::process::Command::new("codex")
+    let mut command = Command::new("codex");
+    command
         .arg("exec")
         .arg("--sandbox")
         .arg("danger-full-access")
         .arg(&prompt)
         .current_dir(repo_path)
         .env_remove("CLAUDECODE")
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command
+        .spawn()
         .map_err(|e| format!("Failed to run codex exec: {}", e))?;
+
+    let started_at = Instant::now();
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("Failed to wait for codex exec: {}", e))?
+        {
+            break status;
+        }
+
+        if started_at.elapsed() >= CODEX_EXEC_TIMEOUT {
+            terminate_maintainer_process(&mut child);
+            let _ = child.wait();
+            return Err(format!(
+                "codex exec timed out after {} seconds",
+                CODEX_EXEC_TIMEOUT.as_secs()
+            ));
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
+    };
+
+    let output = std::process::Output {
+        status,
+        stdout: {
+            let mut buf = Vec::new();
+            if let Some(mut stdout) = child.stdout.take() {
+                use std::io::Read;
+                let _ = stdout.read_to_end(&mut buf);
+            }
+            buf
+        },
+        stderr: {
+            let mut buf = Vec::new();
+            if let Some(mut stderr) = child.stderr.take() {
+                use std::io::Read;
+                let _ = stderr.read_to_end(&mut buf);
+            }
+            buf
+        },
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

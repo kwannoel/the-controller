@@ -819,12 +819,40 @@ fn parse_mermaid_node_reference(line: &str, start: usize) -> Option<(String, usi
 fn consume_mermaid_edge(line: &str, start: usize) -> Option<usize> {
     let bytes = line.as_bytes();
     let mut index = skip_ascii_whitespace(bytes, start);
+    let edge_start = index;
+
+    // An edge may begin with 'o' or 'x' (e.g. `o--o`, `x--x`), but only
+    // if immediately followed by a core edge character.
+    if index < bytes.len()
+        && is_mermaid_edge_terminator(bytes[index])
+        && index + 1 < bytes.len()
+        && is_mermaid_edge_char(bytes[index + 1])
+    {
+        index += 1;
+    }
 
     while index < bytes.len() && is_mermaid_edge_char(bytes[index]) {
         index += 1;
     }
 
-    if index == skip_ascii_whitespace(bytes, start) {
+    // Must have consumed at least one core edge character.
+    if index == edge_start {
+        return None;
+    }
+
+    // An edge may end with 'o' or 'x' (e.g. `--o`, `--x`), but only when
+    // not followed by another identifier character (otherwise it's the start
+    // of a node id like `output`).
+    if index < bytes.len() && is_mermaid_edge_terminator(bytes[index]) {
+        let after = index + 1;
+        if after >= bytes.len() || !is_identifier_char(bytes[after]) {
+            index += 1;
+        }
+    }
+
+    // Require at least one core edge character was consumed (not just terminators).
+    let has_core = (edge_start..index).any(|i| is_mermaid_edge_char(bytes[i]));
+    if !has_core {
         return None;
     }
 
@@ -876,7 +904,15 @@ fn is_identifier_char(byte: u8) -> bool {
 }
 
 fn is_mermaid_edge_char(byte: u8) -> bool {
-    matches!(byte, b'-' | b'.' | b'=' | b'<' | b'>' | b'o' | b'x')
+    matches!(byte, b'-' | b'.' | b'=' | b'<' | b'>')
+}
+
+/// Returns true if `byte` is `o` or `x`, which are valid Mermaid edge
+/// terminators (e.g. `--o`, `--x`, `o--o`, `x--x`) but only when they
+/// appear at the boundary of an edge — not when followed by another
+/// identifier character (which would indicate the start of a node id).
+fn is_mermaid_edge_terminator(byte: u8) -> bool {
+    matches!(byte, b'o' | b'x')
 }
 
 fn read_sorted_dir(path: &Path, scan_budget: &mut ScanBudget) -> Result<Vec<PathBuf>, String> {

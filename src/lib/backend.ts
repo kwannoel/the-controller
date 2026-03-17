@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 
 const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
 
@@ -52,14 +52,17 @@ function connectWebSocket(): WebSocket {
   });
 
   ws.addEventListener("close", () => {
+    // Only reconnect if this is still the active WebSocket
+    if (sharedWs !== ws) return;
     if (reconnectTimer) return;
     // Don't reconnect if auth has failed — avoids infinite retry spam
-    let authFailed = false;
-    authError.subscribe((v) => { authFailed = v; })();
-    if (authFailed) return;
+    if (get(authError)) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      sharedWs = connectWebSocket();
+      if (sharedWs === ws) {
+        sharedWs = null;
+        sharedWs = connectWebSocket();
+      }
     }, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
   });

@@ -249,22 +249,23 @@ impl AutoWorkerScheduler {
                 for project_id in idle_to_nudge {
                     if let Some(session) = active_sessions.get_mut(&project_id) {
                         if session.nudge_count >= MAX_NUDGES {
-                            let session = active_sessions.remove(&project_id).unwrap();
-                            tracing::info!(
-                                "killed after {} nudges for #{}",
-                                MAX_NUDGES,
-                                session.issue_number
-                            );
-                            let (issue_number, issue_title) = session_issue_context(&session);
-                            kill_session(&state, &session);
-                            emit_status(
-                                &state,
-                                project_id,
-                                "idle",
-                                Some("Killed after max nudges"),
-                                issue_number,
-                                issue_title,
-                            );
+                            if let Some(session) = active_sessions.remove(&project_id) {
+                                tracing::info!(
+                                    "killed after {} nudges for #{}",
+                                    MAX_NUDGES,
+                                    session.issue_number
+                                );
+                                let (issue_number, issue_title) = session_issue_context(&session);
+                                kill_session(&state, &session);
+                                emit_status(
+                                    &state,
+                                    project_id,
+                                    "idle",
+                                    Some("Killed after max nudges"),
+                                    issue_number,
+                                    issue_title,
+                                );
+                            }
                         } else {
                             nudge_session(&state, session);
                         }
@@ -272,17 +273,15 @@ impl AutoWorkerScheduler {
                 }
 
                 // 3. Check for completed sessions (PTY no longer alive and removed from sessions map)
-                let exited: Vec<Uuid> = active_sessions
-                    .iter()
-                    .filter(|(_, s)| {
-                        if let Ok(pty_manager) = state.pty_manager.lock() {
-                            !pty_manager.is_alive(s.session_id)
-                        } else {
-                            false
-                        }
-                    })
-                    .map(|(pid, _)| *pid)
-                    .collect();
+                let exited: Vec<Uuid> = if let Ok(pty_manager) = state.pty_manager.lock() {
+                    active_sessions
+                        .iter()
+                        .filter(|(_, s)| !pty_manager.is_alive(s.session_id))
+                        .map(|(pid, _)| *pid)
+                        .collect()
+                } else {
+                    Vec::new()
+                };
 
                 for project_id in exited {
                     if let Some(session) = active_sessions.remove(&project_id) {

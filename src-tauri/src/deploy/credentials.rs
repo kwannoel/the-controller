@@ -44,7 +44,14 @@ impl DeployCredentials {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         let data = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        std::fs::write(&path, data).map_err(|e| e.to_string())
+        std::fs::write(&path, data).map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 }
 

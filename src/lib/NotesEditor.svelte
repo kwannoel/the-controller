@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
-  import { untrack } from "svelte";
+  import { untrack, onDestroy } from "svelte";
   import { command } from "$lib/backend";
   import { activeNote, noteViewMode, focusTarget, hotkeyAction, type NoteViewMode, type FocusTarget } from "./stores";
   import CodeMirrorNoteEditor, { type VimMode, type AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
@@ -131,6 +131,10 @@
       // silently fail — user will see unsaved indicator
     }
   }
+
+  onDestroy(() => {
+    if (saveTimer) clearTimeout(saveTimer);
+  });
 
   function handleEditorChange(nextContent: string) {
     content = nextContent;

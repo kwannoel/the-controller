@@ -49,6 +49,14 @@ pub fn notes_dir_with_base(base: &std::path::Path, folder: &str) -> PathBuf {
     base.join("notes").join(folder)
 }
 
+/// Validate the folder name and return the notes directory path.
+/// Use this instead of calling `notes_dir_with_base` directly when the folder
+/// comes from user input.
+fn validated_notes_dir(base: &std::path::Path, folder: &str) -> std::io::Result<PathBuf> {
+    validate_folder_name(folder)?;
+    Ok(notes_dir_with_base(base, folder))
+}
+
 /// Returns the root notes directory under a custom base path.
 pub fn notes_root_with_base(base: &std::path::Path) -> PathBuf {
     base.join("notes")
@@ -56,7 +64,7 @@ pub fn notes_root_with_base(base: &std::path::Path) -> PathBuf {
 
 /// List all `.md` files in the folder's notes directory, sorted by modified time (newest first).
 pub fn list_notes(base: &std::path::Path, folder: &str) -> std::io::Result<Vec<NoteEntry>> {
-    let dir = notes_dir_with_base(base, folder);
+    let dir = validated_notes_dir(base, folder)?;
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -87,14 +95,14 @@ pub fn list_notes(base: &std::path::Path, folder: &str) -> std::io::Result<Vec<N
 /// Read the content of a note file.
 pub fn read_note(base: &std::path::Path, folder: &str, filename: &str) -> std::io::Result<String> {
     validate_filename(filename)?;
-    let path = notes_dir_with_base(base, folder).join(filename);
+    let path = validated_notes_dir(base, folder)?.join(filename);
     fs::read_to_string(path)
 }
 
 /// Check whether a note file exists after validating its filename.
 pub fn note_exists(base: &std::path::Path, folder: &str, filename: &str) -> std::io::Result<bool> {
     validate_filename(filename)?;
-    let path = notes_dir_with_base(base, folder).join(filename);
+    let path = validated_notes_dir(base, folder)?.join(filename);
     Ok(path.exists())
 }
 
@@ -106,7 +114,7 @@ pub fn write_note(
     content: &str,
 ) -> std::io::Result<()> {
     validate_filename(filename)?;
-    let dir = notes_dir_with_base(base, folder);
+    let dir = validated_notes_dir(base, folder)?;
     fs::create_dir_all(&dir)?;
     fs::write(dir.join(filename), content)
 }
@@ -122,7 +130,7 @@ pub fn create_note(base: &std::path::Path, folder: &str, title: &str) -> std::io
     };
     validate_filename(&filename)?;
 
-    let dir = notes_dir_with_base(base, folder);
+    let dir = validated_notes_dir(base, folder)?;
     fs::create_dir_all(&dir)?;
 
     let path = dir.join(&filename);
@@ -154,7 +162,7 @@ pub fn rename_note(
     };
     validate_filename(&new_filename)?;
 
-    let dir = notes_dir_with_base(base, folder);
+    let dir = validated_notes_dir(base, folder)?;
     let old_path = dir.join(old_name);
     let new_path = dir.join(&new_filename);
 
@@ -206,7 +214,7 @@ pub fn duplicate_note(
     filename: &str,
 ) -> std::io::Result<String> {
     validate_filename(filename)?;
-    let dir = notes_dir_with_base(base, folder);
+    let dir = validated_notes_dir(base, folder)?;
     let src_path = dir.join(filename);
 
     if !src_path.exists() {
@@ -229,7 +237,7 @@ pub fn duplicate_note(
 /// Delete a note file. Returns Ok(()) even if the file doesn't exist (idempotent).
 pub fn delete_note(base: &std::path::Path, folder: &str, filename: &str) -> std::io::Result<()> {
     validate_filename(filename)?;
-    let path = notes_dir_with_base(base, folder).join(filename);
+    let path = validated_notes_dir(base, folder)?.join(filename);
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -258,8 +266,7 @@ pub fn list_folders(base: &std::path::Path) -> std::io::Result<Vec<String>> {
 
 /// Create an empty folder. Returns error if it already exists.
 pub fn create_folder(base: &std::path::Path, name: &str) -> std::io::Result<()> {
-    validate_folder_name(name)?;
-    let dir = notes_dir_with_base(base, name);
+    let dir = validated_notes_dir(base, name)?;
     if dir.exists() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::AlreadyExists,
@@ -277,8 +284,8 @@ pub fn rename_folder(
 ) -> std::io::Result<()> {
     validate_folder_name(old_name)?;
     validate_folder_name(new_name)?;
-    let old_dir = notes_dir_with_base(base, old_name);
-    let new_dir = notes_dir_with_base(base, new_name);
+    let old_dir = validated_notes_dir(base, old_name)?;
+    let new_dir = validated_notes_dir(base, new_name)?;
     if !old_dir.exists() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -297,8 +304,7 @@ pub fn rename_folder(
 /// Delete a folder. If `force` is false, fails when the folder is non-empty.
 /// Returns Ok(()) if the folder doesn't exist (idempotent).
 pub fn delete_folder(base: &std::path::Path, name: &str, force: bool) -> std::io::Result<()> {
-    validate_folder_name(name)?;
-    let dir = notes_dir_with_base(base, name);
+    let dir = validated_notes_dir(base, name)?;
     if !dir.exists() {
         return Ok(());
     }
@@ -344,7 +350,7 @@ pub fn save_note_image(
         ));
     }
 
-    let assets_dir = notes_dir_with_base(base, folder).join("assets");
+    let assets_dir = validated_notes_dir(base, folder)?.join("assets");
     fs::create_dir_all(&assets_dir)?;
 
     let short_id = &Uuid::new_v4().to_string()[..8];
@@ -362,7 +368,7 @@ pub fn resolve_note_asset_path(
     relative_path: &str,
 ) -> std::io::Result<PathBuf> {
     validate_asset_path(relative_path)?;
-    let full_path = notes_dir_with_base(base, folder).join(relative_path);
+    let full_path = validated_notes_dir(base, folder)?.join(relative_path);
     Ok(full_path)
 }
 
@@ -878,5 +884,58 @@ mod tests {
         let result = resolve_note_asset_path(tmp.path(), "proj", "/etc/passwd");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    // ── Folder path traversal tests ─────────────────────────────────
+
+    #[test]
+    fn test_folder_traversal_rejected_in_all_note_operations() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        let bad_folders = &["../secret", "../../etc", "foo/bar", "foo\\bar", ".."];
+
+        for bad in bad_folders {
+            let ctx = format!("folder={:?}", bad);
+
+            let r = list_notes(base, bad);
+            assert!(r.is_err(), "list_notes should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = read_note(base, bad, "x.md");
+            assert!(r.is_err(), "read_note should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = note_exists(base, bad, "x.md");
+            assert!(r.is_err(), "note_exists should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = write_note(base, bad, "x.md", "data");
+            assert!(r.is_err(), "write_note should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = create_note(base, bad, "x");
+            assert!(r.is_err(), "create_note should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = rename_note(base, bad, "a.md", "b.md");
+            assert!(r.is_err(), "rename_note should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = duplicate_note(base, bad, "x.md");
+            assert!(r.is_err(), "duplicate_note should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = delete_note(base, bad, "x.md");
+            assert!(r.is_err(), "delete_note should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = save_note_image(base, bad, &[1, 2, 3], "png");
+            assert!(r.is_err(), "save_note_image should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+
+            let r = resolve_note_asset_path(base, bad, "assets/img.png");
+            assert!(r.is_err(), "resolve_note_asset_path should reject {}", ctx);
+            assert_eq!(r.unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        }
     }
 }

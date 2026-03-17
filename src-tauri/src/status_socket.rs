@@ -267,7 +267,9 @@ fn handle_connection_with_state(
                     Ok(SocketMessage::SecureEnv(request)) => {
                         let (response_tx, response_rx) = std::sync::mpsc::sync_channel(1);
                         match dispatch_secure_env_request(state, emitter, request, response_tx) {
-                            Ok(()) => match response_rx.recv() {
+                            Ok(()) => match response_rx
+                                .recv_timeout(std::time::Duration::from_secs(120))
+                            {
                                 Ok(response) => write_socket_response(&mut writer, &response),
                                 Err(err) => {
                                     tracing::error!(

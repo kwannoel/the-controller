@@ -57,7 +57,7 @@ struct BrokerSession {
     ring: Arc<Mutex<RingBuffer>>,
     /// Senders for connected data-socket clients.
     clients: Arc<Mutex<ClientSenders>>,
-    pty_writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    pty_writer: Arc<std::sync::Mutex<Box<dyn Write + Send>>>,
     _master: Box<dyn MasterPty + Send>,
 }
 
@@ -126,6 +126,7 @@ impl Broker {
             cmd.arg(arg);
         }
         // Clear inherited env vars and set only what the client sent
+        cmd.env_clear();
         for (key, val) in &req.env {
             cmd.env(key, val);
         }
@@ -192,15 +193,21 @@ impl Broker {
             }
         });
 
-        // Wait for child exit in background
+        // Wait for child exit in background and clean up session resources
         let alive_child = Arc::clone(&alive);
         let activity_child = Arc::clone(&self.activity);
+        let sessions_child = Arc::clone(&self.sessions);
+        let data_path_child = self.data_socket_path(session_id);
         tokio::task::spawn_blocking(move || {
             let mut child = child;
             let _ = child.wait();
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
                 *alive_child.lock().await = false;
+                // Clean up: remove session from HashMap and delete the data socket file,
+                // mirroring the cleanup done in handle_kill.
+                sessions_child.lock().await.remove(&session_id);
+                let _ = std::fs::remove_file(&data_path_child);
             });
             activity_child.notify_one();
         });
@@ -219,15 +226,20 @@ impl Broker {
 
         let ring_for_data = Arc::clone(&ring);
         let clients_for_data = Arc::clone(&clients);
-        let pty_writer_arc = Arc::new(Mutex::new(writer));
+        let pty_writer_arc = Arc::new(std::sync::Mutex::new(writer));
         let pty_writer_for_data = Arc::clone(&pty_writer_arc);
         let activity_data = Arc::clone(&self.activity);
+        let sessions_for_data = Arc::clone(&self.sessions);
 
         tokio::spawn(async move {
             loop {
                 let Ok((stream, _)) = data_listener.accept().await else {
                     break;
                 };
+                // Stop accepting if the session has been removed (natural exit or kill)
+                if !sessions_for_data.lock().await.contains_key(&session_id) {
+                    break;
+                }
                 activity_data.notify_one();
                 let ring = Arc::clone(&ring_for_data);
                 let clients = Arc::clone(&clients_for_data);
@@ -347,7 +359,7 @@ async fn handle_data_client(
     stream: UnixStream,
     ring: Arc<Mutex<RingBuffer>>,
     clients: Arc<Mutex<Vec<mpsc::UnboundedSender<Vec<u8>>>>>,
-    pty_writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    pty_writer: Arc<std::sync::Mutex<Box<dyn Write + Send>>>,
 ) {
     let (mut read_half, mut write_half) = stream.into_split();
 
@@ -378,11 +390,20 @@ async fn handle_data_client(
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     let data = buf[..n].to_vec();
-                    let mut writer = pty_writer.lock().await;
-                    if writer.write_all(&data).is_err() {
+                    let pty_writer = Arc::clone(&pty_writer);
+                    let ok = tokio::task::spawn_blocking(move || {
+                        let mut writer = pty_writer.lock().unwrap();
+                        if writer.write_all(&data).is_err() {
+                            return false;
+                        }
+                        let _ = writer.flush();
+                        true
+                    })
+                    .await
+                    .unwrap_or(false);
+                    if !ok {
                         break;
                     }
-                    let _ = writer.flush();
                 }
             }
         }

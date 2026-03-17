@@ -47,6 +47,8 @@
         next.set(folder, entries);
         return next;
       });
+    }).catch(err => {
+      console.error(`Failed to fetch notes for folder "${folder}":`, err);
     });
   }
 

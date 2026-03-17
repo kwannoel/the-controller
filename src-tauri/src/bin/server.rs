@@ -232,8 +232,9 @@ async fn main() {
     match &token {
         Some(t) => {
             // Print token to stdout (ephemeral) — don't persist it in log files
+            let masked = format!("{}***", &t[..4.min(t.len())]);
             println!("Server listening on http://{}?token={}", addr, t);
-            tracing::info!("server listening on http://{} (auth enabled)", addr);
+            tracing::info!("server listening on http://{} (token: {})", addr, masked);
         }
         None => tracing::info!("server listening on http://{} (no auth)", addr),
     }
@@ -1201,9 +1202,6 @@ async fn merge_session_branch(
     AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    use the_controller_lib::models::MergeResponse;
-    use the_controller_lib::worktree::{MergeResult, WorktreeManager};
-
     let project_id = args["projectId"].as_str().unwrap_or_default();
     let session_id = args["sessionId"].as_str().unwrap_or_default();
     let project_uuid =
@@ -1238,13 +1236,46 @@ async fn merge_session_branch(
         (project.repo_path.clone(), wt_path, branch)
     };
 
+    const OVERALL_TIMEOUT_SECS: u64 = 600; // 10 minutes
+
+    let merge_result = tokio::time::timeout(
+        std::time::Duration::from_secs(OVERALL_TIMEOUT_SECS),
+        do_merge_with_retries(
+            &state,
+            &repo_path,
+            &worktree_path,
+            &branch_name,
+            session_uuid,
+        ),
+    )
+    .await;
+
+    match merge_result {
+        Ok(inner) => inner,
+        Err(_) => Err((
+            StatusCode::GATEWAY_TIMEOUT,
+            format!("Merge timed out after {} seconds", OVERALL_TIMEOUT_SECS),
+        )),
+    }
+}
+
+async fn do_merge_with_retries(
+    state: &Arc<ServerState>,
+    repo_path: &str,
+    worktree_path: &str,
+    branch_name: &str,
+    session_uuid: uuid::Uuid,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    use the_controller_lib::models::MergeResponse;
+    use the_controller_lib::worktree::{MergeResult, WorktreeManager};
+
     const MAX_RETRIES: u32 = 5;
     const POLL_INTERVAL_SECS: u64 = 3;
 
     for attempt in 0..MAX_RETRIES {
-        let rp = repo_path.clone();
-        let wt = worktree_path.clone();
-        let br = branch_name.clone();
+        let rp = repo_path.to_string();
+        let wt = worktree_path.to_string();
+        let br = branch_name.to_string();
 
         let result = tokio::task::spawn_blocking(move || {
             if WorktreeManager::is_rebase_in_progress(&wt) {
@@ -1287,14 +1318,14 @@ async fn merge_session_branch(
                     ),
                 );
 
-                let wt_poll = worktree_path.clone();
+                let wt_poll = worktree_path.to_string();
                 let max_polls = 200; // 600s / 3s
                 let mut poll_count = 0;
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(POLL_INTERVAL_SECS)).await;
                     poll_count += 1;
                     if poll_count >= max_polls {
-                        break; // timeout, let outer retry loop handle it
+                        break;
                     }
                     let wt_check = wt_poll.clone();
                     let still_rebasing = tokio::task::spawn_blocking(move || {
@@ -2752,6 +2783,25 @@ async fn list_directories_at(Json(args): Json<Value>) -> Result<Json<Value>, (St
         return Err((
             StatusCode::BAD_REQUEST,
             format!("Not a directory: {}", path),
+        ));
+    }
+    // Restrict to directories under $HOME to prevent arbitrary filesystem enumeration
+    let requested = std::fs::canonicalize(p).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("cannot resolve path: {}", e),
+        )
+    })?;
+    let home = dirs::home_dir().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "cannot determine home directory".to_string(),
+        )
+    })?;
+    if !requested.starts_with(&home) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "path must be under the home directory".to_string(),
         ));
     }
     let entries = config::list_directories(p)

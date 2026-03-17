@@ -126,7 +126,7 @@ impl AudioOutput {
             .build_output_stream(
                 &config,
                 move |output: &mut [f32], _info: &cpal::OutputCallbackInfo| {
-                    let mut buf = buf_cb.lock().unwrap();
+                    let mut buf = buf_cb.lock().unwrap_or_else(|e| e.into_inner());
                     for sample in output.iter_mut() {
                         if let Some(s) = buf.pop_front() {
                             *sample = s;
@@ -196,7 +196,7 @@ impl StreamingPlayback {
             }
         }
 
-        let mut buf = self.buffer.lock().unwrap();
+        let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
         buf.extend(resampled);
     }
 
@@ -217,7 +217,7 @@ impl StreamingPlayback {
     /// Cancel playback immediately — clear the buffer and signal done.
     pub fn cancel(self) {
         {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.clear();
         }
         self.done_writing.store(true, Ordering::Relaxed);

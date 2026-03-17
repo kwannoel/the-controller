@@ -65,7 +65,10 @@
               onSessionFocus(session.id, project.id);
             }}
             onkeydown={(e: KeyboardEvent) => {
-              if (e.key === "Enter" || e.key === " ") onSessionSelect(session.id, project.id);
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onSessionSelect(session.id, project.id);
+              }
             }}
           >
             <span

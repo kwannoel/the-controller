@@ -108,10 +108,10 @@ impl WorktreeManager {
     }
 
     /// Sync the main branch by pulling from remote.
-    /// Runs `git pull` in the repo directory.
-    pub fn sync_main(repo_path: &str) -> Result<(), String> {
+    /// Runs `git pull origin <branch>` in the repo directory.
+    pub fn sync_main(repo_path: &str, branch: &str) -> Result<(), String> {
         let output = Command::new("git")
-            .args(["pull"])
+            .args(["pull", "origin", branch])
             .current_dir(repo_path)
             .output()
             .map_err(|e| format!("failed to run git pull: {}", e))?;
@@ -119,7 +119,10 @@ impl WorktreeManager {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // Ignore "no remote" errors — local-only repos are fine
-            if stderr.contains("No remote") || stderr.contains("no tracking information") {
+            if stderr.contains("No remote")
+                || stderr.contains("no tracking information")
+                || stderr.contains("does not appear to be a git repository")
+            {
                 return Ok(());
             }
             return Err(format!("git pull failed: {}", stderr.trim()));
@@ -143,7 +146,7 @@ impl WorktreeManager {
         let main_branch = Self::detect_main_branch(repo_path)?;
 
         // 1. Sync main
-        Self::sync_main(repo_path)?;
+        Self::sync_main(repo_path, &main_branch)?;
 
         // 2. Rebase session branch onto main
         let rebase_output = Command::new("git")
@@ -437,7 +440,7 @@ mod tests {
     fn test_sync_main_local_only_repo() {
         let (_tmp, repo_path) = setup_test_repo();
         // sync_main on a repo with no remote should succeed (no-op)
-        let result = WorktreeManager::sync_main(&repo_path);
+        let result = WorktreeManager::sync_main(&repo_path, "main");
         assert!(
             result.is_ok(),
             "sync_main should succeed on local-only repo: {:?}",

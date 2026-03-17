@@ -213,11 +213,11 @@ fn test_no_duplicate_project_names() {
     let projects = storage.list_projects().expect("list projects");
     let count = projects.iter().filter(|p| p.name == "my-project").count();
 
-    // This documents the current behavior: storage doesn't enforce uniqueness,
-    // the command layer does. If storage gains enforcement, this test still passes.
-    assert!(
-        count >= 1,
-        "at least one project named 'my-project' should exist"
+    // Storage doesn't enforce uniqueness — the command layer does.
+    // Both projects should be persisted.
+    assert_eq!(
+        count, 2,
+        "storage should persist both projects with the same name"
     );
 }
 

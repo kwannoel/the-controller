@@ -94,7 +94,7 @@ fn control_request(path: &Path, req: &Request) -> Response {
         .set_write_timeout(Some(Duration::from_secs(5)))
         .unwrap();
 
-    let frame = encode_request(req);
+    let frame = encode_request(req).expect("encode request");
     stream.write_all(&frame).expect("send request");
 
     let mut header = [0u8; 5];
@@ -540,12 +540,24 @@ fn test_spawn_echo_reads_output_via_data_socket() {
     let broker = start_broker();
     let sid = Uuid::new_v4();
 
+    // Use cat (long-lived) instead of echo so the session stays alive
+    // long enough to connect the data socket.
     control_request(
         &broker.control_path(),
-        &Request::Spawn(make_spawn_request(sid, "/bin/echo", &["hello", "world"])),
+        &Request::Spawn(make_spawn_request(sid, "/bin/cat", &[])),
     );
 
     let mut data = connect_data_socket(&broker.data_path(sid));
+    data.set_nonblocking(false).unwrap();
+    data.set_write_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+
+    // Write through cat's stdin; cat echoes it back
+    data.write_all(b"hello world\n")
+        .expect("write to data socket");
+    data.flush().unwrap();
+
+    data.set_nonblocking(true).unwrap();
     let output = read_until(&mut data, "hello world", Duration::from_secs(5));
     assert!(
         output.contains("hello world"),

@@ -57,58 +57,61 @@
 
   // When focusTarget changes, expand and focus the relevant DOM element
   $effect(() => {
-    if (currentFocus?.type === "session") {
-      if (!expandedProjectSet.has(currentFocus.projectId)) {
+    const focus = currentFocus;
+    if (!focus) return;
+
+    if (focus.type === "session") {
+      if (!expandedProjectSet.has(focus.projectId)) {
         const next = new Set(expandedProjectSet);
-        next.add(currentFocus.projectId);
+        next.add(focus.projectId);
         expandedProjects.set(next);
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-session-id="${currentFocus.sessionId}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-session-id="${focus.sessionId}"]`);
           if (el) el.focus();
         });
       }
-    } else if (currentFocus?.type === "project") {
+    } else if (focus.type === "project") {
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-project-id="${currentFocus.projectId}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-project-id="${focus.projectId}"]`);
           if (el) el.focus();
         });
       }
-    } else if (currentFocus?.type === "agent") {
-      if (!expandedProjectSet.has(currentFocus.projectId)) {
+    } else if (focus.type === "agent") {
+      if (!expandedProjectSet.has(focus.projectId)) {
         const next = new Set(expandedProjectSet);
-        next.add(currentFocus.projectId);
+        next.add(focus.projectId);
         expandedProjects.set(next);
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-agent-id="${currentFocus.projectId}:${currentFocus.agentKind}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-agent-id="${focus.projectId}:${focus.agentKind}"]`);
           if (el) el.focus();
         });
       }
-    } else if (currentFocus?.type === "agent-panel") {
+    } else if (focus.type === "agent-panel") {
       // Blur sidebar element so visual focus moves to the panel
       if (document.activeElement instanceof HTMLElement && sidebarEl?.contains(document.activeElement)) {
         document.activeElement.blur();
       }
-    } else if (currentFocus?.type === "folder") {
+    } else if (focus.type === "folder") {
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-folder-id="${currentFocus.folder}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-folder-id="${focus.folder}"]`);
           if (el) el.focus();
         });
       }
-    } else if (currentFocus?.type === "note") {
-      if (!expandedProjectSet.has(currentFocus.folder)) {
+    } else if (focus.type === "note") {
+      if (!expandedProjectSet.has(focus.folder)) {
         const next = new Set(expandedProjectSet);
-        next.add(currentFocus.folder);
+        next.add(focus.folder);
         expandedProjects.set(next);
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-note-id="${currentFocus.folder}:${currentFocus.filename}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-note-id="${focus.folder}:${focus.filename}"]`);
           if (el) el.focus();
         });
       }
@@ -223,6 +226,8 @@
   $effect(() => {
     command<string[]>("list_folders", {}).then(folders => {
       noteFolders.set(folders);
+    }).catch(err => {
+      console.error("Failed to list folders:", err);
     });
   });
 

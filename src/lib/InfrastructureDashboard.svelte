@@ -17,15 +17,25 @@
     return `${Math.floor(seconds / 86400)}d`;
   }
 
-  function statusColor(status: string): string {
-    const style = getComputedStyle(document.documentElement);
-    switch (status) {
-      case "running": return style.getPropertyValue("--status-idle").trim();
-      case "stopped": return style.getPropertyValue("--text-tertiary").trim();
-      case "deploying": return style.getPropertyValue("--status-working").trim();
-      case "error": return style.getPropertyValue("--status-error").trim();
-      default: return style.getPropertyValue("--text-secondary").trim();
+  let cachedColors: Record<string, string> | null = null;
+
+  function getThemeColors(): Record<string, string> {
+    if (!cachedColors) {
+      const style = getComputedStyle(document.documentElement);
+      cachedColors = {
+        running: style.getPropertyValue("--status-idle").trim(),
+        stopped: style.getPropertyValue("--text-tertiary").trim(),
+        deploying: style.getPropertyValue("--status-working").trim(),
+        error: style.getPropertyValue("--status-error").trim(),
+        default: style.getPropertyValue("--text-secondary").trim(),
+      };
     }
+    return cachedColors;
+  }
+
+  function statusColor(status: string): string {
+    const colors = getThemeColors();
+    return colors[status] ?? colors["default"];
   }
 </script>
 

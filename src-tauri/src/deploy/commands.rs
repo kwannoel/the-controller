@@ -82,7 +82,9 @@ pub struct DeployResult {
 
 #[tauri::command]
 pub async fn deploy_project(request: DeployRequest) -> Result<DeployResult, String> {
-    let creds = DeployCredentials::load()?;
+    let creds = tokio::task::spawn_blocking(DeployCredentials::load)
+        .await
+        .map_err(|e| e.to_string())??;
     if !creds.is_provisioned() {
         return Err("Deploy not provisioned. Run setup first.".to_string());
     }
@@ -113,7 +115,9 @@ pub async fn deploy_project(request: DeployRequest) -> Result<DeployResult, Stri
 
 #[tauri::command]
 pub async fn list_deployed_services() -> Result<Vec<serde_json::Value>, String> {
-    let creds = DeployCredentials::load()?;
+    let creds = tokio::task::spawn_blocking(DeployCredentials::load)
+        .await
+        .map_err(|e| e.to_string())??;
     if !creds.is_provisioned() {
         return Ok(vec![]);
     }

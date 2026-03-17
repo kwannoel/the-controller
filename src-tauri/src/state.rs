@@ -82,7 +82,7 @@ impl IssueCache {
 }
 
 pub struct AppState {
-    pub storage: Mutex<Storage>,
+    pub storage: Arc<Mutex<Storage>>,
     pub pty_manager: Arc<Mutex<PtyManager>>,
     pub issue_cache: Arc<Mutex<IssueCache>>,
     pub(crate) secure_env_request: Mutex<Option<crate::secure_env::ActiveSecureEnvRequest>>,
@@ -100,7 +100,7 @@ impl AppState {
             Err(_) => Mutex::new(None),
         };
         Ok(Self {
-            storage: Mutex::new(storage),
+            storage: Arc::new(Mutex::new(storage)),
             pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
             secure_env_request: Mutex::new(None),

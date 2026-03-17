@@ -28,25 +28,13 @@ fn read_wav_f32(path: &Path) -> Vec<f32> {
 }
 
 #[test]
+#[ignore = "requires THE_CONTROLLER_RUN_VOICE_E2E=1, speech_sample.wav, and downloaded voice models"]
 fn test_voice_pipeline_e2e() {
-    if std::env::var("THE_CONTROLLER_RUN_VOICE_E2E").as_deref() != Ok("1") {
-        eprintln!(
-            "Skipping: set THE_CONTROLLER_RUN_VOICE_E2E=1 to enable the external voice E2E test."
-        );
-        return;
-    }
-
     let wav_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data/speech_sample.wav");
-    if !wav_path.exists() {
-        eprintln!("Skipping: speech_sample.wav not found.");
-        return;
-    }
+    assert!(wav_path.exists(), "speech_sample.wav not found");
 
     let paths = the_controller_lib::voice::models::ModelPaths::new();
-    if !paths.all_present() {
-        eprintln!("Skipping: voice models not downloaded.");
-        return;
-    }
+    assert!(paths.all_present(), "voice models not downloaded");
 
     // 1. Read WAV
     let audio = read_wav_f32(&wav_path);

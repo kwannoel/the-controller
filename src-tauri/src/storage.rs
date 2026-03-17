@@ -161,7 +161,13 @@ impl Storage {
             let project_dir = entry.path();
             let project_file = project_dir.join("project.json");
             if project_file.exists() {
-                let json = fs::read_to_string(&project_file)?;
+                let json = match fs::read_to_string(&project_file) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        eprintln!("Warning: failed to read {}: {}", project_file.display(), e);
+                        continue;
+                    }
+                };
                 match serde_json::from_str::<Project>(&json) {
                     Ok(project) => inventory.projects.push(project),
                     Err(error) => inventory.corrupt_entries.push(CorruptProjectEntry {

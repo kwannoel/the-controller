@@ -9,9 +9,6 @@
   const activeSessionIdState = fromStore(activeSessionId);
   let activeSession: string | null = $derived(activeSessionIdState.current);
   let terminalComponents: Record<string, Terminal> = $state({});
-  let allSessionIds: Set<string> = $derived(
-    new Set(projectList.flatMap((p) => p.sessions.map((s) => s.id))),
-  );
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {

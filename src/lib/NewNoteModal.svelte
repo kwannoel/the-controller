@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
 
   const NEW_FOLDER_SENTINEL = "__new_folder__";
 
@@ -23,13 +23,14 @@
   let canSubmit = $derived(title.trim() !== "" && resolvedFolder !== "");
 
   $effect(() => {
-    selectedFolder =
-      folders.length > 0 && selectedFolder === NEW_FOLDER_SENTINEL
-        ? folders[0]
-        : selectedFolder;
+    if (folders.length > 0 && selectedFolder === NEW_FOLDER_SENTINEL) {
+      selectedFolder = folders[0];
+      tick().then(() => titleInput?.focus());
+    }
   });
 
-  onMount(() => {
+  onMount(async () => {
+    await tick();
     if (isNewFolder) {
       newFolderInput?.focus();
     } else {

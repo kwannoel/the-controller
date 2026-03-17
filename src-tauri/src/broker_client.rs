@@ -3,7 +3,14 @@ use std::io::{self, Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use uuid::Uuid;
+
+/// Cached staleness check result, keyed by broker PID.
+/// Once we verify a broker with a given PID is NOT stale, we skip the
+/// expensive `--build-date` subprocess on subsequent calls.
+/// If the broker restarts (new PID), the cache miss forces a re-check.
+static STALE_CHECK_CACHE: Mutex<Option<(i32, bool)>> = Mutex::new(None);
 
 /// Default socket directory for the PTY broker.
 fn default_socket_dir() -> PathBuf {
@@ -144,7 +151,35 @@ impl BrokerClient {
     }
 
     /// Check if the installed broker binary has a different build date than this app.
+    /// Result is cached per broker PID to avoid forking a subprocess on every RPC call.
     fn is_broker_stale(&self) -> bool {
+        let current_pid = self.read_pid();
+
+        // Check cache: if we already verified this PID, return the cached result.
+        if let Some(pid) = current_pid {
+            if let Ok(cache) = STALE_CHECK_CACHE.lock() {
+                if let Some((cached_pid, cached_stale)) = *cache {
+                    if cached_pid == pid {
+                        return cached_stale;
+                    }
+                }
+            }
+        }
+
+        let stale = self.check_broker_stale();
+
+        // Cache the result if we have a valid PID.
+        if let Some(pid) = current_pid {
+            if let Ok(mut cache) = STALE_CHECK_CACHE.lock() {
+                *cache = Some((pid, stale));
+            }
+        }
+
+        stale
+    }
+
+    /// Perform the actual staleness check by spawning the broker binary.
+    fn check_broker_stale(&self) -> bool {
         let Some(binary) = Self::broker_binary_path() else {
             return false;
         };
@@ -169,7 +204,7 @@ impl BrokerClient {
     /// Send a Shutdown request on an existing stream (best-effort).
     fn send_shutdown_to(&self, stream: &UnixStream) -> io::Result<()> {
         let mut stream = stream.try_clone()?;
-        let frame = encode_request(&Request::Shutdown);
+        let frame = encode_request(&Request::Shutdown)?;
         stream.write_all(&frame)?;
         Ok(())
     }
@@ -228,7 +263,7 @@ impl BrokerClient {
             .connect_control()
             .map_err(|e| format!("broker connection failed: {}", e))?;
 
-        let frame = encode_request(req);
+        let frame = encode_request(req).map_err(|e| format!("failed to encode request: {}", e))?;
         stream
             .write_all(&frame)
             .map_err(|e| format!("failed to send request: {}", e))?;
@@ -239,6 +274,12 @@ impl BrokerClient {
             .read_exact(&mut header)
             .map_err(|e| format!("failed to read response header: {}", e))?;
         let len = u32::from_be_bytes([header[1], header[2], header[3], header[4]]) as usize;
+        if len > MAX_MESSAGE_SIZE {
+            return Err(format!(
+                "message size {} exceeds maximum {}",
+                len, MAX_MESSAGE_SIZE
+            ));
+        }
         let mut payload = vec![0u8; len];
         if len > 0 {
             stream

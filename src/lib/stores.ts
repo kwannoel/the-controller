@@ -294,9 +294,17 @@ export const sidebarVisible = writable<boolean>(true);
 
 export const expandedProjects = writable<Set<string>>(new Set());
 
+let hotkeyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function dispatchHotkeyAction(action: NonNullable<HotkeyAction>) {
+  if (hotkeyResetTimer !== null) {
+    clearTimeout(hotkeyResetTimer);
+  }
   hotkeyAction.set(action);
-  setTimeout(() => hotkeyAction.set(null), 0);
+  hotkeyResetTimer = setTimeout(() => {
+    hotkeyAction.set(null);
+    hotkeyResetTimer = null;
+  }, 0);
 }
 
 export function focusTerminalSoon(delayMs = 50) {
