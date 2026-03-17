@@ -1,6 +1,6 @@
 ---
 name: the-controller-autonomous-execution
-description: Use when executing an implementation plan fully autonomously without human interaction, only reporting back when all tasks are complete or when genuinely blocked
+description: Use when executing an implementation plan fully autonomously without human interaction
 ---
 
 # Autonomous Execution
