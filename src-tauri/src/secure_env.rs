@@ -346,7 +346,7 @@ mod tests {
             auto_worker: AutoWorkerConfig::default(),
             prompts: vec![],
             sessions: vec![],
-            staged_session: None,
+            staged_sessions: vec![],
         };
 
         state

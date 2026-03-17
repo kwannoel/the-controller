@@ -156,13 +156,15 @@ pub fn run() {
                     if let Ok(storage) = state.storage.lock() {
                         if let Ok(inventory) = storage.list_projects() {
                             for project in &inventory.projects {
-                                if let Some(staged) = &project.staged_session {
-                                    commands::kill_process_group(staged.pid);
-                                    let _ =
-                                        std::fs::remove_file(status_socket::staged_socket_path());
-                                    // Clear stale staged_session record
+                                if !project.staged_sessions.is_empty() {
                                     let mut p = project.clone();
-                                    p.staged_session = None;
+                                    for staged in &project.staged_sessions {
+                                        commands::kill_process_group(staged.pid);
+                                        let _ = std::fs::remove_file(
+                                            status_socket::staged_socket_path(&staged.session_id),
+                                        );
+                                    }
+                                    p.staged_sessions.clear();
                                     let _ = storage.save_project(&p);
                                 }
                             }

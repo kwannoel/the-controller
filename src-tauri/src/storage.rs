@@ -366,7 +366,7 @@ mod tests {
                 done_commits: vec![],
                 auto_worker_session: false,
             }],
-            staged_session: None,
+            staged_sessions: vec![],
         }
     }
 

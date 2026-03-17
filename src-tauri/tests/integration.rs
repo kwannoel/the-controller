@@ -27,7 +27,7 @@ fn test_project_lifecycle() {
         auto_worker: AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -75,7 +75,7 @@ fn test_agents_md_lifecycle() {
         auto_worker: AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -154,7 +154,7 @@ fn test_sessions_persist_across_restarts() {
                 auto_worker_session: false,
             },
         ],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -185,7 +185,7 @@ fn test_no_duplicate_project_names() {
         auto_worker: AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage
         .save_project(&project_a)
@@ -204,7 +204,7 @@ fn test_no_duplicate_project_names() {
         auto_worker: AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage
         .save_project(&project_b)
@@ -236,7 +236,7 @@ fn test_archived_project_name_still_blocks_duplicate_name_checks() {
         auto_worker: AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage
         .save_project(&project)
@@ -298,7 +298,7 @@ fn test_worktrees_persist_across_restarts() {
             done_commits: vec![],
             auto_worker_session: false,
         }],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -347,7 +347,7 @@ fn test_migrate_worktree_paths_renames_uuid_dir() {
             done_commits: vec![],
             auto_worker_session: false,
         }],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -403,7 +403,7 @@ fn test_migrate_worktree_paths_noop_when_no_uuid_dir() {
             done_commits: vec![],
             auto_worker_session: false,
         }],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -461,7 +461,7 @@ fn test_migrate_worktree_paths_repairs_stale_paths_after_partial_migration() {
             done_commits: vec![],
             auto_worker_session: false,
         }],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -530,7 +530,7 @@ fn test_migrate_worktree_paths_noop_on_name_collision() {
             done_commits: vec![],
             auto_worker_session: false,
         }],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
@@ -581,7 +581,7 @@ fn test_create_session_uses_project_name_in_path() {
         auto_worker: AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
     storage.save_project(&project).expect("save project");
 
