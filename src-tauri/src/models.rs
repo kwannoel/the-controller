@@ -15,9 +15,9 @@ pub struct Project {
     pub auto_worker: AutoWorkerConfig,
     #[serde(default)]
     pub prompts: Vec<SavedPrompt>,
-    /// When a session is staged as a separate Controller instance.
-    #[serde(default)]
-    pub staged_session: Option<StagedSession>,
+    /// Sessions staged as separate Controller instances.
+    #[serde(default, alias = "staged_session", deserialize_with = "deserialize_staged_sessions")]
+    pub staged_sessions: Vec<StagedSession>,
 }
 
 /// Tracks staging state: which session is running as a separate
@@ -216,6 +216,32 @@ pub struct AutoWorkerQueueIssue {
     pub is_active: bool,
 }
 
+fn deserialize_staged_sessions<'de, D>(deserializer: D) -> Result<Vec<StagedSession>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    use serde_json::Value;
+
+    let value = Option::<Value>::deserialize(deserializer)?;
+    match value {
+        None => Ok(vec![]),
+        Some(Value::Array(arr)) => {
+            let sessions: Vec<StagedSession> = arr
+                .into_iter()
+                .map(|v| serde_json::from_value(v).map_err(serde::de::Error::custom))
+                .collect::<Result<_, _>>()?;
+            Ok(sessions)
+        }
+        Some(obj @ Value::Object(_)) => {
+            let session: StagedSession =
+                serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+            Ok(vec![session])
+        }
+        Some(_) => Err(serde::de::Error::custom("unexpected staged_sessions value")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,7 +269,7 @@ mod tests {
                 done_commits: vec![],
                 auto_worker_session: false,
             }],
-            staged_session: None,
+            staged_sessions: vec![],
         };
 
         let json = serde_json::to_string(&project).expect("serialize");
@@ -301,7 +327,7 @@ mod tests {
                 done_commits: vec![],
                 auto_worker_session: false,
             }],
-            staged_session: None,
+            staged_sessions: vec![],
         };
 
         let json = serde_json::to_string(&project).expect("serialize");
@@ -466,7 +492,7 @@ mod tests {
             auto_worker: AutoWorkerConfig::default(),
             prompts: vec![],
             sessions: vec![],
-            staged_session: None,
+            staged_sessions: vec![],
         };
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
@@ -570,7 +596,7 @@ mod tests {
             auto_worker: AutoWorkerConfig { enabled: true },
             prompts: vec![],
             sessions: vec![],
-            staged_session: None,
+            staged_sessions: vec![],
         };
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
@@ -648,7 +674,7 @@ mod tests {
             "sessions": []
         }"#;
         let project: Project = serde_json::from_str(json).expect("deserialize");
-        assert!(project.staged_session.is_none());
+        assert!(project.staged_sessions.is_empty());
     }
 
     #[test]
@@ -663,17 +689,17 @@ mod tests {
             auto_worker: AutoWorkerConfig::default(),
             prompts: vec![],
             sessions: vec![],
-            staged_session: Some(StagedSession {
+            staged_sessions: vec![StagedSession {
                 session_id: Uuid::new_v4(),
                 pid: 99999,
                 port: 2420,
-            }),
+            }],
         };
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
-        let staged = deserialized.staged_session.unwrap();
-        assert_eq!(staged.pid, 99999);
-        assert_eq!(staged.port, 2420);
+        assert_eq!(deserialized.staged_sessions.len(), 1);
+        assert_eq!(deserialized.staged_sessions[0].pid, 99999);
+        assert_eq!(deserialized.staged_sessions[0].port, 2420);
     }
 
     #[test]
@@ -688,17 +714,17 @@ mod tests {
             auto_worker: AutoWorkerConfig::default(),
             prompts: vec![],
             sessions: vec![],
-            staged_session: Some(StagedSession {
+            staged_sessions: vec![StagedSession {
                 session_id: Uuid::new_v4(),
                 pid: 12345,
                 port: 2420,
-            }),
+            }],
         };
         let json = serde_json::to_string(&project).expect("serialize");
         let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
-        let staged = deserialized.staged_session.unwrap();
-        assert_eq!(staged.pid, 12345);
-        assert_eq!(staged.port, 2420);
+        assert_eq!(deserialized.staged_sessions.len(), 1);
+        assert_eq!(deserialized.staged_sessions[0].pid, 12345);
+        assert_eq!(deserialized.staged_sessions[0].port, 2420);
     }
 
     #[test]
@@ -774,5 +800,50 @@ mod tests {
             deserialized.closed_at.as_deref(),
             Some("2026-03-05T00:00:00Z")
         );
+    }
+
+    #[test]
+    fn test_staged_sessions_multiple_roundtrip() {
+        let project = Project {
+            id: Uuid::new_v4(),
+            name: "test".to_string(),
+            repo_path: "/tmp".to_string(),
+            created_at: "2026-03-16T00:00:00Z".to_string(),
+            archived: false,
+            maintainer: MaintainerConfig::default(),
+            auto_worker: AutoWorkerConfig::default(),
+            prompts: vec![],
+            sessions: vec![],
+            staged_sessions: vec![
+                StagedSession { session_id: Uuid::new_v4(), pid: 1001, port: 2420 },
+                StagedSession { session_id: Uuid::new_v4(), pid: 1002, port: 2421 },
+            ],
+        };
+        let json = serde_json::to_string(&project).expect("serialize");
+        let deserialized: Project = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(deserialized.staged_sessions.len(), 2);
+        assert_eq!(deserialized.staged_sessions[0].port, 2420);
+        assert_eq!(deserialized.staged_sessions[1].port, 2421);
+    }
+
+    #[test]
+    fn test_staged_session_migration_from_old_format() {
+        let json = r#"{
+            "id": "550e8400-e29b-41d4-a716-446655440000",
+            "name": "test",
+            "repo_path": "/tmp",
+            "created_at": "2026-03-16T00:00:00Z",
+            "archived": false,
+            "sessions": [],
+            "staged_session": {
+                "session_id": "550e8400-e29b-41d4-a716-446655440001",
+                "pid": 12345,
+                "port": 2420
+            }
+        }"#;
+        let project: Project = serde_json::from_str(json).expect("deserialize old format");
+        assert_eq!(project.staged_sessions.len(), 1);
+        assert_eq!(project.staged_sessions[0].pid, 12345);
+        assert_eq!(project.staged_sessions[0].port, 2420);
     }
 }
