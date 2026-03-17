@@ -27,8 +27,7 @@ export type CommandId =
   | "generate-architecture"
   | "stage"
   | "toggle-maintainer-view"
-  | "deploy-project"
-  | "rollback-deploy";
+  | "deploy-project";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -103,7 +102,6 @@ export const commands: CommandDef[] = [
 
   // ── Infrastructure ──
   { id: "deploy-project", key: "d", section: "Infrastructure", description: "Deploy focused project", mode: "infrastructure" },
-  { id: "rollback-deploy", key: "r", section: "Infrastructure", description: "Rollback last deployment", mode: "infrastructure" },
 ];
 
 /**

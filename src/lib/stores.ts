@@ -284,7 +284,6 @@ export type HotkeyAction =
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
   | { type: "deploy-project"; projectId: string; repoPath: string }
-  | { type: "rollback-deploy"; projectId: string }
   | { type: "voice-toggle-panel"; panel: "debug" | "transcript" }
   | null;
 

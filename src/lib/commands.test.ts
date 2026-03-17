@@ -212,11 +212,6 @@ describe("command registry", () => {
     expect(map.get("d")).toBe("deploy-project");
   });
 
-  it("includes rollback-deploy command in infrastructure mode keymap", () => {
-    const map = buildKeyMap("infrastructure");
-    expect(map.get("r")).toBe("rollback-deploy");
-  });
-
   it("includes Infrastructure section in help for infrastructure mode", () => {
     const sections = getHelpSections("infrastructure");
     const infraSection = sections.find(s => s.label === "Infrastructure");

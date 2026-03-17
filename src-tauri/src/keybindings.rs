@@ -50,7 +50,6 @@ const KNOWN_COMMANDS: &[&str] = &[
     "duplicate-note",
     "toggle-note-preview",
     "deploy-project",
-    "rollback-deploy",
 ];
 
 /// Commands handled externally (outside `buildKeyMap`) that require a `Meta+`
@@ -179,7 +178,6 @@ const COMMAND_DEFAULTS: &[(&str, &str, &str)] = &[
     ("generate-architecture", "r", "Architecture (architecture)"),
     // Infrastructure (infrastructure)
     ("deploy-project", "d", "Infrastructure (infrastructure)"),
-    ("rollback-deploy", "r", "Infrastructure (infrastructure)"),
 ];
 
 pub fn generate_template() -> String {
