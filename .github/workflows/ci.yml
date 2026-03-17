@@ -44,6 +44,7 @@ jobs:
           sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: cd src-tauri && cargo fmt --check
       - run: cd src-tauri && cargo clippy -- -D warnings
+      - run: cd src-tauri && cargo clippy --features server -- -D warnings
 
   rust-test:
     runs-on: ubuntu-latest
@@ -66,3 +67,4 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: cd src-tauri && cargo test
+      - run: cd src-tauri && cargo test --features server
