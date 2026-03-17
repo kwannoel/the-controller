@@ -12,7 +12,8 @@
     "dev:server": "pnpm build && cd src-tauri && CONTROLLER_DIST_DIR=../dist cargo run --features server --bin server",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:e2e": "playwright test --project=e2e"
+    "test:e2e": "playwright test --project=e2e",
+    "test:e2e:ci": "playwright test --project=ci"
   },
   "license": "MIT",
   "dependencies": {

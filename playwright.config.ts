@@ -22,6 +22,11 @@ export default defineConfig({
   ],
   projects: [
     {
+      name: "ci",
+      testMatch: /smoke|api-health/,
+      use: { browserName: "chromium" },
+    },
+    {
       name: "e2e",
       use: { browserName: "chromium" },
     },
