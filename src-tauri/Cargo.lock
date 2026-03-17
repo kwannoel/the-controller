@@ -5321,6 +5321,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "tower-http",
  "tracing",
  "tracing-appender",

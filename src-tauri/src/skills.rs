@@ -261,7 +261,7 @@ mod tests {
 
         cleanup_stale_symlinks(&dir, &skills_source).unwrap();
 
-        assert!(!link.exists() && !link.symlink_metadata().is_ok()); // Dangling removed
+        assert!(!link.exists() && link.symlink_metadata().is_err()); // Dangling removed
         assert!(valid_link.symlink_metadata().is_ok()); // Valid kept
         assert!(other.symlink_metadata().is_ok()); // Non-skills-source kept
     }

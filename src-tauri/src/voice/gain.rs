@@ -81,7 +81,7 @@ mod tests {
         let quiet: Vec<i16> = (0..512).map(|i| (i % 3) as i16).collect();
         for _ in 0..50 {
             let result = gain.apply(&quiet);
-            assert!(result.iter().all(|&s| s >= -1.0 && s <= 1.0));
+            assert!(result.iter().all(|&s| (-1.0..=1.0).contains(&s)));
         }
     }
 

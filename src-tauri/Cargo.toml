@@ -69,3 +69,4 @@ path = "src/bin/pty_broker.rs"
 [dev-dependencies]
 tempfile = "3"
 filetime = "0.2"
+tokio-tungstenite = "0.28"

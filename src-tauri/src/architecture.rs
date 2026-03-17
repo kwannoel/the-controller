@@ -2024,11 +2024,11 @@ That should be enough to render the view."#;
             "top-level source directories should be preferred"
         );
         assert!(
-            paths.iter().any(|path| *path == "src/main.rs"),
+            paths.contains(&"src/main.rs"),
             "representative root source file should be included"
         );
         assert!(
-            paths.iter().any(|path| *path == "web/app.ts"),
+            paths.contains(&"web/app.ts"),
             "representative file from another top-level directory should be included"
         );
     }
@@ -2056,7 +2056,7 @@ That should be enough to render the view."#;
             .collect();
 
         assert!(
-            paths.iter().any(|path| *path == "main.rs"),
+            paths.contains(&"main.rs"),
             "root-level source files should be considered evidence"
         );
     }

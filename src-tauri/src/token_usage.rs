@@ -317,7 +317,7 @@ mod tests {
     fn test_claude_project_dir_encoding() {
         // The encoding replaces `/` and `.` with `-`
         let path = "/Users/noel/.the-controller/worktrees/foo/session-1";
-        let encoded = path.replace('/', "-").replace('.', "-");
+        let encoded = path.replace(['/', '.'], "-");
         assert_eq!(
             encoded,
             "-Users-noel--the-controller-worktrees-foo-session-1"

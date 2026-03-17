@@ -3192,7 +3192,13 @@ async fn ws_upgrade(
 }
 
 async fn handle_ws(mut socket: WebSocket, mut rx: broadcast::Receiver<String>) {
-    while let Ok(msg) = rx.recv().await {
+    loop {
+        let msg = match rx.recv().await {
+            Ok(msg) => msg,
+            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(broadcast::error::RecvError::Closed) => break,
+        };
+
         if socket.send(Message::Text(msg.into())).await.is_err() {
             break;
         }
@@ -3201,13 +3207,27 @@ async fn handle_ws(mut socket: WebSocket, mut rx: broadcast::Receiver<String>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::{auth_middleware, startup_messages};
-    use axum::{middleware, routing::post, Router};
+    use crate::{auth_middleware, handle_ws, startup_messages, ServerState};
+    use axum::{
+        extract::{ws::WebSocketUpgrade, State as AxumState},
+        middleware,
+        response::IntoResponse,
+        routing::{get, post},
+        Router,
+    };
+    use futures_util::StreamExt;
     use reqwest::StatusCode;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::Arc;
     use tokio::net::TcpListener;
+    use tokio::sync::broadcast;
+    use tokio::time::{timeout, Duration};
+    use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
+
+    use tempfile::TempDir;
+    use the_controller_lib::{emitter::NoopEmitter, state::AppState, storage::Storage};
 
     struct EnvGuard {
         key: &'static str,
@@ -3378,6 +3398,85 @@ mod tests {
             .expect("same-origin request should complete");
 
         assert_eq!(response.status(), reqwest::StatusCode::OK);
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn websocket_client_recovers_after_broadcast_lag() {
+        async fn test_ws_upgrade(
+            ws: WebSocketUpgrade,
+            AxumState(state): AxumState<Arc<ServerState>>,
+        ) -> impl IntoResponse {
+            ws.write_buffer_size(0)
+                .on_upgrade(move |socket| handle_ws(socket, state.ws_tx.subscribe()))
+        }
+
+        let temp_dir = TempDir::new().expect("temp dir should be created");
+        let app_state = Arc::new(
+            AppState::from_storage(
+                Storage::new(temp_dir.path().to_path_buf()),
+                NoopEmitter::new(),
+            )
+            .expect("test app state should initialize"),
+        );
+        let (ws_tx, _) = broadcast::channel(2);
+        let state = Arc::new(ServerState {
+            app: app_state,
+            ws_tx: ws_tx.clone(),
+        });
+        let app = Router::new()
+            .route("/ws", get(test_ws_upgrade))
+            .with_state(state);
+        let (base_url, server_handle) = spawn_test_server(app).await;
+
+        let ws_url = format!("{}/ws", base_url.replacen("http", "ws", 1));
+        let (mut socket, _) = connect_async(&ws_url)
+            .await
+            .expect("websocket client should connect");
+
+        ws_tx
+            .send("ready".to_string())
+            .expect("ready event should be broadcast");
+        let ready = timeout(Duration::from_secs(2), socket.next())
+            .await
+            .expect("ready event should arrive before timeout")
+            .expect("socket should remain open before lag")
+            .expect("ready frame should decode");
+        assert_eq!(
+            ready.into_text().expect("ready frame should be text"),
+            "ready"
+        );
+
+        let flood_payload = "x".repeat(256 * 1024);
+        for index in 0..64 {
+            ws_tx
+                .send(format!("flood-{index}:{flood_payload}"))
+                .expect("flood event should be broadcast");
+        }
+        let recovery = "recovery".to_string();
+        ws_tx
+            .send(recovery.clone())
+            .expect("recovery event should be broadcast");
+
+        let recovered = timeout(Duration::from_secs(5), async {
+            loop {
+                match socket.next().await {
+                    Some(Ok(WsMessage::Text(text))) if text == recovery => return true,
+                    Some(Ok(_)) => continue,
+                    Some(Err(error)) => {
+                        panic!("websocket should stay connected after lag: {error}")
+                    }
+                    None => return false,
+                }
+            }
+        })
+        .await
+        .expect("recovery event should arrive before timeout");
+
+        assert!(
+            recovered,
+            "socket closed after lag instead of receiving later events"
+        );
         server_handle.abort();
     }
 }
