@@ -327,7 +327,7 @@ fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project
         auto_worker: crate::models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     })
 }
 
@@ -443,7 +443,7 @@ pub fn create_project(
         auto_worker: crate::models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -505,7 +505,7 @@ pub fn load_project(
         auto_worker: crate::models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
@@ -874,21 +874,21 @@ pub(crate) async fn stage_session_core(
             return Err("Staging is only supported for the-controller".to_string());
         }
 
-        if let Some(staged) = &project.staged_session {
-            // Check if the staged process is still alive
+        // Check if this specific session is already staged
+        if let Some(existing) = project.staged_sessions.iter().find(|s| s.session_id == session_id) {
             #[cfg(unix)]
-            let alive = unsafe { libc::kill(staged.pid as i32, 0) } == 0;
+            let alive = unsafe { libc::kill(existing.pid as i32, 0) } == 0;
             #[cfg(not(unix))]
             let alive = false;
             if alive {
-                return Err("A session is already staged — unstage it first".to_string());
+                return Err("This session is already staged — unstage it first".to_string());
             }
-            // Stale record — kill orphaned children (e.g. Vite, esbuild that outlived
-            // the process leader), clean up the socket, then clear the record.
-            kill_process_group(staged.pid);
-            let _ = std::fs::remove_file(crate::status_socket::staged_socket_path());
+            // Stale record — clean up
+            kill_process_group(existing.pid);
+            let stale_socket = crate::status_socket::staged_socket_path(&session_id);
+            let _ = std::fs::remove_file(&stale_socket);
             let mut p = project.clone();
-            p.staged_session = None;
+            p.staged_sessions.retain(|s| s.session_id != session_id);
             storage.save_project(&p).map_err(|e| e.to_string())?;
         }
 
@@ -1072,7 +1072,7 @@ pub(crate) async fn stage_session_core(
         .current_dir(&wt)
         .env(
             "CONTROLLER_SOCKET",
-            crate::status_socket::staged_socket_path(),
+            crate::status_socket::staged_socket_path(&session_id),
         )
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_stderr))
@@ -1095,7 +1095,7 @@ pub(crate) async fn stage_session_core(
             .load_project(project_id)
             .map_err(|e| e.to_string())?;
 
-        project.staged_session = Some(StagedSession {
+        project.staged_sessions.push(StagedSession {
             session_id,
             pid,
             port,
@@ -1126,24 +1126,29 @@ pub async fn stage_session(
 }
 
 #[tauri::command]
-pub fn unstage_session(state: State<AppState>, project_id: String) -> Result<(), String> {
+pub fn unstage_session(state: State<AppState>, project_id: String, session_id: String) -> Result<(), String> {
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage
         .load_project(project_uuid)
         .map_err(|e| e.to_string())?;
 
-    let staged = project
-        .staged_session
-        .take()
-        .ok_or("No session is currently staged")?;
+    let idx = project
+        .staged_sessions
+        .iter()
+        .position(|s| s.session_id == session_uuid)
+        .ok_or("This session is not currently staged")?;
+
+    let staged = project.staged_sessions.remove(idx);
 
     // Kill the staged Controller process group
     kill_process_group(staged.pid);
 
-    // Clean up the staged socket
-    let _ = std::fs::remove_file(crate::status_socket::staged_socket_path());
+    // Clean up this session's socket
+    let socket = crate::status_socket::staged_socket_path(&session_uuid);
+    let _ = std::fs::remove_file(&socket);
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
@@ -3145,7 +3150,7 @@ mod tests {
                     auto_worker: crate::models::AutoWorkerConfig::default(),
                     prompts: vec![],
                     sessions: vec![],
-                    staged_session: None,
+                    staged_sessions: vec![],
                 })
                 .expect("save existing project");
         }
@@ -3226,7 +3231,7 @@ mod tests {
                     auto_worker: crate::models::AutoWorkerConfig::default(),
                     prompts: vec![],
                     sessions: vec![],
-                    staged_session: None,
+                    staged_sessions: vec![],
                 })
                 .expect("save archived-flagged project");
         }
@@ -3444,7 +3449,7 @@ mod tests {
                     maintainer: crate::models::MaintainerConfig::default(),
                     auto_worker: crate::models::AutoWorkerConfig { enabled: true },
                     prompts: vec![],
-                    staged_session: None,
+                    staged_sessions: vec![],
                 })
                 .expect("save project");
         }
