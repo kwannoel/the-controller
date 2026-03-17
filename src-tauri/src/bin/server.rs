@@ -29,6 +29,11 @@ struct ServerState {
     ws_tx: broadcast::Sender<String>,
 }
 
+fn report_startup_error(error: &std::io::Error) {
+    tracing::error!("failed to start server: {error}");
+    eprintln!("The Controller server failed to start: {error}");
+}
+
 fn get_port() -> u16 {
     std::env::var("CONTROLLER_PORT")
         .ok()
@@ -87,13 +92,20 @@ async fn shutdown_signal(state: Arc<ServerState>) {
 
 #[tokio::main]
 async fn main() {
+    if let Err(error) = run_server().await {
+        report_startup_error(&error);
+        std::process::exit(1);
+    }
+}
+
+async fn run_server() -> std::io::Result<()> {
     let base_dir = dirs::home_dir()
         .map(|h| h.join(".the-controller"))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let _log_guard = the_controller_lib::logging::init_backend_logging(&base_dir, true);
 
     let (emitter, ws_tx) = WsBroadcastEmitter::new();
-    let app_state = Arc::new(AppState::new(emitter).expect("Failed to initialize app state"));
+    let app_state = Arc::new(AppState::new(emitter)?);
 
     // Start the status socket listener so Claude Code hooks can report session status
     status_socket::start_listener_with_state(app_state.clone());
@@ -245,15 +257,15 @@ async fn main() {
         .ok()
         .filter(|t| !t.is_empty());
     let (stdout_message, log_message) = startup_messages(&addr, token.as_deref());
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
     if let Some(message) = stdout_message {
         println!("{}", message);
     }
     tracing::info!("{}", log_message);
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(state))
         .await
-        .unwrap();
+        .map_err(std::io::Error::other)
 }
 
 // --- Auth middleware ---
