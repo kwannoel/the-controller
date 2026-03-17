@@ -51,7 +51,11 @@ function connectWebSocket(): WebSocket {
     }
   });
 
-  ws.addEventListener("close", () => {
+  ws.addEventListener("close", (ev) => {
+    // Code 1008 = Policy Violation — server rejected the handshake (bad/missing token)
+    if (ev.code === 1008) {
+      authError.set(true);
+    }
     // Only reconnect if this is still the active WebSocket
     if (sharedWs !== ws) return;
     if (reconnectTimer) return;

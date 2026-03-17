@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { get } from "svelte/store";
 
 // Opt out of the global $lib/backend mock so we can test the real implementation.
@@ -95,5 +95,162 @@ describe("backend adapter", () => {
     const { command, authError } = await import("./backend");
     await expect(command("protected_command")).rejects.toThrow("Unauthorized");
     expect(get(authError)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WebSocket / listen() tests
+// ---------------------------------------------------------------------------
+
+class MockWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+
+  CONNECTING = 0;
+  OPEN = 1;
+  CLOSING = 2;
+  CLOSED = 3;
+
+  readyState = MockWebSocket.OPEN;
+  url: string;
+  private handlers: Record<string, Array<(ev: any) => void>> = {};
+
+  constructor(url: string) {
+    this.url = url;
+    // Auto-fire "open" asynchronously so listeners registered after construction see it
+    queueMicrotask(() => this.emit("open", {}));
+  }
+
+  addEventListener(type: string, cb: (ev: any) => void) {
+    (this.handlers[type] ??= []).push(cb);
+  }
+
+  removeEventListener(type: string, cb: (ev: any) => void) {
+    this.handlers[type] = (this.handlers[type] ?? []).filter((h) => h !== cb);
+  }
+
+  emit(type: string, ev: any) {
+    for (const h of this.handlers[type] ?? []) h(ev);
+  }
+
+  close() {
+    this.readyState = MockWebSocket.CLOSED;
+  }
+}
+
+describe("WebSocket listen()", () => {
+  let originalWebSocket: typeof WebSocket;
+  let instances: MockWebSocket[];
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    delete (window as any).__TAURI_INTERNALS__;
+    sessionStorage.clear();
+
+    instances = [];
+    originalWebSocket = globalThis.WebSocket;
+    (globalThis as any).WebSocket = class extends MockWebSocket {
+      constructor(url: string) {
+        super(url);
+        instances.push(this);
+      }
+    };
+    // Assign static constants expected by the production code
+    (globalThis as any).WebSocket.CLOSED = MockWebSocket.CLOSED;
+    (globalThis as any).WebSocket.CLOSING = MockWebSocket.CLOSING;
+    (globalThis as any).WebSocket.OPEN = MockWebSocket.OPEN;
+    (globalThis as any).WebSocket.CONNECTING = MockWebSocket.CONNECTING;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    globalThis.WebSocket = originalWebSocket;
+  });
+
+  it("should dispatch matching events to the handler", async () => {
+    const { listen } = await import("./backend");
+    const handler = vi.fn();
+    listen("my-event", handler);
+
+    // Wait for the microtask (open event)
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ws = instances[0];
+    ws.emit("message", { data: JSON.stringify({ event: "my-event", payload: { x: 1 } }) });
+    expect(handler).toHaveBeenCalledWith({ x: 1 });
+  });
+
+  it("should not dispatch events that don't match", async () => {
+    const { listen } = await import("./backend");
+    const handler = vi.fn();
+    listen("my-event", handler);
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ws = instances[0];
+    ws.emit("message", { data: JSON.stringify({ event: "other-event", payload: {} }) });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("should set authError on close code 1008 (Policy Violation)", async () => {
+    const { listen, authError } = await import("./backend");
+    listen("any-event", vi.fn());
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    const ws = instances[0];
+    ws.readyState = MockWebSocket.CLOSED;
+    ws.emit("close", { code: 1008 });
+
+    expect(get(authError)).toBe(true);
+  });
+
+  it("should suppress reconnect after auth failure (code 1008)", async () => {
+    const { listen } = await import("./backend");
+    listen("any-event", vi.fn());
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(instances).toHaveLength(1);
+
+    const ws = instances[0];
+    ws.readyState = MockWebSocket.CLOSED;
+    ws.emit("close", { code: 1008 });
+
+    // Advance past the reconnect delay — no new WebSocket should be created
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(instances).toHaveLength(1);
+  });
+
+  it("should reconnect on normal close (non-auth)", async () => {
+    const { listen } = await import("./backend");
+    listen("any-event", vi.fn());
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(instances).toHaveLength(1);
+
+    const ws = instances[0];
+    ws.readyState = MockWebSocket.CLOSED;
+    ws.emit("close", { code: 1006 }); // abnormal closure, not auth
+
+    // Advance past the reconnect delay
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(instances).toHaveLength(2);
+  });
+
+  it("should unsubscribe when the returned cleanup function is called", async () => {
+    const { listen } = await import("./backend");
+    const handler = vi.fn();
+    const unlisten = listen("my-event", handler);
+
+    await vi.advanceTimersByTimeAsync(0);
+
+    unlisten();
+
+    const ws = instances[0];
+    ws.emit("message", { data: JSON.stringify({ event: "my-event", payload: {} }) });
+    expect(handler).not.toHaveBeenCalled();
   });
 });
