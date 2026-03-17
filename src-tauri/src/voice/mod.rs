@@ -166,6 +166,11 @@ impl VoicePipeline {
         !was_paused
     }
 
+    /// Returns `true` if the pipeline is currently paused.
+    pub fn is_paused(&self) -> bool {
+        self.pause_flag.load(Ordering::SeqCst)
+    }
+
     pub fn stop(&mut self) {
         self.stop_flag.store(true, Ordering::Relaxed);
         if let Some(handle) = self.audio_thread.take() {
