@@ -52,6 +52,7 @@ struct SpeechContext<'a> {
     audio_rx: &'a Receiver<Vec<i16>>,
     emitter: &'a Arc<dyn EventEmitter>,
     stop: &'a Arc<AtomicBool>,
+    pause: &'a Arc<AtomicBool>,
 }
 
 /// Result of processing speech — either completed normally or was interrupted.
@@ -337,6 +338,7 @@ fn run_pipeline_loop(
                         audio_rx: &rx,
                         emitter: &emitter,
                         stop: &stop,
+                        pause: &pause,
                     };
 
                     // Pass app_server by value; get it back after the turn completes.
@@ -459,8 +461,14 @@ fn process_speech(
     let mut spoken_sentences: Vec<String> = Vec::new();
     let mut started_speaking = false;
     let mut barge_in_speech: Option<Vec<f32>> = None;
+    let mut paused = false;
 
     loop {
+        // Check pause/stop before blocking on select
+        if ctx.pause.load(Ordering::SeqCst) {
+            paused = true;
+            break;
+        }
         crossbeam_channel::select! {
             recv(sentence_rx) -> msg => {
                 match msg {
@@ -523,12 +531,14 @@ fn process_speech(
                     }
                 }
             }
+            // Wake periodically so the pause check at the top of the loop runs
+            default(std::time::Duration::from_millis(50)) => {}
         }
     }
 
     let interrupted = barge_in_speech.is_some();
 
-    if interrupted {
+    if interrupted || paused {
         playback.cancel();
         // Do NOT call cancel_turn() here — the LLM thread owns app_server.
         // Instead, we join the LLM thread below to wait for the turn to finish.
@@ -540,6 +550,12 @@ fn process_speech(
         if !playback.is_done() {
             // Keep monitoring mic while audio drains
             while !playback.is_done() {
+                // Stop draining if paused
+                if ctx.pause.load(Ordering::SeqCst) {
+                    paused = true;
+                    playback.cancel();
+                    break;
+                }
                 if let Ok(chunk) = ctx
                     .audio_rx
                     .recv_timeout(std::time::Duration::from_millis(10))
@@ -584,7 +600,7 @@ fn process_speech(
                     }
                 } // timeout: check is_done again
             }
-            if barge_in_speech.is_none() {
+            if barge_in_speech.is_none() && !paused {
                 // Finished naturally
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
@@ -593,14 +609,16 @@ fn process_speech(
 
     emit_debug(
         ctx.emitter,
-        if barge_in_speech.is_some() {
+        if paused {
+            "tts: cancelled (paused)"
+        } else if barge_in_speech.is_some() {
             "tts: cancelled (barge-in)"
         } else {
             "tts: done"
         },
     );
 
-    if barge_in_speech.is_none() {
+    if barge_in_speech.is_none() && !paused {
         // Normal completion — pause for audio settle and reset VAD
         std::thread::sleep(std::time::Duration::from_millis(300));
         ctx.vad_engine.reset();
