@@ -79,7 +79,7 @@ const baseProject: Project = {
   auto_worker: { enabled: false },
   sessions: [],
   prompts: [],
-  staged_session: null,
+  staged_sessions: [],
 };
 
 const secondProject: Project = {
@@ -349,7 +349,7 @@ describe("Window title updates on staging", () => {
     // @ts-expect-error compile-time constants injected in app builds
     globalThis.__DEV_PORT__ = "1420";
 
-    projects.set([{ ...baseProject, staged_session: null, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [] }]);
+    projects.set([{ ...baseProject, staged_sessions: [], maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [] }]);
     activeSessionId.set(null);
     focusTarget.set(null);
     hotkeyAction.set(null);
@@ -396,11 +396,11 @@ describe("Window title updates on staging", () => {
     mocks.setTitle.mockClear();
     projects.set([{
       ...baseProject,
-      staged_session: {
+      staged_sessions: [{
         session_id: "sess-1",
         pid: 12345,
         port: 1421,
-      },
+      }],
       maintainer: { enabled: false, interval_minutes: 60 },
       auto_worker: { enabled: false },
       prompts: [],
@@ -578,7 +578,7 @@ describe("App issue assign flow", () => {
     // @ts-expect-error compile-time constants injected in app builds
     globalThis.__DEV_PORT__ = "1420";
 
-    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null }]);
+    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [] }]);
     activeSessionId.set(null);
     focusTarget.set({ type: "project", projectId: "proj-1" });
     hotkeyAction.set(null);
@@ -596,7 +596,7 @@ describe("App issue assign flow", () => {
       if (cmd === "create_session") return "sess-new";
       if (cmd === "list_projects") {
         return {
-          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null, sessions: [] }],
+          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [], sessions: [] }],
           corrupt_entries: [],
         };
       }
@@ -634,7 +634,7 @@ describe("App issue creation flow", () => {
     // @ts-expect-error compile-time constants injected in app builds
     globalThis.__DEV_PORT__ = "1420";
 
-    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null }]);
+    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [] }]);
     activeSessionId.set(null);
     focusTarget.set({ type: "project", projectId: "proj-1" });
     hotkeyAction.set(null);
@@ -661,7 +661,7 @@ describe("App issue creation flow", () => {
       }
       if (cmd === "list_projects") {
         return {
-          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_session: null, sessions: [] }],
+          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [], sessions: [] }],
           corrupt_entries: [],
         };
       }

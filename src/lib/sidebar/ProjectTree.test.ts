@@ -29,7 +29,7 @@ const baseProjects: Project[] = [
     maintainer: { enabled: false, interval_minutes: 60 },
     auto_worker: { enabled: false },
     prompts: [],
-    staged_session: null,
+    staged_sessions: [],
     sessions: [
       makeSession({
         id: "sess-1",

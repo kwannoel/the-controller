@@ -27,7 +27,7 @@ function makeProject(id: string, sessionIds: string[]): Project {
     auto_worker: { enabled: false },
     sessions: sessionIds.map(makeSession),
     prompts: [],
-    staged_session: null,
+    staged_sessions: [],
   };
 }
 

@@ -37,7 +37,7 @@ function makeProject(): Project {
     },
     auto_worker: { enabled: true },
     prompts: [],
-    staged_session: null,
+    staged_sessions: [],
   };
 }
 

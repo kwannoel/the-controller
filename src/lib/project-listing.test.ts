@@ -28,7 +28,7 @@ describe("refreshProjectsFromBackend", () => {
           auto_worker: { enabled: false },
           sessions: [],
           prompts: [],
-          staged_session: null,
+          staged_sessions: [],
         },
       ],
       corrupt_entries: [

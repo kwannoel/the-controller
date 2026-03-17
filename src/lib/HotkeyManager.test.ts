@@ -35,7 +35,7 @@ function makeProject(id: string, name: string, repoPath: string, sessions: Sessi
     auto_worker: { enabled: false },
     sessions,
     prompts: [],
-    staged_session: null,
+    staged_sessions: [],
   };
 }
 

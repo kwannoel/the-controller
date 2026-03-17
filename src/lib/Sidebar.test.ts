@@ -111,7 +111,7 @@ describe("Sidebar provider indicator", () => {
               },
               auto_worker: { enabled: false },
               prompts: [],
-              staged_session: null,
+              staged_sessions: [],
             },
           ],
           corrupt_entries: [
