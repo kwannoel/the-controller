@@ -3372,7 +3372,7 @@ mod tests {
         let root = source_root();
         let lib_rs = fs::read_to_string(root.join("lib.rs")).expect("should read lib.rs");
         let server_rs =
-            fs::read_to_string(root.join("bin/server.rs")).expect("should read server.rs");
+            fs::read_to_string(root.join("server/main.rs")).expect("should read server.rs");
 
         let desktop_commands = extract_desktop_commands(&lib_rs);
         let server_routes = extract_server_routes(&server_rs);

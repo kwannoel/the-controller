@@ -380,13 +380,6 @@ fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, Stri
             }
         }
 
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|e| format!("Failed to wait for codex exec: {}", e))?
-        {
-            break status;
-        }
-
         if started_at.elapsed() >= config.timeout {
             terminate_codex_process(&mut child);
             let _ = child.wait();
@@ -394,6 +387,13 @@ fn run_codex_exec(prompt: &str, config: &CodexExecConfig) -> Result<Output, Stri
                 "codex exec timed out after {} seconds",
                 config.timeout.as_secs_f32()
             ));
+        }
+
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("Failed to wait for codex exec: {}", e))?
+        {
+            break status;
         }
 
         std::thread::sleep(Duration::from_millis(50));
