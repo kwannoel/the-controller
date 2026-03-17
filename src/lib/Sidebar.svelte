@@ -198,7 +198,7 @@
           break;
         }
         case "unstage-session": {
-          unstageSession(action.projectId);
+          unstageSession(action.projectId, action.sessionId);
           break;
         }
         case "create-note": {
@@ -476,9 +476,9 @@
     }
   }
 
-  async function unstageSession(projectId: string) {
+  async function unstageSession(projectId: string, sessionId: string) {
     try {
-      await command("unstage_session", { projectId });
+      await command("unstage_session", { projectId, sessionId });
       await loadProjects();
       showToast("Unstaged — stopped separate instance", "info");
     } catch (e) {

@@ -76,7 +76,7 @@
               {getSessionStatus(session.id) === "exited" ? "\u25CB" : "\u25CF"}
             </span>
             <span class="session-label">{session.label}</span>
-            {#if project.staged_session?.session_id === session.id}
+            {#if project.staged_sessions?.some((s) => s.session_id === session.id)}
               <span class="staged-badge">staged</span>
             {/if}
             {#if session.github_issue}
