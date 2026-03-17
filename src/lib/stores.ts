@@ -110,7 +110,7 @@ export interface Project {
   maintainer: MaintainerConfig;
   auto_worker: AutoWorkerConfig;
   prompts: SavedPrompt[];
-  staged_session: StagedSession | null;
+  staged_sessions: StagedSession[];
 }
 
 export interface CorruptProjectEntry {
@@ -273,7 +273,7 @@ export type HotkeyAction =
   | { type: "pick-prompt-for-session"; projectId: string }
   | { type: "generate-architecture"; projectId: string; repoPath: string }
   | { type: "stage-session"; sessionId: string; projectId: string }
-  | { type: "unstage-session"; projectId: string }
+  | { type: "unstage-session"; projectId: string; sessionId: string }
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
   | { type: "deploy-project"; projectId: string; repoPath: string }
