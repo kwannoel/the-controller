@@ -9,11 +9,9 @@ use crate::state::AppState;
 use crate::worktree::WorktreeManager;
 
 const DEFAULT_SOCKET_PATH: &str = "/tmp/the-controller.sock";
-const DEFAULT_STAGED_SOCKET_PATH: &str = "/tmp/the-controller-staged.sock";
-
-/// Return the socket path used by staged Controller instances.
-pub fn staged_socket_path() -> &'static str {
-    DEFAULT_STAGED_SOCKET_PATH
+/// Return the socket path for a specific staged session.
+pub fn staged_socket_path(session_id: &Uuid) -> String {
+    format!("/tmp/the-controller-staged-{}.sock", session_id)
 }
 
 /// Return the socket path, checking the CONTROLLER_SOCKET env var first.
@@ -473,7 +471,7 @@ mod tests {
             auto_worker: AutoWorkerConfig::default(),
             prompts: vec![],
             sessions: vec![],
-            staged_session: None,
+            staged_sessions: vec![],
         };
 
         state
