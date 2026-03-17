@@ -70,7 +70,7 @@ impl VoicePipeline {
     /// to the caller instead of being silently lost on the background thread.
     pub async fn start(emitter: Arc<dyn EventEmitter>) -> Result<Self, String> {
         let stop_flag = Arc::new(AtomicBool::new(false));
-        let pause_flag = Arc::new(AtomicBool::new(false));
+        let pause_flag = Arc::new(AtomicBool::new(true));
 
         // Ensure models are downloaded
         let dl_emitter = emitter.clone();
@@ -227,6 +227,8 @@ fn pipeline_init(
         .map_err(|e| format!("Failed to start codex app-server: {e}"))?;
     let (tx, audio_rx): (Sender<Vec<i16>>, Receiver<Vec<i16>>) = crossbeam_channel::bounded(64);
     let audio_in = audio_input::AudioInput::start(tx)?;
+    // Start paused — user must explicitly unpause
+    audio_in.pause();
 
     Ok(PipelineComponents {
         vad_engine,
@@ -258,11 +260,11 @@ fn run_pipeline_loop(
         audio_rx: rx,
     } = components;
 
-    emit_state(&emitter, VoiceState::Listening);
+    emit_state(&emitter, VoiceState::Paused);
     let mut speech_buffer: Vec<f32> = Vec::new();
     let mut in_speech = false;
     let mut chunk_count: u64 = 0;
-    let mut was_paused = false;
+    let mut was_paused = true;
 
     while !stop.load(Ordering::Relaxed) {
         // Handle pause/resume transitions

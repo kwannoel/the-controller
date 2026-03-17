@@ -11,11 +11,11 @@
   const MAX_DEBUG_LINES = 200;
 
   const STATE_LABELS: Record<string, string> = {
-    initializing: "initializing...",
-    listening: "listening...",
-    thinking: "thinking...",
-    speaking: "speaking...",
-    paused: "paused",
+    initializing: "voice mode (initializing...)",
+    listening: "voice mode (listening...)",
+    thinking: "voice mode (thinking...)",
+    speaking: "voice mode (speaking...)",
+    paused: "voice mode (paused)",
   };
 
   export function toggleDebug() {
