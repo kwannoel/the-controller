@@ -772,7 +772,12 @@ async fn start_voice_pipeline(
     // Check if already running
     {
         let pipeline = state.app.voice_pipeline.lock().await;
-        if pipeline.is_some() {
+        if let Some(p) = pipeline.as_ref() {
+            // Pipeline already running — emit current state so a remounted
+            // frontend component picks up the correct label immediately.
+            let voice_state = if p.is_paused() { "paused" } else { "listening" };
+            let payload = serde_json::json!({ "state": voice_state }).to_string();
+            let _ = state.app.emitter.emit("voice-state-changed", &payload);
             return Ok(Json(Value::Null));
         }
     }
