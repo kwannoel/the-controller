@@ -409,6 +409,96 @@ describe("App default provider config", () => {
   });
 });
 
+describe("App deploy setup flow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_COMMIT__ = "test-commit";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__BUILD_BRANCH__ = "test-branch";
+    // @ts-expect-error compile-time constants injected in app builds
+    globalThis.__DEV_PORT__ = "1420";
+
+    projects.set([baseProject]);
+    activeSessionId.set(null);
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+    hotkeyAction.set(null);
+    showKeyHints.set(false);
+    sidebarVisible.set(true);
+    selectedSessionProvider.set("claude");
+    workspaceMode.set("infrastructure");
+    architectureViews.set(new Map());
+    onboardingComplete.set(true);
+    appConfig.set({ projects_root: "/tmp/projects" });
+    sessionStatuses.set(new Map());
+    expandedProjects.set(new Set());
+  });
+
+  it("reaches deploy_project after completing deploy setup", async () => {
+    let savedCredentials: Record<string, string | null> | null = null;
+
+    vi.mocked(command).mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "restore_sessions") return;
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "is_deploy_provisioned") {
+        return Boolean(
+          savedCredentials?.hetzner_api_key &&
+            savedCredentials?.cloudflare_api_key &&
+            savedCredentials?.root_domain &&
+            savedCredentials?.coolify_url &&
+            savedCredentials?.coolify_api_key &&
+            savedCredentials?.server_ip
+        );
+      }
+      if (cmd === "save_deploy_credentials") {
+        savedCredentials = (args?.credentials as Record<string, string | null>) ?? null;
+        return;
+      }
+      if (cmd === "deploy_project") {
+        return { url: "https://the-controller.example.com", coolify_uuid: "coolify-123" };
+      }
+      return;
+    });
+
+    render(App);
+
+    hotkeyAction.set({ type: "deploy-project", projectId: "proj-1", repoPath: "/tmp/the-controller" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/deploy setup/i)).toBeInTheDocument();
+    });
+
+    await fireEvent.input(screen.getByLabelText("Hetzner API Key"), { target: { value: "hetzner-token" } });
+    await fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
+
+    await fireEvent.input(screen.getByLabelText("Cloudflare API Key"), { target: { value: "cloudflare-token" } });
+    await fireEvent.input(screen.getByLabelText("Root Domain"), { target: { value: "example.com" } });
+    await fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
+
+    await fireEvent.input(screen.getByLabelText("Coolify URL"), { target: { value: "https://coolify.example.com" } });
+    await fireEvent.input(screen.getByLabelText("Coolify API Key"), { target: { value: "coolify-token" } });
+    await fireEvent.input(screen.getByLabelText("Server IP"), { target: { value: "203.0.113.42" } });
+    await fireEvent.click(screen.getByRole("button", { name: /finish/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/deploy setup/i)).not.toBeInTheDocument();
+    });
+
+    hotkeyAction.set({ type: "deploy-project", projectId: "proj-1", repoPath: "/tmp/the-controller" });
+
+    await waitFor(() => {
+      expect(command).toHaveBeenCalledWith("deploy_project", {
+        request: {
+          projectName: "the-controller",
+          repoPath: "/tmp/the-controller",
+          subdomain: "the-controller",
+          projectType: "node",
+        },
+      });
+    });
+  });
+});
+
 describe("Window title updates on staging", () => {
   beforeEach(() => {
     vi.clearAllMocks();
