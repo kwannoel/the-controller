@@ -51,7 +51,7 @@ test("story 2: pressing f in hub opens find view with search focused", async ({ 
   // CORE ASSERTION: find view opens with search input focused
   const searchInput = page.locator('.issues-modal input[placeholder="Search issues..."]');
   await expect(searchInput).toBeVisible({ timeout: 10_000 });
-  await expect(searchInput).toBeFocused();
+  await expect(searchInput).toBeFocused({ timeout: 3_000 });
 });
 
 test("story 3: pressing c in hub opens create view with title input focused", async ({ page }) => {
@@ -65,7 +65,7 @@ test("story 3: pressing c in hub opens create view with title input focused", as
   await expect(modal.locator(".modal-header")).toHaveText("New Issue");
   const titleInput = modal.locator('input[placeholder="Issue title"]');
   await expect(titleInput).toBeVisible({ timeout: 3_000 });
-  await expect(titleInput).toBeFocused();
+  await expect(titleInput).toBeFocused({ timeout: 3_000 });
 });
 
 test("story 4: pressing Esc in hub closes the modal", async ({ page }) => {
