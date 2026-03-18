@@ -287,6 +287,7 @@ export type HotkeyAction =
   | { type: "unstage-session"; projectId: string; sessionId: string }
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
+  | { type: "spawn-agent"; projectId: string }
   | { type: "deploy-project"; projectId: string; repoPath: string }
   | { type: "voice-toggle-panel"; panel: "debug" | "transcript" }
   | null;

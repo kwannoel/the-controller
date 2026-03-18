@@ -17,6 +17,7 @@
   import NewNoteModal from "./NewNoteModal.svelte";
   import NewFolderModal from "./NewFolderModal.svelte";
   import RenameNoteModal from "./RenameNoteModal.svelte";
+  import AgentPickerModal from "./AgentPickerModal.svelte";
 
   let sidebarEl: HTMLElement | undefined = $state();
   const showKeyHintsState = fromStore(showKeyHints);
@@ -42,6 +43,7 @@
   let showNewFolderModal = $state(false);
   let renameFolderTarget: string | null = $state(null);
   let deleteFolderTarget: string | null = $state(null);
+  let agentPickerTarget: { projectId: string } | null = $state(null);
   const activeNoteState = fromStore(activeNote);
   const noteFoldersState = fromStore(noteFolders);
   let folderList: string[] = $derived(noteFoldersState.current);
@@ -238,6 +240,10 @@
           deleteFolderTarget = action.folder;
           break;
         }
+        case "spawn-agent": {
+          agentPickerTarget = { projectId: action.projectId };
+          break;
+        }
       }
     });
     return unsub;
@@ -404,11 +410,12 @@
     expandedProjects.set(next);
   }
 
-  async function createSession(projectId: string, kind?: string) {
+  async function createSession(projectId: string, kind?: string, agentName?: string) {
     try {
       const sessionId: string = await command("create_session", {
         projectId,
         kind: kind ?? currentSessionProvider,
+        agentName,
       });
       markSession(sessionId, "working");
       activeSessionId.set(sessionId);
@@ -903,6 +910,17 @@
         renameFolderTarget = null;
       }}
       onClose={() => { renameFolderTarget = null; }}
+    />
+  {/if}
+
+  {#if agentPickerTarget}
+    <AgentPickerModal
+      projectId={agentPickerTarget.projectId}
+      onSelect={(agentName) => {
+        createSession(agentPickerTarget!.projectId, currentSessionProvider, agentName);
+        agentPickerTarget = null;
+      }}
+      onCancel={() => { agentPickerTarget = null; }}
     />
   {/if}
 </aside>

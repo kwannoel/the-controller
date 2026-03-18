@@ -81,7 +81,8 @@ describe("command registry", () => {
     const map = buildKeyMap("development");
     expect(map.has("c")).toBe(true); // create-session (dev)
     expect(map.get("c")).toBe("create-session");
-    expect(map.has("a")).toBe(false);
+    expect(map.has("a")).toBe(true); // spawn-agent (dev)
+    expect(map.get("a")).toBe("spawn-agent");
     expect(map.has("A")).toBe(false);
     expect(map.has("x")).toBe(false);
     expect(map.has("X")).toBe(false);
@@ -133,7 +134,7 @@ describe("command registry", () => {
     expect(sections.find(s => s.label === "Navigation")).toBeUndefined();
 
     const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(5); // e, P, p, v, ⌘t
+    expect(sess.entries).toHaveLength(6); // a, e, P, p, v, ⌘t
     expect(sess.entries.map(entry => entry.key)).toContain("⌘t");
 
     const proj = sections.find(s => s.label === "Projects")!;
