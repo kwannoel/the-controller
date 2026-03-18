@@ -15,6 +15,7 @@
     noteEntries,
     noteFolders,
     activeNote,
+    notesChatVisible,
     type Project,
     type HotkeyAction,
     type FocusTarget,
@@ -537,6 +538,21 @@
         return;
       }
 
+      // Toggle notes chat sidebar (notes mode)
+      if (currentMode === "notes" && matchMetaKey(getExternalKey("toggle-sidebar"), e)) {
+        e.stopPropagation();
+        e.preventDefault();
+        notesChatVisible.update((v) => {
+          if (!v) {
+            // Opening: set focus to notes-chat
+            focusTarget.set({ type: "notes-chat" });
+          }
+          return !v;
+        });
+        pushKeystroke(metaSymbol + "L");
+        return;
+      }
+
       // Regular commands overridden to use Meta+ prefix
       // Apply same guards as regular hotkeys
       if (!isTerminalFocused() && !isDialogOpen() && !isEditableElementFocused() && currentFocus?.type !== "notes-editor") {
@@ -644,6 +660,12 @@
         e.stopPropagation();
         e.preventDefault();
         pushKeystroke("Esc");
+      } else if (currentFocus?.type === "notes-chat") {
+        // Escape from notes chat: close the sidebar
+        notesChatVisible.set(false);
+        e.stopPropagation();
+        e.preventDefault();
+        pushKeystroke("Esc");
       }
       return;
     }
@@ -656,6 +678,38 @@
       workspaceModePickerVisible.set(true);
       pushKeystroke("␣");
       return;
+    }
+
+    // Notes chat sidebar focused: intercept navigation keys
+    if (currentFocus?.type === "notes-chat") {
+      if (e.key === "j" || e.key === "k") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "notes-chat-navigate", direction: e.key === "j" ? 1 : -1 });
+        pushKeystroke(e.key);
+        return;
+      }
+      if (e.key === "n") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "notes-chat-new" });
+        pushKeystroke(e.key);
+        return;
+      }
+      if (e.key === "d") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "notes-chat-delete" });
+        pushKeystroke(e.key);
+        return;
+      }
+      if (e.key === "c") {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({ type: "notes-chat-focus-input" });
+        pushKeystroke(e.key);
+        return;
+      }
     }
 
     // Agent panel focused: intercept navigation keys

@@ -40,6 +40,7 @@ export type ExternalCommandId =
   | "screenshot-picker"
   | "screenshot-preview"
   | "toggle-session-provider"
+  | "toggle-sidebar"
   | "keystroke-visualizer"
   | "switch-workspace"
   | "escape-focus"
@@ -103,6 +104,7 @@ export const commands: CommandDef[] = [
   { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note or folder", mode: "notes" },
   { id: "duplicate-note", key: "y", section: "Notes", description: "Duplicate focused note", mode: "notes" },
   { id: "toggle-note-preview", key: "p", section: "Notes", description: "Cycle edit / preview / split", mode: "notes" },
+  { id: "toggle-sidebar", key: "Meta+l", section: "Notes", description: "Toggle agent chat sidebar", handledExternally: true, mode: "notes" },
   { id: "expand-collapse", key: "o", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
   { id: "expand-collapse", key: "i", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
   { id: "expand-collapse", key: "a", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
