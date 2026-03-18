@@ -400,9 +400,14 @@
       case "clear-agent-reports":
         dispatchAction({ type: "clear-maintainer-reports" });
         return true;
-      case "create-note":
-        dispatchAction({ type: "create-note" });
+      case "create-note": {
+        const folder = currentFocus?.type === "folder" ? currentFocus.folder
+          : currentFocus?.type === "note" ? currentFocus.folder
+          : currentFocus?.type === "notes-editor" ? currentFocus.folder
+          : undefined;
+        dispatchAction({ type: "create-note", folder });
         return true;
+      }
       case "create-folder":
         dispatchAction({ type: "create-folder" });
         return true;

@@ -5,14 +5,22 @@
 
   interface Props {
     folders: string[];
+    defaultFolder?: string;
     onSubmit: (title: string, folder: string) => void;
     onClose: () => void;
   }
 
-  let { folders, onSubmit, onClose }: Props = $props();
+  let { folders, defaultFolder, onSubmit, onClose }: Props = $props();
+
+  let folderLocked = defaultFolder != null && folders.includes(defaultFolder);
+
+  function initialFolder(): string {
+    if (defaultFolder && folders.includes(defaultFolder)) return defaultFolder;
+    return folders.length > 0 ? folders[0] : NEW_FOLDER_SENTINEL;
+  }
 
   let title = $state("");
-  let selectedFolder = $state(folders.length > 0 ? folders[0] : NEW_FOLDER_SENTINEL);
+  let selectedFolder = $state(initialFolder());
   let newFolderName = $state("");
   let folderSelectEl: HTMLSelectElement | undefined = $state();
   let newFolderInput: HTMLInputElement | undefined = $state();
@@ -23,7 +31,9 @@
   let canSubmit = $derived(title.trim() !== "" && resolvedFolder !== "");
 
   onMount(() => {
-    if (isNewFolder) {
+    if (folderLocked) {
+      titleInput?.focus();
+    } else if (isNewFolder) {
       newFolderInput?.focus();
     } else {
       titleInput?.focus();
@@ -57,25 +67,27 @@
 <div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
-    <div class="modal-header">New Note</div>
-    <select
-      bind:this={folderSelectEl}
-      bind:value={selectedFolder}
-      class="input"
-      onchange={handleFolderChange}
-    >
-      {#each folders as f}
-        <option value={f}>{f}</option>
-      {/each}
-      <option value={NEW_FOLDER_SENTINEL}>New folder...</option>
-    </select>
-    {#if isNewFolder}
-      <input
-        bind:this={newFolderInput}
-        bind:value={newFolderName}
-        placeholder="Folder name"
+    <div class="modal-header">New Note{#if folderLocked} in {defaultFolder}{/if}</div>
+    {#if !folderLocked}
+      <select
+        bind:this={folderSelectEl}
+        bind:value={selectedFolder}
         class="input"
-      />
+        onchange={handleFolderChange}
+      >
+        {#each folders as f}
+          <option value={f}>{f}</option>
+        {/each}
+        <option value={NEW_FOLDER_SENTINEL}>New folder...</option>
+      </select>
+      {#if isNewFolder}
+        <input
+          bind:this={newFolderInput}
+          bind:value={newFolderName}
+          placeholder="Folder name"
+          class="input"
+        />
+      {/if}
     {/if}
     <input
       bind:this={titleInput}
