@@ -356,7 +356,14 @@
       }
       case "open-issues-modal": {
         const project = getFocusedProject();
-        if (!project) return true;
+        if (!project) {
+          if (projectList.length === 0) {
+            showToast("No projects yet — press 'n' to create a new project", "error");
+          } else {
+            showToast("Select a project first (j/k to navigate)", "error");
+          }
+          return true;
+        }
         dispatchAction({ type: "open-issues-modal", projectId: project.id, repoPath: project.repo_path });
         return true;
       }

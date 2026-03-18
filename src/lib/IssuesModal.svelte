@@ -73,11 +73,23 @@
     view = "find";
     searchQuery = "";
     selectedIndex = 0;
-    requestAnimationFrame(() => (focusSearch ? searchInput : overlayEl)?.focus());
 
     if (allIssues.length === 0) {
       loading = true;
       error = null;
+    }
+
+    // Schedule focus AFTER all sync state changes are batched and rendered.
+    // Use DOM query as fallback — bind:this may not be set yet on first render.
+    requestAnimationFrame(() => {
+      if (focusSearch) {
+        (searchInput ?? document.querySelector<HTMLInputElement>(".issues-modal input.input"))?.focus();
+      } else {
+        overlayEl?.focus();
+      }
+    });
+
+    if (loading) {
       try {
         allIssues = await command<GithubIssue[]>("list_github_issues", { repoPath });
       } catch (e) {
@@ -267,17 +279,19 @@
   });
 
   onMount(() => {
-    overlayEl?.focus();
+    requestAnimationFrame(() => overlayEl?.focus());
   });
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
   class="overlay"
   bind:this={overlayEl}
   tabindex="0"
   onclick={onClose}
-  onkeydown={handleKeydown}
   role="dialog"
 >
   <!-- svelte-ignore a11y_click_events_have_key_events -->
