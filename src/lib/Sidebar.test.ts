@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/svelte";
-import { command } from "$lib/backend";
+import { get } from "svelte/store";
+import { command, listen } from "$lib/backend";
 import { showToast } from "./toast";
 import {
   activeSessionId,
@@ -134,5 +135,89 @@ describe("Sidebar provider indicator", () => {
         "error",
       );
     });
+  });
+});
+
+describe("Sidebar session cleanup", () => {
+  const sessionId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+  const projectId = "project-cleanup";
+  const projectWithSession = {
+    id: projectId,
+    name: "Test Project",
+    repo_path: "/tmp/test",
+    created_at: "2026-03-10",
+    archived: false,
+    sessions: [
+      {
+        id: sessionId,
+        label: "session-1-abc",
+        worktree_path: "/tmp/wt",
+        worktree_branch: "session-1-abc",
+        archived: false,
+        kind: "development",
+        github_issue: null,
+        initial_prompt: null,
+        auto_worker_session: false,
+      },
+    ],
+    maintainer: { enabled: false, interval_minutes: 60, github_repo: null },
+    auto_worker: { enabled: false },
+    prompts: [],
+    staged_sessions: [],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projects.set([]);
+    activeSessionId.set(null);
+    sessionStatuses.set(new Map());
+    showKeyHints.set(false);
+    focusTarget.set(null);
+    expandedProjects.set(new Set());
+    workspaceMode.set("development");
+    activeNote.set(null);
+    noteEntries.set(new Map());
+    hotkeyAction.set(null);
+    selectedSessionProvider.set("claude");
+  });
+
+  it("removes the session from the store when session-cleanup event fires", async () => {
+    // Capture listen handlers keyed by event name
+    const listenHandlers = new Map<string, (payload: unknown) => void>();
+    vi.mocked(listen).mockImplementation(((event: string, handler: (payload: unknown) => void) => {
+      listenHandlers.set(event, handler);
+      return () => {};
+    }) as typeof listen);
+
+    // list_projects returns the project (including the session) on first call,
+    // and without the session on subsequent calls (backend already cleaned up)
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_projects") {
+        return { projects: get(projects).length > 0 ? get(projects) : [projectWithSession], corrupt_entries: [] };
+      }
+      if (cmd === "list_folders") return [];
+      return;
+    });
+
+    render(Sidebar);
+
+    // Wait for the initial loadProjects to populate the store
+    await waitFor(() => {
+      expect(get(projects)).toHaveLength(1);
+      expect(get(projects)[0].sessions).toHaveLength(1);
+    });
+
+    // Verify the cleanup listener was registered
+    const cleanupEvent = `session-cleanup:${sessionId}`;
+    expect(listenHandlers.has(cleanupEvent)).toBe(true);
+
+    // Fire the cleanup event — this simulates the backend sending session-cleanup
+    listenHandlers.get(cleanupEvent)!("cleanup");
+
+    // The session should be immediately removed from the local store
+    const currentProjects = get(projects);
+    const project = currentProjects.find(p => p.id === projectId);
+    expect(project).toBeDefined();
+    expect(project!.sessions.find(s => s.id === sessionId)).toBeUndefined();
   });
 });

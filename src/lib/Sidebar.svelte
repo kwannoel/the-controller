@@ -268,7 +268,9 @@
           markSession(session.id, "exited");
         }));
 
-        // Cleanup: backend already deleted the session and worktree, just refresh.
+        // Cleanup: backend already deleted the session and worktree.
+        // Immediately remove from local store so the sidebar updates, then
+        // sync with the backend for any other changes.
         unlisteners.push(listen<string>(`session-cleanup:${session.id}`, () => {
           const nextFocus = focusAfterSessionDelete(projectList, project.id, session.id);
           clearSessionTracking(session.id);
@@ -278,6 +280,13 @@
             return null;
           });
           focusTarget.set(nextFocus);
+          projects.update(ps =>
+            ps.map(p =>
+              p.id === project.id
+                ? { ...p, sessions: p.sessions.filter(s => s.id !== session.id) }
+                : p
+            )
+          );
           loadProjects();
         }));
 
