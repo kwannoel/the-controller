@@ -53,6 +53,9 @@ test.describe("agent picker workflow", () => {
     const projectItem = page.locator(".project-item");
     await expect(projectItem.first()).toBeVisible({ timeout: 10_000 });
 
+    // Click on the first project to focus it (required for spawn-agent)
+    await projectItem.first().click();
+
     // Press 'a' to open the agent picker
     await page.keyboard.press("a");
 
