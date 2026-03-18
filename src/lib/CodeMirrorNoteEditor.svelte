@@ -31,7 +31,6 @@
     selectedText: string;
     from: number;
     to: number;
-    coords: { left: number; top: number; bottom: number };
   }
 
   interface Props {
@@ -186,20 +185,7 @@
       const from = sel.from;
       const to = sel.to;
       const selectedText = view.state.doc.sliceString(from, to);
-      // coordsAtPos returns null for some off-screen positions, but for
-      // positions scrolled above the viewport it may return very negative
-      // coordinates instead.  When the entire note is selected (vG / ggVG),
-      // `from` (pos 0) is scrolled out of view while `to` (cursor end) is
-      // visible — fall back to `to` coords in either case.
-      const fromCoords = view.coordsAtPos(from);
-      const coords = (fromCoords && fromCoords.bottom >= 0) ? fromCoords : view.coordsAtPos(to);
-      if (!coords) return;
-      onAiChat?.({
-        selectedText,
-        from,
-        to,
-        coords: { left: coords.left, top: coords.top, bottom: coords.bottom },
-      });
+      onAiChat?.({ selectedText, from, to });
     });
     Vim.mapCommand("ga", "action", "aiChat", undefined, { context: "visual" });
 

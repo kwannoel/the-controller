@@ -214,37 +214,39 @@
         <span class="unsaved-indicator">unsaved</span>
       {/if}
     </div>
-    <div class="editor-body" class:focused={editorFocused}>
-      <CodeMirrorNoteEditor
-        value={content}
-        focused={editorFocused}
-        entryKey={editorEntryKey}
-        folder={folderName ?? undefined}
-        resolveImageSrc={resolveImageSrcSync}
-        onChange={handleEditorChange}
-        onModeChange={(mode) => {
-          editorMode = mode;
-        }}
-        onEscape={handleEditorEscape}
-        onAiChat={(request) => {
-          aiChatRequest = request;
-        }}
-        onImageSaved={handleImageSaved}
-      />
+    <div class="editor-content">
+      <div class="editor-body" class:focused={editorFocused}>
+        <CodeMirrorNoteEditor
+          value={content}
+          focused={editorFocused}
+          entryKey={editorEntryKey}
+          folder={folderName ?? undefined}
+          resolveImageSrc={resolveImageSrcSync}
+          onChange={handleEditorChange}
+          onModeChange={(mode) => {
+            editorMode = mode;
+          }}
+          onEscape={handleEditorEscape}
+          onAiChat={(request) => {
+            aiChatRequest = request;
+          }}
+          onImageSaved={handleImageSaved}
+        />
+      </div>
+      {#if aiChatRequest}
+        <NoteAiPanel
+          noteContent={content}
+          request={aiChatRequest}
+          onReplace={(text, from, to) => {
+            content = content.slice(0, from) + text + content.slice(to);
+            scheduleSave();
+          }}
+          onDismiss={() => {
+            aiChatRequest = null;
+          }}
+        />
+      {/if}
     </div>
-    {#if aiChatRequest}
-      <NoteAiPanel
-        noteContent={content}
-        request={aiChatRequest}
-        onReplace={(text, from, to) => {
-          content = content.slice(0, from) + text + content.slice(to);
-          scheduleSave();
-        }}
-        onDismiss={() => {
-          aiChatRequest = null;
-        }}
-      />
-    {/if}
   {/if}
 </div>
 
@@ -307,6 +309,14 @@
     font-weight: 500;
   }
 
+  .editor-content {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    min-height: 0;
+  }
+
   .editor-body {
     flex: 1;
     overflow: hidden;
@@ -314,6 +324,7 @@
     border-radius: 4px;
     transition: border-color 0.15s;
     display: flex;
+    min-width: 0;
   }
 
   .editor-body.focused {
