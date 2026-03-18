@@ -33,19 +33,6 @@
     currentTo = request.to;
   });
 
-  // Position the panel near the selection, clamped within the viewport
-  let panelStyle = $derived((() => {
-    const { coords } = request;
-    const maxHeight = 340; // matches CSS max-height
-    const left = Math.min(Math.max(8, coords.left), window.innerWidth - 408);
-    let top = coords.bottom + 8;
-    // If the panel would overflow below the viewport, flip it above the selection
-    if (top + maxHeight > window.innerHeight) {
-      top = Math.max(8, coords.top - maxHeight - 8);
-    }
-    return `left: ${left}px; top: ${top}px;`;
-  })());
-
   // Truncated preview of selected text
   let selectedPreview = $derived(
     request.selectedText.length > 200
@@ -121,7 +108,14 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="note-ai-panel" style={panelStyle} data-testid="note-ai-panel" onkeydown={handleKeydown}>
+<div class="note-ai-panel" data-testid="note-ai-panel" onkeydown={handleKeydown}>
+  <div class="panel-header">
+    <span class="panel-title">Chat</span>
+    <button class="dismiss-btn" onclick={() => onDismiss?.()} aria-label="Close panel">
+      &times;
+    </button>
+  </div>
+
   <div class="selected-preview">
     <pre>{selectedPreview}</pre>
   </div>
@@ -161,25 +155,54 @@
 
 <style>
   .note-ai-panel {
-    position: fixed;
-    width: 400px;
-    max-height: 340px;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-default);
-    border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    width: 380px;
+    min-width: 380px;
+    height: 100%;
+    background: var(--bg-surface);
+    border-left: 1px solid var(--border-default);
     display: flex;
     flex-direction: column;
-    z-index: 100;
     font-size: 13px;
+    color: var(--text-primary);
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-default);
+    flex-shrink: 0;
+  }
+
+  .panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+  }
+
+  .dismiss-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 18px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+  }
+
+  .dismiss-btn:hover {
     color: var(--text-primary);
   }
 
   .selected-preview {
     padding: 8px 12px;
     border-bottom: 1px solid var(--border-default);
-    max-height: 60px;
-    overflow: hidden;
+    max-height: 120px;
+    overflow-y: auto;
+    flex-shrink: 0;
   }
 
   .selected-preview pre {
@@ -194,10 +217,10 @@
   .conversation {
     flex: 1;
     overflow-y: auto;
-    padding: 8px 12px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     min-height: 0;
   }
 
@@ -247,7 +270,8 @@
 
   .input-row {
     border-top: 1px solid var(--border-default);
-    padding: 8px;
+    padding: 12px;
+    flex-shrink: 0;
   }
 
   .input-row input {
@@ -255,7 +279,7 @@
     background: var(--bg-void);
     border: 1px solid var(--border-default);
     border-radius: 4px;
-    padding: 6px 10px;
+    padding: 8px 10px;
     color: var(--text-primary);
     font-size: 13px;
     outline: none;
