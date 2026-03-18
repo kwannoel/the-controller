@@ -768,8 +768,14 @@
 
   {#if showFuzzyFinder}
     <FuzzyFinder
+      projects={projectList}
       onSelect={async (entry) => {
         showFuzzyFinder = false;
+        if (entry.projectId) {
+          expandedProjects.update(s => { const next = new Set(s); next.add(entry.projectId!); return next; });
+          focusTarget.set({ type: "project", projectId: entry.projectId });
+          return;
+        }
         try {
           const project = await command<Project>("load_project", { name: entry.name, repoPath: entry.path });
           await loadProjects();

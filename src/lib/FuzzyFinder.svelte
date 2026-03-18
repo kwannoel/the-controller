@@ -2,17 +2,34 @@
   import { command } from "$lib/backend";
   import { onMount } from "svelte";
   import { showToast } from "./toast";
-  import type { DirEntry } from "./stores";
+  import type { DirEntry, Project } from "./stores";
+
+  export interface FuzzyEntry extends DirEntry {
+    projectId?: string;
+  }
 
   interface Props {
-    onSelect: (entry: DirEntry) => void;
+    projects?: Project[];
+    onSelect: (entry: FuzzyEntry) => void;
     onClose: () => void;
   }
 
-  let { onSelect, onClose }: Props = $props();
+  let { projects = [], onSelect, onClose }: Props = $props();
 
   let query = $state("");
-  let entries = $state<DirEntry[]>([]);
+  let dirEntries = $state<DirEntry[]>([]);
+  let entries = $derived.by(() => {
+    const projectEntries: FuzzyEntry[] = (projects ?? []).map((p) => ({
+      name: p.name,
+      path: p.repo_path,
+      projectId: p.id,
+    }));
+    const loadedPaths = new Set(projectEntries.map((e) => e.path));
+    const unloadedDirs: FuzzyEntry[] = dirEntries.filter(
+      (d) => !loadedPaths.has(d.path),
+    );
+    return [...projectEntries, ...unloadedDirs];
+  });
   let filtered = $derived(
     query.trim() === ""
       ? entries
@@ -25,7 +42,7 @@
 
   onMount(async () => {
     try {
-      entries = await command<DirEntry[]>("list_root_directories");
+      dirEntries = await command<DirEntry[]>("list_root_directories");
     } catch (e) {
       showToast(String(e), "error");
     }
@@ -81,7 +98,7 @@
       onkeydown={handleKeydown}
     />
     <div class="results">
-      {#each filtered as entry, i (entry.path)}
+      {#each filtered as entry, i (entry.projectId ?? entry.path)}
         <div
           class="result-item"
           class:selected={i === selectedIndex}
@@ -97,11 +114,16 @@
           }}
         >
           <span class="entry-name">{entry.name}</span>
-          <span class="entry-path">{entry.path}</span>
+          <span class="entry-meta">
+            {#if entry.projectId}
+              <span class="loaded-badge">loaded</span>
+            {/if}
+            <span class="entry-path">{entry.path}</span>
+          </span>
         </div>
       {/each}
       {#if filtered.length === 0}
-        <div class="empty">No matching directories</div>
+        <div class="empty">No matching projects</div>
       {/if}
     </div>
   </div>
@@ -157,9 +179,25 @@
     color: var(--text-primary);
     font-size: 14px;
   }
+  .entry-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
   .entry-path {
     color: var(--text-secondary);
     font-size: 12px;
+  }
+  .loaded-badge {
+    font-size: 9px;
+    color: var(--status-idle);
+    background: rgba(166, 227, 161, 0.12);
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
   }
   .empty {
     padding: 20px 16px;
