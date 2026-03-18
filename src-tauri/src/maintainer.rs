@@ -8,6 +8,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
+use crate::emitter::EventEmitter;
 use crate::labels;
 use crate::models::{IssueAction, IssueSummary, MaintainerRunLog};
 use crate::state::AppState;
@@ -204,7 +205,9 @@ impl MaintainerScheduler {
                         .emit(&format!("maintainer-status:{}", project.id), "running");
 
                     let github_repo = project.maintainer.github_repo.as_deref();
-                    let result = run_maintainer_check(&project.repo_path, project.id, github_repo);
+                    let emitter = Some(state.emitter.clone());
+                    let result =
+                        run_maintainer_check(&project.repo_path, project.id, github_repo, emitter);
 
                     match result {
                         Ok(log) => {
@@ -1013,11 +1016,19 @@ impl Drop for WatchdogGuard {
     }
 }
 
+fn emit_stage(emitter: &Option<Arc<dyn EventEmitter>>, project_id: Uuid, stage: &str) {
+    if let Some(e) = emitter {
+        let _ = e.emit(&format!("maintainer-stage:{}", project_id), stage);
+    }
+}
+
 pub fn run_maintainer_check(
     repo_path: &str,
     project_id: Uuid,
     github_repo: Option<&str>,
+    emitter: Option<Arc<dyn EventEmitter>>,
 ) -> Result<MaintainerRunLog, String> {
+    let run_start = Instant::now();
     tracing::debug!(
         project_id = %project_id,
         repo_path,
@@ -1037,6 +1048,7 @@ pub fn run_maintainer_check(
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    emit_stage(&emitter, project_id, "Analyzing codebase...");
     tracing::debug!(project_id = %project_id, "spawning claude --print subprocess");
     let child = command.spawn().map_err(|e| {
         tracing::error!(project_id = %project_id, error = %e, "failed to spawn claude --print");
@@ -1100,8 +1112,11 @@ pub fn run_maintainer_check(
         return Err(format!("claude --print failed: {}", stderr));
     }
 
+    emit_stage(&emitter, project_id, "Parsing findings...");
     tracing::debug!(project_id = %project_id, "claude --print completed, parsing findings");
-    let findings_output = parse_findings_output(&String::from_utf8_lossy(&output.stdout))?;
+    let raw_output = String::from_utf8_lossy(&output.stdout).to_string();
+    let findings_output = parse_findings_output(&raw_output)?;
+    emit_stage(&emitter, project_id, "Filtering findings...");
     let filtered_findings = filter_semantic_findings(findings_output.findings);
     tracing::debug!(
         project_id = %project_id,
@@ -1110,6 +1125,7 @@ pub fn run_maintainer_check(
         "findings parsed and filtered"
     );
 
+    emit_stage(&emitter, project_id, "Checking existing GitHub issues...");
     tracing::debug!(project_id = %project_id, "ensuring GitHub labels exist");
     ensure_labels_exist(repo_path, github_repo)?;
 
@@ -1123,6 +1139,15 @@ pub fn run_maintainer_check(
         closed_issues = closed_issues.len(),
         "fetched existing maintainer issues"
     );
+
+    let finding_count = filtered_findings.findings.len();
+    if finding_count > 0 {
+        emit_stage(
+            &emitter,
+            project_id,
+            &format!("Filing {} finding(s)...", finding_count),
+        );
+    }
 
     let mut issues_filed = Vec::new();
     let mut issues_updated = Vec::new();
@@ -1254,6 +1279,9 @@ pub fn run_maintainer_check(
         parts.join(", ")
     };
 
+    let elapsed_secs = run_start.elapsed().as_secs_f64();
+    emit_stage(&emitter, project_id, "Complete");
+
     Ok(MaintainerRunLog {
         id: Uuid::new_v4(),
         project_id,
@@ -1263,6 +1291,8 @@ pub fn run_maintainer_check(
         issues_unchanged,
         issues_skipped,
         summary,
+        raw_output: Some(raw_output),
+        elapsed_secs: Some(elapsed_secs),
     })
 }
 
@@ -1414,6 +1444,8 @@ mod tests {
             issues_unchanged: 0,
             issues_skipped: 0,
             summary: "s".to_string(),
+            raw_output: None,
+            elapsed_secs: None,
         };
         assert!(has_changes(&log));
     }
@@ -1429,6 +1461,8 @@ mod tests {
             issues_unchanged: 3,
             issues_skipped: 0,
             summary: "s".to_string(),
+            raw_output: None,
+            elapsed_secs: None,
         };
         assert!(!has_changes(&log));
     }

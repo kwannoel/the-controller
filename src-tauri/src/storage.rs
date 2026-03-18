@@ -659,6 +659,8 @@ mod tests {
             issues_unchanged: 0,
             issues_skipped: 0,
             summary: "Filed 1 issue".to_string(),
+            raw_output: None,
+            elapsed_secs: None,
         }
     }
 

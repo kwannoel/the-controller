@@ -180,6 +180,10 @@ pub struct MaintainerRunLog {
     #[serde(default)]
     pub issues_skipped: u32,
     pub summary: String,
+    #[serde(default)]
+    pub raw_output: Option<String>,
+    #[serde(default)]
+    pub elapsed_secs: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -551,6 +555,8 @@ mod tests {
             issues_unchanged: 3,
             issues_skipped: 0,
             summary: "Filed 1 issue, 3 unchanged".to_string(),
+            raw_output: Some("test output".to_string()),
+            elapsed_secs: Some(42.5),
         };
         let json = serde_json::to_string(&run_log).expect("serialize");
         let deserialized: MaintainerRunLog = serde_json::from_str(&json).expect("deserialize");
@@ -717,6 +723,8 @@ mod tests {
             issues_unchanged: 2,
             issues_skipped: 5,
             summary: "Skipped 5 closed issues".to_string(),
+            raw_output: None,
+            elapsed_secs: None,
         };
         let json = serde_json::to_string(&run_log).expect("serialize");
         let deserialized: MaintainerRunLog = serde_json::from_str(&json).expect("deserialize");
