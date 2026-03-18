@@ -44,7 +44,7 @@ describe("NotesEditor", () => {
       return Promise.resolve(undefined);
     });
 
-    render(NotesEditor);
+    render(NotesEditor, { props: { projectId: "test-project" } });
 
     expect(await screen.findByTestId("note-code-editor")).toBeInTheDocument();
   });
@@ -64,7 +64,7 @@ describe("NotesEditor", () => {
 
     focusTarget.set({ type: "notes-editor", folder: "Project Alpha" });
 
-    render(NotesEditor);
+    render(NotesEditor, { props: { projectId: "test-project" } });
     const user = userEvent.setup();
 
     const editor = await screen.findByTestId("note-code-editor");
@@ -91,7 +91,7 @@ describe("NotesEditor", () => {
 
     focusTarget.set({ type: "notes-editor", folder: "Project Alpha" });
 
-    render(NotesEditor);
+    render(NotesEditor, { props: { projectId: "test-project" } });
     const user = userEvent.setup();
 
     const editor = await screen.findByTestId("note-code-editor");
@@ -123,7 +123,7 @@ describe("NotesEditor", () => {
 
     focusTarget.set({ type: "notes-editor", folder: "Project Alpha" });
 
-    render(NotesEditor);
+    render(NotesEditor, { props: { projectId: "test-project" } });
     const user = userEvent.setup();
 
     const editor = await screen.findByTestId("note-code-editor");
@@ -156,10 +156,11 @@ describe("NotesEditor", () => {
       return Promise.resolve(undefined);
     });
 
-    render(NotesEditor);
+    render(NotesEditor, { props: { projectId: "test-project" } });
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("read_note", {
+        projectId: "test-project",
         folder: "Project Alpha",
         filename: "a.md",
       });
@@ -169,6 +170,7 @@ describe("NotesEditor", () => {
 
     await waitFor(() => {
       expect(command).toHaveBeenCalledWith("read_note", {
+        projectId: "test-project",
         folder: "Project Alpha",
         filename: "b.md",
       });

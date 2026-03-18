@@ -16,11 +16,27 @@ mod github;
 mod media;
 mod notes;
 
-/// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
-/// if `agents.md` exists and `CLAUDE.md` does not.
+/// Ensure the symlink chain exists:
+/// 1. If `agents/default-agent/agents.md` exists and root `agents.md` does not,
+///    create `agents.md` → `agents/default-agent/agents.md`
+/// 2. If `agents.md` exists (file or symlink) and `CLAUDE.md` does not,
+///    create `CLAUDE.md` → `agents.md`
 pub fn ensure_claude_md_symlink(dir: &Path) -> Result<(), String> {
     let claude_md = dir.join("CLAUDE.md");
     let agents_md = dir.join("agents.md");
+    let default_agent = dir.join("agents").join("default-agent").join("agents.md");
+
+    // Step 1: Create root agents.md symlink if needed
+    if default_agent.exists() && !agents_md.exists() {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("agents/default-agent/agents.md", &agents_md)
+            .map_err(|e| format!("failed to create agents.md symlink: {}", e))?;
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file("agents/default-agent/agents.md", &agents_md)
+            .map_err(|e| format!("failed to create agents.md symlink: {}", e))?;
+    }
+
+    // Step 2: Create CLAUDE.md symlink if needed
     if agents_md.exists() && !claude_md.exists() {
         #[cfg(unix)]
         std::os::unix::fs::symlink("agents.md", &claude_md)
@@ -230,6 +246,33 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
     }
 }
 
+/// Resolve the main repo's agents directory for copying global agents into new projects.
+/// Uses `CARGO_MANIFEST_DIR` + `git rev-parse --git-common-dir` to handle worktrees.
+fn resolve_global_agents_dir() -> Option<PathBuf> {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir.parent()?;
+
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+
+    let main_repo = if output.status.success() {
+        let git_dir = String::from_utf8(output.stdout).ok()?.trim().to_string();
+        std::path::Path::new(&git_dir).parent()?.to_path_buf()
+    } else {
+        repo_root.to_path_buf()
+    };
+
+    let agents = main_repo.join("agents");
+    if agents.is_dir() {
+        Some(agents)
+    } else {
+        None
+    }
+}
+
 pub fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project, String> {
     tracing::info!(project_name = %name, repo_path = %repo_path.display(), "scaffolding project on disk");
     let parent_dir = repo_path
@@ -250,10 +293,53 @@ pub fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Pro
         .signature()
         .unwrap_or_else(|_| git2::Signature::now("The Controller", "noreply@controller").unwrap());
 
+    // Create agents/default-agent/ with rendered template
     let agents_content = render_agents_md(&name);
-    std::fs::write(repo_path.join("agents.md"), &agents_content)
-        .map_err(|e| rollback_dir(format!("failed to write agents.md: {}", e)))?;
+    let default_agent_dir = repo_path.join("agents").join("default-agent");
+    std::fs::create_dir_all(&default_agent_dir)
+        .map_err(|e| rollback_dir(format!("failed to create agents/default-agent: {}", e)))?;
+    std::fs::write(default_agent_dir.join("agents.md"), &agents_content)
+        .map_err(|e| rollback_dir(format!("failed to write default agent: {}", e)))?;
+
+    // Copy global agents (CEO, CPO, CTO) into project
+    if let Some(global_agents) = resolve_global_agents_dir() {
+        for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+            let source = global_agents.join(agent_name).join("agents.md");
+            if source.exists() {
+                let dest_dir = repo_path.join("agents").join(agent_name);
+                std::fs::create_dir_all(&dest_dir)
+                    .map_err(|e| rollback_dir(format!("failed to create {}: {}", agent_name, e)))?;
+                std::fs::copy(&source, dest_dir.join("agents.md"))
+                    .map_err(|e| rollback_dir(format!("failed to copy {}: {}", agent_name, e)))?;
+            }
+        }
+    }
+
+    // Create root agents.md symlink -> agents/default-agent/agents.md
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(
+        "agents/default-agent/agents.md",
+        repo_path.join("agents.md"),
+    )
+    .map_err(|e| rollback_dir(format!("failed to create agents.md symlink: {}", e)))?;
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(
+        "agents/default-agent/agents.md",
+        repo_path.join("agents.md"),
+    )
+    .map_err(|e| rollback_dir(format!("failed to create agents.md symlink: {}", e)))?;
+
+    // Create CLAUDE.md -> agents.md
     ensure_claude_md_symlink(&repo_path).map_err(rollback_dir)?;
+
+    // Create notes/ directory
+    let notes_dir = repo_path.join("notes");
+    std::fs::create_dir_all(&notes_dir)
+        .map_err(|e| rollback_dir(format!("failed to create notes/: {}", e)))?;
+    std::fs::write(notes_dir.join(".gitkeep"), "")
+        .map_err(|e| rollback_dir(format!("failed to write notes/.gitkeep: {}", e)))?;
+
+    // Create docs/plans/ directory
     let plans_dir = repo_path.join("docs").join("plans");
     std::fs::create_dir_all(&plans_dir)
         .map_err(|e| rollback_dir(format!("failed to create docs/plans: {}", e)))?;
@@ -264,11 +350,25 @@ pub fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Pro
         .index()
         .map_err(|e| rollback_dir(format!("failed to get index: {}", e)))?;
     index
+        .add_path(std::path::Path::new("agents/default-agent/agents.md"))
+        .map_err(|e| rollback_dir(format!("failed to add default agent to index: {}", e)))?;
+    // Add global agent copies to index
+    for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+        let agent_path_str = format!("agents/{}/agents.md", agent_name);
+        let agent_path = std::path::Path::new(&agent_path_str);
+        if repo_path.join(agent_path).exists() {
+            let _ = index.add_path(agent_path);
+        }
+    }
+    index
         .add_path(std::path::Path::new("agents.md"))
         .map_err(|e| rollback_dir(format!("failed to add agents.md to index: {}", e)))?;
     index
         .add_path(std::path::Path::new("CLAUDE.md"))
         .map_err(|e| rollback_dir(format!("failed to add CLAUDE.md to index: {}", e)))?;
+    index
+        .add_path(std::path::Path::new("notes/.gitkeep"))
+        .map_err(|e| rollback_dir(format!("failed to add notes/.gitkeep to index: {}", e)))?;
     index
         .add_path(std::path::Path::new("docs/plans/.gitkeep"))
         .map_err(|e| rollback_dir(format!("failed to add .gitkeep to index: {}", e)))?;
@@ -477,6 +577,39 @@ pub fn create_project(
     // If repo has agents.md but no CLAUDE.md, create symlink
     ensure_claude_md_symlink(path)?;
 
+    // Initialize agents/ directory if it doesn't exist
+    let agents_dir = path.join("agents");
+    if !agents_dir.exists() {
+        let default_agent_dir = agents_dir.join("default-agent");
+        if let Err(e) = std::fs::create_dir_all(&default_agent_dir) {
+            tracing::warn!("failed to create default agent dir: {}", e);
+        } else {
+            // If repo has agents.md, copy it as the default agent
+            let repo_agents_file = path.join("agents.md");
+            if repo_agents_file.exists() {
+                let _ = std::fs::copy(&repo_agents_file, default_agent_dir.join("agents.md"));
+            }
+            // Copy global agents
+            if let Some(global_agents) = resolve_global_agents_dir() {
+                for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+                    let source = global_agents.join(agent_name).join("agents.md");
+                    if source.exists() {
+                        let dest_dir = agents_dir.join(agent_name);
+                        let _ = std::fs::create_dir_all(&dest_dir);
+                        let _ = std::fs::copy(&source, dest_dir.join("agents.md"));
+                    }
+                }
+            }
+        }
+    }
+
+    // Initialize notes/ directory if it doesn't exist
+    let notes_dir = path.join("notes");
+    if !notes_dir.exists() {
+        let _ = std::fs::create_dir_all(&notes_dir);
+        let _ = std::fs::write(notes_dir.join(".gitkeep"), "");
+    }
+
     Ok(project)
 }
 
@@ -541,6 +674,39 @@ pub fn load_project(
 
     // If repo has agents.md but no CLAUDE.md, create symlink
     ensure_claude_md_symlink(path)?;
+
+    // Initialize agents/ directory if it doesn't exist
+    let agents_dir = path.join("agents");
+    if !agents_dir.exists() {
+        let default_agent_dir = agents_dir.join("default-agent");
+        if let Err(e) = std::fs::create_dir_all(&default_agent_dir) {
+            tracing::warn!("failed to create default agent dir: {}", e);
+        } else {
+            // If repo has agents.md, copy it as the default agent
+            let repo_agents_file = path.join("agents.md");
+            if repo_agents_file.exists() {
+                let _ = std::fs::copy(&repo_agents_file, default_agent_dir.join("agents.md"));
+            }
+            // Copy global agents
+            if let Some(global_agents) = resolve_global_agents_dir() {
+                for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+                    let source = global_agents.join(agent_name).join("agents.md");
+                    if source.exists() {
+                        let dest_dir = agents_dir.join(agent_name);
+                        let _ = std::fs::create_dir_all(&dest_dir);
+                        let _ = std::fs::copy(&source, dest_dir.join("agents.md"));
+                    }
+                }
+            }
+        }
+    }
+
+    // Initialize notes/ directory if it doesn't exist
+    let notes_dir = path.join("notes");
+    if !notes_dir.exists() {
+        let _ = std::fs::create_dir_all(&notes_dir);
+        let _ = std::fs::write(notes_dir.join(".gitkeep"), "");
+    }
 
     Ok(project)
 }
@@ -619,6 +785,7 @@ pub fn update_agents_md(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_session(
     state: State<'_, AppState>,
     _app_handle: AppHandle,
@@ -627,6 +794,7 @@ pub async fn create_session(
     github_issue: Option<crate::models::GithubIssue>,
     background: Option<bool>,
     initial_prompt: Option<String>,
+    agent_name: Option<String>,
 ) -> Result<String, String> {
     let kind = kind.unwrap_or_else(|| "claude".to_string());
     let background = background.unwrap_or(false);
@@ -681,6 +849,25 @@ pub async fn create_session(
                 }
                 Err(e) => return Err(e),
             };
+
+        // If an agent is specified, use its directory as the CWD
+        let session_dir = if let Some(ref agent) = agent_name {
+            let agent_dir = PathBuf::from(&session_dir).join("agents").join(agent);
+            if !agent_dir.exists() {
+                if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
+                    let _ = cleanup_failed_session_spawn(
+                        &repo_path,
+                        Some(wt.as_str()),
+                        Some(br.as_str()),
+                    );
+                }
+                return Err(format!("Agent directory not found: agents/{}", agent));
+            }
+            ensure_claude_md_symlink(&agent_dir)?;
+            agent_dir.to_string_lossy().to_string()
+        } else {
+            session_dir
+        };
 
         // Build initial prompt: explicit prompt takes priority, then GitHub issue context
         let initial_prompt = initial_prompt.or_else(|| {
@@ -1644,110 +1831,132 @@ pub async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<Str
 #[tauri::command]
 pub async fn list_notes(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
 ) -> Result<Vec<crate::notes::NoteEntry>, String> {
-    notes::list_notes(state, folder).await
+    notes::list_notes(state, project_id, folder).await
 }
 
 #[tauri::command]
 pub async fn read_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
 ) -> Result<String, String> {
-    notes::read_note(state, folder, filename).await
+    notes::read_note(state, project_id, folder, filename).await
 }
 
 #[tauri::command]
 pub async fn write_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
     content: String,
 ) -> Result<(), String> {
-    notes::write_note(state, folder, filename, content).await
+    notes::write_note(state, project_id, folder, filename, content).await
 }
 
 #[tauri::command]
 pub async fn create_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     title: String,
 ) -> Result<String, String> {
-    notes::create_note(state, folder, title).await
+    notes::create_note(state, project_id, folder, title).await
 }
 
 #[tauri::command]
 pub async fn rename_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     old_name: String,
     new_name: String,
 ) -> Result<String, String> {
-    notes::rename_note(state, folder, old_name, new_name).await
+    notes::rename_note(state, project_id, folder, old_name, new_name).await
 }
 
 #[tauri::command]
 pub async fn duplicate_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
 ) -> Result<String, String> {
-    notes::duplicate_note(state, folder, filename).await
+    notes::duplicate_note(state, project_id, folder, filename).await
 }
 
 #[tauri::command]
 pub async fn delete_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
 ) -> Result<(), String> {
-    notes::delete_note(state, folder, filename).await
+    notes::delete_note(state, project_id, folder, filename).await
 }
 
 #[tauri::command]
-pub async fn list_folders(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    notes::list_folders(state).await
+pub async fn list_folders(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<String>, String> {
+    notes::list_folders(state, project_id).await
 }
 
 #[tauri::command]
-pub async fn create_folder(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    notes::create_folder(state, name).await
+pub async fn create_folder(
+    state: State<'_, AppState>,
+    project_id: String,
+    name: String,
+) -> Result<(), String> {
+    notes::create_folder(state, project_id, name).await
 }
 
 #[tauri::command]
 pub async fn rename_folder(
     state: State<'_, AppState>,
+    project_id: String,
     old_name: String,
     new_name: String,
 ) -> Result<(), String> {
-    notes::rename_folder(state, old_name, new_name).await
+    notes::rename_folder(state, project_id, old_name, new_name).await
 }
 
 #[tauri::command]
 pub async fn delete_folder(
     state: State<'_, AppState>,
+    project_id: String,
     name: String,
     force: bool,
 ) -> Result<(), String> {
-    notes::delete_folder(state, name, force).await
+    notes::delete_folder(state, project_id, name, force).await
 }
 
 #[tauri::command]
-pub async fn commit_notes(state: State<'_, AppState>) -> Result<bool, String> {
-    notes::commit_notes(state).await
+pub async fn commit_notes(state: State<'_, AppState>, project_id: String) -> Result<bool, String> {
+    notes::commit_notes(state, project_id).await
+}
+
+#[tauri::command]
+pub async fn migrate_notes(state: State<'_, AppState>, project_id: String) -> Result<u32, String> {
+    notes::migrate_notes(state, project_id).await
 }
 
 #[tauri::command]
 pub async fn save_note_image(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     image_bytes: Vec<u8>,
     extension: String,
 ) -> Result<String, String> {
     let storage = state.storage.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let base_dir = storage.lock().map_err(|e| e.to_string())?.base_dir();
+        let base_dir = notes::resolve_notes_base(&storage, &project_id)?;
         crate::notes::save_note_image(&base_dir, &folder, &image_bytes, &extension)
             .map_err(|e| e.to_string())
     })
@@ -1758,12 +1967,13 @@ pub async fn save_note_image(
 #[tauri::command]
 pub async fn resolve_note_asset_path(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     relative_path: String,
 ) -> Result<String, String> {
     let storage = state.storage.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let base_dir = storage.lock().map_err(|e| e.to_string())?.base_dir();
+        let base_dir = notes::resolve_notes_base(&storage, &project_id)?;
         crate::notes::resolve_note_asset_path(&base_dir, &folder, &relative_path)
             .map(|p| p.to_string_lossy().to_string())
             .map_err(|e| e.to_string())
@@ -2397,6 +2607,22 @@ pub async fn load_keybindings(
 ) -> Result<crate::keybindings::KeybindingsResult, String> {
     let base_dir = state.storage.lock().map_err(|e| e.to_string())?.base_dir();
     Ok(crate::keybindings::load_keybindings(&base_dir))
+}
+
+#[tauri::command]
+pub async fn list_agents(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::agents::AgentEntry>, String> {
+    let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let storage = storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(id).map_err(|e| e.to_string())?;
+        crate::agents::list_agents(Path::new(&project.repo_path)).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
@@ -3805,5 +4031,129 @@ mod staging_tests {
         let base = occupied_port.checked_sub(STAGING_PORT_OFFSET).unwrap();
         let port = find_staging_port(base).unwrap();
         assert_ne!(port, occupied_port, "must skip port occupied on IPv6");
+    }
+}
+
+#[cfg(test)]
+mod symlink_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_ensure_symlinks_with_agents_dir_structure() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Create agents/default-agent/agents.md
+        std::fs::create_dir_all(dir.join("agents/default-agent")).unwrap();
+        std::fs::write(
+            dir.join("agents/default-agent/agents.md"),
+            "# Default Agent",
+        )
+        .unwrap();
+
+        ensure_claude_md_symlink(dir).unwrap();
+
+        // agents.md at root should exist and be a symlink
+        let agents_md = dir.join("agents.md");
+        assert!(agents_md.exists(), "agents.md should exist");
+        assert!(
+            agents_md
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "agents.md should be a symlink"
+        );
+
+        // CLAUDE.md should exist and be a symlink
+        let claude_md = dir.join("CLAUDE.md");
+        assert!(claude_md.exists(), "CLAUDE.md should exist");
+        assert!(
+            claude_md
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "CLAUDE.md should be a symlink"
+        );
+
+        // Content should be readable through the chain
+        let content = std::fs::read_to_string(&claude_md).unwrap();
+        assert!(content.contains("Default Agent"));
+    }
+
+    #[test]
+    fn test_ensure_symlinks_preserves_existing_root_agents_md() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Root agents.md exists as a regular file (legacy project)
+        std::fs::write(dir.join("agents.md"), "# Legacy Agent").unwrap();
+
+        ensure_claude_md_symlink(dir).unwrap();
+
+        // CLAUDE.md should be created pointing to agents.md
+        let claude_md = dir.join("CLAUDE.md");
+        assert!(claude_md.exists());
+        let content = std::fs::read_to_string(&claude_md).unwrap();
+        assert!(content.contains("Legacy Agent"));
+
+        // agents.md should NOT be a symlink (it's a regular file)
+        assert!(
+            !dir.join("agents.md")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "agents.md should stay as regular file for legacy projects"
+        );
+    }
+
+    #[test]
+    fn test_ensure_symlinks_noop_when_both_exist() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        std::fs::write(dir.join("agents.md"), "# Agent").unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Claude").unwrap();
+
+        // Should not error when both already exist
+        ensure_claude_md_symlink(dir).unwrap();
+
+        // CLAUDE.md should still have original content (not overwritten)
+        let content = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+        assert!(content.contains("Claude"));
+    }
+}
+
+#[cfg(test)]
+mod migrate_tests {
+    use crate::commands::notes::copy_dir_recursive;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_copy_dir_recursive() {
+        let src = TempDir::new().unwrap();
+        let dst = TempDir::new().unwrap();
+
+        // Create source structure
+        std::fs::create_dir_all(src.path().join("sub")).unwrap();
+        std::fs::write(src.path().join("file.txt"), "hello").unwrap();
+        std::fs::write(src.path().join("sub/nested.txt"), "world").unwrap();
+
+        let dest = dst.path().join("copied");
+        copy_dir_recursive(src.path(), &dest).unwrap();
+
+        assert!(dest.join("file.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("file.txt")).unwrap(),
+            "hello"
+        );
+        assert!(dest.join("sub/nested.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/nested.txt")).unwrap(),
+            "world"
+        );
     }
 }

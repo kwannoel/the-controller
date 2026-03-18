@@ -439,6 +439,15 @@
       case "toggle-maintainer-view":
         dispatchAction({ type: "toggle-maintainer-view" });
         return true;
+      case "spawn-agent": {
+        const project = getFocusedProject();
+        if (!project) {
+          showToast("Select a project first", "error");
+          return true;
+        }
+        dispatchAction({ type: "spawn-agent", projectId: project.id });
+        return true;
+      }
       case "deploy-project": {
         const project = getFocusedProject();
         if (project) {

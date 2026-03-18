@@ -162,12 +162,12 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('a does not dispatch any archive action', () => {
+    it('a dispatches spawn-agent for focused project', () => {
       focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
       let captured: any = null;
       const unsub = hotkeyAction.subscribe((v) => { captured = v; });
       pressKey('a');
-      expect(captured).toBeNull();
+      expect(captured).toEqual({ type: 'spawn-agent', projectId: 'proj-1' });
       unsub();
     });
 

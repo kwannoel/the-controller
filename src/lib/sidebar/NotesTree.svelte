@@ -5,6 +5,7 @@
 
   interface Props {
     folders: string[];
+    projectId?: string;
     expandedFolderSet: Set<string>;
     currentFocus: FocusTarget;
     onToggleFolder: (folder: string) => void;
@@ -13,7 +14,7 @@
     onNoteSelect: (filename: string, folder: string) => void;
   }
 
-  let { folders, expandedFolderSet, currentFocus, onToggleFolder, onFolderFocus, onNoteFocus, onNoteSelect }: Props = $props();
+  let { folders, projectId, expandedFolderSet, currentFocus, onToggleFolder, onFolderFocus, onNoteFocus, onNoteSelect }: Props = $props();
 
   const noteEntriesState = fromStore(noteEntries);
   let noteMap: Map<string, NoteEntry[]> = $derived(noteEntriesState.current);
@@ -41,7 +42,8 @@
   }
 
   function fetchNotes(folder: string) {
-    command<NoteEntry[]>("list_notes", { folder }).then((entries) => {
+    if (!projectId) return;
+    command<NoteEntry[]>("list_notes", { projectId, folder }).then((entries) => {
       noteEntries.update((map) => {
         const next = new Map(map);
         next.set(folder, entries);
@@ -53,6 +55,7 @@
   }
 
   $effect(() => {
+    if (!projectId) return;
     for (const folder of folders) {
       if (expandedFolderSet.has(folder)) {
         fetchNotes(folder);
