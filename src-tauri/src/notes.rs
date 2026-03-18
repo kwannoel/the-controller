@@ -455,11 +455,7 @@ pub fn commit_notes(base: &Path, message: &str) -> Result<bool, git2::Error> {
     // If the repo is the standalone notes repo (base/notes/), stage everything.
     let repo_workdir = repo.workdir().unwrap_or(base);
     let is_project_repo = repo_workdir == base;
-    let glob_pattern: &[&str] = if is_project_repo {
-        &["notes"]
-    } else {
-        &["*"]
-    };
+    let glob_pattern: &[&str] = if is_project_repo { &["notes"] } else { &["*"] };
 
     index.add_all(glob_pattern.iter(), git2::IndexAddOption::DEFAULT, None)?;
     index.update_all(glob_pattern.iter(), None)?;

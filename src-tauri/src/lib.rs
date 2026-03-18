@@ -1,5 +1,6 @@
 use tauri::Manager;
 
+pub mod agents;
 pub mod architecture;
 pub mod auto_worker;
 pub mod broker_client;
@@ -171,6 +172,7 @@ pub fn run() {
             commands::toggle_voice_pause,
             commands::log_frontend_error,
             commands::load_keybindings,
+            commands::list_agents,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

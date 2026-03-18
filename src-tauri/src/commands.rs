@@ -2517,6 +2517,22 @@ pub async fn load_keybindings(
     Ok(crate::keybindings::load_keybindings(&base_dir))
 }
 
+#[tauri::command]
+pub async fn list_agents(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::agents::AgentEntry>, String> {
+    let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let storage = storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(id).map_err(|e| e.to_string())?;
+        crate::agents::list_agents(Path::new(&project.repo_path)).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     for name in &["refs/heads/main", "refs/heads/master"] {
         if let Ok(reference) = repo.find_reference(name) {
