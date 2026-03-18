@@ -105,7 +105,7 @@
         {/each}
 
         {#if getNotesForFolder(folder).length === 0}
-          <div class="empty-notes">No notes yet — press <kbd>n</kbd></div>
+          <div class="empty-notes">No notes yet — press <kbd>c</kbd></div>
         {/if}
       </div>
     {/if}
