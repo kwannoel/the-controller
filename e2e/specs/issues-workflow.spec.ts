@@ -16,7 +16,7 @@ import { test, expect } from "@playwright/test";
 async function focusProject(page: import("@playwright/test").Page) {
   await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
   // Wait for at least one project to be rendered
-  await expect(page.locator(".project-header")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".project-header").first()).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press("j");
   await expect(page.locator(".focus-target")).toBeVisible({ timeout: 3_000 });
 }
