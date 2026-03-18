@@ -38,6 +38,7 @@
     value: string;
     focused?: boolean;
     entryKey?: string;
+    projectId?: string;
     folder?: string;
     resolveImageSrc?: (path: string) => string | null;
     onChange?: (value: string) => void;
@@ -47,7 +48,7 @@
     onImageSaved?: (relativePath: string) => void;
   }
 
-  let { value, focused = false, entryKey, folder, resolveImageSrc, onChange, onEscape, onModeChange, onAiChat, onImageSaved }: Props = $props();
+  let { value, focused = false, entryKey, projectId, folder, resolveImageSrc, onChange, onEscape, onModeChange, onAiChat, onImageSaved }: Props = $props();
 
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
@@ -71,6 +72,7 @@
     const bytes = Array.from(new Uint8Array(arrayBuf));
 
     const relativePath = await command<string>("save_note_image", {
+      projectId,
       folder,
       imageBytes: bytes,
       extension: ext,

@@ -6,6 +6,12 @@
   import CodeMirrorNoteEditor, { type VimMode, type AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
   import NoteAiPanel from "./NoteAiPanel.svelte";
 
+  interface Props {
+    projectId?: string;
+  }
+
+  let { projectId }: Props = $props();
+
   let content = $state("");
   let savedContent = $state("");
   let loading = $state(true);
@@ -54,14 +60,14 @@
         if (prevContent !== prevSaved && prev) {
           const [prevFolder, ...rest] = prev.split(":");
           const prevFilename = rest.join(":");
-          if (prevFolder && prevFilename) {
-            command("write_note", { folder: prevFolder, filename: prevFilename, content: prevContent }).catch(() => {});
+          if (prevFolder && prevFilename && projectId) {
+            command("write_note", { projectId, folder: prevFolder, filename: prevFilename, content: prevContent }).catch(() => {});
           }
         }
       }
       // Commit any pending note edits to git
-      if (prev) {
-        command("commit_notes", {}).catch(() => {});
+      if (prev && projectId) {
+        command("commit_notes", { projectId }).catch(() => {});
       }
       prevNoteKey = key;
       assetUrlCache = new Map();
@@ -94,7 +100,7 @@
   async function loadNote(folder: string, filename: string, requestKey: string) {
     loading = true;
     try {
-      const text = await command<string>("read_note", { folder, filename });
+      const text = await command<string>("read_note", { projectId, folder, filename });
       if (prevNoteKey === requestKey) {
         content = text;
         savedContent = text;
@@ -123,9 +129,9 @@
       clearTimeout(saveTimer);
       saveTimer = null;
     }
-    if (!currentNote || !folderName || content === savedContent) return;
+    if (!currentNote || !folderName || !projectId || content === savedContent) return;
     try {
-      await command("write_note", { folder: folderName, filename: currentNote.filename, content });
+      await command("write_note", { projectId, folder: folderName, filename: currentNote.filename, content });
       savedContent = content;
     } catch {
       // silently fail — user will see unsaved indicator
@@ -152,6 +158,7 @@
 
     try {
       const absPath = await command<string>("resolve_note_asset_path", {
+        projectId,
         folder: folderName,
         relativePath,
       });
@@ -220,6 +227,7 @@
           value={content}
           focused={editorFocused}
           entryKey={editorEntryKey}
+          {projectId}
           folder={folderName ?? undefined}
           resolveImageSrc={resolveImageSrcSync}
           onChange={handleEditorChange}

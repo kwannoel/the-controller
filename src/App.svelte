@@ -47,6 +47,9 @@
   const architectureViewsState = fromStore(architectureViews);
   const selectedSessionProviderState = fromStore(selectedSessionProvider);
   let currentSessionProvider = $derived(selectedSessionProviderState.current);
+  let activeProjectForNotes = $derived(
+    projectsState.current.find(p => p.sessions.some(s => s.id === activeSessionIdState.current)) ?? projectsState.current[0]
+  );
   let currentArchitectureProject = $derived.by(() => {
     const focus = focusTargetState.current;
     const focusedProjectId =
@@ -559,7 +562,7 @@
             logs={currentArchitectureView?.logs ?? []}
           />
         {:else if workspaceModeState.current === "notes"}
-          <NotesEditor />
+          <NotesEditor projectId={activeProjectForNotes?.id} />
         {:else if workspaceModeState.current === "infrastructure"}
           <InfrastructureDashboard />
         {:else}

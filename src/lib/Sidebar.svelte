@@ -55,6 +55,10 @@
   const IDLE_DEBOUNCE_MS = 1500;
   let surfacedCorruptProjectWarnings = $state(new Set<string>());
 
+  let activeProjectForNotes: Project | undefined = $derived(
+    projectList.find(p => p.sessions.some(s => s.id === activeSession)) ?? projectList[0]
+  );
+
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
 
@@ -244,11 +248,13 @@
   });
 
   $effect(() => {
-    command<string[]>("list_folders", {}).then(folders => {
-      noteFolders.set(folders);
-    }).catch(err => {
-      console.error("Failed to list folders:", err);
-    });
+    if (activeProjectForNotes) {
+      command<string[]>("list_folders", { projectId: activeProjectForNotes.id }).then(folders => {
+        noteFolders.set(folders);
+      }).catch(err => {
+        console.error("Failed to list folders:", err);
+      });
+    }
   });
 
   function markSession(sessionId: string, status: SessionStatus) {
@@ -533,14 +539,16 @@
 
   async function handleCreateNote(title: string, folder: string) {
     showNewNoteModal = false;
+    const pid = activeProjectForNotes?.id;
+    if (!pid) return;
     try {
-      const filename: string = await command("create_note", { folder, title });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
+      const filename: string = await command("create_note", { projectId: pid, folder, title });
+      const notes = await command<NoteEntry[]>("list_notes", { projectId: pid, folder });
       noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
       expandedProjects.update(s => { const next = new Set(s); next.add(folder); return next; });
       activeNote.set({ folder, filename });
       focusTarget.set({ type: "notes-editor", folder });
-      const folders = await command<string[]>("list_folders", {});
+      const folders = await command<string[]>("list_folders", { projectId: pid });
       noteFolders.set(folders);
     } catch (e) {
       showToast(String(e), "error");
@@ -549,9 +557,11 @@
 
   async function handleCreateFolder(name: string) {
     showNewFolderModal = false;
+    const pid = activeProjectForNotes?.id;
+    if (!pid) return;
     try {
-      await command("create_folder", { name });
-      const folders = await command<string[]>("list_folders", {});
+      await command("create_folder", { projectId: pid, name });
+      const folders = await command<string[]>("list_folders", { projectId: pid });
       noteFolders.set(folders);
       expandedProjects.update(s => { const next = new Set(s); next.add(name); return next; });
       focusTarget.set({ type: "folder", folder: name });
@@ -561,9 +571,11 @@
   }
 
   async function handleDeleteNote(folder: string, filename: string) {
+    const pid = activeProjectForNotes?.id;
+    if (!pid) return;
     try {
-      await command("delete_note", { folder, filename });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
+      await command("delete_note", { projectId: pid, folder, filename });
+      const notes = await command<NoteEntry[]>("list_notes", { projectId: pid, folder });
       noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
       const an = activeNoteState.current;
       if (an?.folder === folder && an?.filename === filename) {
@@ -577,9 +589,11 @@
   }
 
   async function handleRenameNote(folder: string, oldName: string, newName: string) {
+    const pid = activeProjectForNotes?.id;
+    if (!pid) return;
     try {
-      const newFilename: string = await command("rename_note", { folder, oldName, newName });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
+      const newFilename: string = await command("rename_note", { projectId: pid, folder, oldName, newName });
+      const notes = await command<NoteEntry[]>("list_notes", { projectId: pid, folder });
       noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
       const an = activeNoteState.current;
       if (an?.folder === folder && an?.filename === oldName) {
@@ -593,9 +607,11 @@
   }
 
   async function handleDuplicateNote(folder: string, filename: string) {
+    const pid = activeProjectForNotes?.id;
+    if (!pid) return;
     try {
-      const newFilename: string = await command("duplicate_note", { folder, filename });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
+      const newFilename: string = await command("duplicate_note", { projectId: pid, folder, filename });
+      const notes = await command<NoteEntry[]>("list_notes", { projectId: pid, folder });
       noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
       activeNote.set({ folder, filename: newFilename });
       focusTarget.set({ type: "note", filename: newFilename, folder });
@@ -607,9 +623,11 @@
   }
 
   async function handleRenameFolder(oldName: string, newName: string) {
+    const pid = activeProjectForNotes?.id;
+    if (!pid) return;
     try {
-      await command("rename_folder", { oldName, newName });
-      const folders = await command<string[]>("list_folders", {});
+      await command("rename_folder", { projectId: pid, oldName, newName });
+      const folders = await command<string[]>("list_folders", { projectId: pid });
       noteFolders.set(folders);
       expandedProjects.update(s => {
         const next = new Set(s);
@@ -634,9 +652,11 @@
   }
 
   async function handleDeleteFolder(folder: string) {
+    const pid = activeProjectForNotes?.id;
+    if (!pid) return;
     try {
-      await command("delete_folder", { name: folder, force: true });
-      const folders = await command<string[]>("list_folders", {});
+      await command("delete_folder", { projectId: pid, name: folder, force: true });
+      const folders = await command<string[]>("list_folders", { projectId: pid });
       noteFolders.set(folders);
       noteEntries.update((m) => { const next = new Map(m); next.delete(folder); return next; });
       expandedProjects.update((s) => { const next = new Set(s); next.delete(folder); return next; });
@@ -675,6 +695,7 @@
     {:else if currentMode === "notes"}
       <NotesTree
         folders={folderList}
+        projectId={activeProjectForNotes?.id}
         expandedFolderSet={expandedProjectSet}
         {currentFocus}
         onToggleFolder={toggleProject}
