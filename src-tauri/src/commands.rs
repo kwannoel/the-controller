@@ -577,6 +577,39 @@ pub fn create_project(
     // If repo has agents.md but no CLAUDE.md, create symlink
     ensure_claude_md_symlink(path)?;
 
+    // Initialize agents/ directory if it doesn't exist
+    let agents_dir = path.join("agents");
+    if !agents_dir.exists() {
+        let default_agent_dir = agents_dir.join("default-agent");
+        if let Err(e) = std::fs::create_dir_all(&default_agent_dir) {
+            tracing::warn!("failed to create default agent dir: {}", e);
+        } else {
+            // If repo has agents.md, copy it as the default agent
+            let repo_agents_file = path.join("agents.md");
+            if repo_agents_file.exists() {
+                let _ = std::fs::copy(&repo_agents_file, default_agent_dir.join("agents.md"));
+            }
+            // Copy global agents
+            if let Some(global_agents) = resolve_global_agents_dir() {
+                for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+                    let source = global_agents.join(agent_name).join("agents.md");
+                    if source.exists() {
+                        let dest_dir = agents_dir.join(agent_name);
+                        let _ = std::fs::create_dir_all(&dest_dir);
+                        let _ = std::fs::copy(&source, dest_dir.join("agents.md"));
+                    }
+                }
+            }
+        }
+    }
+
+    // Initialize notes/ directory if it doesn't exist
+    let notes_dir = path.join("notes");
+    if !notes_dir.exists() {
+        let _ = std::fs::create_dir_all(&notes_dir);
+        let _ = std::fs::write(notes_dir.join(".gitkeep"), "");
+    }
+
     Ok(project)
 }
 
@@ -641,6 +674,39 @@ pub fn load_project(
 
     // If repo has agents.md but no CLAUDE.md, create symlink
     ensure_claude_md_symlink(path)?;
+
+    // Initialize agents/ directory if it doesn't exist
+    let agents_dir = path.join("agents");
+    if !agents_dir.exists() {
+        let default_agent_dir = agents_dir.join("default-agent");
+        if let Err(e) = std::fs::create_dir_all(&default_agent_dir) {
+            tracing::warn!("failed to create default agent dir: {}", e);
+        } else {
+            // If repo has agents.md, copy it as the default agent
+            let repo_agents_file = path.join("agents.md");
+            if repo_agents_file.exists() {
+                let _ = std::fs::copy(&repo_agents_file, default_agent_dir.join("agents.md"));
+            }
+            // Copy global agents
+            if let Some(global_agents) = resolve_global_agents_dir() {
+                for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+                    let source = global_agents.join(agent_name).join("agents.md");
+                    if source.exists() {
+                        let dest_dir = agents_dir.join(agent_name);
+                        let _ = std::fs::create_dir_all(&dest_dir);
+                        let _ = std::fs::copy(&source, dest_dir.join("agents.md"));
+                    }
+                }
+            }
+        }
+    }
+
+    // Initialize notes/ directory if it doesn't exist
+    let notes_dir = path.join("notes");
+    if !notes_dir.exists() {
+        let _ = std::fs::create_dir_all(&notes_dir);
+        let _ = std::fs::write(notes_dir.join(".gitkeep"), "");
+    }
 
     Ok(project)
 }
