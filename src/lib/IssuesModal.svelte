@@ -271,13 +271,15 @@
   });
 </script>
 
+<svelte:window onkeydown={handleKeydown} />
+
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
   class="overlay"
   bind:this={overlayEl}
   tabindex="0"
   onclick={onClose}
-  onkeydown={handleKeydown}
   role="dialog"
 >
   <!-- svelte-ignore a11y_click_events_have_key_events -->
