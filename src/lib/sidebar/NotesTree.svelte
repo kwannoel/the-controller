@@ -54,12 +54,12 @@
     });
   }
 
+  // Fetch notes for ALL folders so counts are always accurate,
+  // not just for expanded ones.
   $effect(() => {
     if (!projectId) return;
     for (const folder of folders) {
-      if (expandedFolderSet.has(folder)) {
-        fetchNotes(folder);
-      }
+      fetchNotes(folder);
     }
   });
 </script>
