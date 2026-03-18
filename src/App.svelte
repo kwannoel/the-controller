@@ -19,13 +19,14 @@
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import NotesEditor from "./lib/NotesEditor.svelte";
+  import NotesChatSidebar from "./lib/NotesChatSidebar.svelte";
   import ArchitectureExplorer from "./lib/ArchitectureExplorer.svelte";
   import InfrastructureDashboard from "./lib/InfrastructureDashboard.svelte";
   import VoiceMode from "./lib/VoiceMode.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { initKeybindings } from "$lib/keybindings";
   import { showToast } from "./lib/toast";
-  import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, sessionProviderFromConfig, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
+  import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, notesChatVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, sessionProviderFromConfig, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
   let ready = $state(false);
   let issuesModalTarget: { projectId: string; repoPath: string } | null = $state(null);
   let promptPickerTarget: { projectId: string } | null = $state(null);
@@ -33,11 +34,13 @@
   let deploySetupOpen = $state(false);
   let voiceModeRef: { toggleDebug: () => void; toggleTranscript: () => void } | undefined = $state();
   let screenshotPickerState: { path: string; preview: boolean } | null = $state(null);
+  let notesChatRef: NotesChatSidebar | undefined = $state();
 
   const sidebarVisibleState = fromStore(sidebarVisible);
   const showKeyHintsState = fromStore(showKeyHints);
   const authErrorState = fromStore(authError);
 
+  const notesChatVisibleState = fromStore(notesChatVisible);
   const workspaceModePickerVisibleState = fromStore(workspaceModePickerVisible);
   const workspaceModeState = fromStore(workspaceMode);
   const onboardingCompleteState = fromStore(onboardingComplete);
@@ -126,6 +129,14 @@
             }
           }
         });
+      } else if (action?.type === "notes-chat-new") {
+        notesChatRef?.createThread();
+      } else if (action?.type === "notes-chat-delete") {
+        notesChatRef?.deleteActiveThread();
+      } else if (action?.type === "notes-chat-navigate") {
+        notesChatRef?.navigateThread(action.direction);
+      } else if (action?.type === "notes-chat-focus-input") {
+        notesChatRef?.focusInput();
       }
     });
     return unsub;
@@ -563,6 +574,9 @@
           />
         {:else if workspaceModeState.current === "notes"}
           <NotesEditor projectId={activeProjectForNotes?.id} />
+          {#if notesChatVisibleState.current}
+            <NotesChatSidebar bind:this={notesChatRef} />
+          {/if}
         {:else if workspaceModeState.current === "infrastructure"}
           <InfrastructureDashboard />
         {:else}

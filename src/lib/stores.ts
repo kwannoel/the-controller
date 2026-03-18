@@ -290,6 +290,10 @@ export type HotkeyAction =
   | { type: "spawn-agent"; projectId: string }
   | { type: "deploy-project"; projectId: string; repoPath: string }
   | { type: "voice-toggle-panel"; panel: "debug" | "transcript" }
+  | { type: "notes-chat-new" }
+  | { type: "notes-chat-delete" }
+  | { type: "notes-chat-navigate"; direction: 1 | -1 }
+  | { type: "notes-chat-focus-input" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
@@ -297,6 +301,22 @@ export const showKeyHints = writable<boolean>(false);
 export const sidebarVisible = writable<boolean>(true);
 
 export const expandedProjects = writable<Set<string>>(new Set());
+
+// ── Notes Chat Sidebar ──
+export interface NotesChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface NotesChatThread {
+  id: string;
+  title: string;
+  messages: NotesChatMessage[];
+}
+
+export const notesChatVisible = writable<boolean>(false);
+export const notesChatThreads = writable<NotesChatThread[]>([]);
+export const activeNotesChatId = writable<string | null>(null);
 
 let hotkeyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -327,5 +347,6 @@ export type FocusTarget =
   | { type: "folder"; folder: string }
   | { type: "note"; filename: string; folder: string }
   | { type: "notes-editor"; folder: string; entryKey?: string }
+  | { type: "notes-chat" }
   | null;
 export const focusTarget = writable<FocusTarget>(null);
