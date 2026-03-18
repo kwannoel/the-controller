@@ -719,6 +719,7 @@ pub fn update_agents_md(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_session(
     state: State<'_, AppState>,
     _app_handle: AppHandle,
@@ -727,6 +728,7 @@ pub async fn create_session(
     github_issue: Option<crate::models::GithubIssue>,
     background: Option<bool>,
     initial_prompt: Option<String>,
+    agent_name: Option<String>,
 ) -> Result<String, String> {
     let kind = kind.unwrap_or_else(|| "claude".to_string());
     let background = background.unwrap_or(false);
@@ -781,6 +783,25 @@ pub async fn create_session(
                 }
                 Err(e) => return Err(e),
             };
+
+        // If an agent is specified, use its directory as the CWD
+        let session_dir = if let Some(ref agent) = agent_name {
+            let agent_dir = PathBuf::from(&session_dir).join("agents").join(agent);
+            if !agent_dir.exists() {
+                if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
+                    let _ = cleanup_failed_session_spawn(
+                        &repo_path,
+                        Some(wt.as_str()),
+                        Some(br.as_str()),
+                    );
+                }
+                return Err(format!("Agent directory not found: agents/{}", agent));
+            }
+            ensure_claude_md_symlink(&agent_dir)?;
+            agent_dir.to_string_lossy().to_string()
+        } else {
+            session_dir
+        };
 
         // Build initial prompt: explicit prompt takes priority, then GitHub issue context
         let initial_prompt = initial_prompt.or_else(|| {

@@ -724,6 +724,7 @@ async fn create_session(
     let kind = args["kind"].as_str().unwrap_or("claude").to_string();
     let background = args["background"].as_bool().unwrap_or(false);
     let initial_prompt = args["initialPrompt"].as_str().map(|s| s.to_string());
+    let agent_name = args["agentName"].as_str().map(|s| s.to_string());
     let github_issue: Option<models::GithubIssue> =
         serde_json::from_value(args["githubIssue"].clone()).ok();
 
@@ -776,6 +777,27 @@ async fn create_session(
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    // If an agent is specified, use its directory as the CWD
+    let session_dir = if let Some(ref agent) = agent_name {
+        let agent_dir = std::path::PathBuf::from(&session_dir)
+            .join("agents")
+            .join(agent);
+        if !agent_dir.exists() {
+            if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
+                let _ = WorktreeManager::remove_worktree(wt, &repo_path, br);
+            }
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Agent directory not found: agents/{}", agent),
+            ));
+        }
+        commands::ensure_claude_md_symlink(&agent_dir)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        agent_dir.to_string_lossy().to_string()
+    } else {
+        session_dir
+    };
 
     // Build initial prompt: explicit prompt takes priority, then GitHub issue context
     let initial_prompt = initial_prompt.or_else(|| {
