@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { untrack, onDestroy } from "svelte";
   import { command } from "$lib/backend";
-  import { activeNote, noteViewMode, focusTarget, hotkeyAction, type NoteViewMode, type FocusTarget } from "./stores";
+  import { activeNote, noteViewMode, focusTarget, hotkeyAction, notesChatVisible, notesChatSelection, type NoteViewMode, type FocusTarget } from "./stores";
   import CodeMirrorNoteEditor, { type VimMode, type AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
   import NoteAiPanel from "./NoteAiPanel.svelte";
 
@@ -19,6 +19,7 @@
   let editorMode = $state<VimMode | string>("normal");
   let aiChatRequest = $state<AiChatRequest | null>(null);
   let assetUrlCache = $state(new Map<string, string>());
+  let editorApi: { getSelection: () => AiChatRequest | null } | null = null;
 
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
@@ -92,6 +93,17 @@
           if (mode === "preview") return "split";
           return "edit";
         });
+      }
+    });
+    return unsub;
+  });
+
+  // When chat sidebar opens, capture editor selection and pass via store
+  $effect(() => {
+    const unsub = notesChatVisible.subscribe((visible) => {
+      if (visible) {
+        const selection = editorApi?.getSelection();
+        notesChatSelection.set(selection ?? null);
       }
     });
     return unsub;
@@ -239,12 +251,16 @@
             aiChatRequest = request;
           }}
           onImageSaved={handleImageSaved}
+          onViewReady={(api) => {
+            editorApi = api;
+          }}
         />
       </div>
       {#if aiChatRequest}
         <NoteAiPanel
           noteContent={content}
           request={aiChatRequest}
+          {projectId}
           onReplace={(text, from, to) => {
             content = content.slice(0, from) + text + content.slice(to);
             scheduleSave();

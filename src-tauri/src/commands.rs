@@ -1988,6 +1988,7 @@ pub async fn send_note_ai_chat(
     selected_text: String,
     conversation_history: Vec<crate::note_ai_chat::NoteAiChatMessage>,
     prompt: String,
+    agent_instructions: Option<String>,
 ) -> Result<crate::note_ai_chat::NoteAiResponse, String> {
     crate::note_ai_chat::send_note_ai_message(
         std::env::temp_dir().to_string_lossy().to_string(),
@@ -1995,8 +1996,31 @@ pub async fn send_note_ai_chat(
         selected_text,
         conversation_history,
         prompt,
+        agent_instructions,
     )
     .await
+}
+
+#[tauri::command]
+pub async fn read_agent_instructions(
+    state: State<'_, AppState>,
+    project_id: String,
+    agent_name: String,
+) -> Result<String, String> {
+    let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let storage = storage.lock().map_err(|e| e.to_string())?;
+        let project = storage.load_project(id).map_err(|e| e.to_string())?;
+        let agents_md = std::path::Path::new(&project.repo_path)
+            .join("agents")
+            .join(&agent_name)
+            .join("agents.md");
+        std::fs::read_to_string(&agents_md)
+            .map_err(|e| format!("Failed to read agents.md for {}: {}", agent_name, e))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;

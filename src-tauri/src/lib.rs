@@ -174,6 +174,7 @@ pub fn run() {
             commands::log_frontend_error,
             commands::load_keybindings,
             commands::list_agents,
+            commands::read_agent_instructions,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

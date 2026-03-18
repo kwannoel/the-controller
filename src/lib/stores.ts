@@ -321,6 +321,14 @@ export const notesChatVisible = writable<boolean>(false);
 export const notesChatThreads = writable<NotesChatThread[]>([]);
 export const activeNotesChatId = writable<string | null>(null);
 
+// Selection context passed from the editor when Cmd+L opens the sidebar
+export interface NotesChatSelection {
+  selectedText: string;
+  from: number;
+  to: number;
+}
+export const notesChatSelection = writable<NotesChatSelection | null>(null);
+
 let hotkeyResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function dispatchHotkeyAction(action: NonNullable<HotkeyAction>) {

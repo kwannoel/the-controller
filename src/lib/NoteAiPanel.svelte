@@ -1,7 +1,13 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { command } from "$lib/backend";
   import { renderMarkdown } from "$lib/markdown";
   import type { AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
+
+  interface AgentEntry {
+    name: string;
+    title: string;
+  }
 
   interface ConversationItem {
     role: "user" | "assistant";
@@ -12,17 +18,23 @@
   interface Props {
     noteContent: string;
     request: AiChatRequest;
+    projectId?: string;
     onReplace?: (text: string, from: number, to: number) => void;
     onDismiss?: () => void;
   }
 
-  let { noteContent, request, onReplace, onDismiss }: Props = $props();
+  let { noteContent, request, projectId, onReplace, onDismiss }: Props = $props();
 
   let inputValue = $state("");
   let conversation = $state<ConversationItem[]>([]);
   let loading = $state(false);
   let scrollContainer: HTMLDivElement | undefined;
   let inputEl: HTMLInputElement | undefined;
+
+  // Agent state
+  let agents = $state<AgentEntry[]>([]);
+  let selectedAgent = $state<string | null>(null);
+  let agentInstructionsCache = $state(new Map<string, string>());
 
   // Track the current selection range (may shift after replacements)
   let currentFrom = $state(0);
@@ -40,6 +52,16 @@
       : request.selectedText
   );
 
+  onMount(async () => {
+    if (projectId) {
+      try {
+        agents = await command<AgentEntry[]>("list_agents", { projectId });
+      } catch {
+        // silently fail — agent picker just won't appear
+      }
+    }
+  });
+
   $effect(() => {
     inputEl?.focus();
   });
@@ -48,6 +70,24 @@
     if (event.key === "Escape") {
       event.stopPropagation();
       onDismiss?.();
+    }
+  }
+
+  async function getAgentInstructions(): Promise<string | null> {
+    if (!selectedAgent || !projectId) return null;
+
+    const cached = agentInstructionsCache.get(selectedAgent);
+    if (cached) return cached;
+
+    try {
+      const content = await command<string>("read_agent_instructions", {
+        projectId,
+        agentName: selectedAgent,
+      });
+      agentInstructionsCache.set(selectedAgent, content);
+      return content;
+    } catch {
+      return null;
     }
   }
 
@@ -65,6 +105,8 @@
     loading = true;
 
     try {
+      const agentInstructions = await getAgentInstructions();
+
       const response = await command<{ type: string; text: string }>(
         "send_note_ai_chat",
         {
@@ -72,6 +114,7 @@
           selectedText: request.selectedText,
           conversationHistory: history,
           prompt,
+          agentInstructions,
         }
       );
 
@@ -105,20 +148,49 @@
       }
     });
   }
+
+  let selectedAgentTitle = $derived(
+    selectedAgent
+      ? agents.find((a) => a.name === selectedAgent)?.title ?? selectedAgent
+      : null
+  );
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="note-ai-panel" data-testid="note-ai-panel" onkeydown={handleKeydown}>
   <div class="panel-header">
     <span class="panel-title">Chat</span>
+    {#if agents.length > 0}
+      <select
+        class="agent-select"
+        value={selectedAgent ?? ""}
+        onchange={(e) => {
+          const val = e.currentTarget.value;
+          selectedAgent = val || null;
+        }}
+      >
+        <option value="">No agent</option>
+        {#each agents as agent}
+          <option value={agent.name}>{agent.title || agent.name}</option>
+        {/each}
+      </select>
+    {/if}
     <button class="dismiss-btn" onclick={() => onDismiss?.()} aria-label="Close panel">
       &times;
     </button>
   </div>
 
-  <div class="selected-preview">
-    <pre>{selectedPreview}</pre>
-  </div>
+  {#if selectedAgentTitle}
+    <div class="agent-badge">
+      {selectedAgentTitle}
+    </div>
+  {/if}
+
+  {#if request.selectedText}
+    <div class="selected-preview">
+      <pre>{selectedPreview}</pre>
+    </div>
+  {/if}
 
   <div class="conversation" bind:this={scrollContainer}>
     {#each conversation as item}
@@ -146,7 +218,11 @@
     <input
       bind:this={inputEl}
       bind:value={inputValue}
-      placeholder="Ask about selection..."
+      placeholder={selectedAgentTitle
+        ? `Ask ${selectedAgentTitle}...`
+        : request.selectedText
+          ? "Ask about selection..."
+          : "Ask about this note..."}
       disabled={loading}
       data-testid="note-ai-input"
     />
@@ -173,6 +249,7 @@
     padding: 10px 12px;
     border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
+    gap: 8px;
   }
 
   .panel-title {
@@ -183,6 +260,34 @@
     color: var(--text-secondary);
   }
 
+  .agent-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-void);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 3px 6px;
+    color: var(--text-primary);
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .agent-select:focus {
+    border-color: var(--text-emphasis);
+  }
+
+  .agent-badge {
+    padding: 4px 12px;
+    font-size: 11px;
+    color: var(--text-emphasis);
+    background: rgba(137, 180, 250, 0.08);
+    border-bottom: 1px solid var(--border-default);
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
   .dismiss-btn {
     background: none;
     border: none;
@@ -191,6 +296,7 @@
     cursor: pointer;
     padding: 0 4px;
     line-height: 1;
+    flex-shrink: 0;
   }
 
   .dismiss-btn:hover {

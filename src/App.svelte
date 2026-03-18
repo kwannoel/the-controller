@@ -575,7 +575,7 @@
         {:else if workspaceModeState.current === "notes"}
           <NotesEditor projectId={activeProjectForNotes?.id} />
           {#if notesChatVisibleState.current}
-            <NotesChatSidebar bind:this={notesChatRef} />
+            <NotesChatSidebar bind:this={notesChatRef} projectId={activeProjectForNotes?.id} />
           {/if}
         {:else if workspaceModeState.current === "infrastructure"}
           <InfrastructureDashboard />

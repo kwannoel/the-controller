@@ -18,15 +18,26 @@ fn build_note_ai_prompt(
     selected_text: &str,
     conversation_history: &[NoteAiChatMessage],
     prompt: &str,
+    agent_instructions: Option<&str>,
 ) -> String {
     let mut parts = Vec::new();
 
-    parts.push(
+    let agent_persona = match agent_instructions {
+        Some(instructions) => format!(
+            "\n\nYou are also adopting the following persona:\n\
+            --- AGENT PERSONA ---\n{}\n--- END AGENT PERSONA ---\n\
+            \nApply this persona's perspective when responding to the user's requests.",
+            instructions
+        ),
+        None => String::new(),
+    };
+
+    parts.push(format!(
         "You are a note-editing AI assistant. The user has selected text in a note and is asking you to help with it.\n\
         \n\
         You MUST return ONLY valid JSON with one of these shapes:\n\
-        {\"type\":\"replace\",\"text\":\"the new text that will replace the selection\"}\n\
-        {\"type\":\"info\",\"text\":\"an informational response that does not modify the note\"}\n\
+        {{\"type\":\"replace\",\"text\":\"the new text that will replace the selection\"}}\n\
+        {{\"type\":\"info\",\"text\":\"an informational response that does not modify the note\"}}\n\
         \n\
         Use \"replace\" when the user wants to modify, rewrite, fix, or transform the selected text.\n\
         Use \"info\" when the user is asking a question about the text or wants an explanation without changes.\n\
@@ -36,8 +47,9 @@ fn build_note_ai_prompt(
         \n\
         If the user asks you to revert, return a \"replace\" with the original selected text.\n\
         \n\
-        Do NOT wrap JSON in markdown code fences. Return raw JSON only.".to_string(),
-    );
+        Do NOT wrap JSON in markdown code fences. Return raw JSON only.{}",
+        agent_persona
+    ));
 
     parts.push(format!(
         "--- NOTE CONTENT ---\n{}\n--- END NOTE CONTENT ---",
@@ -103,6 +115,7 @@ pub async fn send_note_ai_message(
     selected_text: String,
     conversation_history: Vec<NoteAiChatMessage>,
     prompt: String,
+    agent_instructions: Option<String>,
 ) -> Result<NoteAiResponse, String> {
     tracing::debug!(
         repo_path,
@@ -114,6 +127,7 @@ pub async fn send_note_ai_message(
         &selected_text,
         &conversation_history,
         &prompt,
+        agent_instructions.as_deref(),
     );
 
     let result = tokio::task::spawn_blocking(move || run_note_ai_turn(repo_path, full_prompt))
@@ -173,6 +187,7 @@ mod tests {
             "Some content",
             &[],
             "Make this bold",
+            None,
         );
 
         assert!(prompt.contains("# My Note\nSome content here."));
@@ -197,7 +212,8 @@ mod tests {
             },
         ];
 
-        let prompt = build_note_ai_prompt("note text", "selected", &history, "Now capitalize it");
+        let prompt =
+            build_note_ai_prompt("note text", "selected", &history, "Now capitalize it", None);
 
         assert!(prompt.contains("\"role\":\"user\""));
         assert!(prompt.contains("\"content\":\"Fix the typo\""));
@@ -209,10 +225,32 @@ mod tests {
 
     #[test]
     fn build_prompt_mentions_image_syntax() {
-        let prompt = build_note_ai_prompt("note", "selected", &[], "help");
+        let prompt = build_note_ai_prompt("note", "selected", &[], "help", None);
         assert!(
             prompt.contains("!["),
             "prompt should mention image markdown syntax"
         );
+    }
+
+    #[test]
+    fn build_prompt_includes_agent_instructions() {
+        let prompt = build_note_ai_prompt(
+            "note content",
+            "selected",
+            &[],
+            "help me",
+            Some("# CEO Agent\nYou think about business strategy."),
+        );
+
+        assert!(prompt.contains("--- AGENT PERSONA ---"));
+        assert!(prompt.contains("CEO Agent"));
+        assert!(prompt.contains("business strategy"));
+        assert!(prompt.contains("--- END AGENT PERSONA ---"));
+    }
+
+    #[test]
+    fn build_prompt_without_agent_has_no_persona() {
+        let prompt = build_note_ai_prompt("note", "selected", &[], "help", None);
+        assert!(!prompt.contains("AGENT PERSONA"));
     }
 }
