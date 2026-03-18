@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { untrack } from "svelte";
   import { command } from "$lib/backend";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { openUrl } from "$lib/platform";
   import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail, type WorkerReport, type AutoWorkerQueueIssue } from "./stores";
   import { showToast } from "./toast";
 

@@ -2,12 +2,16 @@ use tauri::Manager;
 
 pub mod architecture;
 pub mod auto_worker;
+pub mod broker_client;
+pub mod broker_protocol;
 pub mod cli_install;
 pub mod commands;
 pub mod config;
 pub mod deploy;
 pub mod emitter;
+pub mod keybindings;
 pub mod labels;
+pub mod logging;
 pub mod maintainer;
 pub mod models;
 pub mod note_ai_chat;
@@ -20,13 +24,13 @@ pub mod skills;
 pub mod state;
 pub mod status_socket;
 pub mod storage;
-pub mod tmux;
+pub mod terminal_theme;
 pub mod token_usage;
 pub mod voice;
 pub mod worktree;
 
 fn show_startup_error(error: &std::io::Error) {
-    eprintln!("Failed to initialize app storage: {error}");
+    tracing::error!("failed to initialize app storage: {error}");
     let _ = rfd::MessageDialog::new()
         .set_level(rfd::MessageLevel::Error)
         .set_title("The Controller failed to start")
@@ -40,13 +44,22 @@ fn show_startup_error(error: &std::io::Error) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Resolve the user's shell environment (e.g. vars from .zshrc) before
-    // spawning any threads so PTY sessions and tmux inherit them.
+    // spawning any threads so PTY sessions inherit them.
     shell_env::inherit_shell_env();
+
+    // Initialize structured logging — must happen before any tracing macros.
+    let base_dir = storage::Storage::with_default_path()
+        .map(|s| s.base_dir())
+        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let _log_guard = logging::init_backend_logging(&base_dir, true);
+
+    tracing::info!("The Controller starting up");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
+            tracing::debug!("setting up Tauri plugins and app state");
             let emitter = emitter::TauriEmitter::new(app.handle().clone());
             let app_state = match state::AppState::new(emitter) {
                 Ok(state) => state,
@@ -58,6 +71,17 @@ pub fn run() {
             app.manage(app_state);
             cli_install::install_controller_cli();
             skills::sync_skills();
+            {
+                let app_state = app.state::<state::AppState>();
+                let emitter = app_state.emitter.clone();
+                let base_dir = app_state.storage.lock().map(|s| s.base_dir()).map_err(|e| {
+                    tracing::error!("failed to lock storage for keybindings setup: {e}");
+                });
+                if let Ok(base_dir) = base_dir {
+                    keybindings::ensure_keybindings_file(&base_dir);
+                    keybindings::start_watcher(base_dir, emitter);
+                }
+            }
             status_socket::start_listener(app.handle().clone());
             maintainer::MaintainerScheduler::start(app.handle().clone());
             auto_worker::AutoWorkerScheduler::start(app.handle().clone());
@@ -85,6 +109,7 @@ pub fn run() {
             commands::home_dir,
             commands::check_onboarding,
             commands::save_onboarding_config,
+            commands::load_terminal_theme,
             commands::check_claude_cli,
             commands::list_directories_at,
             commands::list_root_directories,
@@ -145,11 +170,13 @@ pub fn run() {
             commands::stop_voice_pipeline,
             commands::toggle_voice_pause,
             commands::log_frontend_error,
+            commands::load_keybindings,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                tracing::info!("exit requested, cleaning up");
                 status_socket::cleanup();
                 // Kill any staged controller instance and clear stale records
                 if let Some(state) = app_handle.try_state::<state::AppState>() {
@@ -171,19 +198,8 @@ pub fn run() {
                         }
                     }
                 }
-                // In release builds, kill tmux sessions on quit so they don't linger.
-                // In dev builds, let tmux sessions survive so they reattach after
-                // cargo-watch restarts the app (the whole point of the tmux layer).
-                if cfg!(not(debug_assertions)) {
-                    if let Some(state) = app_handle.try_state::<state::AppState>() {
-                        if let Ok(mut pty_manager) = state.pty_manager.lock() {
-                            let ids = pty_manager.session_ids();
-                            for id in ids {
-                                let _ = pty_manager.close_session(id);
-                            }
-                        }
-                    }
-                }
+                // The broker is a persistent daemon — never shut it down on app exit.
+                // Sessions survive and reattach when the app restarts.
             }
         });
 }

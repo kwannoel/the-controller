@@ -1,4 +1,6 @@
 use std::collections::{HashMap, HashSet};
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
@@ -16,6 +18,7 @@ const PRIORITY_LOW_LABEL: &str = labels::PRIORITY_LOW;
 const PRIORITY_HIGH_LABEL: &str = labels::PRIORITY_HIGH;
 const COMPLEXITY_LOW_LABEL: &str = labels::COMPLEXITY_LOW;
 const COMPLEXITY_HIGH_LABEL: &str = labels::COMPLEXITY_HIGH;
+const MAINTAINER_EXEC_TIMEOUT: Duration = Duration::from_secs(1200);
 
 const STOPWORDS: &[&str] = &[
     "a",
@@ -136,6 +139,7 @@ impl MaintainerScheduler {
     /// Start the scheduler loop in a background thread.
     /// Checks every 60 seconds which projects are due for a health check.
     pub fn start(app_handle: AppHandle) {
+        tracing::info!("maintainer scheduler starting");
         std::thread::spawn(move || {
             let mut last_run: HashMap<Uuid, Instant> = HashMap::new();
 
@@ -144,20 +148,29 @@ impl MaintainerScheduler {
 
                 let state = match app_handle.try_state::<AppState>() {
                     Some(s) => s,
-                    None => continue,
+                    None => {
+                        tracing::debug!("scheduler tick: AppState not yet available, skipping");
+                        continue;
+                    }
                 };
 
                 let projects = {
                     let storage = match state.storage.lock() {
                         Ok(s) => s,
-                        Err(_) => continue,
+                        Err(_) => {
+                            tracing::warn!("scheduler tick: failed to acquire storage lock");
+                            continue;
+                        }
                     };
                     match storage.list_projects() {
                         Ok(inventory) => {
                             inventory.warn_if_corrupt("maintainer scheduler");
                             inventory.projects
                         }
-                        Err(_) => continue,
+                        Err(e) => {
+                            tracing::warn!(error = %e, "scheduler tick: failed to list projects");
+                            continue;
+                        }
                     }
                 };
 
@@ -172,10 +185,19 @@ impl MaintainerScheduler {
                         .is_none_or(|t| t.elapsed() >= interval);
 
                     if !should_run {
+                        tracing::debug!(
+                            project_id = %project.id,
+                            "maintainer check not yet due, skipping"
+                        );
                         continue;
                     }
 
                     last_run.insert(project.id, Instant::now());
+                    tracing::info!(
+                        project = %project.name,
+                        project_id = %project.id,
+                        "starting maintainer health check"
+                    );
 
                     let _ = state
                         .emitter
@@ -186,6 +208,14 @@ impl MaintainerScheduler {
 
                     match result {
                         Ok(log) => {
+                            tracing::info!(
+                                project = %project.name,
+                                filed = log.issues_filed.len(),
+                                updated = log.issues_updated.len(),
+                                unchanged = log.issues_unchanged,
+                                skipped = log.issues_skipped,
+                                "maintainer health check completed"
+                            );
                             // Only save if something changed (diff-based silence)
                             if has_changes(&log) {
                                 if let Ok(storage) = state.storage.lock() {
@@ -198,7 +228,7 @@ impl MaintainerScheduler {
                                 .emit(&format!("maintainer-status:{}", project.id), "idle");
                         }
                         Err(e) => {
-                            eprintln!("Maintainer check failed for {}: {}", project.name, e);
+                            tracing::error!(project = %project.name, error = %e, "maintainer check failed");
                             let _ = state
                                 .emitter
                                 .emit(&format!("maintainer-status:{}", project.id), "error");
@@ -294,13 +324,22 @@ pub fn extract_json(output: &str) -> Option<&str> {
 
 fn parse_findings_output(output: &str) -> Result<FindingsOutput, String> {
     let json_str = extract_json(output).ok_or("No JSON found in output")?;
-    let raw: RawFindingsOutput =
-        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    let raw: RawFindingsOutput = serde_json::from_str(json_str).map_err(|e| {
+        tracing::error!(error = %e, "failed to parse findings JSON");
+        format!("Failed to parse JSON: {}", e)
+    })?;
+
+    tracing::debug!(
+        raw_findings = raw.findings.len(),
+        "parsed raw findings from model output"
+    );
 
     let mut findings = Vec::with_capacity(raw.findings.len());
     for (idx, finding) in raw.findings.into_iter().enumerate() {
-        let sanitized =
-            sanitize_finding(finding).ok_or_else(|| format!("Invalid finding at index {}", idx))?;
+        let sanitized = sanitize_finding(finding).ok_or_else(|| {
+            tracing::warn!(index = idx, "invalid finding dropped during sanitization");
+            format!("Invalid finding at index {}", idx)
+        })?;
         findings.push(sanitized);
     }
 
@@ -705,12 +744,14 @@ fn run_gh_checked(
     mut command: std::process::Command,
     failure_prefix: &str,
 ) -> Result<std::process::Output, String> {
-    let output = command
-        .output()
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+    let output = command.output().map_err(|e| {
+        tracing::error!(error = %e, "failed to execute gh command");
+        format!("Failed to run gh: {}", e)
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(prefix = failure_prefix, stderr = %stderr.trim(), "gh command failed");
         return Err(format!("{}: {}", failure_prefix, stderr.trim()));
     }
 
@@ -833,6 +874,7 @@ fn create_issue(
     body: &str,
     labels: &[String],
 ) -> Result<IssueSummary, String> {
+    tracing::debug!(title = finding.title, "creating GitHub issue via gh CLI");
     let mut cmd = gh_command(repo_path, github_repo);
     cmd.arg("issue")
         .arg("create")
@@ -848,6 +890,13 @@ fn create_issue(
     let output = run_gh_checked(cmd, "gh issue create failed")?;
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let issue_number = parse_issue_number_from_url(&url)?;
+
+    tracing::info!(
+        issue_number,
+        title = finding.title,
+        url = url,
+        "GitHub issue created"
+    );
 
     Ok(IssueSummary {
         issue_number,
@@ -866,6 +915,7 @@ fn update_issue(
     labels: &[String],
     labels_to_remove: &[String],
 ) -> Result<(), String> {
+    tracing::debug!(issue_number, "updating GitHub issue via gh CLI");
     let issue_number_arg = issue_number.to_string();
     let mut cmd = gh_command(repo_path, github_repo);
     cmd.arg("issue")
@@ -929,35 +979,150 @@ pub fn has_changes(log: &MaintainerRunLog) -> bool {
     !log.issues_filed.is_empty() || !log.issues_updated.is_empty()
 }
 
+/// RAII guard that cancels and joins a watchdog thread on drop.
+///
+/// Ensures the watchdog never outlives the scope that spawned it, even on
+/// early `?` returns — preventing thread leaks and stale-PID kills.
+struct WatchdogGuard {
+    cancel: Arc<(Mutex<bool>, Condvar)>,
+    handle: Option<std::thread::JoinHandle<bool>>,
+}
+
+impl WatchdogGuard {
+    /// Cancel the watchdog and return whether it timed out.
+    fn cancel_and_join(mut self) -> bool {
+        self.cancel_inner()
+    }
+
+    fn cancel_inner(&mut self) -> bool {
+        let (lock, cvar) = &*self.cancel;
+        // Recover from poison — the bool value doesn't matter, we just need
+        // to signal cancellation.  Panicking here would abort during unwind.
+        *lock.lock().unwrap_or_else(|e| e.into_inner()) = true;
+        cvar.notify_one();
+        self.handle
+            .take()
+            .and_then(|h| h.join().ok())
+            .unwrap_or(false)
+    }
+}
+
+impl Drop for WatchdogGuard {
+    fn drop(&mut self) {
+        self.cancel_inner();
+    }
+}
+
 pub fn run_maintainer_check(
     repo_path: &str,
     project_id: Uuid,
     github_repo: Option<&str>,
 ) -> Result<MaintainerRunLog, String> {
+    tracing::debug!(
+        project_id = %project_id,
+        repo_path,
+        "building issue-filing prompt"
+    );
     let prompt = build_issue_filing_prompt(repo_path, github_repo);
-    let output = std::process::Command::new("codex")
-        .arg("exec")
-        .arg("--sandbox")
-        .arg("danger-full-access")
+    let mut command = Command::new("claude");
+    command
+        .arg("--print")
         .arg(&prompt)
         .current_dir(repo_path)
         .env_remove("CLAUDECODE")
-        .output()
-        .map_err(|e| format!("Failed to run codex exec: {}", e))?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    tracing::debug!(project_id = %project_id, "spawning claude --print subprocess");
+    let child = command.spawn().map_err(|e| {
+        tracing::error!(project_id = %project_id, error = %e, "failed to spawn claude --print");
+        format!("Failed to run claude --print: {}", e)
+    })?;
+
+    // Spawn a watchdog that kills the process group on timeout.
+    // `wait_with_output()` drains stdout/stderr concurrently with the wait,
+    // avoiding pipe-buffer deadlocks (the OS buffer is ~64 KB; if the child
+    // writes more than that without a reader, it blocks forever).
+    let child_pid = child.id();
+    let cancel = Arc::new((Mutex::new(false), Condvar::new()));
+    let cancel_w = cancel.clone();
+    let watchdog = std::thread::spawn(move || {
+        let (lock, cvar) = &*cancel_w;
+        let guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+        // Wait until cancelled OR timeout elapses.
+        let (guard, _timeout) = cvar
+            .wait_timeout_while(guard, MAINTAINER_EXEC_TIMEOUT, |cancelled| !*cancelled)
+            .unwrap_or_else(|e| e.into_inner());
+        if *guard {
+            return false; // Cancelled — process exited normally.
+        }
+        // Kill the process group so the child (and any subprocesses) exit,
+        // which unblocks wait_with_output().
+        #[cfg(unix)]
+        if let Ok(pid) = i32::try_from(child_pid) {
+            unsafe { libc::kill(-pid, libc::SIGKILL) };
+        }
+        true // Timed out.
+    });
+
+    // Guard that cancels and joins the watchdog on any exit path (including
+    // early `?` returns), preventing a 20-minute thread leak and stale-PID kill.
+    let watchdog_guard = WatchdogGuard {
+        cancel,
+        handle: Some(watchdog),
+    };
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for claude --print: {}", e))?;
+
+    let timed_out = watchdog_guard.cancel_and_join();
+
+    if timed_out {
+        tracing::error!(
+            project_id = %project_id,
+            timeout_secs = MAINTAINER_EXEC_TIMEOUT.as_secs(),
+            "claude --print timed out, terminated by watchdog"
+        );
+        return Err(format!(
+            "claude --print timed out after {} seconds",
+            MAINTAINER_EXEC_TIMEOUT.as_secs()
+        ));
+    }
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("codex exec failed: {}", stderr));
+        tracing::error!(project_id = %project_id, "claude --print returned non-zero exit status");
+        return Err(format!("claude --print failed: {}", stderr));
     }
 
+    tracing::debug!(project_id = %project_id, "claude --print completed, parsing findings");
     let findings_output = parse_findings_output(&String::from_utf8_lossy(&output.stdout))?;
     let filtered_findings = filter_semantic_findings(findings_output.findings);
+    tracing::debug!(
+        project_id = %project_id,
+        total_findings = filtered_findings.findings.len(),
+        skipped_semantic = filtered_findings.skipped_semantic,
+        "findings parsed and filtered"
+    );
 
+    tracing::debug!(project_id = %project_id, "ensuring GitHub labels exist");
     ensure_labels_exist(repo_path, github_repo)?;
 
+    tracing::debug!(project_id = %project_id, "fetching existing GitHub issues");
     let mut existing_issues = list_open_maintainer_issues(repo_path, github_repo)?;
     let closed_issues = list_closed_maintainer_issues(repo_path, github_repo)?;
     let existing_issue_count = existing_issues.len();
+    tracing::debug!(
+        project_id = %project_id,
+        open_issues = existing_issue_count,
+        closed_issues = closed_issues.len(),
+        "fetched existing maintainer issues"
+    );
 
     let mut issues_filed = Vec::new();
     let mut issues_updated = Vec::new();
@@ -971,7 +1136,15 @@ pub fn run_maintainer_check(
         let body = format_issue_body(finding, &fingerprint);
 
         // Skip findings that match a closed issue (already resolved)
-        if find_duplicate_issue(finding, &closed_issues, DEDUP_SIMILARITY_THRESHOLD).is_some() {
+        if let Some(closed_match) =
+            find_duplicate_issue(finding, &closed_issues, DEDUP_SIMILARITY_THRESHOLD)
+        {
+            tracing::debug!(
+                finding_title = finding.title,
+                closed_issue = closed_match.issue.number,
+                similarity = closed_match.similarity,
+                "skipping finding — matches closed issue"
+            );
             issues_skipped += 1;
             skipped_closed += 1;
             continue;
@@ -981,8 +1154,19 @@ pub fn run_maintainer_check(
             find_duplicate_issue(finding, &existing_issues, DEDUP_SIMILARITY_THRESHOLD)
         {
             if updated_issue_numbers.contains(&duplicate_match.issue.number) {
+                tracing::debug!(
+                    finding_title = finding.title,
+                    issue_number = duplicate_match.issue.number,
+                    "skipping finding — issue already updated this run"
+                );
                 continue;
             }
+            tracing::info!(
+                finding_title = finding.title,
+                issue_number = duplicate_match.issue.number,
+                similarity = duplicate_match.similarity,
+                "updating existing issue with new findings"
+            );
             let remove_labels = labels_to_remove(&duplicate_match.issue.labels, &labels);
             update_issue(
                 repo_path,
@@ -1017,6 +1201,7 @@ pub fn run_maintainer_check(
                 existing_issue.labels = labels.clone();
             }
         } else {
+            tracing::info!(finding_title = finding.title, "filing new GitHub issue");
             let filed = create_issue(repo_path, github_repo, finding, &body, &labels)?;
             existing_issues.push(ExistingIssue {
                 number: filed.issue_number,

@@ -14,6 +14,7 @@ pub struct ProjectSignals {
 
 #[tauri::command]
 pub async fn detect_project_type(repo_path: String) -> Result<ProjectSignals, String> {
+    tracing::debug!(repo_path = %repo_path, "detecting project type");
     tokio::task::spawn_blocking(move || {
         let path = std::path::Path::new(&repo_path);
         let has_package_json = path.join("package.json").exists();
@@ -44,6 +45,7 @@ pub async fn detect_project_type(repo_path: String) -> Result<ProjectSignals, St
 
 #[tauri::command]
 pub async fn get_deploy_credentials() -> Result<DeployCredentials, String> {
+    tracing::debug!("loading deploy credentials");
     tokio::task::spawn_blocking(DeployCredentials::load)
         .await
         .map_err(|e| e.to_string())?
@@ -51,6 +53,7 @@ pub async fn get_deploy_credentials() -> Result<DeployCredentials, String> {
 
 #[tauri::command]
 pub async fn save_deploy_credentials(credentials: DeployCredentials) -> Result<(), String> {
+    tracing::info!("saving deploy credentials");
     tokio::task::spawn_blocking(move || credentials.save())
         .await
         .map_err(|e| e.to_string())?
@@ -82,8 +85,17 @@ pub struct DeployResult {
 
 #[tauri::command]
 pub async fn deploy_project(request: DeployRequest) -> Result<DeployResult, String> {
-    let creds = DeployCredentials::load()?;
+    tracing::info!(
+        project = %request.project_name,
+        subdomain = %request.subdomain,
+        project_type = %request.project_type,
+        "starting project deployment"
+    );
+    let creds = tokio::task::spawn_blocking(DeployCredentials::load)
+        .await
+        .map_err(|e| e.to_string())??;
     if !creds.is_provisioned() {
+        tracing::error!("deploy not provisioned — credentials incomplete");
         return Err("Deploy not provisioned. Run setup first.".to_string());
     }
 
@@ -96,15 +108,18 @@ pub async fn deploy_project(request: DeployRequest) -> Result<DeployResult, Stri
     let existing = apps.iter().find(|a| a.name == request.project_name);
 
     let uuid = if let Some(app) = existing {
+        tracing::info!(uuid = %app.uuid, "found existing Coolify app, redeploying");
         coolify.deploy_application(&app.uuid).await?;
         app.uuid.clone()
     } else {
+        tracing::error!(project = %request.project_name, "no existing Coolify app found");
         return Err("Creating new Coolify applications not yet implemented. Create the app in Coolify UI first.".to_string());
     };
 
     let domain = format!("{}.{}", request.subdomain, creds.root_domain.unwrap());
     let url = format!("https://{domain}");
 
+    tracing::info!(url = %url, uuid = %uuid, "deployment complete");
     Ok(DeployResult {
         url,
         coolify_uuid: uuid,
@@ -113,8 +128,12 @@ pub async fn deploy_project(request: DeployRequest) -> Result<DeployResult, Stri
 
 #[tauri::command]
 pub async fn list_deployed_services() -> Result<Vec<serde_json::Value>, String> {
-    let creds = DeployCredentials::load()?;
+    tracing::debug!("listing deployed services");
+    let creds = tokio::task::spawn_blocking(DeployCredentials::load)
+        .await
+        .map_err(|e| e.to_string())??;
     if !creds.is_provisioned() {
+        tracing::warn!("credentials not provisioned, returning empty service list");
         return Ok(vec![]);
     }
 

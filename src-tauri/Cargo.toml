@@ -12,6 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+chrono = "0.4"
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -34,26 +35,42 @@ reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 rfd = "0.16.0"
 axum = { version = "0.8", features = ["ws"], optional = true }
-tower-http = { version = "0.6", features = ["cors"], optional = true }
+tower-http = { version = "0.6", features = ["cors", "fs"], optional = true }
 cpal = "0.15"
 whisper-rs = "0.12"
 ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
 hound = "3.5"
 crossbeam-channel = "0.5"
 ndarray = "0.17"
+notify = "7"
+notify-debouncer-mini = "0.5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+tracing-appender = "0.2"
+flate2 = "1"
 
 [features]
 default = []
 server = ["axum", "tower-http"]
 
+# NOTE: `server` source lives outside src/bin/ to avoid Cargo auto-discovery.
+# Tauri bundles all auto-discovered bin targets and ignores `required-features`,
+# causing build failures. Build separately: cargo build --bin server --features server
+
 [[bin]]
 name = "server"
-path = "src/bin/server.rs"
+path = "src/server/main.rs"
 required-features = ["server"]
 
 [[bin]]
 name = "controller-cli"
 path = "src/bin/controller-cli.rs"
 
+[[bin]]
+name = "pty-broker"
+path = "src/bin/pty_broker.rs"
+
 [dev-dependencies]
 tempfile = "3"
+filetime = "0.2"
+tokio-tungstenite = "0.28"

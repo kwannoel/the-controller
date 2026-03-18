@@ -75,7 +75,7 @@ export const commands: CommandDef[] = [
   { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
   { id: "screenshot-picker", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot → pick session", handledExternally: true },
-  { id: "toggle-session-provider", key: "⌘t", section: "Sessions", description: "Toggle session provider", handledExternally: true, mode: "development" },
+  { id: "toggle-session-provider", key: "⌘t", section: "Sessions", description: "Cycle session provider", handledExternally: true, mode: "development" },
 
   // ── Projects ──
   { id: "new-project", key: "n", section: "Projects", description: "New project", mode: "development" },
@@ -107,8 +107,20 @@ export const commands: CommandDef[] = [
 
   // ── Infrastructure ──
   { id: "deploy-project", key: "d", section: "Infrastructure", description: "Deploy focused project", mode: "infrastructure" },
-  { id: "rollback-deploy", key: "r", section: "Infrastructure", description: "Rollback last deployment", mode: "infrastructure" },
 ];
+
+/**
+ * Convert modifier prefixes for display based on the active meta key.
+ * - `Meta+x` → `⌘x` (cmd) or `⌃x` (ctrl)
+ * - When meta is ctrl, also converts legacy `⌘x` → `⌃x`
+ */
+export function formatDisplayKey(key: string, meta: "cmd" | "ctrl"): string {
+  let result = key.replaceAll("Meta+", meta === "ctrl" ? "⌃" : "⌘");
+  if (meta === "ctrl") {
+    result = result.replaceAll("⌘", "⌃");
+  }
+  return result;
+}
 
 // Section order for help display
 const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"];
@@ -124,7 +136,52 @@ export interface HelpSection {
   entries: HelpEntry[];
 }
 
-export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
+function resolveKey(cmds: CommandDef[], id: string): string {
+  // Prefer non-hidden (overridable) entry; fall back to hidden (alias) entry
+  return cmds.find(c => c.id === id && !c.hidden)?.key
+    ?? cmds.find(c => c.id === id)?.key
+    ?? "?";
+}
+
+/** Uppercase the last character of a key string to produce its Shift variant. */
+function shiftVariant(key: string): string {
+  if (key.length === 0) return key;
+  return key.slice(0, -1) + key.slice(-1).toUpperCase();
+}
+
+/** Build the screenshot-picker display key from the resolved screenshot keys. */
+function screenshotPickerKey(cmds: CommandDef[], fmt: (k: string) => string): string {
+  return `${fmt(shiftVariant(resolveKey(cmds, "screenshot")))} / ${fmt(shiftVariant(resolveKey(cmds, "screenshot-cropped")))}`;
+}
+
+/** Map a command to its help entry, composing paired keys dynamically. */
+function mapCmdToEntry(c: CommandDef, cmds: CommandDef[], fmt: (k: string) => string): HelpEntry {
+  if (c.id === "navigate-next") {
+    return {
+      key: `${fmt(resolveKey(cmds, "navigate-next"))} / ${fmt(resolveKey(cmds, "navigate-prev"))}`,
+      description: c.description,
+    };
+  }
+  if (c.id === "expand-collapse" && !c.mode) {
+    return {
+      key: `${fmt(resolveKey(cmds, "expand-collapse"))} / Enter`,
+      description: c.description,
+    };
+  }
+  if (c.id === "screenshot-picker") {
+    return { key: screenshotPickerKey(cmds, fmt), description: c.description };
+  }
+  return { key: fmt(c.helpKey ?? c.key), description: c.description };
+}
+
+export function getHelpSections(
+  mode?: WorkspaceMode,
+  resolvedCmds?: CommandDef[],
+  metaKeyValue?: "cmd" | "ctrl",
+): HelpSection[] {
+  const cmds = resolvedCmds ?? commands;
+  const fmt = (k: string) => formatDisplayKey(k, metaKeyValue ?? "cmd");
+
   if (mode === "development") {
     const essentialIds = new Set(["create-session", "navigate-next", "navigate-prev", "finish-branch", "new-project", "delete", "fuzzy-finder", "expand-collapse", "escape-focus", "escape-forward"]);
     const debugIds = new Set(["screenshot", "screenshot-cropped", "screenshot-picker"]);
@@ -132,13 +189,13 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
     const essentials: HelpSection = {
       label: "Essentials",
       entries: [
-        { key: "c", description: "Create session" },
-        { key: "j / k", description: "Next / previous item" },
-        { key: "n", description: "New project" },
-        { key: "d", description: "Delete focused item" },
-        { key: "m", description: "Merge session branch" },
-        { key: "f", description: "Find project (fuzzy finder)" },
-        { key: "l / Enter", description: "Expand/collapse or focus terminal" },
+        { key: fmt(resolveKey(cmds, "create-session")), description: "Create session" },
+        { key: `${fmt(resolveKey(cmds, "navigate-next"))} / ${fmt(resolveKey(cmds, "navigate-prev"))}`, description: "Next / previous item" },
+        { key: fmt(resolveKey(cmds, "new-project")), description: "New project" },
+        { key: fmt(resolveKey(cmds, "delete")), description: "Delete focused item" },
+        { key: fmt(resolveKey(cmds, "finish-branch")), description: "Merge session branch" },
+        { key: fmt(resolveKey(cmds, "fuzzy-finder")), description: "Find project (fuzzy finder)" },
+        { key: `${fmt(resolveKey(cmds, "expand-collapse"))} / Enter`, description: "Expand/collapse or focus terminal" },
         { key: "Esc", description: "Move focus up" },
         { key: "Esc Esc", description: "Forward escape to terminal" },
       ],
@@ -146,9 +203,9 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
 
     const debug: HelpSection = {
       label: "Debug",
-      entries: commands
+      entries: cmds
         .filter(c => debugIds.has(c.id) && !c.hidden)
-        .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
+        .map(c => mapCmdToEntry(c, cmds, fmt)),
     };
 
     const builtSections: Record<string, HelpSection> = { Essentials: essentials, Debug: debug };
@@ -157,11 +214,11 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
       if (builtSections[sectionName]) return builtSections[sectionName];
       return {
         label: sectionName,
-        entries: commands
+        entries: cmds
           .filter(c => c.section === sectionName && !c.hidden)
           .filter(c => !c.mode || c.mode === mode)
           .filter(c => !essentialIds.has(c.id) && !debugIds.has(c.id))
-          .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
+          .map(c => ({ key: fmt(c.helpKey ?? c.key), description: c.description })),
       };
     }).filter(s => s.entries.length > 0);
 
@@ -170,17 +227,55 @@ export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
 
   return SECTION_ORDER.map(section => ({
     label: section,
-    entries: commands
+    entries: cmds
       .filter(c => c.section === section && !c.hidden)
       .filter(c => !c.mode || !mode || c.mode === mode)
-      .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
+      .map(c => mapCmdToEntry(c, cmds, fmt)),
   })).filter(s => s.entries.length > 0);
 }
 
+/**
+ * Takes the default commands array and a map of command_id→key overrides.
+ * Returns a new array with overridden keys applied. Hidden entries that
+ * are true aliases (a non-hidden sibling with the same id exists) keep
+ * their original keys; hidden entries that are the sole entry for their
+ * id are still overridable.
+ * If overrides is empty, returns the original array (same reference).
+ */
+export function applyOverrides(
+  cmds: CommandDef[],
+  overrides: Record<string, string>,
+): CommandDef[] {
+  const keys = Object.keys(overrides);
+  if (keys.length === 0) return cmds;
+
+  // Check if any override actually matches a known command id
+  const ids = new Set(cmds.map(c => c.id));
+  const hasMatch = keys.some(k => ids.has(k as CommandId | ExternalCommandId));
+  if (!hasMatch) return cmds;
+
+  // IDs that have at least one non-hidden entry are "true aliases" when hidden
+  const idsWithNonHidden = new Set(
+    cmds.filter(c => !c.hidden).map(c => c.id),
+  );
+
+  return cmds.map(cmd => {
+    // Skip hidden entries that are true aliases (a non-hidden sibling exists)
+    if (cmd.hidden && idsWithNonHidden.has(cmd.id)) return cmd;
+    const override = overrides[cmd.id];
+    if (override === undefined) return cmd;
+    return { ...cmd, key: override, helpKey: undefined };
+  });
+}
+
 // Build key→CommandId map for handleHotkey (excludes external commands)
-export function buildKeyMap(mode?: WorkspaceMode): Map<string, CommandId> {
+export function buildKeyMap(
+  mode?: WorkspaceMode,
+  resolvedCommands?: CommandDef[],
+): Map<string, CommandId> {
+  const cmds = resolvedCommands ?? commands;
   const map = new Map<string, CommandId>();
-  for (const cmd of commands) {
+  for (const cmd of cmds) {
     if (cmd.handledExternally) continue;
     if (mode && cmd.mode && cmd.mode !== mode) continue;
     map.set(cmd.key, cmd.id as CommandId);

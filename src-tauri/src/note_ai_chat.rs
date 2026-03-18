@@ -63,10 +63,16 @@ fn build_note_ai_prompt(
 }
 
 pub fn parse_note_ai_response(raw: &str) -> Result<NoteAiResponse, String> {
-    serde_json::from_str(raw).map_err(|e| format!("Failed to parse note AI response: {}", e))
+    let result =
+        serde_json::from_str(raw).map_err(|e| format!("Failed to parse note AI response: {}", e));
+    if result.is_err() {
+        tracing::error!("failed to parse note AI response as JSON");
+    }
+    result
 }
 
 fn run_note_ai_turn(repo_path: String, prompt: String) -> Result<NoteAiResponse, String> {
+    tracing::debug!(repo_path, "invoking codex exec for note AI");
     let output = std::process::Command::new("codex")
         .arg("exec")
         .arg("--skip-git-repo-check")
@@ -76,13 +82,18 @@ fn run_note_ai_turn(repo_path: String, prompt: String) -> Result<NoteAiResponse,
         .current_dir(&repo_path)
         .env_remove("CLAUDECODE")
         .output()
-        .map_err(|e| format!("Failed to run codex exec: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to spawn codex exec");
+            format!("Failed to run codex exec: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(status = %output.status, "codex exec returned non-zero exit status");
         return Err(format!("codex exec failed: {}", stderr.trim()));
     }
 
+    tracing::debug!("codex exec completed, parsing response");
     parse_note_ai_response(String::from_utf8_lossy(&output.stdout).trim())
 }
 
@@ -93,6 +104,11 @@ pub async fn send_note_ai_message(
     conversation_history: Vec<NoteAiChatMessage>,
     prompt: String,
 ) -> Result<NoteAiResponse, String> {
+    tracing::debug!(
+        repo_path,
+        history_len = conversation_history.len(),
+        "starting note AI chat turn"
+    );
     let full_prompt = build_note_ai_prompt(
         &note_content,
         &selected_text,
@@ -100,9 +116,18 @@ pub async fn send_note_ai_message(
         &prompt,
     );
 
-    tokio::task::spawn_blocking(move || run_note_ai_turn(repo_path, full_prompt))
+    let result = tokio::task::spawn_blocking(move || run_note_ai_turn(repo_path, full_prompt))
         .await
-        .map_err(|e| format!("Task failed: {}", e))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "note AI blocking task panicked");
+            format!("Task failed: {}", e)
+        })?;
+
+    match &result {
+        Ok(_) => tracing::debug!("note AI chat turn completed"),
+        Err(e) => tracing::error!(error = %e, "note AI chat turn failed"),
+    }
+    result
 }
 
 #[cfg(test)]

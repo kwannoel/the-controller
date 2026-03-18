@@ -1,4 +1,4 @@
-type SessionKind = "claude" | "codex" | undefined;
+type SessionKind = "claude" | "codex" | "cursor-agent" | undefined;
 
 type InvokeFn = (
   command: string,
@@ -12,8 +12,8 @@ export async function sendFinishBranchPrompt(
 ) {
   const isCodex = kind === "codex";
   const prompt = isCodex
-    ? "$the-controller-finishing-a-development-branch"
-    : "/the-controller-finishing-a-development-branch";
+    ? "$finishing-a-development-branch"
+    : "/finishing-a-development-branch";
 
   if (isCodex) {
     await invoke("write_to_pty", { sessionId, data: prompt });

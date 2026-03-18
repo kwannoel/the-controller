@@ -1,0 +1,93 @@
+# The Controller — reverse proxy with automatic HTTPS
+#
+# Replace controller.example.com with your domain.
+# Caddy handles TLS certificates automatically via Let's Encrypt.
+#
+# Install:
+#   sudo cp deploy/Caddyfile /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+
+controller.example.com {
+	# ─── TLS ─────────────────────────────────────────────────────────
+	tls {
+		protocols tls1.2 tls1.3
+		ciphers TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384 TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256 TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+	}
+
+	# ─── Static asset caching ────────────────────────────────────────
+	# Vite hashed assets can be cached indefinitely
+	@static {
+		path /assets/*
+		path /favicon.ico
+	}
+	header @static {
+		Cache-Control "public, max-age=31536000, immutable"
+		-Pragma
+		-Expires
+	}
+
+	# ─── Reverse proxy ───────────────────────────────────────────────
+	reverse_proxy localhost:3001 {
+		# Pass real client info to the backend
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+
+		# WebSocket support (xterm.js + event stream)
+		# Caddy handles this automatically, but explicit timeouts help
+		transport http {
+			keepalive 120s
+			keepalive_idle_conns 64
+		}
+
+		# Retry on transient failures
+		fail_duration 30s
+		max_fails 3
+		unhealthy_status 502 503 504
+	}
+
+	# ─── Compression ─────────────────────────────────────────────────
+	encode {
+		zstd
+		gzip 6
+		minimum_length 256
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# ─── Security headers ────────────────────────────────────────────
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		-Server
+	}
+
+	# ─── Request limits ──────────────────────────────────────────────
+	request_body {
+		max_size 50MB
+	}
+
+	# ─── Logging ─────────────────────────────────────────────────────
+	log {
+		output file /var/log/caddy/the-controller.log {
+			roll_size 50mb
+			roll_keep 5
+			roll_keep_for 720h
+		}
+		format json
+		level INFO
+	}
+
+	# ─── Error handling ──────────────────────────────────────────────
+	handle_errors {
+		respond "{err.status_code} {err.status_text}"
+	}
+}

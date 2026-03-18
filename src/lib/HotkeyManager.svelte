@@ -21,7 +21,8 @@
   } from "./stores";
   import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
   import { showToast } from "./toast";
-  import { buildKeyMap, type CommandId } from "./commands";
+  import { buildKeyMap, type CommandId, type CommandDef } from "./commands";
+  import { resolvedCommands, metaKey } from "./keybindings";
   import { focusForModeSwitch } from "./focus-helpers";
 
   let lastEscapeTime = 0;
@@ -41,7 +42,11 @@
   let expandedSet: Set<string> = $derived(expandedProjectsState.current);
   const workspaceModeState = fromStore(workspaceMode);
   let currentMode = $derived(workspaceModeState.current);
-  let keyMap = $derived(buildKeyMap(currentMode));
+  const resolvedCommandsState = fromStore(resolvedCommands);
+  let resolvedCmds: CommandDef[] = $derived(resolvedCommandsState.current);
+  const metaKeyState = fromStore(metaKey);
+  let currentMetaKey: "cmd" | "ctrl" = $derived(metaKeyState.current);
+  let keyMap = $derived(buildKeyMap(currentMode, resolvedCmds));
   const noteEntriesState = fromStore(noteEntries);
   let noteEntriesMap = $derived(noteEntriesState.current);
   const noteFoldersState = fromStore(noteFolders);
@@ -441,18 +446,36 @@
         }
         return true;
       }
-      case "rollback-deploy": {
-        const project = getFocusedProject();
-        if (project) {
-          dispatchAction({ type: "rollback-deploy", projectId: project.id });
-        }
+      case "rollback-deploy":
         return true;
-      }
       default: {
         const _exhaustive: never = id;
         return false;
       }
     }
+  }
+
+  // Build a lookup from external command ID → resolved key for Meta+ handling
+  function getExternalKey(cmdId: string): string | undefined {
+    const cmd = resolvedCmds.find((c) => c.id === cmdId && !c.hidden);
+    return cmd?.key;
+  }
+
+  // Case-insensitive matching is intentional: Shift+Meta combos (e.g.
+  // screenshot-picker's Shift+Cmd+S) send e.key as uppercase "S", but
+  // bindings are stored lowercase ("Meta+s"). Comparing case-insensitively
+  // ensures these combos match without requiring separate Shift variants.
+  function matchMetaKey(cmdKey: string | undefined, e: KeyboardEvent): boolean {
+    if (!cmdKey) return false;
+    const modifierActive = currentMetaKey === "ctrl" ? e.ctrlKey : e.metaKey;
+    if (cmdKey.startsWith("Meta+")) {
+      return modifierActive && e.key.toLowerCase() === cmdKey.slice(5).toLowerCase();
+    }
+    // Legacy format: ⌘x
+    if (cmdKey.startsWith("⌘")) {
+      return modifierActive && e.key.toLowerCase() === cmdKey.slice(1).toLowerCase();
+    }
+    return false;
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -462,37 +485,62 @@
     // Ignore held-down key repeats to prevent toast/action spam
     if (e.repeat) return;
 
-    // Cmd+S/Cmd+D: screenshot → direct to the-controller session
-    // Cmd+Shift+S/Cmd+Shift+D: screenshot → session picker
-    if (e.metaKey && (e.key === "s" || e.key === "d")) {
-      e.stopPropagation();
-      e.preventDefault();
-      dispatchAction({
-        type: "screenshot-to-session",
-        direct: !e.shiftKey,
-        cropped: e.key === "d",
-      });
-      pushKeystroke("⌘" + e.key.toUpperCase());
-      return;
-    }
+    // External Meta+ commands (modifier depends on meta directive)
+    const metaActive = currentMetaKey === "ctrl" ? e.ctrlKey : e.metaKey;
+    const metaSymbol = currentMetaKey === "ctrl" ? "⌃" : "⌘";
+    if (metaActive) {
+      // Screenshot
+      if (
+        matchMetaKey(getExternalKey("screenshot"), e) ||
+        matchMetaKey(getExternalKey("screenshot-cropped"), e)
+      ) {
+        e.stopPropagation();
+        e.preventDefault();
+        dispatchAction({
+          type: "screenshot-to-session",
+          direct: !e.shiftKey,
+          cropped: matchMetaKey(getExternalKey("screenshot-cropped"), e),
+        });
+        pushKeystroke(metaSymbol + e.key.toUpperCase());
+        return;
+      }
 
-    // Cmd+K: toggle keystroke visualizer
-    if (e.metaKey && e.key === "k") {
-      e.stopPropagation();
-      e.preventDefault();
-      toggleKeystrokeVisualizer();
-      return;
-    }
+      // Keystroke visualizer
+      if (matchMetaKey(getExternalKey("keystroke-visualizer"), e)) {
+        e.stopPropagation();
+        e.preventDefault();
+        toggleKeystrokeVisualizer();
+        return;
+      }
 
-    // Cmd+T: toggle foreground session provider
-    if (e.metaKey && e.key === "t") {
-      if (isDialogOpen()) return;
-      if (isEditableElementFocused() && !isTerminalFocused()) return;
-      e.stopPropagation();
-      e.preventDefault();
-      selectedSessionProvider.update((provider) => provider === "claude" ? "codex" : "claude");
-      pushKeystroke("⌘T");
-      return;
+      // Toggle session provider
+      if (matchMetaKey(getExternalKey("toggle-session-provider"), e)) {
+        if (isDialogOpen()) return;
+        if (isEditableElementFocused() && !isTerminalFocused()) return;
+        e.stopPropagation();
+        e.preventDefault();
+        selectedSessionProvider.update((provider) => {
+          if (provider === "claude") return "codex";
+          if (provider === "codex") return "cursor-agent";
+          return "claude";
+        });
+        pushKeystroke(metaSymbol + "T");
+        return;
+      }
+
+      // Regular commands overridden to use Meta+ prefix
+      // Apply same guards as regular hotkeys
+      if (!isTerminalFocused() && !isDialogOpen() && !isEditableElementFocused() && currentFocus?.type !== "notes-editor") {
+        // Lowercase intentionally: Meta+ bindings are case-insensitive so
+        // they fire regardless of Shift state (see matchMetaKey comment).
+        const metaComposedKey = `Meta+${e.key.toLowerCase()}`;
+        if (handleHotkey(metaComposedKey)) {
+          e.stopPropagation();
+          e.preventDefault();
+          pushKeystroke(metaSymbol + e.key);
+          return;
+        }
+      }
     }
 
     // Workspace mode intercepts all keys

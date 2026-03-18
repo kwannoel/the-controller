@@ -9,6 +9,22 @@ impl<T: Read + Write> ReadWrite for T {}
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+
+    // Handle --build-date before anything else
+    if args.first().map(|s| s.as_str()) == Some("--build-date") {
+        println!("{}", env!("BUILD_DATE"));
+        std::process::exit(0);
+    }
+
+    // Initialize minimal stderr logging for the CLI
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_writer(std::io::stderr)
+        .with_target(false)
+        .init();
+
+    tracing::debug!(args = ?args, "controller-cli starting");
+
     let mut stdout = std::io::stdout();
     let mut stderr = std::io::stderr();
     let request_id = Uuid::new_v4().to_string();
@@ -39,12 +55,15 @@ where
     Err: Write,
 {
     let Some((project, key)) = parse_args(args) else {
+        tracing::error!("invalid arguments, printing usage");
         let _ = writeln!(
             stderr,
             "Usage: controller-cli env set --project <project> --key <ENV_KEY>"
         );
         return 2;
     };
+
+    tracing::debug!(project = %project, key = %key, "dispatching env set command");
 
     let mut stream = match connect() {
         Ok(stream) => stream,
@@ -54,10 +73,12 @@ where
                 std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
             ) =>
         {
+            tracing::error!(error = %err, "app not running, connection failed");
             let _ = writeln!(stderr, "The Controller app is not running");
             return 1;
         }
         Err(err) => {
+            tracing::error!(error = %err, "failed to connect");
             let _ = writeln!(stderr, "Failed to connect to The Controller app: {err}");
             return 1;
         }
@@ -65,6 +86,7 @@ where
 
     let request = format!("secure-env:set|{project}|{key}|{request_id}\n");
     if let Err(err) = stream.write_all(request.as_bytes()) {
+        tracing::error!(error = %err, "failed to send request");
         let _ = writeln!(stderr, "Failed to send request: {err}");
         return 1;
     }
@@ -72,6 +94,7 @@ where
     let mut reader = BufReader::new(stream);
     let mut response = String::new();
     if let Err(err) = reader.read_line(&mut response) {
+        tracing::error!(error = %err, "failed to read response");
         let _ = writeln!(stderr, "Failed to read response: {err}");
         return 1;
     }
@@ -82,6 +105,7 @@ where
     let status = parts.next().unwrap_or_default();
     let response_id = parts.next().unwrap_or_default();
     if parts.next().is_some() || kind.is_empty() || status.is_empty() || response_id != request_id {
+        tracing::error!("invalid response format from app");
         let _ = writeln!(stderr, "Invalid response from The Controller app");
         return 1;
     }
@@ -92,14 +116,17 @@ where
             0
         }
         ("error", "cancelled") => {
+            tracing::warn!(project = %project, key = %key, "secure env request cancelled");
             let _ = writeln!(stderr, "secure env request cancelled");
             3
         }
         ("error", other) => {
+            tracing::error!(project = %project, key = %key, status = %other, "secure env request failed");
             let _ = writeln!(stderr, "secure env request failed: {other}");
             1
         }
         _ => {
+            tracing::error!(kind = %kind, status = %status, "unexpected response format");
             let _ = writeln!(stderr, "Invalid response from The Controller app");
             1
         }

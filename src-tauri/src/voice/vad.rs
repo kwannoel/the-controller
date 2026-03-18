@@ -28,12 +28,26 @@ pub struct Vad {
 
 impl Vad {
     pub fn new(model_path: &Path, min_silence_ms: u32) -> Result<Self, String> {
+        tracing::debug!(
+            model = %model_path.display(),
+            min_silence_ms,
+            "initializing VAD engine"
+        );
         let session = Session::builder()
-            .map_err(|e| format!("Failed to create ONNX session builder: {e}"))?
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to create ONNX session builder");
+                format!("Failed to create ONNX session builder: {e}")
+            })?
             .with_intra_threads(1)
-            .map_err(|e| format!("Failed to set threads: {e}"))?
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to set threads");
+                format!("Failed to set threads: {e}")
+            })?
             .commit_from_file(model_path)
-            .map_err(|e| format!("Failed to load Silero VAD model: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to load Silero VAD model");
+                format!("Failed to load Silero VAD model: {e}")
+            })?;
 
         let min_silence_samples = (min_silence_ms as usize * 16000) / 1000;
 
@@ -63,12 +77,20 @@ impl Vad {
 
         let full_len = input_with_context.len();
 
-        let input_tensor = Tensor::from_array(([1usize, full_len], input_with_context))
-            .map_err(|e| format!("Failed to create input tensor: {e}"))?;
-        let state_tensor = Tensor::from_array(([2usize, 1, 128], self.state.clone()))
-            .map_err(|e| format!("Failed to create state tensor: {e}"))?;
-        let sr_tensor = Tensor::from_array(((), vec![16000i64]))
-            .map_err(|e| format!("Failed to create sr tensor: {e}"))?;
+        let input_tensor =
+            Tensor::from_array(([1usize, full_len], input_with_context)).map_err(|e| {
+                tracing::error!(error = %e, "failed to create input tensor");
+                format!("Failed to create input tensor: {e}")
+            })?;
+        let state_tensor =
+            Tensor::from_array(([2usize, 1, 128], self.state.clone())).map_err(|e| {
+                tracing::error!(error = %e, "failed to create state tensor");
+                format!("Failed to create state tensor: {e}")
+            })?;
+        let sr_tensor = Tensor::from_array(((), vec![16000i64])).map_err(|e| {
+            tracing::error!(error = %e, "failed to create sr tensor");
+            format!("Failed to create sr tensor: {e}")
+        })?;
 
         let outputs = self
             .session
@@ -77,19 +99,24 @@ impl Vad {
                 "state" => state_tensor,
                 "sr" => sr_tensor,
             })
-            .map_err(|e| format!("VAD inference failed: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "VAD inference failed");
+                format!("VAD inference failed: {e}")
+            })?;
 
         // Extract output probability
-        let (_, output_data) = outputs["output"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| format!("Failed to extract output: {e}"))?;
+        let (_, output_data) = outputs["output"].try_extract_tensor::<f32>().map_err(|e| {
+            tracing::error!(error = %e, "failed to extract VAD output");
+            format!("Failed to extract output: {e}")
+        })?;
         let prob = output_data[0];
         self.last_prob = prob;
 
         // Extract and update state
-        let (_, state_data) = outputs["stateN"]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| format!("Failed to extract stateN: {e}"))?;
+        let (_, state_data) = outputs["stateN"].try_extract_tensor::<f32>().map_err(|e| {
+            tracing::error!(error = %e, "failed to extract VAD stateN");
+            format!("Failed to extract stateN: {e}")
+        })?;
         self.state = state_data.to_vec();
 
         // Update context: last CONTEXT_SIZE samples from this chunk
@@ -106,6 +133,11 @@ impl Vad {
         if prob >= self.threshold && !self.triggered {
             self.triggered = true;
             self.temp_end = 0;
+            tracing::debug!(
+                prob,
+                threshold = self.threshold,
+                "VAD detected speech start"
+            );
             return Ok(Some(VadEvent::SpeechStart));
         }
 
@@ -116,6 +148,7 @@ impl Vad {
             if self.current_sample - self.temp_end >= self.min_silence_samples {
                 self.triggered = false;
                 self.temp_end = 0;
+                tracing::debug!(prob, threshold = self.threshold, "VAD detected speech end");
                 return Ok(Some(VadEvent::SpeechEnd));
             }
         } else if self.triggered {

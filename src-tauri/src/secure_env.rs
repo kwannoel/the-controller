@@ -7,18 +7,18 @@ use uuid::Uuid;
 use crate::state::AppState;
 
 #[allow(dead_code)]
-pub(crate) struct EnvWriteResult {
-    pub(crate) created: bool,
+pub struct EnvWriteResult {
+    pub created: bool,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct PendingSecureEnvRequest {
-    pub(crate) request_id: String,
-    pub(crate) project_id: Uuid,
-    pub(crate) project_name: String,
-    pub(crate) env_path: PathBuf,
-    pub(crate) key: String,
+pub struct PendingSecureEnvRequest {
+    pub request_id: String,
+    pub project_id: Uuid,
+    pub project_name: String,
+    pub env_path: PathBuf,
+    pub key: String,
 }
 
 #[allow(dead_code)]
@@ -38,34 +38,38 @@ pub(crate) struct SecureEnvRequest {
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum SecureEnvResponseKind {
+pub enum SecureEnvResponseKind {
     Ok,
     Error,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct SecureEnvResponse {
-    pub(crate) kind: SecureEnvResponseKind,
-    pub(crate) status: String,
-    pub(crate) request_id: String,
+pub struct SecureEnvResponse {
+    pub kind: SecureEnvResponseKind,
+    pub status: String,
+    pub request_id: String,
 }
 
 #[allow(dead_code)]
 pub(crate) fn validate_env_key(key: &str) -> Result<(), String> {
     if key.is_empty() {
+        tracing::warn!("env key validation failed: key is empty");
         return Err("Env var key cannot be empty".to_string());
     }
     if key.contains('=') {
+        tracing::warn!("env key validation failed: contains '='");
         return Err("Env var key cannot contain '='".to_string());
     }
     let mut chars = key.chars();
     let Some(first) = chars.next() else {
+        tracing::warn!("env key validation failed: key is empty");
         return Err("Env var key cannot be empty".to_string());
     };
     if !(first.is_ascii_alphabetic() || first == '_')
         || !chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
     {
+        tracing::warn!("env key validation failed: invalid pattern");
         return Err("Env var key must match [A-Za-z_][A-Za-z0-9_]*".to_string());
     }
     Ok(())
@@ -73,6 +77,7 @@ pub(crate) fn validate_env_key(key: &str) -> Result<(), String> {
 
 #[allow(dead_code)]
 pub(crate) fn parse_secure_env_request(message: &str) -> Result<SecureEnvRequest, String> {
+    tracing::debug!("parsing secure env request message");
     let mut parts = message.split('|');
     let action = parts
         .next()
@@ -92,15 +97,18 @@ pub(crate) fn parse_secure_env_request(message: &str) -> Result<SecureEnvRequest
         || key.is_empty()
         || request_id.is_empty()
     {
+        tracing::warn!("malformed secure env request message");
         return Err("Invalid secure env request message".to_string());
     }
 
     if action != "set" {
+        tracing::warn!(action, "unsupported secure env request action");
         return Err(format!("Unsupported secure env request action: {action}"));
     }
 
     validate_env_key(key)?;
 
+    tracing::debug!(request_id, "parsed secure env request");
     Ok(SecureEnvRequest {
         project_selector: project_selector.to_string(),
         key: key.to_string(),
@@ -135,18 +143,28 @@ pub(crate) fn begin_secure_env_request_with_response(
     request_id: &str,
     response_tx: Option<SyncSender<SecureEnvResponse>>,
 ) -> Result<PendingSecureEnvRequest, String> {
+    tracing::debug!(request_id, "beginning secure env request");
     validate_env_key(key)?;
 
     let project = {
-        let storage = state.storage.lock().map_err(|err| err.to_string())?;
-        let inventory = storage.list_projects().map_err(|err| err.to_string())?;
+        let storage = state.storage.lock().map_err(|err| {
+            tracing::error!(error = %err, "failed to lock storage");
+            err.to_string()
+        })?;
+        let inventory = storage.list_projects().map_err(|err| {
+            tracing::error!(error = %err, "failed to list projects");
+            err.to_string()
+        })?;
         inventory
             .projects
             .into_iter()
             .find(|project| {
                 project.name == project_selector || project.id.to_string() == project_selector
             })
-            .ok_or_else(|| format!("Unknown project: {project_selector}"))?
+            .ok_or_else(|| {
+                tracing::warn!(project_selector, "project not found for secure env request");
+                format!("Unknown project: {project_selector}")
+            })?
     };
 
     let pending = PendingSecureEnvRequest {
@@ -157,11 +175,15 @@ pub(crate) fn begin_secure_env_request_with_response(
         key: key.to_string(),
     };
 
-    let mut active = state
-        .secure_env_request
-        .lock()
-        .map_err(|err| err.to_string())?;
+    let mut active = state.secure_env_request.lock().map_err(|err| {
+        tracing::error!(error = %err, "failed to lock secure_env_request");
+        err.to_string()
+    })?;
     if active.is_some() {
+        tracing::warn!(
+            request_id,
+            "rejected: another secure env request is already active"
+        );
         return Err("A secure env request is already active".to_string());
     }
     *active = Some(ActiveSecureEnvRequest {
@@ -169,15 +191,21 @@ pub(crate) fn begin_secure_env_request_with_response(
         response_tx,
     });
 
+    tracing::info!(
+        request_id,
+        project_name = %project.name,
+        "secure env request activated"
+    );
     Ok(pending)
 }
 
 #[allow(dead_code)]
-pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> Result<(), String> {
-    let mut active = state
-        .secure_env_request
-        .lock()
-        .map_err(|err| err.to_string())?;
+pub fn cancel_secure_env_request(state: &AppState, request_id: &str) -> Result<(), String> {
+    tracing::debug!(request_id, "cancelling secure env request");
+    let mut active = state.secure_env_request.lock().map_err(|err| {
+        tracing::error!(error = %err, "failed to lock secure_env_request");
+        err.to_string()
+    })?;
     match active.as_ref() {
         Some(request) if request.pending.request_id == request_id => {
             let response_tx = request.response_tx.clone();
@@ -189,15 +217,25 @@ pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> R
                     request_id: request_id.to_string(),
                 });
             }
+            tracing::info!(request_id, "secure env request cancelled");
             Ok(())
         }
-        Some(_) => Err(format!("Unknown secure env request: {request_id}")),
-        None => Err("No active secure env request".to_string()),
+        Some(_) => {
+            tracing::warn!(
+                request_id,
+                "cancel failed: request_id does not match active request"
+            );
+            Err(format!("Unknown secure env request: {request_id}"))
+        }
+        None => {
+            tracing::warn!(request_id, "cancel failed: no active secure env request");
+            Err("No active secure env request".to_string())
+        }
     }
 }
 
 #[allow(dead_code)]
-pub(crate) fn take_secure_env_submission(
+pub fn take_secure_env_submission(
     state: &AppState,
     request_id: &str,
 ) -> Result<
@@ -207,44 +245,51 @@ pub(crate) fn take_secure_env_submission(
     ),
     String,
 > {
-    let mut active = state
-        .secure_env_request
-        .lock()
-        .map_err(|err| err.to_string())?;
+    tracing::debug!(request_id, "taking secure env submission");
+    let mut active = state.secure_env_request.lock().map_err(|err| {
+        tracing::error!(error = %err, "failed to lock secure_env_request");
+        err.to_string()
+    })?;
     match active.as_ref() {
         Some(request) if request.pending.request_id == request_id => {
             let pending = request.pending.clone();
             let response_tx = request.response_tx.clone();
             *active = None;
+            tracing::debug!(request_id, "secure env submission taken");
             Ok((pending, response_tx))
         }
-        Some(_) => Err(format!("Unknown secure env request: {request_id}")),
-        None => Err("No active secure env request".to_string()),
+        Some(_) => {
+            tracing::warn!(request_id, "take submission failed: request_id mismatch");
+            Err(format!("Unknown secure env request: {request_id}"))
+        }
+        None => {
+            tracing::warn!(request_id, "take submission failed: no active request");
+            Err("No active secure env request".to_string())
+        }
     }
 }
 
 #[allow(dead_code)]
-pub(crate) fn finish_secure_env_submission(
+pub fn finish_secure_env_submission(
     request_id: &str,
     response_tx: Option<SyncSender<SecureEnvResponse>>,
     result: Result<EnvWriteResult, String>,
 ) -> Result<EnvWriteResult, String> {
     match result {
         Ok(result) => {
+            let status = if result.created { "created" } else { "updated" };
+            tracing::info!(request_id, status, "secure env submission finished");
             if let Some(response_tx) = response_tx {
                 let _ = response_tx.send(SecureEnvResponse {
                     kind: SecureEnvResponseKind::Ok,
-                    status: if result.created {
-                        "created".to_string()
-                    } else {
-                        "updated".to_string()
-                    },
+                    status: status.to_string(),
                     request_id: request_id.to_string(),
                 });
             }
             Ok(result)
         }
         Err(error) => {
+            tracing::error!(request_id, %error, "secure env submission failed");
             if let Some(response_tx) = response_tx {
                 let _ = response_tx.send(SecureEnvResponse {
                     kind: SecureEnvResponseKind::Error,
@@ -263,6 +308,7 @@ pub(crate) fn submit_secure_env_value(
     request_id: &str,
     value: &str,
 ) -> Result<EnvWriteResult, String> {
+    tracing::debug!(request_id, "submitting secure env value");
     let (pending, response_tx) = take_secure_env_submission(state, request_id)?;
     finish_secure_env_submission(
         request_id,
@@ -272,17 +318,23 @@ pub(crate) fn submit_secure_env_value(
 }
 
 #[allow(dead_code)]
-pub(crate) fn update_env_file(
-    env_path: &Path,
-    key: &str,
-    value: &str,
-) -> Result<EnvWriteResult, String> {
+pub fn update_env_file(env_path: &Path, key: &str, value: &str) -> Result<EnvWriteResult, String> {
+    tracing::debug!(path = %env_path.display(), "updating env file");
     validate_env_key(key)?;
 
     let existing = match fs::read_to_string(env_path) {
-        Ok(contents) => contents,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(err) => return Err(format!("failed to read {}: {}", env_path.display(), err)),
+        Ok(contents) => {
+            tracing::debug!(path = %env_path.display(), "read existing env file");
+            contents
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            tracing::debug!(path = %env_path.display(), "env file not found, will create");
+            String::new()
+        }
+        Err(err) => {
+            tracing::error!(path = %env_path.display(), %err, "failed to read env file");
+            return Err(format!("failed to read {}: {}", env_path.display(), err));
+        }
     };
 
     let mut replaced = false;
@@ -307,9 +359,13 @@ pub(crate) fn update_env_file(
     let mut updated = lines.join("\n");
     updated.push('\n');
 
-    fs::write(env_path, updated)
-        .map_err(|err| format!("failed to write {}: {}", env_path.display(), err))?;
+    fs::write(env_path, updated).map_err(|err| {
+        tracing::error!(path = %env_path.display(), %err, "failed to write env file");
+        format!("failed to write {}: {}", env_path.display(), err)
+    })?;
 
+    let action = if replaced { "replaced" } else { "appended" };
+    tracing::debug!(action, path = %env_path.display(), "env file updated");
     Ok(EnvWriteResult { created: !replaced })
 }
 

@@ -44,6 +44,7 @@ impl CloudflareClient {
         subdomain: &str,
         server_ip: &str,
     ) -> Result<DnsRecord, String> {
+        tracing::info!(subdomain = %subdomain, server_ip = %server_ip, "creating Cloudflare DNS record");
         let body = serde_json::json!({
             "type": "A",
             "name": subdomain,
@@ -52,56 +53,75 @@ impl CloudflareClient {
             "ttl": 1,
         });
 
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
+            self.zone_id
+        );
+        tracing::debug!(url = %url, "POST Cloudflare DNS record");
+
         let resp = self
             .client
-            .post(format!(
-                "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
-                self.zone_id
-            ))
+            .post(url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await
-            .map_err(|e| format!("Cloudflare API request failed: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Cloudflare API request failed");
+                format!("Cloudflare API request failed: {e}")
+            })?;
 
-        let cf_resp: CloudflareResponse<DnsRecord> = resp
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse Cloudflare response: {e}"))?;
+        let cf_resp: CloudflareResponse<DnsRecord> = resp.json().await.map_err(|e| {
+            tracing::error!(error = %e, "failed to parse Cloudflare response");
+            format!("Failed to parse Cloudflare response: {e}")
+        })?;
 
         if !cf_resp.success {
             let msgs: Vec<String> = cf_resp.errors.iter().map(|e| e.message.clone()).collect();
+            tracing::error!(errors = %msgs.join(", "), "Cloudflare API returned errors");
             return Err(format!("Cloudflare error: {}", msgs.join(", ")));
         }
 
+        tracing::info!(subdomain = %subdomain, "DNS record created");
         cf_resp
             .result
             .ok_or_else(|| "No result in Cloudflare response".to_string())
     }
 
     pub async fn list_dns_records(&self) -> Result<Vec<DnsRecord>, String> {
+        let url = format!(
+            "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
+            self.zone_id
+        );
+        tracing::debug!(url = %url, "GET Cloudflare DNS records");
+
         let resp = self
             .client
-            .get(format!(
-                "https://api.cloudflare.com/client/v4/zones/{}/dns_records",
-                self.zone_id
-            ))
+            .get(url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()
             .await
-            .map_err(|e| format!("Cloudflare API request failed: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Cloudflare API request failed");
+                format!("Cloudflare API request failed: {e}")
+            })?;
 
-        let cf_resp: CloudflareResponse<Vec<DnsRecord>> = resp
-            .json()
-            .await
-            .map_err(|e| format!("Failed to parse Cloudflare response: {e}"))?;
+        let cf_resp: CloudflareResponse<Vec<DnsRecord>> = resp.json().await.map_err(|e| {
+            tracing::error!(error = %e, "failed to parse Cloudflare response");
+            format!("Failed to parse Cloudflare response: {e}")
+        })?;
 
         if !cf_resp.success {
             let msgs: Vec<String> = cf_resp.errors.iter().map(|e| e.message.clone()).collect();
+            tracing::error!(errors = %msgs.join(", "), "Cloudflare API returned errors");
             return Err(format!("Cloudflare error: {}", msgs.join(", ")));
         }
 
+        tracing::debug!(
+            count = cf_resp.result.as_ref().map_or(0, |r| r.len()),
+            "fetched DNS records"
+        );
         cf_resp
             .result
             .ok_or_else(|| "No result in Cloudflare response".to_string())

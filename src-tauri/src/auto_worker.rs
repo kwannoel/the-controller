@@ -31,6 +31,7 @@ const SESSION_TIMEOUT_SECS: u64 = 30 * 60; // 30 minutes
 const MAX_NUDGES: u32 = 3;
 const NUDGE_COOLDOWN_SECS: u64 = 60;
 const LABEL_PRIORITY_HIGH: &str = labels::PRIORITY_HIGH;
+const LABEL_PRIORITY_LOW: &str = labels::PRIORITY_LOW;
 const LABEL_COMPLEXITY_LOW: &str = labels::COMPLEXITY_LOW;
 const LABEL_IN_PROGRESS: &str = labels::IN_PROGRESS;
 const LABEL_ASSIGNED_TO_AUTO_WORKER: &str = labels::ASSIGNED_TO_AUTO_WORKER;
@@ -120,7 +121,7 @@ struct StartupWorkerCandidate {
     session_dir: String,
     kind: String,
     ordinal: usize,
-    live_tmux: bool,
+    live_session: bool,
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -174,10 +175,7 @@ impl AutoWorkerScheduler {
                     .map(|issues| issues.contains(&issue.number))
                     .unwrap_or(false);
                 if labels.contains(&LABEL_IN_PROGRESS) && !protected {
-                    eprintln!(
-                        "Auto-worker: removing stale in-progress label from #{}",
-                        issue.number
-                    );
+                    tracing::info!("removing stale in-progress label from #{}", issue.number);
                     let _ = remove_label_sync(
                         state.inner(),
                         &project.repo_path,
@@ -223,10 +221,7 @@ impl AutoWorkerScheduler {
 
                 for project_id in timed_out {
                     if let Some(session) = active_sessions.remove(&project_id) {
-                        eprintln!(
-                            "Auto-worker: session timed out for #{}",
-                            session.issue_number
-                        );
+                        tracing::info!("session timed out for #{}", session.issue_number);
                         let (issue_number, issue_title) = session_issue_context(&session);
                         kill_session(&state, &session);
                         emit_status(
@@ -255,21 +250,23 @@ impl AutoWorkerScheduler {
                 for project_id in idle_to_nudge {
                     if let Some(session) = active_sessions.get_mut(&project_id) {
                         if session.nudge_count >= MAX_NUDGES {
-                            let session = active_sessions.remove(&project_id).unwrap();
-                            eprintln!(
-                                "Auto-worker: killed after {} nudges for #{}",
-                                MAX_NUDGES, session.issue_number
-                            );
-                            let (issue_number, issue_title) = session_issue_context(&session);
-                            kill_session(&state, &session);
-                            emit_status(
-                                &state,
-                                project_id,
-                                "idle",
-                                Some("Killed after max nudges"),
-                                issue_number,
-                                issue_title,
-                            );
+                            if let Some(session) = active_sessions.remove(&project_id) {
+                                tracing::info!(
+                                    "killed after {} nudges for #{}",
+                                    MAX_NUDGES,
+                                    session.issue_number
+                                );
+                                let (issue_number, issue_title) = session_issue_context(&session);
+                                kill_session(&state, &session);
+                                emit_status(
+                                    &state,
+                                    project_id,
+                                    "idle",
+                                    Some("Killed after max nudges"),
+                                    issue_number,
+                                    issue_title,
+                                );
+                            }
                         } else {
                             nudge_session(&state, session);
                         }
@@ -277,24 +274,19 @@ impl AutoWorkerScheduler {
                 }
 
                 // 3. Check for completed sessions (PTY no longer alive and removed from sessions map)
-                let exited: Vec<Uuid> = active_sessions
-                    .iter()
-                    .filter(|(_, s)| {
-                        if let Ok(pty_manager) = state.pty_manager.lock() {
-                            !pty_manager.is_alive(s.session_id)
-                        } else {
-                            false
-                        }
-                    })
-                    .map(|(pid, _)| *pid)
-                    .collect();
+                let exited: Vec<Uuid> = if let Ok(pty_manager) = state.pty_manager.lock() {
+                    active_sessions
+                        .iter()
+                        .filter(|(_, s)| !pty_manager.is_alive(s.session_id))
+                        .map(|(pid, _)| *pid)
+                        .collect()
+                } else {
+                    Vec::new()
+                };
 
                 for project_id in exited {
                     if let Some(session) = active_sessions.remove(&project_id) {
-                        eprintln!(
-                            "Auto-worker: session completed for #{}",
-                            session.issue_number
-                        );
+                        tracing::info!("session completed for #{}", session.issue_number);
                         let (issue_number, issue_title) = session_issue_context(&session);
                         mark_issue_finished(state.inner(), &session);
                         cleanup_session(&state, &session);
@@ -335,10 +327,7 @@ impl AutoWorkerScheduler {
                     let issues = match fetch_issues_sync(&project.repo_path) {
                         Ok(issues) => issues,
                         Err(e) => {
-                            eprintln!(
-                                "Auto-worker: failed to fetch issues for {}: {}",
-                                project.name, e
-                            );
+                            tracing::error!("failed to fetch issues for {}: {}", project.name, e);
                             continue;
                         }
                     };
@@ -380,9 +369,10 @@ impl AutoWorkerScheduler {
                             );
                         }
                         Err(e) => {
-                            eprintln!(
-                                "Auto-worker: failed to spawn session for #{}: {}",
-                                eligible.number, e
+                            tracing::error!(
+                                "failed to spawn session for #{}: {}",
+                                eligible.number,
+                                e
                             );
                         }
                     }
@@ -437,7 +427,7 @@ impl AutoWorkerScheduler {
                     session_dir,
                     kind: session.kind.clone(),
                     ordinal,
-                    live_tmux: crate::tmux::TmuxManager::has_session(session.id),
+                    live_session: crate::broker_client::BrokerClient::new().has_session(session.id),
                 });
             }
         }
@@ -467,9 +457,11 @@ impl AutoWorkerScheduler {
             };
 
             if let Err(error) = attach_result {
-                eprintln!(
-                    "Auto-worker: failed to restore session {} for #{}: {}",
-                    candidate.session_id, candidate.issue_number, error
+                tracing::error!(
+                    "failed to restore session {} for #{}: {}",
+                    candidate.session_id,
+                    candidate.issue_number,
+                    error
                 );
                 continue;
             }
@@ -533,18 +525,34 @@ fn startup_candidate_to_active_session(candidate: &StartupWorkerCandidate) -> Ac
 }
 
 fn reconcile_startup_workers(candidates: Vec<StartupWorkerCandidate>) -> StartupReconciliation {
-    let mut keep_live_by_project: HashMap<Uuid, usize> = HashMap::new();
+    // Per project, pick the best candidate to restore:
+    // - Prefer a live broker session (reattach)
+    // - Otherwise pick the highest-ordinal candidate (resume with --continue)
+    // All other candidates go to cleanup.
+    let mut best_by_project: HashMap<Uuid, usize> = HashMap::new();
 
     for (idx, candidate) in candidates.iter().enumerate() {
-        if candidate.live_tmux {
-            keep_live_by_project.insert(candidate.project_id, idx);
+        match best_by_project.get(&candidate.project_id) {
+            Some(&prev_idx) => {
+                let prev = &candidates[prev_idx];
+                // Prefer live over non-live; among same liveness, prefer higher ordinal
+                if candidate.live_session && !prev.live_session
+                    || (candidate.live_session == prev.live_session
+                        && candidate.ordinal > prev.ordinal)
+                {
+                    best_by_project.insert(candidate.project_id, idx);
+                }
+            }
+            None => {
+                best_by_project.insert(candidate.project_id, idx);
+            }
         }
     }
 
     let mut reconciliation = StartupReconciliation::default();
 
     for (idx, candidate) in candidates.into_iter().enumerate() {
-        if candidate.live_tmux && keep_live_by_project.get(&candidate.project_id) == Some(&idx) {
+        if best_by_project.get(&candidate.project_id) == Some(&idx) {
             reconciliation.restore.push(candidate);
         } else {
             reconciliation.cleanup.push(candidate);
@@ -751,7 +759,7 @@ fn spawn_auto_worker_session(
             worktree_path: wt_path,
             worktree_branch: wt_branch,
             archived: false,
-            kind: "codex".to_string(),
+            kind: "claude".to_string(),
             github_issue: Some(issue.clone()),
             initial_prompt: Some(initial_prompt.clone()),
             done_commits: vec![],
@@ -764,7 +772,7 @@ fn spawn_auto_worker_session(
     pty_manager.spawn_session(
         session_id,
         &session_dir,
-        "codex",
+        "claude",
         state.emitter.clone(),
         false,
         Some(&initial_prompt),
@@ -782,9 +790,10 @@ fn nudge_session(state: &AppState, session: &mut ActiveSession) {
     }
     session.nudge_count += 1;
     session.last_nudge_at = Some(Instant::now());
-    eprintln!(
-        "Auto-worker: nudged session for #{} (nudge {})",
-        session.issue_number, session.nudge_count
+    tracing::info!(
+        "nudged session for #{} (nudge {})",
+        session.issue_number,
+        session.nudge_count
     );
 }
 
@@ -823,18 +832,15 @@ fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
     match output {
         Ok(o) if o.status.success() => json_has_results(&String::from_utf8_lossy(&o.stdout)),
         Ok(o) => {
-            eprintln!(
-                "Auto-worker: gh pr list failed for #{}: {}",
+            tracing::error!(
+                "gh pr list failed for #{}: {}",
                 issue_number,
                 String::from_utf8_lossy(&o.stderr)
             );
             false
         }
         Err(e) => {
-            eprintln!(
-                "Auto-worker: failed to run gh pr list for #{}: {}",
-                issue_number, e
-            );
+            tracing::error!("failed to run gh pr list for #{}: {}", issue_number, e);
             false
         }
     }
@@ -878,10 +884,7 @@ fn mark_issue_finished(state: &AppState, session: &ActiveSession) {
             session.issue_number,
             LABEL_FINISHED_BY_WORKER,
         );
-        eprintln!(
-            "Auto-worker: finalized #{} as completed",
-            session.issue_number
-        );
+        tracing::info!("finalized #{} as completed", session.issue_number);
     } else if issue_closed == Some(false) {
         let _ = remove_label_sync(
             state,
@@ -889,13 +892,10 @@ fn mark_issue_finished(state: &AppState, session: &ActiveSession) {
             session.issue_number,
             LABEL_FINISHED_BY_WORKER,
         );
-        eprintln!(
-            "Auto-worker: #{} exited while still open",
-            session.issue_number
-        );
+        tracing::info!("#{} exited while still open", session.issue_number);
     } else {
-        eprintln!(
-            "Auto-worker: #{} cleanup could not confirm issue state",
+        tracing::warn!(
+            "#{} cleanup could not confirm issue state",
             session.issue_number
         );
     }
@@ -948,16 +948,24 @@ fn cleanup_session(state: &AppState, session: &ActiveSession) {
 /// Check if an issue is eligible for auto-worker processing.
 pub fn is_eligible(issue: &GithubIssue) -> bool {
     let labels: Vec<&str> = issue.labels.iter().map(|l| l.name.as_str()).collect();
-    labels.contains(&LABEL_PRIORITY_HIGH)
+    (labels.contains(&LABEL_PRIORITY_HIGH) || labels.contains(&LABEL_PRIORITY_LOW))
         && labels.contains(&LABEL_COMPLEXITY_LOW)
         && !labels.contains(&LABEL_IN_PROGRESS)
         && !labels.contains(&LABEL_FINISHED_BY_WORKER)
         && !labels.contains(&LABEL_ASSIGNED_TO_AUTO_WORKER)
 }
 
-/// Pick the first eligible issue from a list.
+/// Pick the best eligible issue from a list.
+/// Prefers `priority:high` over `priority:low`.
 pub fn pick_eligible_issue(issues: &[GithubIssue]) -> Option<&GithubIssue> {
-    issues.iter().find(|i| is_eligible(i))
+    let eligible: Vec<&GithubIssue> = issues.iter().filter(|i| is_eligible(i)).collect();
+    let high = eligible
+        .iter()
+        .find(|i| i.labels.iter().any(|l| l.name == LABEL_PRIORITY_HIGH));
+    if let Some(issue) = high {
+        return Some(issue);
+    }
+    eligible.into_iter().next()
 }
 
 #[cfg(test)]
@@ -995,7 +1003,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_priority_high_not_eligible() {
+    fn priority_low_with_complexity_low_is_eligible() {
+        let issue = make_issue(&["priority:low", "complexity:low", "triaged"]);
+        assert!(is_eligible(&issue));
+    }
+
+    #[test]
+    fn missing_both_priorities_not_eligible() {
         let issue = make_issue(&["complexity:low", "triaged"]);
         assert!(!is_eligible(&issue));
     }
@@ -1043,6 +1057,34 @@ mod tests {
         ];
         let picked = pick_eligible_issue(&issues);
         assert!(picked.is_some());
+        // Should pick the priority:high issue even though it's second in the list
+        assert!(picked
+            .unwrap()
+            .labels
+            .iter()
+            .any(|l| l.name == "priority:high"));
+    }
+
+    #[test]
+    fn pick_eligible_prefers_high_over_low() {
+        let issues = vec![
+            make_issue(&["priority:low", "complexity:low"]),
+            make_issue(&["priority:high", "complexity:low"]),
+        ];
+        let picked = pick_eligible_issue(&issues).unwrap();
+        assert!(picked.labels.iter().any(|l| l.name == "priority:high"));
+    }
+
+    #[test]
+    fn pick_eligible_falls_back_to_low_priority() {
+        let issues = vec![make_issue(&["priority:low", "complexity:low"])];
+        let picked = pick_eligible_issue(&issues);
+        assert!(picked.is_some());
+        assert!(picked
+            .unwrap()
+            .labels
+            .iter()
+            .any(|l| l.name == "priority:low"));
     }
 
     #[test]
@@ -1190,9 +1232,9 @@ mod tests {
                 issue_title: "Already finished duplicate".to_string(),
                 repo_path: repo_path.clone(),
                 session_dir: "/tmp/the-controller/session-46".to_string(),
-                kind: "codex".to_string(),
+                kind: "claude".to_string(),
                 ordinal: 0,
-                live_tmux: false,
+                live_session: false,
             },
             StartupWorkerCandidate {
                 session_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
@@ -1201,12 +1243,50 @@ mod tests {
                 issue_title: "Current live task".to_string(),
                 repo_path: repo_path.clone(),
                 session_dir: "/tmp/the-controller/session-51".to_string(),
-                kind: "codex".to_string(),
+                kind: "claude".to_string(),
                 ordinal: 1,
-                live_tmux: true,
+                live_session: true,
             },
         ]);
 
+        assert_eq!(reconciliation.restore.len(), 1);
+        assert_eq!(reconciliation.restore[0].issue_number, 327);
+
+        assert_eq!(reconciliation.cleanup.len(), 1);
+        assert_eq!(reconciliation.cleanup[0].issue_number, 328);
+    }
+
+    #[test]
+    fn startup_restoration_resumes_non_live_session_when_no_live_exists() {
+        let project_id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        let repo_path = "/tmp/the-controller".to_string();
+
+        let reconciliation = reconcile_startup_workers(vec![
+            StartupWorkerCandidate {
+                session_id: Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap(),
+                project_id,
+                issue_number: 328,
+                issue_title: "Older session".to_string(),
+                repo_path: repo_path.clone(),
+                session_dir: "/tmp/the-controller/session-46".to_string(),
+                kind: "claude".to_string(),
+                ordinal: 0,
+                live_session: false,
+            },
+            StartupWorkerCandidate {
+                session_id: Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+                project_id,
+                issue_number: 327,
+                issue_title: "Most recent session".to_string(),
+                repo_path: repo_path.clone(),
+                session_dir: "/tmp/the-controller/session-51".to_string(),
+                kind: "claude".to_string(),
+                ordinal: 1,
+                live_session: false,
+            },
+        ]);
+
+        // Should restore the highest-ordinal candidate even though none are live
         assert_eq!(reconciliation.restore.len(), 1);
         assert_eq!(reconciliation.restore[0].issue_number, 327);
 
@@ -1226,7 +1306,7 @@ mod tests {
             session_dir: "/tmp/the-controller/session-51".to_string(),
             kind: "codex".to_string(),
             ordinal: 1,
-            live_tmux: true,
+            live_session: true,
         };
         let reconciliation = StartupReconciliation {
             restore: vec![candidate.clone()],

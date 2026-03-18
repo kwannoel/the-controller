@@ -7,17 +7,25 @@ pub struct WhisperStt {
 
 impl WhisperStt {
     pub fn new(model_path: &Path) -> Result<Self, String> {
+        tracing::info!(model = %model_path.display(), "starting Whisper STT engine");
         let ctx = WhisperContext::new_with_params(
             model_path.to_str().ok_or("Invalid model path")?,
             WhisperContextParameters::default(),
         )
-        .map_err(|e| format!("Failed to load Whisper model: {e}"))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to load Whisper model");
+            format!("Failed to load Whisper model: {e}")
+        })?;
 
         Ok(Self { ctx })
     }
 
     /// Transcribe float32 16kHz audio to text. Returns empty string if no speech detected.
     pub fn transcribe(&self, audio: &[f32]) -> Result<String, String> {
+        tracing::debug!(
+            audio_samples = audio.len(),
+            "starting Whisper transcription"
+        );
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
         params.set_language(Some("en"));
         params.set_print_special(false);
@@ -27,24 +35,27 @@ impl WhisperStt {
         params.set_no_context(true);
         params.set_single_segment(true);
 
-        let mut state = self
-            .ctx
-            .create_state()
-            .map_err(|e| format!("Failed to create Whisper state: {e}"))?;
+        let mut state = self.ctx.create_state().map_err(|e| {
+            tracing::error!(error = %e, "failed to create Whisper state");
+            format!("Failed to create Whisper state: {e}")
+        })?;
 
-        state
-            .full(params, audio)
-            .map_err(|e| format!("Whisper inference failed: {e}"))?;
+        state.full(params, audio).map_err(|e| {
+            tracing::error!(error = %e, "Whisper inference failed");
+            format!("Whisper inference failed: {e}")
+        })?;
 
-        let n_segments = state
-            .full_n_segments()
-            .map_err(|e| format!("Failed to get segments: {e}"))?;
+        let n_segments = state.full_n_segments().map_err(|e| {
+            tracing::error!(error = %e, "failed to get Whisper segments");
+            format!("Failed to get segments: {e}")
+        })?;
 
         let mut result = String::new();
         for i in 0..n_segments {
-            let text = state
-                .full_get_segment_text(i)
-                .map_err(|e| format!("Failed to get segment text: {e}"))?;
+            let text = state.full_get_segment_text(i).map_err(|e| {
+                tracing::error!(segment = i, error = %e, "failed to get segment text");
+                format!("Failed to get segment text: {e}")
+            })?;
 
             let trimmed = text.trim();
             if trimmed.is_empty() {

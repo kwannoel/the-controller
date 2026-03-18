@@ -12,20 +12,38 @@ pub struct PiperTts {
 
 impl PiperTts {
     pub fn new(model_path: &Path, config_path: &Path) -> Result<Self, String> {
+        tracing::debug!(
+            model = %model_path.display(),
+            config = %config_path.display(),
+            provider = "piper",
+            "starting TTS engine"
+        );
         let mut builder = Session::builder()
-            .map_err(|e| format!("Failed to create TTS session builder: {e}"))?
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to create TTS session builder");
+                format!("Failed to create TTS session builder: {e}")
+            })?
             .with_intra_threads(1)
-            .map_err(|e| format!("Failed to set TTS threads: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to set TTS threads");
+                format!("Failed to set TTS threads: {e}")
+            })?;
 
-        let session = builder
-            .commit_from_file(model_path)
-            .map_err(|e| format!("Failed to load Piper model: {e}"))?;
+        let session = builder.commit_from_file(model_path).map_err(|e| {
+            tracing::error!(error = %e, "failed to load Piper model");
+            format!("Failed to load Piper model: {e}")
+        })?;
 
         // Load phoneme ID map from config JSON
         let config_str = std::fs::read_to_string(config_path)
-            .map_err(|e| format!("Failed to read Piper config: {e}"))?;
-        let config: serde_json::Value = serde_json::from_str(&config_str)
-            .map_err(|e| format!("Failed to parse Piper config: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, path = %config_path.display(), "failed to read Piper config");
+                format!("Failed to read Piper config: {e}")
+            })?;
+        let config: serde_json::Value = serde_json::from_str(&config_str).map_err(|e| {
+            tracing::error!(error = %e, "failed to parse Piper config");
+            format!("Failed to parse Piper config: {e}")
+        })?;
 
         let mut phoneme_id_map = HashMap::new();
         if let Some(map) = config.get("phoneme_id_map").and_then(|m| m.as_object()) {
@@ -41,6 +59,7 @@ impl PiperTts {
         }
 
         if phoneme_id_map.is_empty() {
+            tracing::error!("Piper config missing phoneme_id_map");
             return Err("Piper config missing phoneme_id_map".to_string());
         }
 
@@ -64,15 +83,18 @@ impl PiperTts {
 
     /// Convert text to phoneme IDs using espeak-ng + the Piper phoneme_id_map.
     fn phonemize(&self, text: &str) -> Result<Vec<i64>, String> {
+        tracing::debug!("running espeak-ng phonemization");
         let output = Command::new("espeak-ng")
             .args(["--ipa", "-q", "-v", "en-us", text])
             .output()
             .map_err(|e| {
+                tracing::error!(error = %e, "failed to run espeak-ng");
                 format!("Failed to run espeak-ng (is it installed? brew install espeak-ng): {e}")
             })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!(%stderr, "espeak-ng exited with error");
             return Err(format!("espeak-ng failed: {stderr}"));
         }
 
@@ -110,15 +132,22 @@ impl PiperTts {
             return Ok(Vec::new());
         }
 
+        tracing::debug!(text_len = text.len(), "synthesizing speech via Piper TTS");
         let phoneme_ids = self.phonemize(text)?;
         let id_count = phoneme_ids.len();
 
-        let input = Tensor::from_array(([1, id_count], phoneme_ids))
-            .map_err(|e| format!("Failed to create phoneme tensor: {e}"))?;
-        let input_lengths = Tensor::from_array(([1usize], vec![id_count as i64]))
-            .map_err(|e| format!("Failed to create input_lengths tensor: {e}"))?;
-        let scales = Tensor::from_array(([3usize], vec![0.667f32, 1.0, 0.8]))
-            .map_err(|e| format!("Failed to create scales tensor: {e}"))?;
+        let input = Tensor::from_array(([1, id_count], phoneme_ids)).map_err(|e| {
+            tracing::error!(error = %e, "failed to create phoneme tensor");
+            format!("Failed to create phoneme tensor: {e}")
+        })?;
+        let input_lengths = Tensor::from_array(([1usize], vec![id_count as i64])).map_err(|e| {
+            tracing::error!(error = %e, "failed to create input_lengths tensor");
+            format!("Failed to create input_lengths tensor: {e}")
+        })?;
+        let scales = Tensor::from_array(([3usize], vec![0.667f32, 1.0, 0.8])).map_err(|e| {
+            tracing::error!(error = %e, "failed to create scales tensor");
+            format!("Failed to create scales tensor: {e}")
+        })?;
 
         let outputs = self
             .session
@@ -127,11 +156,15 @@ impl PiperTts {
                 "input_lengths" => input_lengths,
                 "scales" => scales,
             })
-            .map_err(|e| format!("TTS inference failed: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "TTS inference failed");
+                format!("TTS inference failed: {e}")
+            })?;
 
-        let (_shape, audio_data) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| format!("Failed to extract TTS output: {e}"))?;
+        let (_shape, audio_data) = outputs[0].try_extract_tensor::<f32>().map_err(|e| {
+            tracing::error!(error = %e, "failed to extract TTS output");
+            format!("Failed to extract TTS output: {e}")
+        })?;
 
         let samples: Vec<i16> = audio_data
             .iter()

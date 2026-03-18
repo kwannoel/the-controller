@@ -3,16 +3,17 @@
   "version": "0.5.0",
   "description": "A Tauri desktop app for managing multiple Claude Code sessions",
   "type": "module",
+  "packageManager": "pnpm@10.32.1",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
+    "dev:app": "pnpm build && cd src-tauri && cargo run",
+    "dev:server": "pnpm build && cd src-tauri && CONTROLLER_DIST_DIR=../dist cargo run --features server --bin server",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:e2e": "npx playwright test --project=e2e",
-    "demo": "npx playwright test --project=demo",
-    "test:watch": "vitest"
+    "test:e2e": "playwright test --project=e2e",
+    "test:e2e:ci": "playwright test --project=ci"
   },
   "license": "MIT",
   "dependencies": {

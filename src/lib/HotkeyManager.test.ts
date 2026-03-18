@@ -4,6 +4,7 @@ import { get } from 'svelte/store';
 import { command } from '$lib/backend';
 import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, activeNote, noteEntries, type Project, type SessionConfig } from './stores';
 import { showToast } from './toast';
+import { keybindingOverrides, metaKey } from './keybindings';
 import HotkeyManager from './HotkeyManager.svelte';
 
 vi.mock('./toast', () => ({
@@ -67,6 +68,10 @@ function pressMetaKey(key: string) {
   window.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey: true, bubbles: true }));
 }
 
+function pressCtrlKey(key: string) {
+  window.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true }));
+}
+
 /** Create a fake xterm element and focus it to simulate terminal focus. */
 function simulateTerminalFocus(): HTMLElement {
   const xterm = document.createElement('div');
@@ -94,6 +99,8 @@ describe('HotkeyManager', () => {
     workspaceMode.set("development");
     workspaceModePickerVisible.set(false);
     selectedSessionProvider.set("claude");
+    keybindingOverrides.set({});
+    metaKey.set("cmd");
     vi.clearAllMocks();
     render(HotkeyManager);
   });
@@ -511,10 +518,12 @@ describe('HotkeyManager', () => {
       unsub();
     });
 
-    it('Cmd+T toggles the selected provider', () => {
+    it('Cmd+T cycles the selected provider', () => {
       expect(get(selectedSessionProvider)).toBe('claude');
       pressMetaKey('t');
       expect(get(selectedSessionProvider)).toBe('codex');
+      pressMetaKey('t');
+      expect(get(selectedSessionProvider)).toBe('cursor-agent');
       pressMetaKey('t');
       expect(get(selectedSessionProvider)).toBe('claude');
     });
@@ -858,6 +867,74 @@ describe('HotkeyManager', () => {
       } finally {
         dialog.remove();
       }
+    });
+  });
+
+  // ── Meta+ override path ──
+
+  describe('Meta+ override path', () => {
+    afterEach(() => {
+      keybindingOverrides.set({});
+      metaKey.set("cmd");
+    });
+
+    it('regular command overridden to Meta+x fires on Cmd+x', () => {
+      // Override fuzzy-finder from "f" to "Meta+x"
+      keybindingOverrides.set({ "fuzzy-finder": "Meta+x" });
+
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+
+      pressMetaKey('x');
+      expect(captured).toEqual({ type: 'open-fuzzy-finder' });
+      unsub();
+    });
+
+    it('meta ctrl directive switches modifier from metaKey to ctrlKey', () => {
+      keybindingOverrides.set({ "fuzzy-finder": "Meta+x" });
+      metaKey.set("ctrl");
+
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+
+      // Cmd+x should NOT fire when meta is set to ctrl
+      pressMetaKey('x');
+      expect(captured).toBeNull();
+
+      // Ctrl+x SHOULD fire
+      pressCtrlKey('x');
+      expect(captured).toEqual({ type: 'open-fuzzy-finder' });
+      unsub();
+    });
+
+    it('external screenshot command with Meta+ override works', () => {
+      // Override screenshot to use Meta+g instead of default ⌘s
+      keybindingOverrides.set({ "screenshot": "Meta+g" });
+
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+
+      pressMetaKey('g');
+      expect(captured).toEqual({
+        type: 'screenshot-to-session',
+        direct: true,
+        cropped: false,
+      });
+      unsub();
+    });
+
+    it('Meta+ bindings are case-insensitive (Shift+Meta fires lowercase binding)', () => {
+      keybindingOverrides.set({ "fuzzy-finder": "Meta+x" });
+
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+
+      // Shift+Cmd+X sends e.key === "X" (uppercase), should still match "Meta+x"
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'X', metaKey: true, shiftKey: true, bubbles: true,
+      }));
+      expect(captured).toEqual({ type: 'open-fuzzy-finder' });
+      unsub();
     });
   });
 });

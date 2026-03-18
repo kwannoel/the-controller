@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { commands, getHelpSections, buildKeyMap } from "./commands";
+import { applyOverrides, commands, getHelpSections, buildKeyMap, formatDisplayKey } from "./commands";
 
 describe("command registry", () => {
   it("every non-external command has a unique key within its mode", () => {
@@ -213,11 +213,6 @@ describe("command registry", () => {
     expect(map.get("d")).toBe("deploy-project");
   });
 
-  it("includes rollback-deploy command in infrastructure mode keymap", () => {
-    const map = buildKeyMap("infrastructure");
-    expect(map.get("r")).toBe("rollback-deploy");
-  });
-
   it("includes Infrastructure section in help for infrastructure mode", () => {
     const sections = getHelpSections("infrastructure");
     const infraSection = sections.find(s => s.label === "Infrastructure");
@@ -233,5 +228,172 @@ describe("command registry", () => {
   it("getHelpSections returns sections for infrastructure mode", () => {
     const sections = getHelpSections("infrastructure");
     expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Panels", "Infrastructure"]);
+  });
+});
+
+describe("applyOverrides", () => {
+  it("returns defaults when no overrides", () => {
+    const result = applyOverrides(commands, {});
+    expect(result).toBe(commands); // same reference
+  });
+
+  it("overrides a single key", () => {
+    const result = applyOverrides(commands, { "navigate-next": "h" });
+    const cmd = result.find((c) => c.id === "navigate-next" && !c.hidden);
+    expect(cmd?.key).toBe("h");
+  });
+
+  it("does not modify hidden aliases", () => {
+    const result = applyOverrides(commands, { "expand-collapse": "x" });
+    const hidden = result.filter(
+      (c) => c.id === "expand-collapse" && c.hidden,
+    );
+    for (const h of hidden) {
+      const original = commands.find((c) => c.id === h.id && c.key === h.key);
+      expect(original).toBeDefined();
+    }
+  });
+
+  it("overrides Meta+ commands", () => {
+    const result = applyOverrides(commands, { screenshot: "Meta+x" });
+    const cmd = result.find((c) => c.id === "screenshot" && !c.hidden);
+    expect(cmd?.key).toBe("Meta+x");
+  });
+
+  it("ignores unknown command IDs", () => {
+    const result = applyOverrides(commands, { nonexistent: "x" });
+    expect(result).toEqual(commands);
+  });
+
+  it("clears helpKey when override is applied", () => {
+    const result = applyOverrides(commands, { "navigate-next": "h" });
+    const cmd = result.find((c) => c.id === "navigate-next" && !c.hidden);
+    expect(cmd?.helpKey).toBeUndefined();
+  });
+
+  it("applies override to hidden-but-sole commands like navigate-prev", () => {
+    const result = applyOverrides(commands, { "navigate-prev": "g" });
+    const cmd = result.find((c) => c.id === "navigate-prev");
+    expect(cmd?.key).toBe("g");
+  });
+
+  it("still skips hidden entries that are true aliases (non-hidden sibling exists)", () => {
+    const result = applyOverrides(commands, { "expand-collapse": "x" });
+    // The non-hidden entry should be overridden
+    const nonHidden = result.find((c) => c.id === "expand-collapse" && !c.hidden);
+    expect(nonHidden?.key).toBe("x");
+    // The hidden Enter alias should keep its original key
+    const hiddenEnter = result.find((c) => c.id === "expand-collapse" && c.hidden && c.key === "Enter");
+    expect(hiddenEnter).toBeDefined();
+  });
+});
+
+describe("buildKeyMap with overrides", () => {
+  it("uses overridden key", () => {
+    const resolved = applyOverrides(commands, { "navigate-next": "h" });
+    const map = buildKeyMap("development", resolved);
+    expect(map.get("h")).toBe("navigate-next");
+    expect(map.has("j")).toBe(false);
+  });
+});
+
+describe("formatDisplayKey", () => {
+  it("converts Meta+ to ⌘ for cmd", () => {
+    expect(formatDisplayKey("Meta+c", "cmd")).toBe("⌘c");
+  });
+
+  it("converts Meta+ to ⌃ for ctrl", () => {
+    expect(formatDisplayKey("Meta+c", "ctrl")).toBe("⌃c");
+  });
+
+  it("passes through bare keys unchanged", () => {
+    expect(formatDisplayKey("j", "cmd")).toBe("j");
+  });
+
+  it("passes through existing ⌘ prefix unchanged for cmd", () => {
+    expect(formatDisplayKey("⌘s", "cmd")).toBe("⌘s");
+  });
+
+  it("converts legacy ⌘ to ⌃ when meta is ctrl", () => {
+    expect(formatDisplayKey("⌘s", "ctrl")).toBe("⌃s");
+  });
+
+  it("converts composite ⌘ strings when meta is ctrl", () => {
+    expect(formatDisplayKey("⌘S / ⌘D", "ctrl")).toBe("⌃S / ⌃D");
+  });
+});
+
+describe("getHelpSections with metaKey", () => {
+  it("formats Meta+ overrides as ⌘ in help display", () => {
+    const resolved = applyOverrides(commands, { "create-session": "Meta+c" });
+    const sections = getHelpSections("development", resolved, "cmd");
+    const essentials = sections.find(s => s.label === "Essentials")!;
+    const createEntry = essentials.entries.find(e => e.description === "Create session")!;
+    expect(createEntry.key).toBe("⌘c");
+  });
+
+  it("formats Meta+ overrides as ⌃ when meta is ctrl", () => {
+    const resolved = applyOverrides(commands, { "create-session": "Meta+c" });
+    const sections = getHelpSections("development", resolved, "ctrl");
+    const essentials = sections.find(s => s.label === "Essentials")!;
+    const createEntry = essentials.entries.find(e => e.description === "Create session")!;
+    expect(createEntry.key).toBe("⌃c");
+  });
+
+  it("preserves existing ⌘ keys in default display", () => {
+    const sections = getHelpSections("development", undefined, "cmd");
+    const allKeys = sections.flatMap(s => s.entries.map(e => e.key));
+    expect(allKeys).toContain("⌘s");
+    expect(allKeys).toContain("⌘k");
+  });
+
+  it("converts legacy ⌘ keys to ⌃ when meta is ctrl", () => {
+    const sections = getHelpSections("development", undefined, "ctrl");
+    const allKeys = sections.flatMap(s => s.entries.map(e => e.key));
+    expect(allKeys).toContain("⌃s");
+    expect(allKeys).toContain("⌃k");
+    expect(allKeys).not.toContain("⌘s");
+    expect(allKeys).not.toContain("⌘k");
+  });
+});
+
+describe("getHelpSections composed keys after overrides", () => {
+  it("non-dev mode shows composed navigate keys after override", () => {
+    const resolved = applyOverrides(commands, { "navigate-next": "h", "navigate-prev": "g" });
+    const sections = getHelpSections("agents", resolved);
+    const nav = sections.find(s => s.label === "Navigation")!;
+    const navEntry = nav.entries.find(e => e.description.includes("Next / previous"));
+    expect(navEntry?.key).toBe("h / g");
+  });
+
+  it("non-dev mode shows composed expand-collapse keys after override", () => {
+    const resolved = applyOverrides(commands, { "expand-collapse": "x" });
+    const sections = getHelpSections("agents", resolved);
+    const nav = sections.find(s => s.label === "Navigation")!;
+    const expandEntry = nav.entries.find(e => e.description.includes("Expand/collapse"));
+    expect(expandEntry?.key).toBe("x / Enter");
+  });
+
+  it("non-dev mode shows dynamic screenshot-picker key after override", () => {
+    const resolved = applyOverrides(commands, { screenshot: "Meta+x", "screenshot-cropped": "Meta+y" });
+    const sections = getHelpSections("agents", resolved, "cmd");
+    const sess = sections.find(s => s.label === "Sessions")!;
+    const pickerEntry = sess.entries.find(e => e.description === "Screenshot → pick session");
+    expect(pickerEntry?.key).toBe("⌘X / ⌘Y");
+  });
+
+  it("dev mode debug section shows dynamic screenshot-picker key after override", () => {
+    const resolved = applyOverrides(commands, { screenshot: "Meta+x", "screenshot-cropped": "Meta+y" });
+    const sections = getHelpSections("development", resolved, "cmd");
+    const debug = sections.find(s => s.label === "Debug")!;
+    const pickerEntry = debug.entries.find(e => e.description === "Screenshot → pick session");
+    expect(pickerEntry?.key).toBe("⌘X / ⌘Y");
+  });
+
+  it("screenshot-picker key defaults to ⌘S / ⌘D with no overrides", () => {
+    const sections = getHelpSections("agents");
+    const sess = sections.find(s => s.label === "Sessions")!;
+    const pickerEntry = sess.entries.find(e => e.description === "Screenshot → pick session");
+    expect(pickerEntry?.key).toBe("⌘S / ⌘D");
   });
 });

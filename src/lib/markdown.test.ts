@@ -78,6 +78,12 @@ describe("renderMarkdown", () => {
     expect(result).not.toContain("data:text/html");
   });
 
+  it("escapes quotes in link URLs", () => {
+    const input = '[click](http://example.com" onclick="alert(1))';
+    const result = renderMarkdown(input);
+    expect(result).not.toContain('onclick');
+  });
+
   it("renders unordered lists", () => {
     const md = "- item 1\n- item 2\n- item 3";
     const result = renderMarkdown(md);
@@ -114,6 +120,17 @@ describe("renderMarkdown", () => {
   it("handles empty input", () => {
     const result = renderMarkdown("");
     expect(result).toBe("<br>");
+  });
+
+  it("does not apply inline formatting across link tag boundaries", () => {
+    // A * in one link and a * in another — the old regex would match across <a> tags
+    const md = "see [foo*](https://a.com) and [bar*](https://b.com) here";
+    const result = renderMarkdown(md);
+    // Both links should remain intact
+    expect(result).toContain('<a href="https://a.com"');
+    expect(result).toContain('<a href="https://b.com"');
+    // No <em> should span across the two links
+    expect(result).not.toContain("<em>");
   });
 
   it("handles mixed content", () => {

@@ -99,6 +99,7 @@ impl CodexAppServer {
     /// 3. Send `thread/start` request → store `thread_id`
     /// 4. Drain the `thread/started` notification
     pub fn start(system_prompt: Option<&str>) -> Result<Self, String> {
+        tracing::debug!("spawning codex app-server subprocess");
         let mut child = Command::new("codex")
             .arg("app-server")
             .env_remove("CLAUDECODE")
@@ -107,7 +108,10 @@ impl CodexAppServer {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
-            .map_err(|e| format!("Failed to spawn codex app-server: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to spawn codex app-server");
+                format!("Failed to spawn codex app-server: {e}")
+            })?;
 
         let stdin = child.stdin.take().ok_or("Failed to capture codex stdin")?;
         let stdout = child
@@ -123,6 +127,8 @@ impl CodexAppServer {
             next_id: 0,
             current_turn_id: None,
         };
+
+        tracing::debug!("codex app-server spawned, starting handshake");
 
         // 1. initialize
         let init_params = serde_json::json!({
@@ -160,6 +166,7 @@ impl CodexAppServer {
             .ok_or("thread/start response missing result.thread.id")?
             .to_string();
         server.thread_id = thread_id;
+        tracing::debug!("codex handshake complete, thread started");
 
         // 4. Drain notifications until thread/started
         loop {
@@ -181,6 +188,7 @@ impl CodexAppServer {
         text: &str,
         on_token: &mut dyn FnMut(&str),
     ) -> Result<String, String> {
+        tracing::debug!("sending turn/start to codex");
         let turn_params = serde_json::json!({
             "threadId": self.thread_id,
             "input": [{"type": "text", "text": text}],
@@ -227,8 +235,10 @@ impl CodexAppServer {
                             .and_then(|p| p.get("error"))
                             .and_then(|e| e.as_str())
                             .unwrap_or("unknown error");
+                        tracing::error!(reason = %reason, "turn failed");
                         return Err(format!("Turn failed: {reason}"));
                     }
+                    tracing::debug!("turn completed");
                     break;
                 }
                 "error" => {
@@ -245,9 +255,10 @@ impl CodexAppServer {
 
                     if !will_retry {
                         self.current_turn_id = None;
+                        tracing::error!(error = %error_msg, "codex non-retriable error");
                         return Err(format!("Codex error (non-retriable): {error_msg}"));
                     }
-                    eprintln!("[voice] Codex error (will retry): {error_msg}");
+                    tracing::warn!(error = %error_msg, "codex error, will retry");
                 }
                 _ => {
                     // Skip: turn/started, item/started, item/completed, reasoning/*, etc.
@@ -268,6 +279,7 @@ impl CodexAppServer {
             None => return Ok(()),
         };
 
+        tracing::debug!("sending turn/interrupt to codex");
         let interrupt_params = serde_json::json!({
             "threadId": self.thread_id,
             "turnId": turn_id,

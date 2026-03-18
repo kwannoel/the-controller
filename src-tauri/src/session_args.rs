@@ -5,6 +5,7 @@ const BACKGROUND_WORKFLOW_SUFFIX: &str = "\n\nYou are an autonomous background w
 /// Build the initial prompt injected into a session from a GitHub issue.
 /// When `background` is true, appends the autonomous workflow instructions.
 pub fn build_issue_prompt(issue_number: u64, title: &str, url: &str, background: bool) -> String {
+    tracing::debug!(issue = issue_number, background, "building issue prompt");
     let base = format!(
         "You are working on GitHub issue #{}: {}\nIssue URL: {}\nPlease include 'closes #{}' in any PR descriptions or final commit messages.",
         issue_number, title, url, issue_number
@@ -23,6 +24,8 @@ const CODEX_FULL_PERMISSION_ARGS: [&str; 4] = [
     "never",
 ];
 
+const CURSOR_FULL_PERMISSION_ARGS: [&str; 1] = ["--yolo"];
+
 /// Build command-line arguments for spawned assistant sessions.
 /// Keeps Claude-specific hooks and applies full permissions for Codex.
 /// When an `initial_prompt` is provided (e.g. from a GitHub issue), it is
@@ -34,6 +37,13 @@ pub fn build_session_args(
     continue_session: bool,
     initial_prompt: Option<&str>,
 ) -> Vec<String> {
+    tracing::debug!(
+        command,
+        %session_id,
+        continue_session,
+        has_prompt = initial_prompt.is_some(),
+        "building session args"
+    );
     let mut args = Vec::new();
 
     match command {
@@ -42,6 +52,7 @@ pub fn build_session_args(
                 args.push("--continue".to_string());
             }
             let settings_json = crate::status_socket::hook_settings_json(session_id);
+            tracing::debug!("wrote claude settings JSON for hook injection");
             args.push("--settings".to_string());
             args.push(settings_json);
             if let Some(prompt) = initial_prompt {
@@ -56,7 +67,14 @@ pub fn build_session_args(
             }
             args.extend(CODEX_FULL_PERMISSION_ARGS.iter().map(|s| s.to_string()));
         }
+        "cursor-agent" => {
+            if continue_session {
+                args.push("--continue".to_string());
+            }
+            args.extend(CURSOR_FULL_PERMISSION_ARGS.iter().map(|s| s.to_string()));
+        }
         _ => {
+            tracing::warn!(command, "unknown command, using generic arg handling");
             if continue_session {
                 args.push("--continue".to_string());
             }
@@ -69,6 +87,7 @@ pub fn build_session_args(
         args.push(prompt.to_string());
     }
 
+    tracing::debug!(command, arg_count = args.len(), "session args built");
     args
 }
 
@@ -175,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn build_issue_prompt_finalizes_issue_before_syncing_local_master() {
+    fn build_issue_prompt_finalizes_issue_before_syncing_local_main() {
         let prompt = build_issue_prompt(
             42,
             "Fix the bug",
@@ -224,5 +243,26 @@ mod tests {
         assert_eq!(args[3], "--append-system-prompt");
         assert_eq!(args[4], "do stuff");
         assert_eq!(args[5], "do stuff"); // positional prompt at end
+    }
+
+    #[test]
+    fn cursor_agent_args_include_yolo() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("cursor-agent", session_id, false, None);
+        assert_eq!(args, vec!["--yolo".to_string()]);
+    }
+
+    #[test]
+    fn cursor_agent_args_use_continue_flag() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("cursor-agent", session_id, true, None);
+        assert_eq!(args, vec!["--continue".to_string(), "--yolo".to_string()]);
+    }
+
+    #[test]
+    fn cursor_agent_args_include_positional_prompt() {
+        let session_id = Uuid::new_v4();
+        let args = build_session_args("cursor-agent", session_id, false, Some("fix this"));
+        assert_eq!(args, vec!["--yolo".to_string(), "fix this".to_string()]);
     }
 }

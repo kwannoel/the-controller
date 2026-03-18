@@ -126,7 +126,10 @@ export interface ProjectInventory {
 
 export interface Config {
   projects_root: string;
+  default_provider?: ConfigDefaultProvider;
 }
+
+export type ConfigDefaultProvider = "claude-code" | "codex" | "cursor-agent";
 
 export interface NoteEntry {
   filename: string;
@@ -184,8 +187,16 @@ export type WorkspaceMode =
   | "voice";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
-export type SessionProvider = "claude" | "codex";
+export type SessionProvider = "claude" | "codex" | "cursor-agent";
 export const selectedSessionProvider = writable<SessionProvider>("claude");
+
+export function sessionProviderFromConfig(
+  provider: ConfigDefaultProvider | undefined,
+): SessionProvider {
+  if (provider === "codex") return "codex";
+  if (provider === "cursor-agent") return "cursor-agent";
+  return "claude";
+}
 
 export const activeNote = writable<{
   folder: string;
@@ -245,13 +256,13 @@ export type HotkeyAction =
   | { type: "delete-project"; projectId?: string }
   | { type: "open-issues-modal"; projectId: string; repoPath: string }
   | {
-      type: "assign-issue-to-session";
-      projectId: string;
-      repoPath: string;
-      issue: GithubIssue;
-    }
+    type: "assign-issue-to-session";
+    projectId: string;
+    repoPath: string;
+    issue: GithubIssue;
+  }
   | { type: "merge-session"; sessionId: string; projectId: string }
-  | { type: "finish-branch"; sessionId: string; kind?: "claude" | "codex" }
+  | { type: "finish-branch"; sessionId: string; kind?: "claude" | "codex" | "cursor-agent" }
   | { type: "e2e-eval"; sessionId: string; kind?: "claude" | "codex" }
   | { type: "screenshot-to-session"; direct?: boolean; cropped?: boolean }
   | { type: "toggle-maintainer-enabled" }
@@ -277,7 +288,6 @@ export type HotkeyAction =
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
   | { type: "deploy-project"; projectId: string; repoPath: string }
-  | { type: "rollback-deploy"; projectId: string }
   | { type: "voice-toggle-panel"; panel: "debug" | "transcript" }
   | null;
 
@@ -287,9 +297,17 @@ export const sidebarVisible = writable<boolean>(true);
 
 export const expandedProjects = writable<Set<string>>(new Set());
 
+let hotkeyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
 export function dispatchHotkeyAction(action: NonNullable<HotkeyAction>) {
+  if (hotkeyResetTimer !== null) {
+    clearTimeout(hotkeyResetTimer);
+  }
   hotkeyAction.set(action);
-  setTimeout(() => hotkeyAction.set(null), 0);
+  hotkeyResetTimer = setTimeout(() => {
+    hotkeyAction.set(null);
+    hotkeyResetTimer = null;
+  }, 0);
 }
 
 export function focusTerminalSoon(delayMs = 50) {

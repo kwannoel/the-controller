@@ -1,7 +1,7 @@
 <script lang="ts">
   import { command } from "$lib/backend";
   import { onMount, onDestroy } from "svelte";
-  import { appConfig, onboardingComplete, type DirEntry } from "./stores";
+  import { appConfig, onboardingComplete, selectedSessionProvider, type DirEntry } from "./stores";
   import { showToast } from "./toast";
   import Terminal from "./Terminal.svelte";
 
@@ -113,7 +113,8 @@
   }
 
   function finishOnboarding() {
-    appConfig.set({ projects_root: projectsRoot });
+    appConfig.set({ projects_root: projectsRoot, default_provider: "claude-code" });
+    selectedSessionProvider.set("claude");
     onboardingComplete.set(true);
   }
 </script>
@@ -138,6 +139,12 @@
             role="option"
             tabindex="0"
             aria-selected={i === selectedIndex}
+            onkeydown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                selectDirectory(entry);
+              }
+            }}
           >
             <span class="entry-name">{entry.name}</span>
             <span class="entry-path">{entry.path}</span>

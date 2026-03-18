@@ -3,9 +3,26 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConfigDefaultProvider {
+    #[default]
+    ClaudeCode,
+    Codex,
+    CursorAgent,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub projects_root: String,
+    #[serde(default)]
+    pub default_provider: ConfigDefaultProvider,
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,13 +62,20 @@ pub fn check_claude_cli_status() -> String {
 }
 
 fn check_claude_cli_status_with_binaries(which_bin: &Path, claude_bin: &Path) -> String {
+    tracing::debug!("checking if claude CLI is installed");
     let which_result = Command::new(which_bin).arg("claude").output();
 
     match which_result {
-        Ok(output) if output.status.success() => {}
-        _ => return "not_installed".to_string(),
+        Ok(output) if output.status.success() => {
+            tracing::debug!("claude CLI found on PATH");
+        }
+        _ => {
+            tracing::debug!("claude CLI status: not_installed");
+            return "not_installed".to_string();
+        }
     }
 
+    tracing::debug!("checking claude CLI authentication");
     let auth_result = Command::new(claude_bin)
         .arg("--print")
         .arg("say ok")
@@ -59,8 +83,14 @@ fn check_claude_cli_status_with_binaries(which_bin: &Path, claude_bin: &Path) ->
         .output();
 
     match auth_result {
-        Ok(output) if output.status.success() => "authenticated".to_string(),
-        _ => "not_authenticated".to_string(),
+        Ok(output) if output.status.success() => {
+            tracing::debug!("claude CLI status: authenticated");
+            "authenticated".to_string()
+        }
+        _ => {
+            tracing::debug!("claude CLI status: not_authenticated");
+            "not_authenticated".to_string()
+        }
     }
 }
 
@@ -68,6 +98,7 @@ fn check_claude_cli_status_with_binaries(which_bin: &Path, claude_bin: &Path) ->
 /// (names starting with `.`) and non-directory entries. Results are sorted
 /// alphabetically by name.
 pub fn list_directories(root: &Path) -> std::io::Result<Vec<DirEntry>> {
+    tracing::debug!(root = %root.display(), "listing directories");
     let mut entries = Vec::new();
 
     for entry in fs::read_dir(root)? {
@@ -87,6 +118,7 @@ pub fn list_directories(root: &Path) -> std::io::Result<Vec<DirEntry>> {
     }
 
     entries.sort_by(|a, b| a.name.cmp(&b.name));
+    tracing::debug!(root = %root.display(), count = entries.len(), "directories listed");
     Ok(entries)
 }
 
@@ -95,9 +127,14 @@ pub fn list_directories(root: &Path) -> std::io::Result<Vec<DirEntry>> {
 pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> {
     let description = description.trim();
     if description.is_empty() {
+        tracing::warn!("generate_names_via_cli called with empty description");
         return Err("Description must not be empty".to_string());
     }
     if description.len() > 500 {
+        tracing::warn!(
+            len = description.len(),
+            "generate_names_via_cli called with oversized description"
+        );
         return Err("Description is too long (max 500 characters)".to_string());
     }
 
@@ -106,14 +143,22 @@ pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> 
         description
     );
 
+    tracing::debug!("invoking claude CLI for name generation");
     let output = Command::new("claude")
         .args(["--print", &prompt])
         .env_remove("CLAUDECODE")
         .output()
-        .map_err(|e| format!("Failed to run claude CLI: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to spawn claude CLI process");
+            format!("Failed to run claude CLI: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(
+            exit_code = output.status.code().unwrap_or(-1),
+            "claude CLI returned non-zero exit status"
+        );
         return Err(format!(
             "claude CLI error (exit {}): {}",
             output.status.code().unwrap_or(-1),
@@ -134,9 +179,11 @@ pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> 
         .collect();
 
     if names.is_empty() {
+        tracing::error!("claude CLI produced no valid names from its output");
         return Err("No valid names generated".to_string());
     }
 
+    tracing::debug!(count = names.len(), "generated project names via CLI");
     Ok(names)
 }
 
@@ -171,12 +218,45 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let config = Config {
             projects_root: "/home/user/projects".to_string(),
+            default_provider: ConfigDefaultProvider::ClaudeCode,
+            log_level: default_log_level(),
         };
 
         save_config(tmp.path(), &config).expect("save_config should succeed");
         let loaded = load_config(tmp.path()).expect("load_config should return Some");
 
         assert_eq!(loaded.projects_root, "/home/user/projects");
+        assert_eq!(loaded.default_provider, ConfigDefaultProvider::ClaudeCode);
+    }
+
+    #[test]
+    fn test_save_config_writes_default_provider_field() {
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            projects_root: "/home/user/projects".to_string(),
+            default_provider: ConfigDefaultProvider::ClaudeCode,
+            log_level: default_log_level(),
+        };
+
+        save_config(tmp.path(), &config).expect("save_config should succeed");
+        let json = fs::read_to_string(config_path(tmp.path())).expect("config.json should exist");
+
+        assert!(json.contains(r#""default_provider": "claude-code""#));
+    }
+
+    #[test]
+    fn test_save_and_load_config_with_codex_default_provider() {
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            projects_root: "/home/user/projects".to_string(),
+            default_provider: ConfigDefaultProvider::Codex,
+            log_level: default_log_level(),
+        };
+
+        save_config(tmp.path(), &config).expect("save_config should succeed");
+        let loaded = load_config(tmp.path()).expect("load_config should return Some");
+
+        assert_eq!(loaded.default_provider, ConfigDefaultProvider::Codex);
     }
 
     #[cfg(unix)]
@@ -257,6 +337,20 @@ mod tests {
         fs::write(config_path(tmp.path()), "not valid json").unwrap();
         let result = load_config(tmp.path());
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_load_config_without_default_provider_uses_claude_code() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            config_path(tmp.path()),
+            r#"{"projects_root":"/home/user/projects"}"#,
+        )
+        .unwrap();
+
+        let result = load_config(tmp.path()).expect("load_config should return Some");
+
+        assert_eq!(result.default_provider, ConfigDefaultProvider::ClaudeCode);
     }
 
     #[test]

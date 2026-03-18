@@ -9,7 +9,7 @@ describe("sendFinishBranchPrompt", () => {
 
     expect(invoke).toHaveBeenNthCalledWith(1, "write_to_pty", {
       sessionId: "sess-1",
-      data: "$the-controller-finishing-a-development-branch",
+      data: "$finishing-a-development-branch",
     });
     expect(invoke).toHaveBeenNthCalledWith(2, "send_raw_to_pty", {
       sessionId: "sess-1",
@@ -25,7 +25,7 @@ describe("sendFinishBranchPrompt", () => {
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledWith("write_to_pty", {
       sessionId: "sess-1",
-      data: "/the-controller-finishing-a-development-branch\r",
+      data: "/finishing-a-development-branch\r",
     });
   });
 });

@@ -59,9 +59,20 @@
   });
 </script>
 
-<div class="overlay" onclick={onClose} role="dialog">
+<div
+  class="overlay"
+  onclick={onClose}
+  onkeydown={handleKeydown}
+  role="dialog"
+  tabindex="-1"
+  aria-modal="true"
+>
   <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
+  <div
+    class="modal"
+    onclick={(e) => e.stopPropagation()}
+    role="presentation"
+  >
     <input
       bind:this={inputEl}
       bind:value={query}
@@ -76,7 +87,14 @@
           class:selected={i === selectedIndex}
           onclick={() => onSelect(entry)}
           role="option"
+          tabindex="0"
           aria-selected={i === selectedIndex}
+          onkeydown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onSelect(entry);
+            }
+          }}
         >
           <span class="entry-name">{entry.name}</span>
           <span class="entry-path">{entry.path}</span>
