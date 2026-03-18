@@ -73,11 +73,23 @@
     view = "find";
     searchQuery = "";
     selectedIndex = 0;
-    requestAnimationFrame(() => (focusSearch ? searchInput : overlayEl)?.focus());
 
     if (allIssues.length === 0) {
       loading = true;
       error = null;
+    }
+
+    // Schedule focus AFTER all sync state changes are batched and rendered.
+    // Use DOM query as fallback — bind:this may not be set yet on first render.
+    requestAnimationFrame(() => {
+      if (focusSearch) {
+        (searchInput ?? document.querySelector<HTMLInputElement>(".issues-modal input.input"))?.focus();
+      } else {
+        overlayEl?.focus();
+      }
+    });
+
+    if (loading) {
       try {
         allIssues = await command<GithubIssue[]>("list_github_issues", { repoPath });
       } catch (e) {
