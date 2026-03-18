@@ -152,6 +152,7 @@ pub fn run() {
             commands::rename_folder,
             commands::delete_folder,
             commands::commit_notes,
+            commands::migrate_notes,
             commands::save_note_image,
             commands::resolve_note_asset_path,
             commands::send_note_ai_chat,

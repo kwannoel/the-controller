@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use tauri::State;
 
 use crate::notes::{self, NoteEntry};
@@ -237,4 +239,73 @@ pub(crate) async fn commit_notes(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Recursively copy a directory tree from `src` to `dst`.
+pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let dest_path = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&entry.path(), &dest_path)?;
+        } else {
+            std::fs::copy(entry.path(), dest_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Migrate global notes from `~/.the-controller/notes/` into a project's `notes/` directory.
+/// Copies folders recursively, skipping folders that already exist.
+/// Returns the number of folders migrated.
+pub(crate) async fn migrate_notes(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<u32, String> {
+    tracing::info!(project_id = %project_id, "migrating global notes to project");
+    let storage = state.storage.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let id = uuid::Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+        let storage_guard = storage.lock().map_err(|e| e.to_string())?;
+        let project = storage_guard.load_project(id).map_err(|e| e.to_string())?;
+        let base_dir = storage_guard.base_dir();
+        drop(storage_guard);
+
+        let global_notes = base_dir.join("notes");
+        let project_notes = std::path::PathBuf::from(&project.repo_path).join("notes");
+
+        if !global_notes.exists() {
+            return Ok(0);
+        }
+
+        std::fs::create_dir_all(&project_notes).map_err(|e| e.to_string())?;
+
+        let mut migrated = 0u32;
+        for entry in std::fs::read_dir(&global_notes).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            let dest = project_notes.join(&name);
+            if dest.exists() {
+                tracing::warn!(
+                    "skipping migration of folder '{}': already exists in project",
+                    name
+                );
+                continue;
+            }
+            copy_dir_recursive(&entry.path(), &dest).map_err(|e| e.to_string())?;
+            migrated += 1;
+        }
+
+        Ok(migrated)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }

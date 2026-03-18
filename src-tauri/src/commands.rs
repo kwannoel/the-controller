@@ -1942,6 +1942,11 @@ pub async fn commit_notes(state: State<'_, AppState>, project_id: String) -> Res
 }
 
 #[tauri::command]
+pub async fn migrate_notes(state: State<'_, AppState>, project_id: String) -> Result<u32, String> {
+    notes::migrate_notes(state, project_id).await
+}
+
+#[tauri::command]
 pub async fn save_note_image(
     state: State<'_, AppState>,
     project_id: String,
@@ -4119,5 +4124,36 @@ mod symlink_tests {
         // CLAUDE.md should still have original content (not overwritten)
         let content = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
         assert!(content.contains("Claude"));
+    }
+}
+
+#[cfg(test)]
+mod migrate_tests {
+    use crate::commands::notes::copy_dir_recursive;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_copy_dir_recursive() {
+        let src = TempDir::new().unwrap();
+        let dst = TempDir::new().unwrap();
+
+        // Create source structure
+        std::fs::create_dir_all(src.path().join("sub")).unwrap();
+        std::fs::write(src.path().join("file.txt"), "hello").unwrap();
+        std::fs::write(src.path().join("sub/nested.txt"), "world").unwrap();
+
+        let dest = dst.path().join("copied");
+        copy_dir_recursive(src.path(), &dest).unwrap();
+
+        assert!(dest.join("file.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("file.txt")).unwrap(),
+            "hello"
+        );
+        assert!(dest.join("sub/nested.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/nested.txt")).unwrap(),
+            "world"
+        );
     }
 }
