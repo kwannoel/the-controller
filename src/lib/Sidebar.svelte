@@ -38,6 +38,7 @@
   let deleteNoteTarget: { folder: string; filename: string } | null = $state(null);
   let renameNoteTarget: { folder: string; filename: string } | null = $state(null);
   let showNewNoteModal = $state(false);
+  let newNoteDefaultFolder: string | undefined = $state(undefined);
   let showNewFolderModal = $state(false);
   let renameFolderTarget: string | null = $state(null);
   let deleteFolderTarget: string | null = $state(null);
@@ -202,6 +203,7 @@
           break;
         }
         case "create-note": {
+          newNoteDefaultFolder = action.folder;
           showNewNoteModal = true;
           break;
         }
@@ -808,6 +810,7 @@
   {#if showNewNoteModal}
     <NewNoteModal
       folders={folderList}
+      defaultFolder={newNoteDefaultFolder}
       onSubmit={handleCreateNote}
       onClose={() => { showNewNoteModal = false; }}
     />
