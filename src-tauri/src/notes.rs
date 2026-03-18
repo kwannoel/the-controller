@@ -37,14 +37,7 @@ fn validate_folder_name(name: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Returns the notes directory for a folder under the default base path.
-/// `~/.the-controller/notes/{folder}/`
-pub fn notes_dir(folder: &str) -> PathBuf {
-    let home = dirs::home_dir().expect("could not determine home directory");
-    home.join(".the-controller").join("notes").join(folder)
-}
-
-/// Returns the notes directory for a folder under a custom base path (for testing).
+/// Returns the notes directory for a folder under a custom base path.
 pub fn notes_dir_with_base(base: &std::path::Path, folder: &str) -> PathBuf {
     base.join("notes").join(folder)
 }
@@ -463,7 +456,7 @@ pub fn commit_notes(base: &Path, message: &str) -> Result<bool, git2::Error> {
     let repo_workdir = repo.workdir().unwrap_or(base);
     let is_project_repo = repo_workdir == base;
     let glob_pattern: &[&str] = if is_project_repo {
-        &["notes/*"]
+        &["notes"]
     } else {
         &["*"]
     };
