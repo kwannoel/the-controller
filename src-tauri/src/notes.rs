@@ -248,7 +248,9 @@ pub fn list_folders(base: &std::path::Path) -> std::io::Result<Vec<String>> {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             if let Some(name) = entry.file_name().to_str() {
-                folders.push(name.to_string());
+                if !name.starts_with('.') {
+                    folders.push(name.to_string());
+                }
             }
         }
     }
@@ -691,6 +693,18 @@ mod tests {
         let mut folders = list_folders(base).unwrap();
         folders.sort();
         assert_eq!(folders, vec!["personal", "work"]);
+    }
+
+    #[test]
+    fn test_list_folders_excludes_hidden_dirs() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        let root = base.join("notes");
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::create_dir_all(root.join(".hidden")).unwrap();
+        create_note(base, "visible", "note1").unwrap();
+        let folders = list_folders(base).unwrap();
+        assert_eq!(folders, vec!["visible"]);
     }
 
     #[test]
