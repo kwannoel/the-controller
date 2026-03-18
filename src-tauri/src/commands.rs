@@ -1744,110 +1744,127 @@ pub async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<Str
 #[tauri::command]
 pub async fn list_notes(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
 ) -> Result<Vec<crate::notes::NoteEntry>, String> {
-    notes::list_notes(state, folder).await
+    notes::list_notes(state, project_id, folder).await
 }
 
 #[tauri::command]
 pub async fn read_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
 ) -> Result<String, String> {
-    notes::read_note(state, folder, filename).await
+    notes::read_note(state, project_id, folder, filename).await
 }
 
 #[tauri::command]
 pub async fn write_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
     content: String,
 ) -> Result<(), String> {
-    notes::write_note(state, folder, filename, content).await
+    notes::write_note(state, project_id, folder, filename, content).await
 }
 
 #[tauri::command]
 pub async fn create_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     title: String,
 ) -> Result<String, String> {
-    notes::create_note(state, folder, title).await
+    notes::create_note(state, project_id, folder, title).await
 }
 
 #[tauri::command]
 pub async fn rename_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     old_name: String,
     new_name: String,
 ) -> Result<String, String> {
-    notes::rename_note(state, folder, old_name, new_name).await
+    notes::rename_note(state, project_id, folder, old_name, new_name).await
 }
 
 #[tauri::command]
 pub async fn duplicate_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
 ) -> Result<String, String> {
-    notes::duplicate_note(state, folder, filename).await
+    notes::duplicate_note(state, project_id, folder, filename).await
 }
 
 #[tauri::command]
 pub async fn delete_note(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     filename: String,
 ) -> Result<(), String> {
-    notes::delete_note(state, folder, filename).await
+    notes::delete_note(state, project_id, folder, filename).await
 }
 
 #[tauri::command]
-pub async fn list_folders(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    notes::list_folders(state).await
+pub async fn list_folders(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<String>, String> {
+    notes::list_folders(state, project_id).await
 }
 
 #[tauri::command]
-pub async fn create_folder(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    notes::create_folder(state, name).await
+pub async fn create_folder(
+    state: State<'_, AppState>,
+    project_id: String,
+    name: String,
+) -> Result<(), String> {
+    notes::create_folder(state, project_id, name).await
 }
 
 #[tauri::command]
 pub async fn rename_folder(
     state: State<'_, AppState>,
+    project_id: String,
     old_name: String,
     new_name: String,
 ) -> Result<(), String> {
-    notes::rename_folder(state, old_name, new_name).await
+    notes::rename_folder(state, project_id, old_name, new_name).await
 }
 
 #[tauri::command]
 pub async fn delete_folder(
     state: State<'_, AppState>,
+    project_id: String,
     name: String,
     force: bool,
 ) -> Result<(), String> {
-    notes::delete_folder(state, name, force).await
+    notes::delete_folder(state, project_id, name, force).await
 }
 
 #[tauri::command]
-pub async fn commit_notes(state: State<'_, AppState>) -> Result<bool, String> {
-    notes::commit_notes(state).await
+pub async fn commit_notes(state: State<'_, AppState>, project_id: String) -> Result<bool, String> {
+    notes::commit_notes(state, project_id).await
 }
 
 #[tauri::command]
 pub async fn save_note_image(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     image_bytes: Vec<u8>,
     extension: String,
 ) -> Result<String, String> {
     let storage = state.storage.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let base_dir = storage.lock().map_err(|e| e.to_string())?.base_dir();
+        let base_dir = notes::resolve_notes_base(&storage, &project_id)?;
         crate::notes::save_note_image(&base_dir, &folder, &image_bytes, &extension)
             .map_err(|e| e.to_string())
     })
@@ -1858,12 +1875,13 @@ pub async fn save_note_image(
 #[tauri::command]
 pub async fn resolve_note_asset_path(
     state: State<'_, AppState>,
+    project_id: String,
     folder: String,
     relative_path: String,
 ) -> Result<String, String> {
     let storage = state.storage.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let base_dir = storage.lock().map_err(|e| e.to_string())?.base_dir();
+        let base_dir = notes::resolve_notes_base(&storage, &project_id)?;
         crate::notes::resolve_note_asset_path(&base_dir, &folder, &relative_path)
             .map(|p| p.to_string_lossy().to_string())
             .map_err(|e| e.to_string())

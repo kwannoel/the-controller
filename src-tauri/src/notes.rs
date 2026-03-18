@@ -412,40 +412,64 @@ fn notes_root(base: &Path) -> PathBuf {
     base.join("notes")
 }
 
-/// Open or initialize the notes git repo at `{base}/notes/`.
+/// Open the project's git repository for note commits.
+/// Notes live at `{base}/notes/` but the git repo is at `{base}/.git`.
+/// Falls back to initializing a standalone repo at `{base}/notes/` for tests
+/// or projects without an existing git repo.
 fn open_or_init_repo(base: &Path) -> Result<Repository, git2::Error> {
-    let root = notes_root(base);
-    fs::create_dir_all(&root)
-        .map_err(|e| git2::Error::from_str(&format!("failed to create notes dir: {}", e)))?;
-    match Repository::open(&root) {
+    match Repository::open(base) {
         Ok(repo) => {
-            tracing::debug!("opened existing notes git repo");
+            tracing::debug!("opened project git repo for notes");
             Ok(repo)
         }
         Err(_) => {
-            tracing::debug!("initializing new notes git repo");
-            let repo = Repository::init(&root)?;
-            let sig = Signature::now("the-controller", "noreply@the-controller")?;
-            let tree_id = repo.index()?.write_tree()?;
-            {
-                let tree = repo.find_tree(tree_id)?;
-                repo.commit(Some("HEAD"), &sig, &sig, "init notes", &tree, &[])?;
+            // Fallback: initialize repo at notes root (for standalone notes / tests)
+            let root = notes_root(base);
+            fs::create_dir_all(&root).map_err(|e| {
+                git2::Error::from_str(&format!("failed to create notes dir: {}", e))
+            })?;
+            match Repository::open(&root) {
+                Ok(repo) => {
+                    tracing::debug!("opened existing notes git repo at notes root");
+                    Ok(repo)
+                }
+                Err(_) => {
+                    tracing::debug!("initializing new notes git repo at notes root");
+                    let repo = Repository::init(&root)?;
+                    let sig = Signature::now("the-controller", "noreply@the-controller")?;
+                    let tree_id = repo.index()?.write_tree()?;
+                    {
+                        let tree = repo.find_tree(tree_id)?;
+                        repo.commit(Some("HEAD"), &sig, &sig, "init notes", &tree, &[])?;
+                    }
+                    Ok(repo)
+                }
             }
-            tracing::debug!("notes git repo initialized with initial commit");
-            Ok(repo)
         }
     }
 }
 
-/// Stage all changes and commit with the given message.
+/// Stage note changes and commit with the given message.
+/// When the repo is the project repo (opened at `base`), only `notes/*` files are staged.
+/// When the repo is a standalone notes repo (fallback at `base/notes/`), all files are staged.
 /// Returns Ok(true) if a commit was created, Ok(false) if there was nothing to commit.
 pub fn commit_notes(base: &Path, message: &str) -> Result<bool, git2::Error> {
     tracing::debug!("staging and committing notes");
     let repo = open_or_init_repo(base)?;
     let mut index = repo.index()?;
 
-    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
-    index.update_all(["*"].iter(), None)?;
+    // If the repo workdir is the project root (i.e. base), stage only notes/*.
+    // If the repo is the standalone notes repo (base/notes/), stage everything.
+    let repo_workdir = repo.workdir().unwrap_or(base);
+    let is_project_repo = repo_workdir == base;
+    let glob_pattern: &[&str] = if is_project_repo {
+        &["notes/*"]
+    } else {
+        &["*"]
+    };
+
+    index.add_all(glob_pattern.iter(), git2::IndexAddOption::DEFAULT, None)?;
+    index.update_all(glob_pattern.iter(), None)?;
     index.write()?;
 
     let head_commit = repo.head()?.peel_to_commit()?;
