@@ -12,15 +12,26 @@ import { test, expect } from "@playwright/test";
  * 7. User presses Enter in hub → find view with j/k nav (overlay focused, not search)
  */
 
+/** Wait for sidebar with projects loaded, focus a project via j, verify focus took. */
+async function focusProject(page: import("@playwright/test").Page) {
+  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
+  // Wait for at least one project to be rendered
+  await expect(page.locator(".project-header")).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press("j");
+  await expect(page.locator(".focus-target")).toBeVisible({ timeout: 3_000 });
+}
+
+/** Focus a project and open the issues hub modal. */
+async function openIssuesHub(page: import("@playwright/test").Page) {
+  await focusProject(page);
+  await page.keyboard.press("i");
+  await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
+}
+
 test("story 1: pressing i with focused project opens issues hub", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
+  await focusProject(page);
 
-  // Focus a project via j
-  await page.keyboard.press("j");
-  await page.waitForTimeout(200);
-
-  // Press i to open issues modal
   await page.keyboard.press("i");
 
   // CORE ASSERTION: issues hub modal appears with Create and Find options
@@ -33,14 +44,8 @@ test("story 1: pressing i with focused project opens issues hub", async ({ page 
 
 test("story 2: pressing f in hub opens find view with search focused", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
+  await openIssuesHub(page);
 
-  await page.keyboard.press("j");
-  await page.waitForTimeout(200);
-  await page.keyboard.press("i");
-  await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
-
-  // Press f to open find view
   await page.keyboard.press("f");
 
   // CORE ASSERTION: find view opens with search input focused
@@ -51,14 +56,8 @@ test("story 2: pressing f in hub opens find view with search focused", async ({ 
 
 test("story 3: pressing c in hub opens create view with title input focused", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
+  await openIssuesHub(page);
 
-  await page.keyboard.press("j");
-  await page.waitForTimeout(200);
-  await page.keyboard.press("i");
-  await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
-
-  // Press c to open create view
   await page.keyboard.press("c");
 
   // CORE ASSERTION: create view with title input focused
@@ -71,14 +70,8 @@ test("story 3: pressing c in hub opens create view with title input focused", as
 
 test("story 4: pressing Esc in hub closes the modal", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
+  await openIssuesHub(page);
 
-  await page.keyboard.press("j");
-  await page.waitForTimeout(200);
-  await page.keyboard.press("i");
-  await expect(page.locator(".issues-modal")).toBeVisible({ timeout: 5_000 });
-
-  // Press Esc to close
   await page.keyboard.press("Escape");
 
   // CORE ASSERTION: modal is gone
@@ -87,12 +80,7 @@ test("story 4: pressing Esc in hub closes the modal", async ({ page }) => {
 
 test("story 5: Esc in find view returns to hub (not closes modal)", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
-
-  await page.keyboard.press("j");
-  await page.waitForTimeout(200);
-  await page.keyboard.press("i");
-  await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
+  await openIssuesHub(page);
 
   // Enter find view
   await page.keyboard.press("f");
@@ -108,12 +96,7 @@ test("story 5: Esc in find view returns to hub (not closes modal)", async ({ pag
 
 test("story 6: Esc in create view title stage returns to hub", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
-
-  await page.keyboard.press("j");
-  await page.waitForTimeout(200);
-  await page.keyboard.press("i");
-  await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
+  await openIssuesHub(page);
 
   // Enter create view
   await page.keyboard.press("c");
@@ -128,13 +111,7 @@ test("story 6: Esc in create view title stage returns to hub", async ({ page }) 
 
 test("story 7: Enter in hub opens find view with overlay focused (j/k nav mode)", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
-
-  // Focus a project — verify it's actually focused before proceeding
-  await page.keyboard.press("j");
-  await expect(page.locator(".focus-target")).toBeVisible({ timeout: 3_000 });
-  await page.keyboard.press("i");
-  await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
+  await openIssuesHub(page);
 
   // Press Enter (not f) to open find view in nav mode
   await page.keyboard.press("Enter");
@@ -150,12 +127,7 @@ test("story 7: Enter in hub opens find view with overlay focused (j/k nav mode)"
 
 test("story 8: create flow — title → priority → complexity stages", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
-
-  await page.keyboard.press("j");
-  await page.waitForTimeout(200);
-  await page.keyboard.press("i");
-  await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
+  await openIssuesHub(page);
 
   // Enter create view
   await page.keyboard.press("c");

@@ -267,7 +267,7 @@
   });
 
   onMount(() => {
-    overlayEl?.focus();
+    tick().then(() => overlayEl?.focus());
   });
 </script>
 
