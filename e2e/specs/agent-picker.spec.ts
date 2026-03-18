@@ -50,14 +50,8 @@ test.describe("agent picker workflow", () => {
     }
 
     // Wait for projects to load in the sidebar
-    const projectNode = page.locator(".project-node");
-    const hasProjects =
-      (await projectNode.count().catch(() => 0)) > 0 ||
-      (await projectNode.first().isVisible({ timeout: 5_000 }).catch(() => false));
-    if (!hasProjects) {
-      test.skip();
-      return;
-    }
+    const projectItem = page.locator(".project-item");
+    await expect(projectItem.first()).toBeVisible({ timeout: 10_000 });
 
     // Press 'a' to open the agent picker
     await page.keyboard.press("a");
