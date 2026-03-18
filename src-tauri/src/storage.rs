@@ -37,8 +37,8 @@ impl ProjectInventory {
 
     pub fn warn_if_corrupt(&self, context: &str) {
         for entry in &self.corrupt_entries {
-            eprintln!(
-                "Warning: {}: failed to parse {}: {}",
+            tracing::warn!(
+                "{}: failed to load {}: {}",
                 context,
                 entry.project_file.display(),
                 entry.error
@@ -133,6 +133,7 @@ impl Storage {
 
     /// Save a project's configuration to disk as `project.json`.
     pub fn save_project(&self, project: &Project) -> std::io::Result<()> {
+        tracing::debug!(project_id = %project.id, name = %project.name, "saving project");
         let dir = self.project_dir(project.id);
         fs::create_dir_all(&dir)?;
         let json = serde_json::to_string_pretty(project)
@@ -142,6 +143,7 @@ impl Storage {
 
     /// Load a project's configuration from disk.
     pub fn load_project(&self, project_id: Uuid) -> std::io::Result<Project> {
+        tracing::debug!(project_id = %project_id, "loading project");
         let path = self.project_dir(project_id).join("project.json");
         let json = fs::read_to_string(path)?;
         serde_json::from_str(&json)
@@ -150,6 +152,7 @@ impl Storage {
 
     /// List all projects by reading every `project.json` in the projects directory.
     pub fn list_projects(&self) -> std::io::Result<ProjectInventory> {
+        tracing::debug!("listing all projects");
         let projects_dir = self.base_dir.join("projects");
         if !projects_dir.exists() {
             return Ok(ProjectInventory::default());
@@ -161,14 +164,28 @@ impl Storage {
             let project_dir = entry.path();
             let project_file = project_dir.join("project.json");
             if project_file.exists() {
-                let json = fs::read_to_string(&project_file)?;
+                let json = match fs::read_to_string(&project_file) {
+                    Ok(json) => json,
+                    Err(e) => {
+                        tracing::error!(path = %project_file.display(), error = %e, "failed to read project file");
+                        inventory.corrupt_entries.push(CorruptProjectEntry {
+                            project_dir: project_dir.clone(),
+                            project_file: project_file.clone(),
+                            error: e.to_string(),
+                        });
+                        continue;
+                    }
+                };
                 match serde_json::from_str::<Project>(&json) {
                     Ok(project) => inventory.projects.push(project),
-                    Err(error) => inventory.corrupt_entries.push(CorruptProjectEntry {
-                        project_dir,
-                        project_file,
-                        error: error.to_string(),
-                    }),
+                    Err(error) => {
+                        tracing::error!(path = %project_file.display(), error = %error, "failed to parse project file");
+                        inventory.corrupt_entries.push(CorruptProjectEntry {
+                            project_dir,
+                            project_file,
+                            error: error.to_string(),
+                        })
+                    }
                 }
             }
         }
@@ -181,17 +198,19 @@ impl Storage {
     /// and updates all `worktree_path` entries in the project's sessions.
     /// No-op if the UUID directory doesn't exist (already migrated or no worktrees).
     pub fn migrate_worktree_paths(&self, project: &Project) -> std::io::Result<()> {
+        tracing::info!(project_id = %project.id, name = %project.name, "migrating worktree paths");
         let uuid_dir = self.base_dir.join("worktrees").join(project.id.to_string());
         let name_dir = self.base_dir.join("worktrees").join(&project.name);
         if uuid_dir.exists() && name_dir.exists() {
-            eprintln!(
-                "Warning: cannot migrate worktrees for project '{}': target dir already exists",
+            tracing::warn!(
+                "cannot migrate worktrees for project '{}': target dir already exists",
                 project.name
             );
             return Ok(());
         }
 
         if uuid_dir.exists() {
+            tracing::debug!(project_id = %project.id, "renaming UUID worktree dir to name-based dir");
             fs::rename(&uuid_dir, &name_dir)?;
         } else if !name_dir.exists() {
             return Ok(());
@@ -212,6 +231,7 @@ impl Storage {
         }
 
         if changed {
+            tracing::debug!(project_id = %project.id, "updated worktree paths in project sessions");
             self.save_project(&updated)?;
         }
 
@@ -220,6 +240,7 @@ impl Storage {
 
     /// Delete a project's config directory.
     pub fn delete_project_dir(&self, project_id: Uuid) -> std::io::Result<()> {
+        tracing::info!(project_id = %project_id, "deleting project directory");
         let dir = self.project_dir(project_id);
         if dir.exists() {
             fs::remove_dir_all(dir)
@@ -235,6 +256,7 @@ impl Storage {
     /// Returns an empty string if neither exists, or an error if a file exists
     /// but cannot be read.
     pub fn get_agents_md(&self, project: &Project) -> std::io::Result<String> {
+        tracing::debug!(project_id = %project.id, "reading agents.md");
         // Check repo root first
         let repo_agents = PathBuf::from(&project.repo_path).join("agents.md");
         if repo_agents.exists() {
@@ -264,6 +286,7 @@ impl Storage {
 
     /// Save a maintainer run log to disk.
     pub fn save_maintainer_run_log(&self, log: &MaintainerRunLog) -> std::io::Result<()> {
+        tracing::debug!(project_id = %log.project_id, log_id = %log.id, "saving maintainer run log");
         let dir = self.maintainer_run_logs_dir(log.project_id);
         fs::create_dir_all(&dir)?;
         let filename = format!("{}.json", log.id);
@@ -277,6 +300,7 @@ impl Storage {
         &self,
         project_id: Uuid,
     ) -> std::io::Result<Option<MaintainerRunLog>> {
+        tracing::debug!(project_id = %project_id, "loading latest maintainer run log");
         let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(None);
@@ -292,6 +316,7 @@ impl Storage {
         project_id: Uuid,
         limit: usize,
     ) -> std::io::Result<Vec<MaintainerRunLog>> {
+        tracing::debug!(project_id = %project_id, limit = limit, "loading maintainer run log history");
         let dir = self.maintainer_run_logs_dir(project_id);
         if !dir.exists() {
             return Ok(vec![]);
@@ -305,6 +330,7 @@ impl Storage {
     /// Delete all maintainer run logs for a project.
     /// Also deletes any old-format MaintainerReport files in the same directory.
     pub fn clear_maintainer_run_logs(&self, project_id: Uuid) -> std::io::Result<()> {
+        tracing::info!(project_id = %project_id, "clearing maintainer run logs");
         let dir = self.maintainer_run_logs_dir(project_id);
         if dir.exists() {
             fs::remove_dir_all(&dir)?;
@@ -321,7 +347,17 @@ impl Storage {
             let entry = entry?;
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "json") {
-                let json = fs::read_to_string(&path)?;
+                let json = match fs::read_to_string(&path) {
+                    Ok(json) => json,
+                    Err(error) => {
+                        tracing::warn!(
+                            "failed to read maintainer run log {}: {}",
+                            path.display(),
+                            error
+                        );
+                        continue;
+                    }
+                };
                 // Skip old-format files that fail to deserialize
                 if let Ok(log) = serde_json::from_str::<MaintainerRunLog>(&json) {
                     logs.push(log);
@@ -336,6 +372,7 @@ impl Storage {
 mod tests {
     use super::*;
     use crate::models::{IssueAction, IssueSummary, MaintainerRunLog, SessionConfig};
+    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
     fn make_storage(tmp: &TempDir) -> Storage {
@@ -418,6 +455,41 @@ mod tests {
         assert_eq!(inventory.projects[0].name, "valid-project");
         assert_eq!(inventory.corrupt_entries.len(), 1);
         assert_eq!(inventory.corrupt_entries[0].project_file, corrupt_file);
+    }
+
+    #[test]
+    fn test_list_projects_reports_unreadable_project_json_as_corrupt() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+
+        let valid = make_project("valid-project", "/tmp/repo-valid");
+        storage.save_project(&valid).expect("save valid");
+
+        let unreadable_dir = storage.project_dir(Uuid::new_v4());
+        fs::create_dir_all(&unreadable_dir).expect("create unreadable dir");
+        let unreadable_file = unreadable_dir.join("project.json");
+        fs::write(&unreadable_file, "{}").expect("write unreadable project.json");
+
+        let original_permissions = fs::metadata(&unreadable_file)
+            .expect("stat unreadable project.json")
+            .permissions();
+        let mut unreadable_permissions = original_permissions.clone();
+        unreadable_permissions.set_mode(0o000);
+        fs::set_permissions(&unreadable_file, unreadable_permissions)
+            .expect("chmod unreadable project.json");
+
+        let inventory = storage.list_projects().expect("list");
+
+        fs::set_permissions(&unreadable_file, original_permissions)
+            .expect("restore unreadable project.json permissions");
+
+        assert_eq!(inventory.projects.len(), 1);
+        assert_eq!(inventory.projects[0].name, "valid-project");
+        assert_eq!(inventory.corrupt_entries.len(), 1);
+        assert_eq!(inventory.corrupt_entries[0].project_file, unreadable_file);
+        assert!(inventory.corrupt_entries[0]
+            .error
+            .contains("Permission denied"));
     }
 
     #[test]
@@ -521,6 +593,16 @@ mod tests {
             .expect_err("expected missing home directory to return an error");
 
         assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn test_default_base_dir_uses_the_controller_directory() {
+        let home = PathBuf::from("/tmp/test-home");
+
+        let base_dir =
+            Storage::default_base_dir(Some(home)).expect("default base dir should resolve");
+
+        assert_eq!(base_dir, PathBuf::from("/tmp/test-home/.the-controller"));
     }
 
     #[test]
@@ -684,5 +766,40 @@ mod tests {
         let history = storage.maintainer_run_log_history(project_id, 10).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].summary, "Filed 1 issue");
+    }
+
+    #[test]
+    fn test_run_log_history_skips_unreadable_log_files() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_storage(&tmp);
+        let project_id = Uuid::new_v4();
+
+        let readable_log = make_run_log(project_id, "2026-03-09T00:00:00Z");
+        storage
+            .save_maintainer_run_log(&readable_log)
+            .expect("save readable log");
+
+        let dir = storage.maintainer_run_logs_dir(project_id);
+        fs::create_dir_all(&dir).expect("create run log dir");
+        let unreadable_file = dir.join("unreadable.json");
+        fs::write(&unreadable_file, "{}").expect("write unreadable log");
+
+        let original_permissions = fs::metadata(&unreadable_file)
+            .expect("stat unreadable log")
+            .permissions();
+        let mut unreadable_permissions = original_permissions.clone();
+        unreadable_permissions.set_mode(0o000);
+        fs::set_permissions(&unreadable_file, unreadable_permissions)
+            .expect("chmod unreadable log");
+
+        let history = storage
+            .maintainer_run_log_history(project_id, 10)
+            .expect("history");
+
+        fs::set_permissions(&unreadable_file, original_permissions)
+            .expect("restore unreadable log permissions");
+
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].id, readable_log.id);
     }
 }

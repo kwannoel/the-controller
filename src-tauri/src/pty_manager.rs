@@ -6,42 +6,50 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use uuid::Uuid;
 
+use crate::broker_client::BrokerClient;
+use crate::broker_protocol::SpawnRequest;
 use crate::emitter::EventEmitter;
 
-use crate::tmux::TmuxManager;
-
-fn build_tmux_attach_command(tmux_bin: &str, tmux_name: &str) -> CommandBuilder {
-    let mut cmd = CommandBuilder::new(tmux_bin);
-    cmd.arg("attach-session");
-    cmd.arg("-t");
-    cmd.arg(tmux_name);
-    cmd
-}
-
+/// A direct PTY session (local process).
 pub struct PtySession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     alive: Arc<Mutex<bool>>,
-    tmux_session: bool,
 }
 
-#[derive(Default)]
+/// A broker-backed session (PTY held by the broker daemon).
+pub struct BrokerSession {
+    writer: std::os::unix::net::UnixStream,
+    alive: Arc<Mutex<bool>>,
+}
+
+pub enum Session {
+    Pty(PtySession),
+    Broker(BrokerSession),
+}
+
 pub struct PtyManager {
-    pub(crate) sessions: HashMap<Uuid, PtySession>,
+    pub(crate) sessions: HashMap<Uuid, Session>,
+    broker: BrokerClient,
+}
+
+impl Default for PtyManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PtyManager {
     pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
+            broker: BrokerClient::new(),
         }
     }
 
-    /// Spawn a session. Uses tmux if available (survives dev restarts),
-    /// otherwise falls back to a direct PTY (production path).
-    /// When `continue_session` is true, passes `--continue` to claude to resume
-    /// the last conversation in the working directory.
+    /// Spawn a session. Tries broker first (survives dev restarts),
+    /// then falls back to a direct PTY.
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_session(
         &mut self,
@@ -56,45 +64,159 @@ impl PtyManager {
     ) -> Result<(), String> {
         // Skip if already connected
         if self.sessions.contains_key(&session_id) {
+            tracing::debug!(session_id = %session_id, "session already connected, skipping spawn");
             return Ok(());
         }
 
         let command = match kind {
             "codex" => "codex",
+            "cursor-agent" => "cursor-agent",
             _ => "claude",
         };
-        if TmuxManager::is_available() {
-            // Create tmux session if it doesn't already exist
-            if !TmuxManager::has_session(session_id) {
-                TmuxManager::create_session(
-                    session_id,
-                    working_dir,
-                    command,
-                    continue_session,
-                    initial_prompt,
-                )?;
-            }
-            // Pre-resize tmux to the target size so attaching doesn't cause
-            // an intermediate resize (which would make claude re-render and
-            // produce extra newlines).
-            let _ = TmuxManager::resize_session(session_id, cols, rows);
-            // Attach to the tmux session via a local PTY
-            self.attach_tmux_session(session_id, emitter)
-        } else {
-            // No tmux — spawn the command directly in a PTY
-            self.spawn_direct_session(
+
+        tracing::info!(session_id = %session_id, command = command, "spawning session");
+
+        // Try broker first
+        if self.broker.is_available() || self.try_spawn_broker() {
+            match self.spawn_broker_session(
                 session_id,
                 working_dir,
                 command,
-                emitter,
+                emitter.clone(),
+                continue_session,
                 initial_prompt,
                 rows,
                 cols,
-            )
+            ) {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    tracing::warn!("broker session failed, falling back to direct PTY: {}", e);
+                }
+            }
         }
+
+        // Direct PTY
+        tracing::debug!(session_id = %session_id, "using direct PTY mode");
+        self.spawn_direct_session(
+            session_id,
+            working_dir,
+            command,
+            emitter,
+            initial_prompt,
+            rows,
+            cols,
+        )
     }
 
-    /// Spawn a command directly in a local PTY without tmux.
+    /// Try to make the broker available (spawn it if binary exists).
+    /// Calls connect_control() which handles spawning the daemon and retrying.
+    fn try_spawn_broker(&self) -> bool {
+        self.broker.try_ensure_running()
+    }
+
+    /// Spawn a session via the broker daemon.
+    #[allow(clippy::too_many_arguments)]
+    fn spawn_broker_session(
+        &mut self,
+        session_id: Uuid,
+        working_dir: &str,
+        command: &str,
+        emitter: Arc<dyn EventEmitter>,
+        continue_session: bool,
+        initial_prompt: Option<&str>,
+        rows: u16,
+        cols: u16,
+    ) -> Result<(), String> {
+        // Build the env map
+        let mut env: HashMap<String, String> = std::env::vars().collect();
+        env.remove("CLAUDECODE");
+        env.insert(
+            "THE_CONTROLLER_SESSION_ID".to_string(),
+            session_id.to_string(),
+        );
+        if let Some(path_val) = crate::cli_install::path_with_controller_bin() {
+            env.insert("PATH".to_string(), path_val);
+        }
+
+        // Build args
+        let args = crate::session_args::build_session_args(
+            command,
+            session_id,
+            continue_session,
+            initial_prompt,
+        );
+
+        // Check if session already exists in broker
+        let needs_spawn = !self.broker.has_session(session_id);
+
+        if needs_spawn {
+            tracing::debug!(session_id = %session_id, command = command, "spawning new broker session");
+            self.broker.spawn(SpawnRequest {
+                session_id,
+                cmd: command.to_string(),
+                args,
+                cwd: working_dir.to_string(),
+                env,
+                rows,
+                cols,
+            })?;
+        } else {
+            // Session exists, just resize
+            tracing::debug!(session_id = %session_id, "broker session already exists, resizing");
+            let _ = self.broker.resize(session_id, rows, cols);
+        }
+
+        // Connect to data socket
+        tracing::debug!(session_id = %session_id, "connecting to broker data socket");
+        let data_stream = match self.broker.connect_data(session_id) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!(session_id = %session_id, error = %e, "failed to connect to broker data socket");
+                // Kill the broker session to avoid an orphan
+                if needs_spawn {
+                    let _ = self.broker.kill(session_id);
+                }
+                return Err(format!("failed to connect to data socket: {}", e));
+            }
+        };
+
+        let writer = data_stream
+            .try_clone()
+            .map_err(|e| format!("failed to clone data socket: {}", e))?;
+
+        let alive = Arc::new(Mutex::new(true));
+        let alive_clone = Arc::clone(&alive);
+
+        let output_event = format!("pty-output:{}", session_id);
+        let status_event = format!("session-status-changed:{}", session_id);
+
+        // Reader thread: data socket → base64 → emit pty-output
+        let mut reader = data_stream;
+        thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => {
+                        if let Ok(mut a) = alive_clone.lock() {
+                            *a = false;
+                        }
+                        let _ = emitter.emit(&status_event, "idle");
+                        break;
+                    }
+                    Ok(n) => {
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
+                        let _ = emitter.emit(&output_event, &encoded);
+                    }
+                }
+            }
+        });
+
+        self.sessions
+            .insert(session_id, Session::Broker(BrokerSession { writer, alive }));
+        Ok(())
+    }
+
+    /// Spawn a command directly in a local PTY.
     #[allow(clippy::too_many_arguments)]
     fn spawn_direct_session(
         &mut self,
@@ -106,6 +228,7 @@ impl PtyManager {
         rows: u16,
         cols: u16,
     ) -> Result<(), String> {
+        tracing::debug!(session_id = %session_id, command = command, "spawning direct PTY session");
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -114,7 +237,10 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("failed to open pty: {}", e))?;
+            .map_err(|e| {
+                tracing::error!(session_id = %session_id, error = %e, "failed to open pty");
+                format!("failed to open pty: {}", e)
+            })?;
 
         let mut cmd = CommandBuilder::new(command);
         cmd.cwd(working_dir);
@@ -179,106 +305,18 @@ impl PtyManager {
             }
         });
 
-        let session = PtySession {
+        let session = Session::Pty(PtySession {
             master: pair.master,
             writer,
             child,
             alive,
-            tmux_session: false,
-        };
-
-        self.sessions.insert(session_id, session);
-        Ok(())
-    }
-
-    /// Attach to an existing tmux session by spawning `tmux attach` in a local PTY.
-    fn attach_tmux_session(
-        &mut self,
-        session_id: Uuid,
-        emitter: Arc<dyn EventEmitter>,
-    ) -> Result<(), String> {
-        let tmux_name = TmuxManager::session_name(session_id);
-
-        // Use the tmux session's current dimensions so the attach doesn't
-        // force a resize (which causes TUI glitches like garbled input).
-        let (cols, rows) = TmuxManager::session_size(session_id).unwrap_or((80, 24));
-
-        let pty_system = native_pty_system();
-        let pair = pty_system
-            .openpty(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| format!("failed to open pty: {}", e))?;
-
-        let tmux_bin =
-            TmuxManager::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
-        let cmd = build_tmux_attach_command(&tmux_bin, &tmux_name);
-
-        let child = pair
-            .slave
-            .spawn_command(cmd)
-            .map_err(|e| format!("failed to spawn tmux attach: {}", e))?;
-
-        drop(pair.slave);
-
-        let writer = pair
-            .master
-            .take_writer()
-            .map_err(|e| format!("failed to get pty writer: {}", e))?;
-
-        let mut reader = pair
-            .master
-            .try_clone_reader()
-            .map_err(|e| format!("failed to get pty reader: {}", e))?;
-
-        let alive = Arc::new(Mutex::new(true));
-        let alive_clone = Arc::clone(&alive);
-
-        let output_event = format!("pty-output:{}", session_id);
-        let status_event = format!("session-status-changed:{}", session_id);
-
-        thread::spawn(move || {
-            let mut buf = [0u8; 4096];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => {
-                        if let Ok(mut a) = alive_clone.lock() {
-                            *a = false;
-                        }
-                        let _ = emitter.emit(&status_event, "idle");
-                        break;
-                    }
-                    Ok(n) => {
-                        let encoded = base64::engine::general_purpose::STANDARD.encode(&buf[..n]);
-                        let _ = emitter.emit(&output_event, &encoded);
-                    }
-                    Err(_) => {
-                        if let Ok(mut a) = alive_clone.lock() {
-                            *a = false;
-                        }
-                        let _ = emitter.emit(&status_event, "idle");
-                        break;
-                    }
-                }
-            }
         });
 
-        let session = PtySession {
-            master: pair.master,
-            writer,
-            child,
-            alive,
-            tmux_session: true,
-        };
-
         self.sessions.insert(session_id, session);
         Ok(())
     }
 
-    /// Spawn a direct (non-tmux) command. Used for short-lived commands like `claude login`.
+    /// Spawn a direct command. Used for short-lived commands like `claude login`.
     pub fn spawn_command(
         &mut self,
         session_id: Uuid,
@@ -352,13 +390,12 @@ impl PtyManager {
             }
         });
 
-        let session = PtySession {
+        let session = Session::Pty(PtySession {
             master: pair.master,
             writer,
             child,
             alive,
-            tmux_session: false,
-        };
+        });
 
         self.sessions.insert(session_id, session);
         Ok(())
@@ -370,92 +407,85 @@ impl PtyManager {
             .get_mut(&session_id)
             .ok_or_else(|| format!("session not found: {}", session_id))?;
 
-        session
-            .writer
-            .write_all(data)
-            .map_err(|e| format!("failed to write to pty: {}", e))?;
-
-        session
-            .writer
-            .flush()
-            .map_err(|e| format!("failed to flush pty writer: {}", e))?;
-
+        match session {
+            Session::Pty(s) => {
+                s.writer
+                    .write_all(data)
+                    .map_err(|e| format!("failed to write to pty: {}", e))?;
+                s.writer
+                    .flush()
+                    .map_err(|e| format!("failed to flush pty writer: {}", e))?;
+            }
+            Session::Broker(s) => {
+                s.writer
+                    .write_all(data)
+                    .map_err(|e| format!("failed to write to broker session: {}", e))?;
+                s.writer
+                    .flush()
+                    .map_err(|e| format!("failed to flush broker writer: {}", e))?;
+            }
+        }
         Ok(())
     }
 
-    /// Send raw bytes that must bypass tmux's outer terminal parser.
-    /// For tmux sessions, uses `tmux send-keys -H`; for direct sessions,
-    /// writes to the PTY like normal.
+    /// Send raw bytes directly to the session (single-layer PTY, no tmux workaround needed).
     pub fn send_raw_to_session(&mut self, session_id: Uuid, data: &[u8]) -> Result<(), String> {
-        let session = self
-            .sessions
-            .get_mut(&session_id)
-            .ok_or_else(|| format!("session not found: {}", session_id))?;
-
-        if session.tmux_session {
-            TmuxManager::send_keys_hex(session_id, data)
-        } else {
-            session
-                .writer
-                .write_all(data)
-                .map_err(|e| format!("failed to write to pty: {}", e))?;
-            session
-                .writer
-                .flush()
-                .map_err(|e| format!("failed to flush pty writer: {}", e))?;
-            Ok(())
-        }
+        // With the broker or direct PTY, raw writes go straight through.
+        self.write_to_session(session_id, data)
     }
 
     pub fn resize_session(&self, session_id: Uuid, rows: u16, cols: u16) -> Result<(), String> {
+        tracing::debug!(session_id = %session_id, rows = rows, cols = cols, "resizing session");
         let session = self
             .sessions
             .get(&session_id)
             .ok_or_else(|| format!("session not found: {}", session_id))?;
 
-        // Resize via tmux so the claude process sees the new size
-        if session.tmux_session {
-            let _ = TmuxManager::resize_session(session_id, cols, rows);
+        match session {
+            Session::Pty(s) => s
+                .master
+                .resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .map_err(|e| format!("failed to resize pty: {}", e)),
+            Session::Broker(_) => self.broker.resize(session_id, rows, cols),
         }
-
-        // Also resize the local PTY
-        session
-            .master
-            .resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| format!("failed to resize pty: {}", e))
     }
 
     pub fn is_alive(&self, session_id: Uuid) -> bool {
         self.sessions
             .get(&session_id)
-            .and_then(|s| s.alive.lock().ok())
-            .map(|a| *a)
+            .and_then(|s| match s {
+                Session::Pty(s) => s.alive.lock().ok().map(|a| *a),
+                Session::Broker(s) => s.alive.lock().ok().map(|a| *a),
+            })
             .unwrap_or(false)
     }
 
-    /// Close a session. For tmux-backed sessions, also kills the tmux session.
+    /// Close a session.
     pub fn close_session(&mut self, session_id: Uuid) -> Result<(), String> {
-        let mut session = self.sessions.remove(&session_id);
+        tracing::info!(session_id = %session_id, "closing session");
+        let session = self.sessions.remove(&session_id);
 
-        if let Some(s) = session.as_mut() {
-            if !matches!(s.child.try_wait(), Ok(Some(_))) {
-                let _ = s.child.kill();
-                let _ = s.child.wait();
+        match session {
+            Some(Session::Pty(mut s)) => {
+                tracing::debug!(session_id = %session_id, "closing direct PTY session");
+                if !matches!(s.child.try_wait(), Ok(Some(_))) {
+                    let _ = s.child.kill();
+                    let _ = s.child.wait();
+                }
             }
-        }
-
-        if let Some(s) = &session {
-            if s.tmux_session {
-                let _ = TmuxManager::kill_session(session_id);
+            Some(Session::Broker(_)) => {
+                tracing::debug!(session_id = %session_id, "closing broker session");
+                let _ = self.broker.kill(session_id);
             }
-        } else {
-            // No local PTY (e.g., app wasn't attached), still try to kill tmux
-            let _ = TmuxManager::kill_session(session_id);
+            None => {
+                // No local session — try to kill broker session
+                let _ = self.broker.kill(session_id);
+            }
         }
 
         Ok(())
@@ -471,11 +501,7 @@ impl PtyManager {
 mod tests {
     use super::*;
     use crate::emitter::NoopEmitter;
-    use crate::tmux::set_test_tmux_binary;
-    use std::ffi::OsStr;
     use std::fs;
-    #[cfg(unix)]
-    use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
     use std::time::{Duration, Instant};
 
@@ -483,35 +509,6 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("the-controller-{}-{}", name, Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         dir
-    }
-
-    fn write_fake_tmux(dir: &Path, log_path: &Path) -> PathBuf {
-        let tmux_path = dir.join("fake-tmux");
-        let script = format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$1\" >> \"{}\"\nif [ \"$1\" = \"display-message\" ]; then\n  printf '80 24\\n'\nfi\nexit 0\n",
-            log_path.display()
-        );
-        fs::write(&tmux_path, script).unwrap();
-        #[cfg(unix)]
-        {
-            let mut perms = fs::metadata(&tmux_path).unwrap().permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&tmux_path, perms).unwrap();
-        }
-        tmux_path
-    }
-
-    fn wait_for_log_entry(log_path: &Path, needle: &str) -> bool {
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while Instant::now() < deadline {
-            let log = fs::read_to_string(log_path).unwrap_or_default();
-            if log.contains(needle) {
-                return true;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-
-        false
     }
 
     #[cfg(unix)]
@@ -584,7 +581,7 @@ mod tests {
     fn test_close_nonexistent_session_is_ok() {
         let mut manager = PtyManager::new();
         let invalid_id = Uuid::new_v4();
-        // close_session is now idempotent (tries to kill tmux too)
+        // close_session is idempotent
         let result = manager.close_session(invalid_id);
         assert!(result.is_ok());
     }
@@ -602,40 +599,6 @@ mod tests {
         let result = manager.send_raw_to_session(invalid_id, b"hello");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("session not found"));
-    }
-
-    #[test]
-    fn test_build_tmux_attach_command_uses_resolved_tmux_binary() {
-        let cmd = build_tmux_attach_command(
-            "/usr/local/bin/tmux",
-            "ctrl-550e8400-e29b-41d4-a716-446655440000",
-        );
-
-        assert_eq!(
-            cmd.get_argv().first().map(|arg| arg.as_os_str()),
-            Some(OsStr::new("/usr/local/bin/tmux"))
-        );
-    }
-
-    #[test]
-    fn test_attach_tmux_session_uses_resolved_tmux_binary() {
-        let temp_dir = make_temp_dir("tmux-attach");
-        let log_path = temp_dir.join("tmux.log");
-        let fake_tmux = write_fake_tmux(&temp_dir, &log_path);
-        let _tmux_guard = set_test_tmux_binary(Some(fake_tmux.to_str().unwrap()));
-
-        let mut manager = PtyManager::new();
-        let session_id = Uuid::new_v4();
-
-        manager
-            .attach_tmux_session(session_id, NoopEmitter::new())
-            .expect("attach should use the resolved tmux binary");
-
-        assert!(wait_for_log_entry(&log_path, "display-message"));
-        assert!(wait_for_log_entry(&log_path, "attach-session"));
-
-        let _ = manager.close_session(session_id);
-        let _ = fs::remove_dir_all(&temp_dir);
     }
 
     #[cfg(unix)]

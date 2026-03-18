@@ -68,6 +68,7 @@ async fn extract_github_repo_async(repo_path: String) -> Result<String, String> 
 async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, String> {
     let nwo = extract_github_repo_async(repo_path).await?;
 
+    tracing::debug!(repo = %nwo, "fetching issues via gh issue list");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -81,16 +82,26 @@ async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, Stri
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, error = %e, "failed to spawn gh process");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("rate limit") || stderr.contains("403") {
+            tracing::warn!(repo = %nwo, "GitHub API rate limit detected");
+        }
+        tracing::error!(repo = %nwo, stderr = %stderr, "gh issue list failed");
         return Err(format!("gh issue list failed: {}", stderr));
     }
 
-    let issues: Vec<GithubIssue> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+    let issues: Vec<GithubIssue> = serde_json::from_slice(&output.stdout).map_err(|e| {
+        tracing::error!(repo = %nwo, error = %e, "failed to parse gh issue list output");
+        format!("Failed to parse gh output: {}", e)
+    })?;
 
+    tracing::debug!(repo = %nwo, count = issues.len(), "fetched issues");
     Ok(issues)
 }
 
@@ -106,13 +117,18 @@ pub(crate) async fn list_github_issues(
             .map_err(|e| format!("Cache lock error: {}", e))?;
         match cache.get(&repo_path) {
             Some(entry) if entry.is_fresh() => {
+                tracing::debug!(repo = %repo_path, "issue cache hit (fresh)");
                 return Ok(entry.issues.clone());
             }
             Some(entry) => {
+                tracing::debug!(repo = %repo_path, "issue cache hit (stale), refreshing in background");
                 // Stale hit: return stale data and refresh in background
                 Some(entry.issues.clone())
             }
-            None => None,
+            None => {
+                tracing::debug!(repo = %repo_path, "issue cache miss");
+                None
+            }
         }
     };
 
@@ -143,6 +159,7 @@ pub(crate) async fn list_github_issues(
 }
 
 pub(crate) async fn generate_issue_body(title: String) -> Result<String, String> {
+    tracing::debug!("generating issue body via claude CLI");
     let prompt = format!(
         "Write a concise GitHub issue body for an issue titled: \"{}\". \
          Include a Summary section and a Details section. \
@@ -154,11 +171,16 @@ pub(crate) async fn generate_issue_body(title: String) -> Result<String, String>
         .env_remove("CLAUDECODE")
         .output()
         .await
-        .map_err(|e| format!("Failed to run claude: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to spawn claude CLI");
+            format!("Failed to run claude: {}", e)
+        })?;
 
     if output.status.success() {
+        tracing::debug!("claude CLI generated issue body");
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
+        tracing::warn!("claude CLI returned non-zero exit, using empty body");
         Ok(String::new())
     }
 }
@@ -171,21 +193,31 @@ pub(crate) async fn create_github_issue(
 ) -> Result<GithubIssue, String> {
     let nwo = extract_github_repo_async(repo_path.clone()).await?;
 
+    tracing::info!(repo = %nwo, title = %title, "creating GitHub issue");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue", "create", "--repo", &nwo, "--title", &title, "--body", &body,
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, error = %e, "failed to spawn gh for issue create");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("rate limit") || stderr.contains("403") {
+            tracing::warn!(repo = %nwo, "GitHub API rate limit detected during issue create");
+        }
+        tracing::error!(repo = %nwo, stderr = %stderr, "gh issue create failed");
         return Err(format!("gh issue create failed: {}", stderr));
     }
 
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let number = parse_github_issue_url(&url)?;
+
+    tracing::info!(repo = %nwo, issue_number = number, "created GitHub issue");
 
     let issue = GithubIssue {
         number,
@@ -209,6 +241,7 @@ pub(crate) async fn post_github_comment(
 ) -> Result<(), String> {
     let nwo = extract_github_repo_async(repo_path).await?;
 
+    tracing::debug!(repo = %nwo, issue_number, "posting comment on issue");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -221,13 +254,18 @@ pub(crate) async fn post_github_comment(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, issue_number, error = %e, "failed to spawn gh for comment");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(repo = %nwo, issue_number, stderr = %stderr, "gh issue comment failed");
         return Err(format!("gh issue comment failed: {}", stderr));
     }
 
+    tracing::debug!(repo = %nwo, issue_number, "comment posted");
     Ok(())
 }
 
@@ -246,6 +284,7 @@ pub(crate) async fn add_github_label(
         .unwrap_or("Issue is being worked on in a session");
     let col = color.as_deref().unwrap_or("F9E2AF");
 
+    tracing::debug!(repo = %nwo, label = %label, "ensuring label exists on repo");
     // Ensure the label exists on the repo (ignore errors if it already exists)
     let _ = tokio::process::Command::new("gh")
         .args([
@@ -262,6 +301,7 @@ pub(crate) async fn add_github_label(
         .output()
         .await;
 
+    tracing::debug!(repo = %nwo, issue_number, label = %label, "adding label to issue");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -274,13 +314,18 @@ pub(crate) async fn add_github_label(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, issue_number, error = %e, "failed to spawn gh for add label");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(repo = %nwo, issue_number, label = %label, stderr = %stderr, "gh issue edit (add label) failed");
         return Err(format!("gh issue edit failed: {}", stderr));
     }
 
+    tracing::debug!(repo = %nwo, issue_number, label = %label, "label added");
     if let Ok(mut cache) = state.issue_cache.lock() {
         cache.add_label(&repo_path, issue_number, &label);
     }
@@ -296,6 +341,7 @@ pub(crate) async fn remove_github_label(
 ) -> Result<(), String> {
     let nwo = extract_github_repo_async(repo_path.clone()).await?;
 
+    tracing::debug!(repo = %nwo, issue_number, label = %label, "removing label from issue");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -308,13 +354,18 @@ pub(crate) async fn remove_github_label(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, issue_number, error = %e, "failed to spawn gh for remove label");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(repo = %nwo, issue_number, label = %label, stderr = %stderr, "gh issue edit (remove label) failed");
         return Err(format!("gh issue edit failed: {}", stderr));
     }
 
+    tracing::debug!(repo = %nwo, issue_number, label = %label, "label removed");
     if let Ok(mut cache) = state.issue_cache.lock() {
         cache.remove_label(&repo_path, issue_number, &label);
     }
@@ -403,6 +454,7 @@ pub(crate) async fn get_maintainer_issues(
         _ => extract_github_repo_async(repo_path).await?,
     };
 
+    tracing::debug!(repo = %nwo, "fetching maintainer issues");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -420,14 +472,25 @@ pub(crate) async fn get_maintainer_issues(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, error = %e, "failed to spawn gh for maintainer issues");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(repo = %nwo, stderr = %stderr, "gh issue list (maintainer) failed");
         return Err(format!("gh issue list failed: {}", stderr));
     }
 
-    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
+    let issues: Vec<crate::models::MaintainerIssue> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, error = %e, "failed to parse maintainer issues");
+            format!("Failed to parse gh output: {}", e)
+        })?;
+
+    tracing::debug!(repo = %nwo, count = issues.len(), "fetched maintainer issues");
+    Ok(issues)
 }
 
 pub(crate) async fn get_maintainer_issue_detail(
@@ -440,6 +503,7 @@ pub(crate) async fn get_maintainer_issue_detail(
         _ => extract_github_repo_async(repo_path).await?,
     };
 
+    tracing::debug!(repo = %nwo, issue_number, "fetching maintainer issue detail");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -452,19 +516,31 @@ pub(crate) async fn get_maintainer_issue_detail(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, issue_number, error = %e, "failed to spawn gh for issue detail");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(repo = %nwo, issue_number, stderr = %stderr, "gh issue view failed");
         return Err(format!("gh issue view failed: {}", stderr));
     }
 
-    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
+    let detail: crate::models::MaintainerIssueDetail = serde_json::from_slice(&output.stdout)
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, issue_number, error = %e, "failed to parse issue detail");
+            format!("Failed to parse gh output: {}", e)
+        })?;
+
+    tracing::debug!(repo = %nwo, issue_number, "fetched maintainer issue detail");
+    Ok(detail)
 }
 
 pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue>, String> {
     let nwo = extract_github_repo_async(repo_path).await?;
 
+    tracing::debug!(repo = %nwo, "fetching assigned issues");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -478,28 +554,36 @@ pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<Assign
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, error = %e, "failed to spawn gh for assigned issues");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(repo = %nwo, stderr = %stderr, "gh issue list (assigned) failed");
         return Err(format!("gh issue list failed: {}", stderr));
     }
 
-    let all_issues: Vec<AssignedIssue> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+    let all_issues: Vec<AssignedIssue> = serde_json::from_slice(&output.stdout).map_err(|e| {
+        tracing::error!(repo = %nwo, error = %e, "failed to parse assigned issues");
+        format!("Failed to parse gh output: {}", e)
+    })?;
 
     // Filter to only issues that have at least one assignee
-    let assigned = all_issues
+    let assigned: Vec<AssignedIssue> = all_issues
         .into_iter()
         .filter(|issue| !issue.assignees.is_empty())
         .collect();
 
+    tracing::debug!(repo = %nwo, count = assigned.len(), "fetched assigned issues");
     Ok(assigned)
 }
 
 pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerReport>, String> {
     let nwo = extract_github_repo_async(repo_path).await?;
 
+    tracing::debug!(repo = %nwo, "fetching worker reports");
     let output = tokio::process::Command::new("gh")
         .args([
             "issue",
@@ -517,17 +601,24 @@ pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerRe
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(repo = %nwo, error = %e, "failed to spawn gh for worker reports");
+            format!("Failed to run gh: {}", e)
+        })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::error!(repo = %nwo, stderr = %stderr, "gh issue list (worker reports) failed");
         return Err(format!("gh issue list failed: {}", stderr));
     }
 
-    let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+    let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).map_err(|e| {
+        tracing::error!(repo = %nwo, error = %e, "failed to parse worker reports");
+        format!("Failed to parse gh output: {}", e)
+    })?;
 
     let reports = parse_worker_reports(raw);
+    tracing::debug!(repo = %nwo, count = reports.len(), "fetched worker reports");
 
     Ok(reports)
 }

@@ -39,6 +39,7 @@ impl IssueCache {
     }
 
     pub fn insert(&mut self, repo_path: String, issues: Vec<GithubIssue>) {
+        tracing::debug!(repo = %repo_path, count = issues.len(), "caching issues for repo");
         self.entries.insert(
             repo_path,
             CacheEntry {
@@ -49,6 +50,7 @@ impl IssueCache {
     }
 
     pub fn invalidate(&mut self, repo_path: &str) {
+        tracing::debug!(repo = %repo_path, "invalidating issue cache for repo");
         self.entries.remove(repo_path);
     }
 
@@ -90,13 +92,14 @@ impl IssueCache {
 }
 
 pub struct AppState {
-    pub storage: Mutex<Storage>,
+    pub storage: Arc<Mutex<Storage>>,
     pub pty_manager: Arc<Mutex<PtyManager>>,
     pub issue_cache: Arc<Mutex<IssueCache>>,
     pub(crate) secure_env_request: Mutex<Option<crate::secure_env::ActiveSecureEnvRequest>>,
     pub emitter: Arc<dyn EventEmitter>,
     pub staging_lock: TokioMutex<()>,
     pub voice_pipeline: Arc<TokioMutex<Option<VoicePipeline>>>,
+    pub frontend_log: std::sync::Mutex<Option<std::fs::File>>,
     /// Incremented each time stop_voice_pipeline is called. start_voice_pipeline
     /// reads this before init and checks again after — if it changed, a stop was
     /// requested during init so the new pipeline is dropped instead of stored.
@@ -105,15 +108,28 @@ pub struct AppState {
 
 impl AppState {
     pub fn from_storage(storage: Storage, emitter: Arc<dyn EventEmitter>) -> std::io::Result<Self> {
+        tracing::info!("initializing app state");
         storage.ensure_dirs()?;
+        let frontend_log = match crate::logging::init_frontend_log_writer(&storage.base_dir()) {
+            Ok((file, _path)) => {
+                tracing::debug!("frontend log writer initialized");
+                Mutex::new(Some(file))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "failed to initialize frontend log writer");
+                Mutex::new(None)
+            }
+        };
+        tracing::info!("app state initialized");
         Ok(Self {
-            storage: Mutex::new(storage),
+            storage: Arc::new(Mutex::new(storage)),
             pty_manager: Arc::new(Mutex::new(PtyManager::new())),
             issue_cache: Arc::new(Mutex::new(IssueCache::new())),
             secure_env_request: Mutex::new(None),
             emitter,
             staging_lock: TokioMutex::new(()),
             voice_pipeline: Arc::new(TokioMutex::new(None)),
+            frontend_log,
             voice_generation: AtomicU64::new(0),
         })
     }

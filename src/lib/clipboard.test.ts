@@ -1,9 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
-import { clipboardHasImage } from "./clipboard";
 
+vi.mock("$lib/platform", () => ({ isTauri: true }));
 vi.mock("@tauri-apps/plugin-clipboard-manager", () => ({
   readImage: vi.fn(),
 }));
+
+import { clipboardHasImage } from "./clipboard";
 
 import { readImage } from "@tauri-apps/plugin-clipboard-manager";
 const mockReadImage = vi.mocked(readImage);

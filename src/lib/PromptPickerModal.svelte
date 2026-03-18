@@ -80,7 +80,14 @@
   }
 </script>
 
-<div class="overlay" onclick={onClose} role="dialog">
+<div
+  class="overlay"
+  onclick={onClose}
+  onkeydown={handleKeydown}
+  role="dialog"
+  tabindex="-1"
+  aria-modal="true"
+>
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">Load Saved Prompt</div>

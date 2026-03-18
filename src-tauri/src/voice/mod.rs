@@ -117,7 +117,7 @@ impl VoicePipeline {
 
             match init_result {
                 Err(e) => {
-                    eprintln!("[voice] Pipeline init error: {e}");
+                    tracing::error!("Pipeline init error: {e}");
                     let _ = init_tx.send(Err(e.clone()));
                     let payload = serde_json::json!({
                         "state": "error",
@@ -131,7 +131,7 @@ impl VoicePipeline {
                     if let Err(e) =
                         run_pipeline_loop(components, stop, pause, emitter_clone.clone())
                     {
-                        eprintln!("[voice] Pipeline error: {e}");
+                        tracing::error!("Pipeline error: {e}");
                         let payload = serde_json::json!({
                             "state": "error",
                             "error": e,
@@ -397,7 +397,7 @@ fn process_speech(
         return Ok((SpeechResult::Done, app_server));
     }
 
-    eprintln!("[voice] You: {text}");
+    tracing::info!("user: {text}");
     emit_debug(ctx.emitter, &format!("stt: \"{}\"", text));
     let _ = ctx.emitter.emit(
         "voice-transcript",
@@ -440,7 +440,7 @@ fn process_speech(
                         let _ = sentence_tx.send(remaining);
                     }
                     if !full_response.is_empty() {
-                        eprintln!("[voice] Assistant: {full_response}");
+                        tracing::info!("assistant: {full_response}");
                         emit_debug(&emitter_for_llm, "llm: done");
                         let _ = emitter_for_llm.emit(
                             "voice-transcript",
@@ -488,7 +488,7 @@ fn process_speech(
                         emit_debug(ctx.emitter, &format!("tts: \"{}\"", clean));
                         match ctx.tts_engine.synthesize(&clean) {
                             Ok(samples) => playback.push_samples(&samples),
-                            Err(e) => eprintln!("[voice] TTS error: {e}"),
+                            Err(e) => tracing::error!("TTS error: {e}"),
                         }
                     }
                     Err(_) => break, // LLM done, channel closed
@@ -635,7 +635,7 @@ fn process_speech(
     if interrupted {
         let partial = spoken_sentences.join(" ");
         if !partial.is_empty() {
-            eprintln!("[voice] Assistant (interrupted): {partial}");
+            tracing::info!("assistant (interrupted): {partial}");
             let _ = ctx.emitter.emit(
                 "voice-transcript",
                 &serde_json::json!({"role": "assistant", "text": format!("{partial}…")})

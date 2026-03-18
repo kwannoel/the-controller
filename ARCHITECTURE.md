@@ -17,10 +17,10 @@ See: `src-tauri/src/commands.rs` (`ensure_claude_md_symlink`)
 
 ### Skill Synchronization on Bootstrap
 
-Skills live in `skills/the-controller-*/` inside the repo. On app startup, `sync_skills()` symlinks each skill directory into both agent homes:
+Skills live in `skills/<name>/` inside the repo (each containing a `SKILL.md`). On app startup, `sync_skills()` symlinks each skill directory into both agent homes using the raw directory name:
 
-- `~/.claude/skills/the-controller-<name>/` (Claude Code)
-- `~/.codex/skills/custom/the-controller-<name>/` (Codex)
+- `~/.claude/skills/<name>/` (Claude Code)
+- `~/.codex/skills/custom/<name>/` (Codex)
 
 The sync is idempotent, worktree-aware (resolves to the main repo via `git rev-parse --git-common-dir`), and cleans up stale symlinks whose targets no longer exist. Regular files are never overwritten — only symlinks are managed.
 

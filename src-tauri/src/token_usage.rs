@@ -14,10 +14,18 @@ pub struct TokenDataPoint {
 
 /// Get token usage data for a session by reading JSONL files from disk.
 pub fn get_token_usage(working_dir: &str, kind: &str) -> Result<Vec<TokenDataPoint>, String> {
+    tracing::debug!(working_dir, kind, "fetching token usage");
     match kind {
         "claude" => get_claude_token_usage(working_dir),
         "codex" => get_codex_token_usage(working_dir),
-        _ => Err(format!("Unknown session kind: {}", kind)),
+        "cursor-agent" => {
+            tracing::warn!(kind, "token usage tracking not supported for this kind");
+            Err("Token usage tracking is not yet supported for cursor-agent".into())
+        }
+        _ => {
+            tracing::error!(kind, "unknown session kind");
+            Err(format!("Unknown session kind: {}", kind))
+        }
     }
 }
 
@@ -27,8 +35,12 @@ pub fn get_token_usage(working_dir: &str, kind: &str) -> Result<Vec<TokenDataPoi
 
 fn get_claude_token_usage(working_dir: &str) -> Result<Vec<TokenDataPoint>, String> {
     let project_dir = claude_project_dir(working_dir)?;
+    tracing::debug!(dir = %project_dir.display(), "resolved claude project directory");
     let jsonl_path = most_recent_jsonl(&project_dir)?;
-    parse_claude_jsonl(&jsonl_path)
+    tracing::debug!(path = %jsonl_path.display(), "reading most recent claude jsonl");
+    let points = parse_claude_jsonl(&jsonl_path)?;
+    tracing::debug!(count = points.len(), "parsed claude token data points");
+    Ok(points)
 }
 
 /// Derive the Claude Code project directory from a working directory path.
@@ -37,6 +49,7 @@ fn claude_project_dir(working_dir: &str) -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
     let claude_projects = home.join(".claude").join("projects");
     if !claude_projects.exists() {
+        tracing::error!("~/.claude/projects/ does not exist");
         return Err("~/.claude/projects/ does not exist".into());
     }
 
@@ -46,11 +59,13 @@ fn claude_project_dir(working_dir: &str) -> Result<PathBuf, String> {
     // Try exact match first
     let candidate = claude_projects.join(&encoded);
     if candidate.is_dir() {
+        tracing::debug!(path = %candidate.display(), "exact match for claude project dir");
         return Ok(candidate);
     }
 
     // Fallback: scan for directories that contain the working_dir path as a suffix.
     // This handles slight encoding differences between Claude versions.
+    tracing::debug!("exact match not found, scanning for fuzzy match");
     let entries = fs::read_dir(&claude_projects).map_err(|e| e.to_string())?;
     let mut best: Option<PathBuf> = None;
     for entry in entries.flatten() {
@@ -62,12 +77,18 @@ fn claude_project_dir(working_dir: &str) -> Result<PathBuf, String> {
         }
     }
 
+    if best.is_none() {
+        tracing::warn!(working_dir, "no claude project directory found");
+    }
     best.ok_or_else(|| format!("No Claude project directory found for {}", working_dir))
 }
 
 /// Find the most recently modified `.jsonl` file in a directory.
 fn most_recent_jsonl(dir: &Path) -> Result<PathBuf, String> {
-    let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let entries = fs::read_dir(dir).map_err(|e| {
+        tracing::error!(dir = %dir.display(), error = %e, "failed to read directory");
+        e.to_string()
+    })?;
     let mut best: Option<(PathBuf, std::time::SystemTime)> = None;
 
     for entry in entries.flatten() {
@@ -82,6 +103,9 @@ fn most_recent_jsonl(dir: &Path) -> Result<PathBuf, String> {
         }
     }
 
+    if best.is_none() {
+        tracing::warn!(dir = %dir.display(), "no .jsonl files found");
+    }
     best.map(|(p, _)| p)
         .ok_or_else(|| format!("No .jsonl files found in {}", dir.display()))
 }
@@ -89,7 +113,10 @@ fn most_recent_jsonl(dir: &Path) -> Result<PathBuf, String> {
 /// Parse a Claude Code JSONL file for token usage data.
 /// Looks for entries with `type: "assistant"` that have `message.usage`.
 fn parse_claude_jsonl(path: &Path) -> Result<Vec<TokenDataPoint>, String> {
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let content = fs::read_to_string(path).map_err(|e| {
+        tracing::error!(path = %path.display(), error = %e, "failed to read claude jsonl file");
+        e.to_string()
+    })?;
     let mut points = Vec::new();
 
     for line in content.lines() {
@@ -153,12 +180,16 @@ fn get_codex_token_usage(working_dir: &str) -> Result<Vec<TokenDataPoint>, Strin
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
     let codex_sessions = home.join(".codex").join("sessions");
     if !codex_sessions.exists() {
+        tracing::error!("~/.codex/sessions/ does not exist");
         return Err("~/.codex/sessions/ does not exist".into());
     }
 
     // Find the JSONL file whose session_meta.payload.cwd matches working_dir.
     let jsonl_path = find_codex_session_file(&codex_sessions, working_dir)?;
-    parse_codex_jsonl(&jsonl_path)
+    tracing::debug!(path = %jsonl_path.display(), "found codex session file");
+    let points = parse_codex_jsonl(&jsonl_path)?;
+    tracing::debug!(count = points.len(), "parsed codex token data points");
+    Ok(points)
 }
 
 /// Walk the `~/.codex/sessions/YYYY/MM/DD/` tree and find the most recent file
@@ -183,6 +214,11 @@ fn find_codex_session_file(sessions_dir: &Path, working_dir: &str) -> Result<Pat
         }
     }
 
+    tracing::debug!(
+        candidate_count = candidates.len(),
+        "scanned codex session files"
+    );
+
     // Sort most recent first, check only recent files to avoid scanning everything.
     candidates.sort_by(|a, b| b.1.cmp(&a.1));
 
@@ -192,6 +228,7 @@ fn find_codex_session_file(sessions_dir: &Path, working_dir: &str) -> Result<Pat
         }
     }
 
+    tracing::warn!(working_dir, "no codex session file matched working dir");
     Err(format!(
         "No Codex session file found for working dir: {}",
         working_dir
@@ -243,7 +280,10 @@ fn codex_session_matches_cwd(path: &Path, working_dir: &str) -> bool {
 /// Looks for entries with `type: "event_msg"` and `payload.type: "token_count"`.
 /// Uses `last_token_usage` for per-turn deltas.
 fn parse_codex_jsonl(path: &Path) -> Result<Vec<TokenDataPoint>, String> {
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    let content = fs::read_to_string(path).map_err(|e| {
+        tracing::error!(path = %path.display(), error = %e, "failed to read codex jsonl file");
+        e.to_string()
+    })?;
     let mut points = Vec::new();
     let mut prev_input: u64 = 0;
     let mut prev_output: u64 = 0;
@@ -316,7 +356,7 @@ mod tests {
     fn test_claude_project_dir_encoding() {
         // The encoding replaces `/` and `.` with `-`
         let path = "/Users/noel/.the-controller/worktrees/foo/session-1";
-        let encoded = path.replace('/', "-").replace('.', "-");
+        let encoded = path.replace(['/', '.'], "-");
         assert_eq!(
             encoded,
             "-Users-noel--the-controller-worktrees-foo-session-1"

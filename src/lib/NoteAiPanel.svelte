@@ -25,8 +25,13 @@
   let inputEl: HTMLInputElement | undefined;
 
   // Track the current selection range (may shift after replacements)
-  let currentFrom = $state(request.from);
-  let currentTo = $state(request.to);
+  let currentFrom = $state(0);
+  let currentTo = $state(0);
+
+  $effect(() => {
+    currentFrom = request.from;
+    currentTo = request.to;
+  });
 
   // Position the panel near the selection, clamped within the viewport
   let panelStyle = $derived((() => {

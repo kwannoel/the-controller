@@ -29,6 +29,12 @@ impl AudioOutput {
             return Ok(());
         }
 
+        tracing::debug!(
+            sample_count = samples.len(),
+            sample_rate,
+            "starting blocking audio playback"
+        );
+
         let device = self.device()?;
         let default_config = device
             .default_output_config()
@@ -84,7 +90,7 @@ impl AudioOutput {
                     }
                 },
                 |err| {
-                    eprintln!("[voice] Audio output error: {err}");
+                    tracing::error!("audio output error: {err}");
                 },
                 None,
             )
@@ -105,6 +111,7 @@ impl AudioOutput {
     /// Start a streaming audio output. Audio can be pushed incrementally via the returned handle.
     /// The cpal stream outputs silence when the buffer is empty (between chunks).
     pub fn start_streaming(&self, source_sample_rate: u32) -> Result<StreamingPlayback, String> {
+        tracing::debug!(source_sample_rate, "starting streaming audio playback");
         let device = self.device()?;
         let default_config = device
             .default_output_config()
@@ -126,7 +133,7 @@ impl AudioOutput {
             .build_output_stream(
                 &config,
                 move |output: &mut [f32], _info: &cpal::OutputCallbackInfo| {
-                    let mut buf = buf_cb.lock().unwrap();
+                    let mut buf = buf_cb.lock().unwrap_or_else(|e| e.into_inner());
                     for sample in output.iter_mut() {
                         if let Some(s) = buf.pop_front() {
                             *sample = s;
@@ -138,7 +145,7 @@ impl AudioOutput {
                         dp_cb.store(true, Ordering::Relaxed);
                     }
                 },
-                |err| eprintln!("[voice] Streaming audio error: {err}"),
+                |err| tracing::error!("streaming audio error: {err}"),
                 None,
             )
             .map_err(|e| format!("Failed to build streaming output: {e}"))?;
@@ -196,12 +203,13 @@ impl StreamingPlayback {
             }
         }
 
-        let mut buf = self.buffer.lock().unwrap();
+        let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
         buf.extend(resampled);
     }
 
     /// Signal that no more audio will be pushed and wait for playback to drain.
     pub fn finish(self) {
+        tracing::debug!("streaming playback finishing, waiting for drain");
         self.done_writing.store(true, Ordering::Relaxed);
         while !self.done_playing.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -216,8 +224,9 @@ impl StreamingPlayback {
 
     /// Cancel playback immediately — clear the buffer and signal done.
     pub fn cancel(self) {
+        tracing::debug!("streaming playback cancelled");
         {
-            let mut buf = self.buffer.lock().unwrap();
+            let mut buf = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
             buf.clear();
         }
         self.done_writing.store(true, Ordering::Relaxed);

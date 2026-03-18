@@ -19,19 +19,26 @@ const ENV_MARKER: &str = "___THE_CONTROLLER_ENV___";
 /// include variables set in `.zshrc`, `.zprofile`, etc. This function
 /// spawns the user's `$SHELL` as an interactive login shell (`-ilc`) and
 /// captures the resulting environment so child processes (PTY sessions,
-/// tmux) see the same variables the user would in a terminal.
+/// broker) see the same variables the user would in a terminal.
 ///
 /// Must be called early in startup, before spawning any threads, because
 /// `std::env::set_var` is not thread-safe.
 pub fn inherit_shell_env() {
+    tracing::info!("starting shell environment inheritance");
     let env = resolve_shell_env();
+    let count = env.len();
     for (key, val) in env {
         std::env::set_var(&key, &val);
     }
+    tracing::info!(count, "shell environment applied");
 }
 
 fn resolve_shell_env() -> HashMap<String, String> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+        tracing::warn!("$SHELL not set, falling back to /bin/zsh");
+        "/bin/zsh".to_string()
+    });
+    tracing::debug!(shell = %shell, "detected user shell");
 
     let script = format!("echo '{}'; /usr/bin/env", ENV_MARKER);
 
@@ -43,7 +50,10 @@ fn resolve_shell_env() -> HashMap<String, String> {
         .spawn()
     {
         Ok(c) => c,
-        Err(_) => return HashMap::new(),
+        Err(e) => {
+            tracing::error!(shell = %shell, error = %e, "failed to spawn shell for env inheritance");
+            return HashMap::new();
+        }
     };
 
     // Wait with timeout to avoid blocking app startup if the shell hangs.
@@ -53,13 +63,17 @@ fn resolve_shell_env() -> HashMap<String, String> {
             Ok(Some(_)) => break,
             Ok(None) => {
                 if start.elapsed() > TIMEOUT {
+                    tracing::error!(shell = %shell, "shell env capture timed out, killing child process");
                     let _ = child.kill();
                     let _ = child.wait();
                     return HashMap::new();
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            Err(_) => return HashMap::new(),
+            Err(e) => {
+                tracing::error!(error = %e, "error waiting for shell process");
+                return HashMap::new();
+            }
         }
     }
 

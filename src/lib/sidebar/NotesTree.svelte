@@ -47,6 +47,8 @@
         next.set(folder, entries);
         return next;
       });
+    }).catch(err => {
+      console.error(`Failed to fetch notes for folder "${folder}":`, err);
     });
   }
 
@@ -88,8 +90,15 @@
             class:focus-target={isNoteFocused(folder, note.filename)}
             data-note-id="{folder}:{note.filename}"
             tabindex="0"
+            role="button"
             onfocusin={() => onNoteFocus(note.filename, folder)}
             ondblclick={() => onNoteSelect(note.filename, folder)}
+            onkeydown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onNoteSelect(note.filename, folder);
+              }
+            }}
           >
             <span class="note-name">{displayName(note.filename)}</span>
           </div>

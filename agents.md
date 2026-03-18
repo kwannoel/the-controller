@@ -46,3 +46,13 @@ git branch -d <feature-branch>
 - `pnpm tauri dev` — Run the app in development mode
 - `cd src-tauri && cargo test` — Run Rust tests
 - `pnpm test` — Run frontend tests
+
+## Format And Lint (CRITICAL — ALWAYS RUN)
+
+After any code change, before claiming the task is complete, you MUST run the repo's format/lint checks and read the actual output.
+
+- `pnpm check` — frontend typecheck/lint gate; warnings count, so fix them instead of ignoring them
+- `cd src-tauri && cargo fmt --check` — Rust formatting gate
+- `cd src-tauri && cargo clippy -- -D warnings` — Rust lint gate
+
+Do not claim success based on expectation. If any of these fail, report the failure and keep working or explicitly surface the blocker.

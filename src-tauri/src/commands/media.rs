@@ -11,20 +11,29 @@ pub(crate) async fn copy_image_file_to_clipboard(
 ) -> Result<(), String> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
 
+    tracing::debug!(path, "opening image file for clipboard copy");
     let image_data = tokio::task::spawn_blocking(move || {
-        let img = image::open(&path).map_err(|e| format!("Failed to open image: {e}"))?;
+        let img = image::open(&path).map_err(|e| {
+            tracing::error!(path, %e, "failed to open image");
+            format!("Failed to open image: {e}")
+        })?;
         let rgba = img.to_rgba8();
         let (width, height) = rgba.dimensions();
+        tracing::debug!(width, height, "decoded image for clipboard");
         Ok::<_, String>((rgba.into_raw(), width, height))
     })
     .await
-    .map_err(|e| format!("Task failed: {e}"))??;
+    .map_err(|e| {
+        tracing::error!(%e, "image clipboard task panicked");
+        format!("Task failed: {e}")
+    })??;
 
     let (bytes, width, height) = image_data;
     let img = tauri::image::Image::new_owned(bytes, width, height);
-    app.clipboard()
-        .write_image(&img)
-        .map_err(|e| format!("Failed to write image to clipboard: {e}"))
+    app.clipboard().write_image(&img).map_err(|e| {
+        tracing::error!(%e, "failed to write image to clipboard");
+        format!("Failed to write image to clipboard: {e}")
+    })
 }
 
 /// Capture a screenshot and save it to a temporary file.
@@ -43,10 +52,13 @@ pub(crate) async fn capture_app_screenshot(
     {
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
+        tracing::info!(cropped, "capturing screenshot");
+
         let tmp_path = std::env::temp_dir().join("the-controller-screenshot.png");
         let tmp_str = tmp_path.to_str().ok_or("Invalid temp path")?.to_string();
 
         let status = if cropped {
+            tracing::debug!("launching interactive crop selection");
             tokio::task::spawn_blocking({
                 let tmp_str = tmp_str.clone();
                 move || {
@@ -72,6 +84,7 @@ pub(crate) async fn capture_app_screenshot(
                 }
             };
 
+            tracing::debug!(window_id, "capturing window by ID");
             tokio::task::spawn_blocking({
                 let tmp_str = tmp_str.clone();
                 move || {
@@ -84,15 +97,23 @@ pub(crate) async fn capture_app_screenshot(
             })
         }
         .await
-        .map_err(|e| format!("Task failed: {e}"))?
-        .map_err(|e| format!("Failed to run screencapture: {e}"))?;
+        .map_err(|e| {
+            tracing::error!(%e, "screenshot task panicked");
+            format!("Task failed: {e}")
+        })?
+        .map_err(|e| {
+            tracing::error!(%e, "failed to run screencapture");
+            format!("Failed to run screencapture: {e}")
+        })?;
 
         if !status.success() {
+            tracing::error!(code = ?status.code(), "screencapture exited with failure");
             return Err(
                 "screencapture failed (screen recording permission may be required)".into(),
             );
         }
 
+        tracing::info!(path = %tmp_str, "screenshot saved");
         Ok(tmp_str)
     }
 }

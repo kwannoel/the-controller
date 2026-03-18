@@ -1,10 +1,17 @@
-import { invoke } from "@tauri-apps/api/core";
 import App from "./App.svelte";
 import "./app.css";
 import { mount } from "svelte";
 
+const isTauri = !!(window as any).__TAURI_INTERNALS__;
+
 function logToBackend(message: string) {
-  invoke("log_frontend_error", { message }).catch(() => {});
+  if (isTauri) {
+    import("@tauri-apps/api/core").then(({ invoke }) => {
+      invoke("log_frontend_error", { message }).catch(() => {});
+    }).catch(() => {});
+  } else {
+    console.error("[frontend]", message);
+  }
 }
 
 window.addEventListener("error", (e) => {

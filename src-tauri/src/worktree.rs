@@ -22,20 +22,32 @@ impl WorktreeManager {
         branch_name: &str,
         worktree_dir: &Path,
     ) -> Result<PathBuf, String> {
-        let repo =
-            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+        tracing::info!(branch = branch_name, repo = repo_path, "creating worktree");
+
+        let repo = Repository::open(repo_path).map_err(|e| {
+            tracing::error!(repo = repo_path, %e, "failed to open repo");
+            format!("failed to open repo: {}", e)
+        })?;
 
         // Check if the repo has any commits (HEAD exists)
         let head = match repo.head() {
             Ok(h) => h,
             Err(e) if e.code() == git2::ErrorCode::UnbornBranch => {
                 // Repo has no commits — can't create worktree, use repo path directly
+                tracing::error!(
+                    repo = repo_path,
+                    "repo has unborn branch, cannot create worktree"
+                );
                 return Err("unborn_branch".to_string());
             }
-            Err(e) => return Err(format!("failed to get HEAD: {}", e)),
+            Err(e) => {
+                tracing::error!(repo = repo_path, %e, "failed to get HEAD");
+                return Err(format!("failed to get HEAD: {}", e));
+            }
         };
 
         if worktree_dir.exists() {
+            tracing::error!(path = %worktree_dir.display(), "worktree directory already exists");
             return Err(format!(
                 "worktree directory already exists: {}",
                 worktree_dir.display()
@@ -44,6 +56,7 @@ impl WorktreeManager {
 
         // Create the parent directory
         if let Some(parent) = worktree_dir.parent() {
+            tracing::debug!(path = %parent.display(), "creating worktree parent directory");
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("failed to create worktree parent dir: {}", e))?;
         }
@@ -53,9 +66,14 @@ impl WorktreeManager {
 
         // Delete stale branch if it exists (left over from a previous session)
         if let Ok(mut existing) = repo.find_branch(branch_name, git2::BranchType::Local) {
+            tracing::debug!(
+                branch = branch_name,
+                "deleting stale branch from previous session"
+            );
             let _ = existing.delete();
         }
 
+        tracing::debug!(branch = branch_name, "creating branch from HEAD");
         let branch = repo
             .branch(branch_name, &commit, false)
             .map_err(|e| format!("failed to create branch '{}': {}", branch_name, e))?;
@@ -65,6 +83,7 @@ impl WorktreeManager {
         let mut opts = git2::WorktreeAddOptions::new();
         opts.reference(Some(&reference));
 
+        tracing::debug!(path = %worktree_dir.display(), branch = branch_name, "adding worktree");
         repo.worktree(branch_name, worktree_dir, Some(&opts))
             .map_err(|e| format!("failed to create worktree: {}", e))?;
 
@@ -75,23 +94,24 @@ impl WorktreeManager {
         let env_dst = worktree_dir.join(".env");
         #[cfg(unix)]
         if let Err(e) = std::os::unix::fs::symlink(&env_src, &env_dst) {
-            eprintln!("Warning: failed to symlink .env to worktree: {}", e);
+            tracing::warn!("Failed to symlink .env to worktree: {}", e);
         }
         #[cfg(windows)]
         if let Err(e) = std::os::windows::fs::symlink_file(&env_src, &env_dst) {
-            eprintln!("Warning: failed to symlink .env to worktree: {}", e);
+            tracing::warn!("Failed to symlink .env to worktree: {}", e);
         }
 
         Ok(worktree_dir.to_path_buf())
     }
 
-    /// Detect the main branch name (main or master) for a repository.
+    /// Detect the primary branch name, preferring `main` and falling back to `master`.
     pub fn detect_main_branch(repo_path: &str) -> Result<String, String> {
         let repo =
             Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
 
         for name in &["main", "master"] {
             if repo.find_branch(name, git2::BranchType::Local).is_ok() {
+                tracing::debug!(branch = name, "detected main branch");
                 return Ok(name.to_string());
             }
         }
@@ -101,17 +121,20 @@ impl WorktreeManager {
             .head()
             .map_err(|e| format!("failed to get HEAD: {}", e))?;
         if let Some(shorthand) = head.shorthand() {
+            tracing::debug!(branch = shorthand, "falling back to HEAD as main branch");
             return Ok(shorthand.to_string());
         }
 
+        tracing::error!(repo = repo_path, "could not detect main branch");
         Err("Could not detect main branch".to_string())
     }
 
     /// Sync the main branch by pulling from remote.
-    /// Runs `git pull` in the repo directory.
-    pub fn sync_main(repo_path: &str) -> Result<(), String> {
+    /// Runs `git pull origin <branch>` in the repo directory.
+    pub fn sync_main(repo_path: &str, branch: &str) -> Result<(), String> {
+        tracing::debug!(branch, repo = repo_path, "syncing main branch from remote");
         let output = Command::new("git")
-            .args(["pull"])
+            .args(["pull", "origin", branch])
             .current_dir(repo_path)
             .output()
             .map_err(|e| format!("failed to run git pull: {}", e))?;
@@ -119,9 +142,14 @@ impl WorktreeManager {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             // Ignore "no remote" errors — local-only repos are fine
-            if stderr.contains("No remote") || stderr.contains("no tracking information") {
+            if stderr.contains("No remote")
+                || stderr.contains("no tracking information")
+                || stderr.contains("does not appear to be a git repository")
+            {
+                tracing::debug!(repo = repo_path, "no remote configured, skipping sync");
                 return Ok(());
             }
+            tracing::error!(branch, repo = repo_path, "git pull failed");
             return Err(format!("git pull failed: {}", stderr.trim()));
         }
         Ok(())
@@ -140,12 +168,14 @@ impl WorktreeManager {
         worktree_path: &str,
         branch_name: &str,
     ) -> Result<MergeResult, String> {
+        tracing::info!(branch = branch_name, "starting merge via PR");
         let main_branch = Self::detect_main_branch(repo_path)?;
 
         // 1. Sync main
-        Self::sync_main(repo_path)?;
+        Self::sync_main(repo_path, &main_branch)?;
 
         // 2. Rebase session branch onto main
+        tracing::debug!(branch = branch_name, main = %main_branch, "rebasing onto main");
         let rebase_output = Command::new("git")
             .args(["rebase", &main_branch])
             .current_dir(worktree_path)
@@ -155,6 +185,10 @@ impl WorktreeManager {
         if !rebase_output.status.success() {
             // Leave the rebase in progress — don't abort.
             // Caller will send a prompt to Claude in the session to resolve conflicts.
+            tracing::info!(
+                branch = branch_name,
+                "rebase has conflicts, leaving for resolution"
+            );
             return Ok(MergeResult::RebaseConflicts);
         }
 
@@ -169,6 +203,7 @@ impl WorktreeManager {
         branch_name: &str,
     ) -> Result<MergeResult, String> {
         // Push branch to remote
+        tracing::debug!(branch = branch_name, "pushing branch to remote");
         let push_output = Command::new("git")
             .args(["push", "-u", "origin", branch_name, "--force-with-lease"])
             .current_dir(worktree_path)
@@ -177,10 +212,12 @@ impl WorktreeManager {
 
         if !push_output.status.success() {
             let stderr = String::from_utf8_lossy(&push_output.stderr);
+            tracing::error!(branch = branch_name, "git push failed");
             return Err(format!("Push failed: {}", stderr.trim()));
         }
 
         // Create PR via gh CLI
+        tracing::debug!(branch = branch_name, "creating PR via gh CLI");
         let pr_output = Command::new("gh")
             .args(["pr", "create", "--fill", "--head", branch_name])
             .current_dir(worktree_path)
@@ -191,6 +228,7 @@ impl WorktreeManager {
             let stderr = String::from_utf8_lossy(&pr_output.stderr);
             // If PR already exists, try to get its URL
             if stderr.contains("already exists") {
+                tracing::debug!(branch = branch_name, "PR already exists, fetching URL");
                 let view_output = Command::new("gh")
                     .args(["pr", "view", branch_name, "--json", "url", "-q", ".url"])
                     .current_dir(worktree_path)
@@ -204,12 +242,14 @@ impl WorktreeManager {
                     return Ok(MergeResult::PrCreated(url));
                 }
             }
+            tracing::error!(branch = branch_name, "PR creation failed");
             return Err(format!("PR creation failed: {}", stderr.trim()));
         }
 
         let pr_url = String::from_utf8_lossy(&pr_output.stdout)
             .trim()
             .to_string();
+        tracing::info!(branch = branch_name, url = %pr_url, "PR created");
         Ok(MergeResult::PrCreated(pr_url))
     }
 
@@ -221,13 +261,25 @@ impl WorktreeManager {
             if let Ok(content) = std::fs::read_to_string(&git_dir) {
                 if let Some(real_dir) = content.strip_prefix("gitdir: ") {
                     let real_dir = real_dir.trim();
-                    return Path::new(real_dir).join("rebase-merge").exists()
+                    let in_progress = Path::new(real_dir).join("rebase-merge").exists()
                         || Path::new(real_dir).join("rebase-apply").exists();
+                    if in_progress {
+                        tracing::debug!(worktree = worktree_path, "rebase in progress detected");
+                    }
+                    return in_progress;
                 }
             }
         }
         // Fallback: check directly
-        git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists()
+        let in_progress =
+            git_dir.join("rebase-merge").exists() || git_dir.join("rebase-apply").exists();
+        if in_progress {
+            tracing::debug!(
+                worktree = worktree_path,
+                "rebase in progress detected (fallback)"
+            );
+        }
+        in_progress
     }
 
     /// Check if `branch` needs rebasing onto `main_branch` (behind or diverged).
@@ -271,6 +323,11 @@ impl WorktreeManager {
     /// Returns `Ok(true)` if rebase succeeded, `Ok(false)` if there were conflicts
     /// (rebase left in progress for Claude to resolve).
     pub fn rebase_onto(worktree_path: &str, main_branch: &str) -> Result<bool, String> {
+        tracing::debug!(
+            worktree = worktree_path,
+            main = main_branch,
+            "rebasing worktree onto main"
+        );
         let output = Command::new("git")
             .args(["rebase", main_branch])
             .current_dir(worktree_path)
@@ -278,13 +335,19 @@ impl WorktreeManager {
             .map_err(|e| format!("failed to run git rebase: {}", e))?;
 
         if output.status.success() {
+            tracing::debug!(worktree = worktree_path, "rebase completed cleanly");
             Ok(true)
         } else {
             // Check if rebase is in progress (conflicts) vs outright failure
             if Self::is_rebase_in_progress(worktree_path) {
+                tracing::info!(
+                    worktree = worktree_path,
+                    "rebase has conflicts, left in progress"
+                );
                 Ok(false)
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
+                tracing::error!(worktree = worktree_path, "git rebase failed");
                 Err(format!("git rebase failed: {}", stderr.trim()))
             }
         }
@@ -314,10 +377,19 @@ impl WorktreeManager {
         repo_path: &str,
         branch_name: &str,
     ) -> Result<(), String> {
+        tracing::debug!(
+            branch = branch_name,
+            path = worktree_path,
+            "removing worktree"
+        );
         let worktree_dir = Path::new(worktree_path);
 
         // Remove the worktree directory if it exists
         if worktree_dir.exists() {
+            tracing::debug!(
+                path = worktree_path,
+                "removing worktree directory from disk"
+            );
             std::fs::remove_dir_all(worktree_dir)
                 .map_err(|e| format!("failed to remove worktree dir: {}", e))?;
         }
@@ -327,6 +399,7 @@ impl WorktreeManager {
             Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
 
         if let Ok(wt) = repo.find_worktree(branch_name) {
+            tracing::debug!(branch = branch_name, "pruning worktree git reference");
             let mut prune_opts = git2::WorktreePruneOptions::new();
             prune_opts.valid(true);
             prune_opts.working_tree(true);
@@ -336,6 +409,10 @@ impl WorktreeManager {
 
         // Clean up the branch so it doesn't block future worktree creation
         if let Ok(mut branch) = repo.find_branch(branch_name, git2::BranchType::Local) {
+            tracing::debug!(
+                branch = branch_name,
+                "deleting branch after worktree removal"
+            );
             let _ = branch.delete();
         }
 
@@ -437,7 +514,7 @@ mod tests {
     fn test_sync_main_local_only_repo() {
         let (_tmp, repo_path) = setup_test_repo();
         // sync_main on a repo with no remote should succeed (no-op)
-        let result = WorktreeManager::sync_main(&repo_path);
+        let result = WorktreeManager::sync_main(&repo_path, "main");
         assert!(
             result.is_ok(),
             "sync_main should succeed on local-only repo: {:?}",

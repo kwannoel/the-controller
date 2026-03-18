@@ -30,26 +30,35 @@ pub async fn slow_command() -> Result<String, String> {
 
 **Rule of thumb:** Any command that shells out (`Command::new(...)`) or does significant I/O must be async + spawn_blocking.
 
-## tmux Session Architecture
+## PTY Broker Architecture
 
-Sessions use tmux for process persistence. Two-layer PTY:
+Sessions use a PTY broker daemon for process persistence. Single-layer PTY:
 
-1. **tmux session** (`ctrl-{uuid}`): runs `claude` in a detached tmux session. Survives app exit.
-2. **Attachment PTY**: local `portable-pty` running `tmux attach -t ctrl-{uuid}`. Reader thread reads from this. Dropped on app exit, re-created on restart.
+1. **Broker daemon** (`pty-broker`): holds PTY master fds, spawns commands, survives app restarts. Communicates via Unix sockets.
+2. **Control socket** (`/tmp/the-controller/pty-broker.sock`): length-prefixed frames for Spawn, Kill, Resize, List, HasSession, Shutdown.
+3. **Data sockets** (`/tmp/the-controller/pty-{uuid}.sock`): raw bidirectional byte streams. On connect, broker dumps a 64KB ring buffer (reconnect replay), then streams live PTY output.
 
 Key behaviors:
-- `spawn_session`: creates tmux session (if not exists) + attaches via local PTY
-- `close_session`: kills tmux session + drops attachment PTY
-- Intentional quit (`RunEvent::ExitRequested`): kills all tmux sessions
-- Dev restart (process killed): no cleanup runs → tmux sessions survive → app reattaches on restart
-- `CLAUDECODE` env var is removed on `tmux new-session`, not on `tmux attach`
+- `spawn_session`: sends Spawn to broker (if not exists) + connects data socket
+- `close_session`: sends Kill to broker
+- App exit (`RunEvent::ExitRequested`): broker is **never** shut down — it is a persistent daemon that outlives the app
+- App restart: broker + sessions survive → app reconnects on restart
+- `CLAUDECODE` env var is removed in the env map sent to the broker's Spawn command
 
-tmux binary: resolved at runtime by checking `/opt/homebrew/bin/tmux`, then `/usr/local/bin/tmux`, then `tmux` on `PATH`. Session naming: `ctrl-{uuid}`.
+Broker binary: installed to `~/.the-controller/bin/pty-broker` at app startup. Auto-spawned by `BrokerClient` if not running. Shuts down on explicit Shutdown command or signal (SIGTERM/SIGINT).
 
 Affected files:
-- `src-tauri/src/tmux.rs` — tmux binary interactions
-- `src-tauri/src/pty_manager.rs` — `spawn_session`, `close_session`, `attach_tmux_session`
-- `src-tauri/src/lib.rs` — exit handler that kills tmux sessions
+- `src-tauri/src/broker_protocol.rs` — shared message types, frame encode/decode
+- `src-tauri/src/broker_client.rs` — client-side broker communication
+- `src-tauri/src/bin/pty_broker.rs` — the daemon binary
+- `src-tauri/src/pty_manager.rs` — `spawn_session`, `close_session`, `resize_session`
+- `src-tauri/src/lib.rs` — exit handler (cleans up staged sessions; broker is never shut down)
+
+## Shell Environment Inheritance (macOS GUI)
+
+macOS GUI apps inherit a minimal launchd environment missing `.zshrc` vars. `shell_env::inherit_shell_env()` resolves the user's full shell env at startup and applies it to the process. Must run before any threads (`set_var` is not thread-safe). For the broker, the full env map is sent explicitly in the Spawn request (with CLAUDECODE removed and PATH prepended).
+
+Affected files: `src-tauri/src/shell_env.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/pty_manager.rs`
 
 ## Shell Environment Inheritance (macOS GUI)
 
@@ -62,8 +71,7 @@ Affected files: `src-tauri/src/shell_env.rs`, `src-tauri/src/lib.rs`, `src-tauri
 Claude Code sets a `CLAUDECODE` env var to detect nested sessions. All `Command::new("claude")` calls and PTY `CommandBuilder` spawns must include `.env_remove("CLAUDECODE")` to prevent "cannot be launched inside another Claude Code session" errors.
 
 Affected locations:
-- `src-tauri/src/tmux.rs` — `create_session` (removes CLAUDECODE for tmux-backed sessions)
-- `src-tauri/src/pty_manager.rs` — `spawn_command` (removes CLAUDECODE for direct commands)
+- `src-tauri/src/pty_manager.rs` — `spawn_broker_session` (removes CLAUDECODE from env map), `spawn_direct_session` (removes CLAUDECODE for direct commands)
 - `src-tauri/src/config.rs` — `check_claude_cli_status`, `generate_names_via_cli`
 - `src-tauri/src/maintainer.rs` — `run_health_check` (removes CLAUDECODE for health check subprocess)
 
@@ -80,11 +88,37 @@ Session status (idle/working/exited) is detected using Claude Code hooks, not PT
 
 **Key files:**
 - `src-tauri/src/status_socket.rs` — socket listener, message parsing, hook JSON generation
-- `src-tauri/src/tmux.rs` — passes `--settings` and `THE_CONTROLLER_SESSION_ID` env var
-- `src-tauri/src/pty_manager.rs` — same for direct (non-tmux) sessions
+- `src-tauri/src/pty_manager.rs` — passes `--settings` and `THE_CONTROLLER_SESSION_ID` env var
 - `src/lib/Sidebar.svelte` — listens for `session-status-hook` events
 
 **Edge cases:**
 - Hook commands use `nc -w 2` + `; true` to avoid blocking Claude Code (`timeout` is not available on macOS)
 - Stale socket files are cleaned up on startup
-- Reattached tmux sessions default to "idle" until the next hook fires
+- Reattached broker sessions default to "idle" until the next hook fires
+
+## Server Mode (Headless Browser Deployment)
+
+The Controller can run without a desktop environment as a standalone Axum HTTP/WebSocket server (`src-tauri/src/bin/server.rs`). The Vite-built frontend is served as static files and accessed via a web browser.
+
+**How it works:**
+- The `server` Cargo feature gates `axum` and `tower-http` dependencies. The server binary lives at `src/bin/server.rs` with `required-features = ["server"]`.
+- `src/lib/backend.ts` checks for `__TAURI_INTERNALS__` at load time. In desktop mode, commands go through Tauri IPC; in browser mode, they become `POST /api/{command}` requests and events flow over a shared WebSocket at `/ws`.
+- `src-tauri/src/emitter.rs` defines an `EventEmitter` trait with three implementations: `TauriEmitter` (desktop), `WsBroadcastEmitter` (server), and `NoopEmitter` (tests).
+- `status_socket.rs` exposes `start_listener_with_state(Arc<AppState>)` so the server binary can receive Claude Code session hooks without a Tauri `AppHandle`.
+
+**Auth:**
+- Optional bearer token via `CONTROLLER_AUTH_TOKEN` env var.
+- Token is passed as a URL query param (`?token=...`) on first load, moved to `sessionStorage`, and stripped from the URL to avoid leaking via history/referrer.
+- WebSocket auth uses the same token as a query param.
+- Auth middleware skips static file requests; only `/api/*` and `/ws` are gated.
+
+**Desktop-only stubs:** `copy_image_file_to_clipboard`, `capture_app_screenshot`, `start_voice_pipeline`, `stop_voice_pipeline` return errors in server mode since they require native hardware access.
+
+**Graceful shutdown:** The server handles `SIGTERM`/`SIGINT` by cleaning up the Unix domain socket and killing all PTY/broker sessions.
+
+**Key files:**
+- `src-tauri/src/bin/server.rs` — Axum server (~2800 lines, 40+ routes)
+- `src/lib/backend.ts` — dual-mode command/event routing
+- `src/lib/platform.ts` — lazy Tauri imports with browser fallbacks
+- `src-tauri/src/emitter.rs` — EventEmitter trait + implementations
+- `src-tauri/src/status_socket.rs` — decoupled from AppHandle for server use

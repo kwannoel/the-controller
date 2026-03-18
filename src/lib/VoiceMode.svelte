@@ -9,6 +9,7 @@
   let transcript = $state<{ role: string; text: string }[]>([]);
 
   const MAX_DEBUG_LINES = 200;
+  const MAX_TRANSCRIPT_ENTRIES = 200;
 
   const STATE_LABELS: Record<string, string> = {
     initializing: "voice mode (initializing...)",
@@ -76,7 +77,7 @@
         listenAsync<string>("voice-transcript", (payload) => {
           try {
             const data = JSON.parse(payload);
-            transcript = [...transcript, { role: data.role, text: data.text }];
+            transcript = [...transcript, { role: data.role, text: data.text }].slice(-MAX_TRANSCRIPT_ENTRIES);
           } catch {
             // Ignore
           }
