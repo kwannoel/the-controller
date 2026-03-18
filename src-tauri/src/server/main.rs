@@ -2414,7 +2414,7 @@ async fn trigger_maintainer_check(
         .emitter
         .emit(&format!("maintainer-status:{}", project_uuid), "running");
     let log = tokio::task::spawn_blocking(move || {
-        maintainer::run_maintainer_check(&repo_path, project_uuid, github_repo.as_deref())
+        maintainer::run_maintainer_check(&repo_path, project_uuid, github_repo.as_deref(), None)
     })
     .await
     .map_err(|e| {
