@@ -57,7 +57,16 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
     proxy: {
-      "/api": `http://localhost:${axumPort}`,
+      "/api": {
+        target: `http://localhost:${axumPort}`,
+        // Strip the browser Origin header so the server's origin check
+        // doesn't reject proxied requests (Origin mismatch with Host).
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.removeHeader("origin");
+          });
+        },
+      },
       "/ws": {
         target: `ws://localhost:${axumPort}`,
         ws: true,

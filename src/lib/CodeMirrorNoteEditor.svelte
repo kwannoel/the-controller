@@ -3,6 +3,7 @@
   import { EditorState } from "@codemirror/state";
   import { EditorView, drawSelection } from "@codemirror/view";
   import { markdown } from "@codemirror/lang-markdown";
+  import { history } from "@codemirror/commands";
   import { Vim, getCM, vim } from "@replit/codemirror-vim";
   import { markdownLivePreview } from "./markdownLivePreview";
 
@@ -94,6 +95,7 @@
       doc,
       extensions: [
         vim(),
+        history(),
         drawSelection(),
         markdown(),
         markdownLivePreview({ resolveImageSrc: untrack(() => resolveImageSrc) }),
