@@ -166,10 +166,22 @@ describe("focusForModeSwitch", () => {
     expect(focusForModeSwitch(focus, "agents", "s1", projects)).toBe(focus);
   });
 
-  it("returns null when current focus is null", () => {
+  it("returns null when current focus is null and no active session", () => {
     expect(focusForModeSwitch(null, "development", null, [])).toBeNull();
     expect(focusForModeSwitch(null, "agents", null, [])).toBeNull();
     expect(focusForModeSwitch(null, "notes", null, [])).toBeNull();
+  });
+
+  it("restores session focus when switching to development with null focus but valid activeSessionId", () => {
+    const projects = [makeProject("p1", ["s1", "s2"])];
+    const result = focusForModeSwitch(null, "development", "s1", projects);
+    expect(result).toEqual({ type: "session", sessionId: "s1", projectId: "p1" });
+  });
+
+  it("falls back to first project when switching to development with null focus and no active session", () => {
+    const projects = [makeProject("p1", ["s1"])];
+    const result = focusForModeSwitch(null, "development", null, projects);
+    expect(result).toEqual({ type: "project", projectId: "p1" });
   });
 
   it("clears focus when switching to notes from session", () => {
