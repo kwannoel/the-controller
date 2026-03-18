@@ -130,8 +130,9 @@ test("story 7: Enter in hub opens find view with overlay focused (j/k nav mode)"
   await page.goto("/");
   await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
 
+  // Focus a project — verify it's actually focused before proceeding
   await page.keyboard.press("j");
-  await page.waitForTimeout(200);
+  await expect(page.locator(".focus-target")).toBeVisible({ timeout: 3_000 });
   await page.keyboard.press("i");
   await expect(page.locator(".issues-modal .hub-menu")).toBeVisible({ timeout: 5_000 });
 

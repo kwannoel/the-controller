@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { command } from "$lib/backend";
   import { openUrl } from "$lib/platform";
   import type { GithubIssue } from "./stores";
@@ -66,14 +66,14 @@
     issueTitle = "";
     selectedPriority = "low";
     allIssues = []; // clear cache so find view refetches after creating
-    requestAnimationFrame(() => titleInput?.focus());
+    tick().then(() => titleInput?.focus());
   }
 
   async function enterFind(focusSearch = true) {
     view = "find";
     searchQuery = "";
     selectedIndex = 0;
-    requestAnimationFrame(() => (focusSearch ? searchInput : overlayEl)?.focus());
+    tick().then(() => (focusSearch ? searchInput : overlayEl)?.focus());
 
     if (allIssues.length === 0) {
       loading = true;
@@ -90,7 +90,7 @@
 
   function goToHub() {
     view = "hub";
-    requestAnimationFrame(() => overlayEl?.focus());
+    tick().then(() => overlayEl?.focus());
   }
 
   function scrollSelectedIntoView() {
@@ -108,10 +108,10 @@
       if (view === "create") {
         if (createStage === "complexity") {
           createStage = "priority";
-          requestAnimationFrame(() => overlayEl?.focus());
+          tick().then(() => overlayEl?.focus());
         } else if (createStage === "priority") {
           createStage = "title";
-          requestAnimationFrame(() => titleInput?.focus());
+          tick().then(() => titleInput?.focus());
         } else {
           goToHub();
         }
@@ -119,7 +119,7 @@
         if (closingIssue) {
           closingIssue = null;
           closeComment = "";
-          requestAnimationFrame(() => searchInput?.focus());
+          tick().then(() => searchInput?.focus());
         } else if (searchQuery) {
           searchQuery = "";
           selectedIndex = 0;
@@ -156,7 +156,7 @@
         e.preventDefault();
         if (!issueTitle.trim()) return;
         createStage = "priority";
-        requestAnimationFrame(() => overlayEl?.focus());
+        tick().then(() => overlayEl?.focus());
         return;
       }
       if (createStage === "priority") {
@@ -164,12 +164,12 @@
           e.preventDefault();
           selectedPriority = "low";
           createStage = "complexity";
-          requestAnimationFrame(() => overlayEl?.focus());
+          tick().then(() => overlayEl?.focus());
         } else if (e.key === "k") {
           e.preventDefault();
           selectedPriority = "high";
           createStage = "complexity";
-          requestAnimationFrame(() => overlayEl?.focus());
+          tick().then(() => overlayEl?.focus());
         }
         return;
       }
@@ -225,7 +225,7 @@
         closingIssue = null;
         command("close_github_issue", { repoPath, issueNumber: issueToClose.number, comment: closeComment.trim() });
         closeComment = "";
-        requestAnimationFrame(() => searchInput?.focus());
+        tick().then(() => searchInput?.focus());
         return;
       }
 
@@ -237,7 +237,7 @@
         e.stopPropagation();
         closingIssue = selectedIssue;
         closeComment = "";
-        requestAnimationFrame(() => closeCommentInput?.focus());
+        tick().then(() => closeCommentInput?.focus());
         return;
       }
 
