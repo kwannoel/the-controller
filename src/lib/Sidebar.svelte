@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, noteFolders, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, maintainerStages, autoWorkerStatuses, hotkeyAction, showKeyHints, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, noteFolders, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import { sendFinishBranchPrompt } from "./finish-branch";
@@ -328,9 +328,16 @@
           next.set(project.id, payload as MaintainerStatus);
           return next;
         });
-        // Clear error when status changes to non-error
+        // Clear error and stage when status changes to non-error
         if (payload !== "error") {
           maintainerErrors.update(m => {
+            const next = new Map(m);
+            next.delete(project.id);
+            return next;
+          });
+        }
+        if (payload !== "running") {
+          maintainerStages.update(m => {
             const next = new Map(m);
             next.delete(project.id);
             return next;
@@ -340,6 +347,14 @@
 
       unlisteners.push(listen<string>(`maintainer-error:${project.id}`, (payload) => {
         maintainerErrors.update(m => {
+          const next = new Map(m);
+          next.set(project.id, payload);
+          return next;
+        });
+      }));
+
+      unlisteners.push(listen<string>(`maintainer-stage:${project.id}`, (payload) => {
+        maintainerStages.update(m => {
           const next = new Map(m);
           next.set(project.id, payload);
           return next;

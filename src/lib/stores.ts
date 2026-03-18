@@ -69,6 +69,8 @@ export interface MaintainerRunLog {
   issues_unchanged: number;
   issues_skipped: number;
   summary: string;
+  raw_output?: string;
+  elapsed_secs?: number;
 }
 
 export interface MaintainerIssue {
@@ -219,6 +221,7 @@ export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(
   new Map(),
 );
 export const maintainerErrors = writable<Map<string, string>>(new Map());
+export const maintainerStages = writable<Map<string, string>>(new Map());
 export type AutoWorkerStatus = {
   status: "idle" | "working";
   message?: string;

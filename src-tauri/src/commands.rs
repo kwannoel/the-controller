@@ -2391,13 +2391,19 @@ async fn run_maintainer_check_spawn_blocking(
     repo_path: String,
     project_id: Uuid,
     github_repo: Option<String>,
+    emitter: Option<std::sync::Arc<dyn crate::emitter::EventEmitter>>,
 ) -> Result<crate::models::MaintainerRunLog, String> {
     run_maintainer_check_spawn_blocking_with(
         repo_path,
         project_id,
         github_repo,
-        |repo_path, project_id, github_repo| {
-            crate::maintainer::run_maintainer_check(&repo_path, project_id, github_repo.as_deref())
+        move |repo_path, project_id, github_repo| {
+            crate::maintainer::run_maintainer_check(
+                &repo_path,
+                project_id,
+                github_repo.as_deref(),
+                emitter,
+            )
         },
     )
     .await
@@ -2427,7 +2433,10 @@ pub async fn trigger_maintainer_check(
         .emitter
         .emit(&format!("maintainer-status:{}", project_id), "running");
 
-    let log = match run_maintainer_check_spawn_blocking(repo_path, project_id, github_repo).await {
+    let emitter = Some(state.emitter.clone());
+    let log = match run_maintainer_check_spawn_blocking(repo_path, project_id, github_repo, emitter)
+        .await
+    {
         Ok(log) => log,
         Err(e) => {
             tracing::error!(project_id = %project_id, error = %e, "maintainer check failed");
@@ -3784,6 +3793,8 @@ selection_background #444444
                         issues_unchanged: 0,
                         issues_skipped: 0,
                         summary: "No actionable maintainer issues found".to_string(),
+                        raw_output: None,
+                        elapsed_secs: None,
                     })
                 },
             )

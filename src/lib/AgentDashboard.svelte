@@ -3,7 +3,7 @@
   import { untrack } from "svelte";
   import { command } from "$lib/backend";
   import { openUrl } from "$lib/platform";
-  import { focusTarget, projects, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail, type WorkerReport, type AutoWorkerQueueIssue } from "./stores";
+  import { focusTarget, projects, maintainerStatuses, maintainerErrors, maintainerStages, autoWorkerStatuses, hotkeyAction, type Project, type FocusTarget, type MaintainerRunLog, type MaintainerStatus, type AutoWorkerStatus, type MaintainerIssue, type MaintainerIssueDetail, type WorkerReport, type AutoWorkerQueueIssue } from "./stores";
   import { showToast } from "./toast";
 
   let runLogs: MaintainerRunLog[] = $state([]);
@@ -63,9 +63,11 @@
       : null
   );
 
-  let openLog = $derived(
-    openLogIndex !== null ? runLogs[openLogIndex] ?? null : null
-  );
+  let openLog = $derived.by(() => {
+    if (openLogIndex === null) { showRawOutput = false; return null; }
+    showRawOutput = false;
+    return runLogs[openLogIndex] ?? null;
+  });
 
   let openAutoWorkerIssue = $derived(
     autoWorkerQueueOpenIndex !== null ? autoWorkerQueue[autoWorkerQueueOpenIndex] ?? null : null
@@ -478,6 +480,13 @@
     project ? (maintainerErrorsState.current.get(project.id) ?? null) : null
   );
 
+  const maintainerStagesState = fromStore(maintainerStages);
+  let maintainerStage: string | null = $derived(
+    project ? (maintainerStagesState.current.get(project.id) ?? null) : null
+  );
+
+  let showRawOutput = $state(false);
+
   let maintainerStatusText = $derived(
     !project?.maintainer.enabled ? "off"
       : maintainerStatus === "running" ? "running"
@@ -705,7 +714,7 @@
           {project.maintainer.enabled ? "ON" : "OFF"}
         </span>
         {#if maintainerStatus === "running"}
-          <span class="maintainer-status running">running</span>
+          <span class="maintainer-status running">{maintainerStage || "running"}</span>
         {:else if maintainerStatus === "error"}
           <span class="maintainer-status error">error</span>
         {/if}
@@ -762,6 +771,9 @@
                   {#if openLog.issues_skipped > 0}
                     <span class="summary-stat skipped">{openLog.issues_skipped} skipped (closed)</span>
                   {/if}
+                  {#if openLog.elapsed_secs != null}
+                    <span class="summary-stat elapsed">{openLog.elapsed_secs.toFixed(1)}s</span>
+                  {/if}
                 </div>
               </div>
               {#each openLogIssues as issue, i}
@@ -782,6 +794,16 @@
                   </div>
                 </div>
               {/each}
+              {#if openLog.raw_output}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="raw-output-toggle" onclick={() => { showRawOutput = !showRawOutput; }}>
+                  {showRawOutput ? "Hide" : "Show"} raw output
+                </div>
+                {#if showRawOutput}
+                  <pre class="raw-output">{openLog.raw_output}</pre>
+                {/if}
+              {/if}
             </div>
           </div>
         {:else}
@@ -807,6 +829,9 @@
                 >
                   <span class="log-dot"></span>
                   <span class="report-timestamp">{formatTimestamp(log.timestamp)}</span>
+                  {#if log.elapsed_secs != null}
+                    <span class="report-elapsed">{log.elapsed_secs.toFixed(0)}s</span>
+                  {/if}
                   <span class="report-summary-preview">{log.summary}</span>
                 </div>
               {/each}
@@ -971,6 +996,7 @@
   }
   .log-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-emphasis); }
   .report-timestamp { color: var(--text-secondary); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
+  .report-elapsed { color: var(--text-secondary); font-size: 11px; white-space: nowrap; flex-shrink: 0; }
   .report-summary-preview { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 
   /* Detail view */
@@ -993,6 +1019,29 @@
   .run-summary { padding: 12px; border-radius: 6px; background: var(--bg-hover); display: flex; gap: 16px; border-left: 3px solid var(--text-emphasis); flex-wrap: wrap; }
   .summary-stat { font-size: 13px; color: var(--text-primary); }
   .summary-stat.skipped { color: var(--text-secondary); }
+  .summary-stat.elapsed { color: var(--text-secondary); }
+  .raw-output-toggle {
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--accent);
+    cursor: pointer;
+    user-select: none;
+  }
+  .raw-output-toggle:hover { text-decoration: underline; }
+  .raw-output {
+    margin: 0;
+    padding: 8px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 
   .issue-item { padding: 8px 12px; background: var(--bg-elevated); border-radius: 4px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
   .issue-action { font-weight: 600; font-size: 11px; text-transform: uppercase; }
