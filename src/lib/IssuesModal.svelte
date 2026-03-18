@@ -294,7 +294,7 @@
           <span class="hub-key">c</span>
           <span>Create issue</span>
         </button>
-        <button class="hub-option" onclick={enterFind}>
+        <button class="hub-option" onclick={() => enterFind()}>
           <span class="hub-key">f</span>
           <span>Find issues</span>
         </button>

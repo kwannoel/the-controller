@@ -16,7 +16,11 @@ pub struct Project {
     #[serde(default)]
     pub prompts: Vec<SavedPrompt>,
     /// Sessions staged as separate Controller instances.
-    #[serde(default, alias = "staged_session", deserialize_with = "deserialize_staged_sessions")]
+    #[serde(
+        default,
+        alias = "staged_session",
+        deserialize_with = "deserialize_staged_sessions"
+    )]
     pub staged_sessions: Vec<StagedSession>,
 }
 
@@ -790,8 +794,16 @@ mod tests {
             prompts: vec![],
             sessions: vec![],
             staged_sessions: vec![
-                StagedSession { session_id: Uuid::new_v4(), pid: 1001, port: 2420 },
-                StagedSession { session_id: Uuid::new_v4(), pid: 1002, port: 2421 },
+                StagedSession {
+                    session_id: Uuid::new_v4(),
+                    pid: 1001,
+                    port: 2420,
+                },
+                StagedSession {
+                    session_id: Uuid::new_v4(),
+                    pid: 1002,
+                    port: 2421,
+                },
             ],
         };
         let json = serde_json::to_string(&project).expect("serialize");

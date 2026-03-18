@@ -279,20 +279,15 @@ fn handle_connection_with_state(
                         project_id,
                         session_id,
                     }) => {
-                        let app_handle = app_handle.clone();
-                        let (tx, rx) = std::sync::mpsc::sync_channel(1);
-                        tauri::async_runtime::spawn(async move {
-                            let state = app_handle.state::<AppState>();
-                            let result = crate::commands::stage_session_core(
-                                &state, project_id, session_id, false,
+                        let result = tauri::async_runtime::block_on(async {
+                            crate::commands::stage_session_core(
+                                state, project_id, session_id, false,
                             )
-                            .await;
-                            let _ = tx.send(result);
+                            .await
                         });
-                        let response = match rx.recv() {
-                            Ok(Ok(port)) => format!("staged:{}\n", port),
-                            Ok(Err(e)) => format!("error:{}\n", e),
-                            Err(_) => "error:internal channel error\n".to_string(),
+                        let response = match result {
+                            Ok(port) => format!("staged:{}\n", port),
+                            Err(e) => format!("error:{}\n", e),
                         };
                         if let Err(e) = writer.write_all(response.as_bytes()) {
                             eprintln!("Failed to write stage response: {}", e);

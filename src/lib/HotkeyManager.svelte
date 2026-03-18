@@ -441,6 +441,8 @@
         }
         return true;
       }
+      case "rollback-deploy":
+        return true;
       default: {
         const _exhaustive: never = id;
         return false;

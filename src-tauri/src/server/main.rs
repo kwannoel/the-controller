@@ -20,7 +20,7 @@ use std::sync::Arc;
 use the_controller_lib::{
     architecture, auto_worker, commands, config, deploy, emitter::WsBroadcastEmitter, maintainer,
     models, note_ai_chat, notes, secure_env, session_args, state::AppState, status_socket,
-    token_usage, worktree::WorktreeManager,
+    token_usage, voice, worktree::WorktreeManager,
 };
 
 use tokio::sync::broadcast;
@@ -170,6 +170,7 @@ async fn run_server() -> std::io::Result<()> {
         .route("/api/capture_app_screenshot", post(capture_app_screenshot))
         .route("/api/start_voice_pipeline", post(start_voice_pipeline))
         .route("/api/stop_voice_pipeline", post(stop_voice_pipeline))
+        .route("/api/toggle_voice_pause", post(toggle_voice_pause))
         .route("/api/load_terminal_theme", post(load_terminal_theme))
         .route("/api/list_archived_projects", post(list_archived_projects))
         .route("/api/generate_architecture", post(generate_architecture))
@@ -194,6 +195,8 @@ async fn run_server() -> std::io::Result<()> {
         .route("/api/post_github_comment", post(post_github_comment))
         .route("/api/add_github_label", post(add_github_label))
         .route("/api/remove_github_label", post(remove_github_label))
+        .route("/api/close_github_issue", post(close_github_issue))
+        .route("/api/delete_github_issue", post(delete_github_issue))
         // Maintainer & auto-worker
         .route("/api/configure_maintainer", post(configure_maintainer))
         .route("/api/get_maintainer_status", post(get_maintainer_status))
@@ -574,7 +577,7 @@ async fn load_project(
         auto_worker: models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
 
     storage
@@ -853,15 +856,19 @@ async fn create_session(
 }
 
 async fn generate_architecture(
+    AxumState(state): AxumState<Arc<ServerState>>,
     Json(args): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let repo_path = args["repoPath"]
         .as_str()
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing repoPath".to_string()))?
         .to_string();
-
+    let emitter = state.app.emitter.clone();
     let result = tokio::task::spawn_blocking(move || {
-        architecture::generate_architecture_blocking(std::path::Path::new(&repo_path))
+        architecture::generate_architecture_blocking_with_emitter(
+            std::path::Path::new(&repo_path),
+            &emitter,
+        )
     })
     .await
     .map_err(|e| {
@@ -924,7 +931,7 @@ async fn create_project(
         auto_worker: models::AutoWorkerConfig::default(),
         prompts: vec![],
         sessions: vec![],
-        staged_session: None,
+        staged_sessions: vec![],
     };
 
     storage
@@ -1248,18 +1255,85 @@ async fn capture_app_screenshot() -> Result<Json<Value>, (StatusCode, String)> {
     ))
 }
 
-async fn start_voice_pipeline() -> Result<Json<Value>, (StatusCode, String)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        "start_voice_pipeline is not available in server mode".to_string(),
-    ))
+async fn start_voice_pipeline(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let gen_before = state
+        .app
+        .voice_generation
+        .load(std::sync::atomic::Ordering::SeqCst);
+    // Check if already running
+    {
+        let pipeline = state.app.voice_pipeline.lock().await;
+        if let Some(p) = pipeline.as_ref() {
+            // Pipeline already running — emit current state so a remounted
+            // frontend component picks up the correct label immediately.
+            let voice_state = if p.is_paused() { "paused" } else { "listening" };
+            let payload = serde_json::json!({ "state": voice_state }).to_string();
+            let _ = state.app.emitter.emit("voice-state-changed", &payload);
+            return Ok(Json(Value::Null));
+        }
+    }
+    // Release lock during init to avoid blocking stop
+    let emitter = state.app.emitter.clone();
+    let new_pipeline = voice::VoicePipeline::start(emitter)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    // Re-acquire lock to store the pipeline
+    let mut pipeline = state.app.voice_pipeline.lock().await;
+    let gen_after = state
+        .app
+        .voice_generation
+        .load(std::sync::atomic::Ordering::SeqCst);
+    if pipeline.is_some() || gen_before != gen_after {
+        // Another start raced us, or stop was called during init — drop
+        return Ok(Json(Value::Null));
+    }
+    *pipeline = Some(new_pipeline);
+    Ok(Json(Value::Null))
 }
 
-async fn stop_voice_pipeline() -> Result<Json<Value>, (StatusCode, String)> {
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        "stop_voice_pipeline is not available in server mode".to_string(),
-    ))
+async fn stop_voice_pipeline(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    state
+        .app
+        .voice_generation
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let mut pipeline = state.app.voice_pipeline.lock().await;
+    if let Some(p) = pipeline.take() {
+        tokio::task::spawn_blocking(move || {
+            let mut p = p;
+            p.stop();
+        })
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to stop pipeline: {e}"),
+            )
+        })?;
+    }
+    Ok(Json(Value::Null))
+}
+
+async fn toggle_voice_pause(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let pipeline = state.app.voice_pipeline.lock().await;
+    match pipeline.as_ref() {
+        Some(p) => {
+            let paused = p.toggle_pause();
+            let voice_state = if paused { "paused" } else { "listening" };
+            let payload = serde_json::json!({ "state": voice_state }).to_string();
+            let _ = state.app.emitter.emit("voice-state-changed", &payload);
+            Ok(Json(serde_json::json!({ "paused": paused })))
+        }
+        None => Err((
+            StatusCode::BAD_REQUEST,
+            "Voice pipeline not running".to_string(),
+        )),
+    }
 }
 
 async fn load_terminal_theme(
@@ -2151,6 +2225,102 @@ async fn remove_github_label(
     }
     if let Ok(mut cache) = state.app.issue_cache.lock() {
         cache.remove_label(&repo_path, issue_number, &label);
+    }
+    Ok(Json(Value::Null))
+}
+
+async fn close_github_issue(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing repoPath".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing issueNumber".to_string()))?;
+    let comment = args["comment"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing comment".to_string()))?
+        .to_string();
+    let nwo = extract_github_repo_async(&repo_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let mut gh_args = vec![
+        "issue".to_string(),
+        "close".to_string(),
+        issue_number.to_string(),
+        "--repo".to_string(),
+        nwo,
+    ];
+    if !comment.trim().is_empty() {
+        gh_args.push("--comment".to_string());
+        gh_args.push(comment);
+    }
+    let output = tokio::process::Command::new("gh")
+        .args(&gh_args)
+        .output()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to run gh: {}", e),
+            )
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("gh issue close failed: {}", stderr),
+        ));
+    }
+    if let Ok(mut cache) = state.app.issue_cache.lock() {
+        cache.remove_issue(&repo_path, issue_number);
+    }
+    Ok(Json(Value::Null))
+}
+
+async fn delete_github_issue(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing repoPath".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing issueNumber".to_string()))?;
+    let nwo = extract_github_repo_async(&repo_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let output = tokio::process::Command::new("gh")
+        .args([
+            "issue",
+            "delete",
+            &issue_number.to_string(),
+            "--repo",
+            &nwo,
+            "--yes",
+        ])
+        .output()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to run gh: {}", e),
+            )
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("gh issue delete failed: {}", stderr),
+        ));
+    }
+    if let Ok(mut cache) = state.app.issue_cache.lock() {
+        cache.remove_issue(&repo_path, issue_number);
     }
     Ok(Json(Value::Null))
 }
@@ -3047,14 +3217,22 @@ async fn unstage_session(
     let mut project = storage
         .load_project(project_uuid)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    let staged = project.staged_session.take().ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            "No session is currently staged".to_string(),
-        )
-    })?;
+    let session_id_str = args["sessionId"].as_str().unwrap_or_default();
+    let session_uuid = uuid::Uuid::parse_str(session_id_str)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let idx = project
+        .staged_sessions
+        .iter()
+        .position(|s| s.session_id == session_uuid)
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "No session is currently staged".to_string(),
+            )
+        })?;
+    let staged = project.staged_sessions.remove(idx);
     commands::kill_process_group(staged.pid);
-    let _ = std::fs::remove_file(status_socket::staged_socket_path());
+    let _ = std::fs::remove_file(status_socket::staged_socket_path(&session_uuid));
     storage
         .save_project(&project)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
