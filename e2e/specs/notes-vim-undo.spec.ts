@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test("u key in normal mode undoes the last change", async ({ page }) => {
   // Reset note content to a known state
-  await page.request.post("http://localhost:3001/api/write_note", {
+  await page.request.post("/api/write_note", {
     data: { projectName: "fa-agent-v3", filename: "test-note.md", content: "# Undo Test" },
   });
 
