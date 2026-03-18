@@ -90,10 +90,6 @@ impl Broker {
         self.socket_dir.join("pty-broker.pid")
     }
 
-    fn lock_file_path(&self) -> PathBuf {
-        self.socket_dir.join("pty-broker.lock")
-    }
-
     async fn handle_spawn(&self, req: SpawnRequest) -> Response {
         let session_id = req.session_id;
 
@@ -368,7 +364,10 @@ impl Broker {
     fn cleanup(&self) {
         let _ = std::fs::remove_file(self.control_socket_path());
         let _ = std::fs::remove_file(self.pid_file_path());
-        let _ = std::fs::remove_file(self.lock_file_path());
+        // Don't remove lock file — flock is released automatically on process
+        // exit. Removing it creates a TOCTOU race: a new broker could open()
+        // the path (getting a new inode), flock() it, and start up before this
+        // process finishes exiting.
     }
 }
 
@@ -409,7 +408,13 @@ async fn handle_data_client(
                     let data = buf[..n].to_vec();
                     let pty_writer = Arc::clone(&pty_writer);
                     let ok = tokio::task::spawn_blocking(move || {
-                        let mut writer = pty_writer.lock().unwrap();
+                        let mut writer = match pty_writer.lock() {
+                            Ok(w) => w,
+                            Err(e) => {
+                                tracing::error!("pty writer mutex poisoned: {}", e);
+                                return false;
+                            }
+                        };
                         if writer.write_all(&data).is_err() {
                             return false;
                         }
@@ -506,6 +511,36 @@ fn main() {
         std::process::exit(1);
     }
 
+    // Acquire exclusive lock BEFORE daemonize — if another broker holds the
+    // lock we exit immediately without forking, preventing zombie daemons.
+    // The flock is per open-file-description and survives fork(), so the
+    // grandchild (daemon) inherits the lock after the double-fork.
+    let lock_path = socket_dir.join("pty-broker.lock");
+    let lock_file = match std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(&lock_path)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("failed to open lock file: {}", e);
+            std::process::exit(1);
+        }
+    };
+    let lock_ret = unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if lock_ret != 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+            // Another broker already holds the lock — exit immediately.
+            // No daemon forked, no runtime created, no resources to leak.
+            std::process::exit(0);
+        } else {
+            eprintln!("flock failed: {}", err);
+            std::process::exit(1);
+        }
+    }
+
     // Daemonize BEFORE creating the tokio runtime — fork invalidates
     // the runtime's thread pool and kqueue/epoll file descriptors.
     if !foreground {
@@ -522,6 +557,14 @@ fn main() {
         .unwrap_or_else(|| std::path::PathBuf::from("."));
     let _log_guard = the_controller_lib::logging::init_broker_logging(&base_dir, foreground);
 
+    // Install panic hook so panics are captured in broker.log — without this,
+    // panics in daemon mode go to /dev/null (stderr is redirected by daemonize).
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        tracing::error!("PANIC: {}", info);
+        default_hook(info);
+    }));
+
     tracing::info!(
         socket_dir = %socket_dir.display(),
         pid = std::process::id(),
@@ -530,33 +573,13 @@ fn main() {
     );
 
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-    rt.block_on(async_main(socket_dir));
+    rt.block_on(async_main(socket_dir, lock_file));
 }
 
-async fn async_main(socket_dir: PathBuf) {
+async fn async_main(socket_dir: PathBuf, _lock_file: std::fs::File) {
+    // _lock_file is kept alive for the broker's entire lifetime.
+    // The OS releases the flock when the process exits or crashes.
     let broker = Arc::new(Broker::new(socket_dir));
-
-    // Acquire exclusive lock file — prevents multiple brokers from running.
-    // The fd is held for the broker's entire lifetime; the OS releases it on exit/crash.
-    let lock_file = match std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(false)
-        .open(broker.lock_file_path())
-    {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("failed to open lock file: {}", e);
-            std::process::exit(1);
-        }
-    };
-    let lock_ret = unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
-    if lock_ret != 0 {
-        // Another broker already holds the lock — exit silently.
-        std::process::exit(0);
-    }
-    // Keep _lock_file alive (held open) for the broker's entire lifetime.
-    let _lock_file = lock_file;
 
     // Write PID file
     let pid = std::process::id();

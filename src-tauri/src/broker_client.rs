@@ -275,10 +275,16 @@ impl BrokerClient {
             .open(self.lock_file_path())?;
         let lock_ret = unsafe { libc::flock(lock_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         if lock_ret != 0 {
-            // Lock is held — another broker is already starting or running.
-            // Drop the fd and let the connect retry loop handle it.
-            tracing::warn!("spawn lock already held, another broker spawn is in progress");
-            return Ok(());
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EWOULDBLOCK) {
+                // Lock is held — another broker is already starting or running.
+                // Drop the fd and let the connect retry loop handle it.
+                tracing::warn!("spawn lock already held, another broker spawn is in progress");
+                return Ok(());
+            } else {
+                tracing::error!("flock failed during spawn: {}", err);
+                return Err(err);
+            }
         }
         // We hold the lock briefly to prevent concurrent spawns.
         // The broker process itself will acquire the lock on startup,
