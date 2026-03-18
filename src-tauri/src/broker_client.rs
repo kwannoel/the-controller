@@ -74,8 +74,10 @@ impl BrokerClient {
 
         // Try connecting directly first
         if let Ok(stream) = UnixStream::connect(&path) {
-            // Check if the running broker is stale
-            if self.is_broker_stale() {
+            // Staged instances (identified by CONTROLLER_SOCKET env var) must
+            // never kill the broker — they share it with the primary instance.
+            let is_staged = std::env::var_os("CONTROLLER_SOCKET").is_some();
+            if !is_staged && self.is_broker_stale() {
                 let old_pid = self.read_pid();
                 tracing::warn!(
                     old_pid = ?old_pid,
