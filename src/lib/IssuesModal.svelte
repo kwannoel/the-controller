@@ -262,10 +262,26 @@
         return;
       }
 
+      // Enter in search → move focus to issue list for hotkey navigation
+      if (inSearch && e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        overlayEl?.focus();
+        return;
+      }
+
       if (!inSearch && e.key === "Enter" && selectedIssue) {
         e.preventDefault();
         e.stopPropagation();
         openUrl(selectedIssue.url);
+        return;
+      }
+
+      // Re-enter search from list navigation
+      if (!inSearch && (e.key === "/" || e.key === "f")) {
+        e.preventDefault();
+        e.stopPropagation();
+        searchInput?.focus();
         return;
       }
     }
@@ -415,7 +431,7 @@
         </div>
       </div>
       <div class="hint">
-        <kbd>j/k</kbd> navigate &middot; <kbd>Esc</kbd> {searchQuery ? "clear search" : "back"}
+        <kbd>j/k</kbd> navigate &middot; <kbd>Enter</kbd> confirm search &middot; <kbd>/</kbd> search &middot; <kbd>Esc</kbd> {searchQuery ? "clear search" : "back"}
       </div>
     {/if}
   </div>
