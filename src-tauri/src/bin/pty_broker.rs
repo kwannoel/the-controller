@@ -125,8 +125,9 @@ impl Broker {
         for arg in &req.args {
             cmd.arg(arg);
         }
-        // Clear inherited env vars and set only what the client sent
-        cmd.env_clear();
+        // Apply client-sent env vars as overrides (inheriting the broker's
+        // base env). Using env_clear() here broke Claude Code's hook sandbox
+        // which needs process-inherited attributes that env_clear() strips.
         for (key, val) in &req.env {
             cmd.env(key, val);
         }
