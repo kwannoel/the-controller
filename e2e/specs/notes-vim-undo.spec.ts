@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 
 test("u key in normal mode undoes the last change", async ({ page }) => {
+  // Ensure onboarding is complete so the app shows the sidebar
+  await page.request.post("/api/save_onboarding_config", {
+    data: { projectsRoot: "/Users/noel/projects" },
+  });
+
   // Reset note content to a known state
   await page.request.post("/api/write_note", {
     data: { projectName: "fa-agent-v3", filename: "test-note.md", content: "# Undo Test" },
