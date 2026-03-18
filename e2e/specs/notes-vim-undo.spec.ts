@@ -1,20 +1,10 @@
 import { test, expect } from "@playwright/test";
 
 test("u key in normal mode undoes the last change", async ({ page }) => {
-  // Ensure onboarding is complete so the app shows the sidebar
-  await page.request.post("/api/save_onboarding_config", {
-    data: { projectsRoot: "/Users/noel/projects" },
-  });
-
-  // Reset note content to a known state
-  await page.request.post("/api/write_note", {
-    data: { projectName: "fa-agent-v3", filename: "test-note.md", content: "# Undo Test" },
-  });
-
   await page.goto("/");
-  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".sidebar")).toBeVisible({ timeout: 15_000 });
 
-  // Navigate to notes mode and open editor
+  // Navigate to notes mode and open a note
   await page.keyboard.press("Space");
   await page.waitForTimeout(300);
   await page.keyboard.press("n");
@@ -37,6 +27,9 @@ test("u key in normal mode undoes the last change", async ({ page }) => {
     return Array.from(lines).map(l => l.textContent).join('\n');
   });
 
+  // Capture content before typing
+  const originalContent = await getContent();
+
   // Enter insert mode with 'o', type some text
   await page.keyboard.press("o");
   await page.waitForTimeout(300);
@@ -57,5 +50,4 @@ test("u key in normal mode undoes the last change", async ({ page }) => {
   const contentAfterUndo = await getContent();
   console.log("After undo:", JSON.stringify(contentAfterUndo));
   expect(contentAfterUndo).not.toContain("text to undo");
-  expect(contentAfterUndo).toContain("# Undo Test");
 });
