@@ -246,6 +246,33 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
     }
 }
 
+/// Resolve the main repo's agents directory for copying global agents into new projects.
+/// Uses `CARGO_MANIFEST_DIR` + `git rev-parse --git-common-dir` to handle worktrees.
+fn resolve_global_agents_dir() -> Option<PathBuf> {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir.parent()?;
+
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+
+    let main_repo = if output.status.success() {
+        let git_dir = String::from_utf8(output.stdout).ok()?.trim().to_string();
+        std::path::Path::new(&git_dir).parent()?.to_path_buf()
+    } else {
+        repo_root.to_path_buf()
+    };
+
+    let agents = main_repo.join("agents");
+    if agents.is_dir() {
+        Some(agents)
+    } else {
+        None
+    }
+}
+
 pub fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project, String> {
     tracing::info!(project_name = %name, repo_path = %repo_path.display(), "scaffolding project on disk");
     let parent_dir = repo_path
@@ -266,10 +293,53 @@ pub fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Pro
         .signature()
         .unwrap_or_else(|_| git2::Signature::now("The Controller", "noreply@controller").unwrap());
 
+    // Create agents/default-agent/ with rendered template
     let agents_content = render_agents_md(&name);
-    std::fs::write(repo_path.join("agents.md"), &agents_content)
-        .map_err(|e| rollback_dir(format!("failed to write agents.md: {}", e)))?;
+    let default_agent_dir = repo_path.join("agents").join("default-agent");
+    std::fs::create_dir_all(&default_agent_dir)
+        .map_err(|e| rollback_dir(format!("failed to create agents/default-agent: {}", e)))?;
+    std::fs::write(default_agent_dir.join("agents.md"), &agents_content)
+        .map_err(|e| rollback_dir(format!("failed to write default agent: {}", e)))?;
+
+    // Copy global agents (CEO, CPO, CTO) into project
+    if let Some(global_agents) = resolve_global_agents_dir() {
+        for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+            let source = global_agents.join(agent_name).join("agents.md");
+            if source.exists() {
+                let dest_dir = repo_path.join("agents").join(agent_name);
+                std::fs::create_dir_all(&dest_dir)
+                    .map_err(|e| rollback_dir(format!("failed to create {}: {}", agent_name, e)))?;
+                std::fs::copy(&source, dest_dir.join("agents.md"))
+                    .map_err(|e| rollback_dir(format!("failed to copy {}: {}", agent_name, e)))?;
+            }
+        }
+    }
+
+    // Create root agents.md symlink -> agents/default-agent/agents.md
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(
+        "agents/default-agent/agents.md",
+        repo_path.join("agents.md"),
+    )
+    .map_err(|e| rollback_dir(format!("failed to create agents.md symlink: {}", e)))?;
+    #[cfg(windows)]
+    std::os::windows::fs::symlink_file(
+        "agents/default-agent/agents.md",
+        repo_path.join("agents.md"),
+    )
+    .map_err(|e| rollback_dir(format!("failed to create agents.md symlink: {}", e)))?;
+
+    // Create CLAUDE.md -> agents.md
     ensure_claude_md_symlink(&repo_path).map_err(rollback_dir)?;
+
+    // Create notes/ directory
+    let notes_dir = repo_path.join("notes");
+    std::fs::create_dir_all(&notes_dir)
+        .map_err(|e| rollback_dir(format!("failed to create notes/: {}", e)))?;
+    std::fs::write(notes_dir.join(".gitkeep"), "")
+        .map_err(|e| rollback_dir(format!("failed to write notes/.gitkeep: {}", e)))?;
+
+    // Create docs/plans/ directory
     let plans_dir = repo_path.join("docs").join("plans");
     std::fs::create_dir_all(&plans_dir)
         .map_err(|e| rollback_dir(format!("failed to create docs/plans: {}", e)))?;
@@ -280,11 +350,25 @@ pub fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Pro
         .index()
         .map_err(|e| rollback_dir(format!("failed to get index: {}", e)))?;
     index
+        .add_path(std::path::Path::new("agents/default-agent/agents.md"))
+        .map_err(|e| rollback_dir(format!("failed to add default agent to index: {}", e)))?;
+    // Add global agent copies to index
+    for agent_name in &["ceo-agent", "cpo-agent", "cto-agent"] {
+        let agent_path_str = format!("agents/{}/agents.md", agent_name);
+        let agent_path = std::path::Path::new(&agent_path_str);
+        if repo_path.join(agent_path).exists() {
+            let _ = index.add_path(agent_path);
+        }
+    }
+    index
         .add_path(std::path::Path::new("agents.md"))
         .map_err(|e| rollback_dir(format!("failed to add agents.md to index: {}", e)))?;
     index
         .add_path(std::path::Path::new("CLAUDE.md"))
         .map_err(|e| rollback_dir(format!("failed to add CLAUDE.md to index: {}", e)))?;
+    index
+        .add_path(std::path::Path::new("notes/.gitkeep"))
+        .map_err(|e| rollback_dir(format!("failed to add notes/.gitkeep to index: {}", e)))?;
     index
         .add_path(std::path::Path::new("docs/plans/.gitkeep"))
         .map_err(|e| rollback_dir(format!("failed to add .gitkeep to index: {}", e)))?;
