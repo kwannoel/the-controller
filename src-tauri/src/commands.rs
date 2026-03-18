@@ -16,11 +16,27 @@ mod github;
 mod media;
 mod notes;
 
-/// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
-/// if `agents.md` exists and `CLAUDE.md` does not.
+/// Ensure the symlink chain exists:
+/// 1. If `agents/default-agent/agents.md` exists and root `agents.md` does not,
+///    create `agents.md` → `agents/default-agent/agents.md`
+/// 2. If `agents.md` exists (file or symlink) and `CLAUDE.md` does not,
+///    create `CLAUDE.md` → `agents.md`
 pub fn ensure_claude_md_symlink(dir: &Path) -> Result<(), String> {
     let claude_md = dir.join("CLAUDE.md");
     let agents_md = dir.join("agents.md");
+    let default_agent = dir.join("agents").join("default-agent").join("agents.md");
+
+    // Step 1: Create root agents.md symlink if needed
+    if default_agent.exists() && !agents_md.exists() {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("agents/default-agent/agents.md", &agents_md)
+            .map_err(|e| format!("failed to create agents.md symlink: {}", e))?;
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file("agents/default-agent/agents.md", &agents_md)
+            .map_err(|e| format!("failed to create agents.md symlink: {}", e))?;
+    }
+
+    // Step 2: Create CLAUDE.md symlink if needed
     if agents_md.exists() && !claude_md.exists() {
         #[cfg(unix)]
         std::os::unix::fs::symlink("agents.md", &claude_md)
@@ -3805,5 +3821,98 @@ mod staging_tests {
         let base = occupied_port.checked_sub(STAGING_PORT_OFFSET).unwrap();
         let port = find_staging_port(base).unwrap();
         assert_ne!(port, occupied_port, "must skip port occupied on IPv6");
+    }
+}
+
+#[cfg(test)]
+mod symlink_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_ensure_symlinks_with_agents_dir_structure() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Create agents/default-agent/agents.md
+        std::fs::create_dir_all(dir.join("agents/default-agent")).unwrap();
+        std::fs::write(
+            dir.join("agents/default-agent/agents.md"),
+            "# Default Agent",
+        )
+        .unwrap();
+
+        ensure_claude_md_symlink(dir).unwrap();
+
+        // agents.md at root should exist and be a symlink
+        let agents_md = dir.join("agents.md");
+        assert!(agents_md.exists(), "agents.md should exist");
+        assert!(
+            agents_md
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "agents.md should be a symlink"
+        );
+
+        // CLAUDE.md should exist and be a symlink
+        let claude_md = dir.join("CLAUDE.md");
+        assert!(claude_md.exists(), "CLAUDE.md should exist");
+        assert!(
+            claude_md
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "CLAUDE.md should be a symlink"
+        );
+
+        // Content should be readable through the chain
+        let content = std::fs::read_to_string(&claude_md).unwrap();
+        assert!(content.contains("Default Agent"));
+    }
+
+    #[test]
+    fn test_ensure_symlinks_preserves_existing_root_agents_md() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        // Root agents.md exists as a regular file (legacy project)
+        std::fs::write(dir.join("agents.md"), "# Legacy Agent").unwrap();
+
+        ensure_claude_md_symlink(dir).unwrap();
+
+        // CLAUDE.md should be created pointing to agents.md
+        let claude_md = dir.join("CLAUDE.md");
+        assert!(claude_md.exists());
+        let content = std::fs::read_to_string(&claude_md).unwrap();
+        assert!(content.contains("Legacy Agent"));
+
+        // agents.md should NOT be a symlink (it's a regular file)
+        assert!(
+            !dir.join("agents.md")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "agents.md should stay as regular file for legacy projects"
+        );
+    }
+
+    #[test]
+    fn test_ensure_symlinks_noop_when_both_exist() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+
+        std::fs::write(dir.join("agents.md"), "# Agent").unwrap();
+        std::fs::write(dir.join("CLAUDE.md"), "# Claude").unwrap();
+
+        // Should not error when both already exist
+        ensure_claude_md_symlink(dir).unwrap();
+
+        // CLAUDE.md should still have original content (not overwritten)
+        let content = std::fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+        assert!(content.contains("Claude"));
     }
 }
