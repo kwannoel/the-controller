@@ -74,7 +74,7 @@
 >
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
-    <div class="modal-header">New Note{#if folderLocked} in {defaultFolder}{/if}</div>
+    <div class="modal-header">New Note {#if folderLocked}in {defaultFolder}{/if}</div>
     {#if !folderLocked}
       <select
         bind:this={folderSelectEl}
