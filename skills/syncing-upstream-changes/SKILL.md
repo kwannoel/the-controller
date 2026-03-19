@@ -31,9 +31,9 @@ Upstream default branch: `main`
    ```
 5. Run verification — at minimum:
    ```bash
-   cd src-tauri && cargo test --features server
-   cd src-tauri && cargo clippy --features server -- -D warnings
-   cd src-tauri && cargo fmt --check
+   (cd src-tauri && cargo test --features server)
+   (cd src-tauri && cargo clippy --features server -- -D warnings)
+   (cd src-tauri && cargo fmt --check)
    pnpm check
    pnpm test
    ```

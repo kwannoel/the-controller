@@ -19,7 +19,7 @@ Before writing any test, verify all three servers:
 # 1. Backend (port 3001)
 lsof -i :3001 -P | grep LISTEN
 # If not running:
-cd src-tauri && cargo run --bin server --features server
+(cd src-tauri && cargo run --bin server --features server)
 
 # 2. Frontend dev server (port 1420)
 lsof -i :1420 -P | grep LISTEN
