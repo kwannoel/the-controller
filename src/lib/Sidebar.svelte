@@ -278,6 +278,9 @@
       for (const session of project.sessions) {
         unlisteners.push(listen<string>(`session-status-changed:${session.id}`, () => {
           markSession(session.id, "exited");
+          // Check if branch was merged — if so, auto-cleanup
+          command("auto_cleanup_if_merged", { projectId: project.id, sessionId: session.id })
+            .catch(() => {}); // Best-effort, errors logged on backend
         }));
 
         // Cleanup: backend already deleted the session and worktree.
@@ -547,6 +550,10 @@
       if (result.type === "pr_created") {
         showToast(`PR created: ${result.url}`, "info");
       }
+      // Backend already cleaned up session — refresh frontend state
+      clearSessionTracking(sessionId);
+      activeSessionId.update((current) => (current === sessionId ? null : current));
+      await loadProjects();
     } catch (e) {
       showToast(String(e), "error");
     } finally {

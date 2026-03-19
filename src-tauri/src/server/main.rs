@@ -705,12 +705,17 @@ async fn close_session(
             if let (Some(wt_path), Some(branch)) = (session.worktree_path, session.worktree_branch)
             {
                 let rp = repo_path;
-                let _ = tokio::task::spawn_blocking(move || {
+                match tokio::task::spawn_blocking(move || {
                     the_controller_lib::worktree::WorktreeManager::remove_worktree(
                         &wt_path, &rp, &branch,
                     )
                 })
-                .await;
+                .await
+                {
+                    Ok(Err(e)) => tracing::error!("worktree cleanup errors: {e}"),
+                    Err(e) => tracing::error!("worktree cleanup task panicked: {e}"),
+                    Ok(Ok(())) => {}
+                }
             }
         }
     }
@@ -787,7 +792,9 @@ async fn create_session(
             .join(agent);
         if !agent_dir.exists() {
             if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
-                let _ = WorktreeManager::remove_worktree(wt, &repo_path, br);
+                if let Err(e) = WorktreeManager::remove_worktree(wt, &repo_path, br) {
+                    tracing::error!(session_id = %session_id, "worktree cleanup errors: {e}");
+                }
             }
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -871,7 +878,9 @@ async fn create_session(
         }
         // Cleanup worktree
         if let (Some(ref wt_path), Some(ref wt_branch)) = (wt_path, wt_branch) {
-            let _ = WorktreeManager::remove_worktree(wt_path, &repo_path, wt_branch);
+            if let Err(e) = WorktreeManager::remove_worktree(wt_path, &repo_path, wt_branch) {
+                tracing::error!(session_id = %session_id, "worktree cleanup errors: {e}");
+            }
         }
         return Err((StatusCode::INTERNAL_SERVER_ERROR, spawn_err));
     }
@@ -1006,7 +1015,11 @@ async fn delete_project(
             if let (Some(wt_path), Some(branch)) =
                 (&session.worktree_path, &session.worktree_branch)
             {
-                let _ = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+                if let Err(e) =
+                    WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch)
+                {
+                    tracing::error!(session_id = %session.id, project = %project.name, "worktree cleanup errors: {e}");
+                }
             }
         }
     }
@@ -1448,6 +1461,7 @@ async fn merge_session_branch(
             &repo_path,
             &worktree_path,
             &branch_name,
+            project_uuid,
             session_uuid,
         ),
     )
@@ -1467,6 +1481,7 @@ async fn do_merge_with_retries(
     repo_path: &str,
     worktree_path: &str,
     branch_name: &str,
+    project_uuid: uuid::Uuid,
     session_uuid: uuid::Uuid,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     use the_controller_lib::models::MergeResponse;
@@ -1498,6 +1513,44 @@ async fn do_merge_with_retries(
 
         match result {
             MergeResult::PrCreated(url) => {
+                tracing::info!(session_id = %session_uuid, url = %url, "PR created, cleaning up session");
+
+                // Clean up: kill PTY, remove session from project, delete worktree
+                {
+                    let mut pty_manager = state
+                        .app
+                        .pty_manager
+                        .lock()
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    let _ = pty_manager.close_session(session_uuid);
+                }
+                {
+                    let storage = state
+                        .app
+                        .storage
+                        .lock()
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    if let Ok(mut project) = storage.load_project(project_uuid) {
+                        project.sessions.retain(|s| s.id != session_uuid);
+                        let _ = storage.save_project(&project);
+                    }
+                }
+                // Delete worktree + branch
+                let wt = worktree_path.to_string();
+                let rp = repo_path.to_string();
+                let br = branch_name.to_string();
+                let sid = session_uuid;
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Err(e) = WorktreeManager::remove_worktree(&wt, &rp, &br) {
+                        tracing::error!(
+                            session_id = %sid,
+                            "post-merge worktree cleanup errors: {}",
+                            e
+                        );
+                    }
+                })
+                .await;
+
                 let resp = MergeResponse::PrCreated { url };
                 return Ok(Json(serde_json::to_value(resp).unwrap()));
             }

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::architecture::{generate_architecture_blocking_with_emitter, ArchitectureResult};
@@ -743,7 +743,9 @@ pub async fn delete_project(
                 if let (Some(wt_path), Some(branch)) =
                     (&session.worktree_path, &session.worktree_branch)
                 {
-                    let _ = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+                    if let Err(e) = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch) {
+                        tracing::error!(session_id = %session.id, project = %project.name, "worktree cleanup errors: {e}");
+                    }
                 }
             }
         }
@@ -1556,7 +1558,11 @@ pub fn close_session(
         if let Some(session) = session {
             if let (Some(wt_path), Some(branch)) = (session.worktree_path, session.worktree_branch)
             {
-                let _ = WorktreeManager::remove_worktree(&wt_path, &project.repo_path, &branch);
+                if let Err(e) =
+                    WorktreeManager::remove_worktree(&wt_path, &project.repo_path, &branch)
+                {
+                    tracing::error!(session_id = %session_uuid, project = %project.name, "worktree cleanup errors: {e}");
+                }
             }
         }
     }
@@ -2076,7 +2082,28 @@ pub async fn merge_session_branch(
 
         match result {
             crate::worktree::MergeResult::PrCreated(url) => {
-                tracing::info!(session_id = %session_uuid, url = %url, "PR created");
+                tracing::info!(session_id = %session_uuid, url = %url, "PR created, cleaning up session");
+
+                // Clean up: kill PTY, remove session from project, delete worktree
+                {
+                    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+                    let _ = pty_manager.close_session(session_uuid);
+                }
+                {
+                    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+                    let mut project = storage
+                        .load_project(project_uuid)
+                        .map_err(|e| e.to_string())?;
+                    project.sessions.retain(|s| s.id != session_uuid);
+                    storage.save_project(&project).map_err(|e| e.to_string())?;
+                }
+                // Delete worktree + branch
+                if let Err(e) =
+                    WorktreeManager::remove_worktree(&worktree_path, &repo_path, &branch_name)
+                {
+                    tracing::error!(session_id = %session_uuid, "post-merge worktree cleanup errors: {}", e);
+                }
+
                 return Ok(crate::models::MergeResponse::PrCreated { url });
             }
             crate::worktree::MergeResult::RebaseConflicts => {
@@ -2656,6 +2683,96 @@ pub async fn list_agents(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn auto_cleanup_if_merged(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+    session_id: String,
+) -> Result<bool, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    // Look up session info (short-lived lock)
+    let (repo_path, worktree_path, worktree_branch) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
+        let session = match project.sessions.iter().find(|s| s.id == session_uuid) {
+            Some(s) => s,
+            None => return Ok(false), // Session already cleaned up
+        };
+        (
+            project.repo_path.clone(),
+            session.worktree_path.clone(),
+            session.worktree_branch.clone(),
+        )
+    };
+
+    // Check if branch is merged
+    let branch = match worktree_branch {
+        Some(b) => b,
+        None => return Ok(false), // No branch to check
+    };
+
+    // Git I/O off the main thread
+    let rp = repo_path.clone();
+    let br = branch.clone();
+    let merged = tokio::task::spawn_blocking(move || WorktreeManager::is_branch_merged(&rp, &br))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    if !merged {
+        return Ok(false);
+    }
+
+    tracing::info!(
+        session_id = %session_uuid,
+        branch = %branch,
+        "branch merged into main, auto-cleaning up session"
+    );
+
+    // Cleanup: kill PTY
+    {
+        let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+        let _ = pty_manager.close_session(session_uuid);
+    }
+
+    // Remove session from project
+    {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let mut project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
+        project.sessions.retain(|s| s.id != session_uuid);
+        storage.save_project(&project).map_err(|e| e.to_string())?;
+    }
+
+    // Delete worktree + branch (off main thread)
+    if let Some(wt_path) = worktree_path {
+        let rp = repo_path;
+        let br = branch;
+        let sid = session_uuid;
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Err(e) = WorktreeManager::remove_worktree(&wt_path, &rp, &br) {
+                tracing::error!(
+                    session_id = %sid,
+                    "auto-cleanup worktree errors: {}",
+                    e
+                );
+            }
+        })
+        .await;
+    }
+
+    // Notify frontend
+    let event_name = format!("session-cleanup:{}", session_uuid);
+    let _ = app_handle.emit(&event_name, "cleanup");
+
+    Ok(true)
 }
 
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
