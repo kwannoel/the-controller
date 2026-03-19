@@ -12,7 +12,7 @@
 
   let { folders, defaultFolder, onSubmit, onClose }: Props = $props();
 
-  let folderLocked = defaultFolder != null && folders.includes(defaultFolder);
+  let folderLocked = $derived(defaultFolder != null && folders.includes(defaultFolder));
 
   function initialFolder(): string {
     if (defaultFolder && folders.includes(defaultFolder)) return defaultFolder;
