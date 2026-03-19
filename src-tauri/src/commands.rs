@@ -2686,8 +2686,8 @@ pub async fn list_agents(
 }
 
 #[tauri::command]
-pub fn auto_cleanup_if_merged(
-    state: State<AppState>,
+pub async fn auto_cleanup_if_merged(
+    state: State<'_, AppState>,
     app_handle: AppHandle,
     project_id: String,
     session_id: String,
@@ -2695,7 +2695,7 @@ pub fn auto_cleanup_if_merged(
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
-    // Look up session info
+    // Look up session info (short-lived lock)
     let (repo_path, worktree_path, worktree_branch) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let project = storage
@@ -2718,24 +2718,22 @@ pub fn auto_cleanup_if_merged(
         None => return Ok(false), // No branch to check
     };
 
-    match WorktreeManager::is_branch_merged(&repo_path, &branch) {
-        Ok(true) => {
-            tracing::info!(
-                session_id = %session_uuid,
-                branch = %branch,
-                "branch merged into main, auto-cleaning up session"
-            );
-        }
-        Ok(false) => return Ok(false), // Not merged, no cleanup
-        Err(e) => {
-            tracing::warn!(
-                session_id = %session_uuid,
-                "failed to check if branch is merged: {}",
-                e
-            );
-            return Ok(false);
-        }
+    // Git I/O off the main thread
+    let rp = repo_path.clone();
+    let br = branch.clone();
+    let merged = tokio::task::spawn_blocking(move || WorktreeManager::is_branch_merged(&rp, &br))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    if !merged {
+        return Ok(false);
     }
+
+    tracing::info!(
+        session_id = %session_uuid,
+        branch = %branch,
+        "branch merged into main, auto-cleaning up session"
+    );
 
     // Cleanup: kill PTY
     {
@@ -2753,15 +2751,21 @@ pub fn auto_cleanup_if_merged(
         storage.save_project(&project).map_err(|e| e.to_string())?;
     }
 
-    // Delete worktree + branch
+    // Delete worktree + branch (off main thread)
     if let Some(wt_path) = worktree_path {
-        if let Err(e) = WorktreeManager::remove_worktree(&wt_path, &repo_path, &branch) {
-            tracing::error!(
-                session_id = %session_uuid,
-                "auto-cleanup worktree errors: {}",
-                e
-            );
-        }
+        let rp = repo_path;
+        let br = branch;
+        let sid = session_uuid;
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Err(e) = WorktreeManager::remove_worktree(&wt_path, &rp, &br) {
+                tracing::error!(
+                    session_id = %sid,
+                    "auto-cleanup worktree errors: {}",
+                    e
+                );
+            }
+        })
+        .await;
     }
 
     // Notify frontend

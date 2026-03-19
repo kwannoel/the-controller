@@ -1461,6 +1461,7 @@ async fn merge_session_branch(
             &repo_path,
             &worktree_path,
             &branch_name,
+            project_uuid,
             session_uuid,
         ),
     )
@@ -1480,6 +1481,7 @@ async fn do_merge_with_retries(
     repo_path: &str,
     worktree_path: &str,
     branch_name: &str,
+    project_uuid: uuid::Uuid,
     session_uuid: uuid::Uuid,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     use the_controller_lib::models::MergeResponse;
@@ -1511,6 +1513,44 @@ async fn do_merge_with_retries(
 
         match result {
             MergeResult::PrCreated(url) => {
+                tracing::info!(session_id = %session_uuid, url = %url, "PR created, cleaning up session");
+
+                // Clean up: kill PTY, remove session from project, delete worktree
+                {
+                    let mut pty_manager = state
+                        .app
+                        .pty_manager
+                        .lock()
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    let _ = pty_manager.close_session(session_uuid);
+                }
+                {
+                    let storage = state
+                        .app
+                        .storage
+                        .lock()
+                        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                    if let Ok(mut project) = storage.load_project(project_uuid) {
+                        project.sessions.retain(|s| s.id != session_uuid);
+                        let _ = storage.save_project(&project);
+                    }
+                }
+                // Delete worktree + branch
+                let wt = worktree_path.to_string();
+                let rp = repo_path.to_string();
+                let br = branch_name.to_string();
+                let sid = session_uuid;
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Err(e) = WorktreeManager::remove_worktree(&wt, &rp, &br) {
+                        tracing::error!(
+                            session_id = %sid,
+                            "post-merge worktree cleanup errors: {}",
+                            e
+                        );
+                    }
+                })
+                .await;
+
                 let resp = MergeResponse::PrCreated { url };
                 return Ok(Json(serde_json::to_value(resp).unwrap()));
             }
