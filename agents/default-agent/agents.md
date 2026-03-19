@@ -44,8 +44,17 @@ git branch -d <feature-branch>
 ## Dev Commands
 
 - `pnpm tauri dev` — Run the app in development mode
-- `cd src-tauri && cargo test` — Run Rust tests
+- `(cd src-tauri && cargo test)` — Run Rust tests
 - `pnpm test` — Run frontend tests
+
+**Launching the app:** Run `pnpm tauri dev` as a background task. On relaunch, kill the **process group** to avoid orphaning the Tauri binary:
+
+```bash
+# Find and kill the process group of the tauri dev runner
+kill -- -$(ps -o pgid= -p $(pnpm tauri dev PID) | tr -d ' ')
+```
+
+Do NOT kill individual PIDs — `SIGTERM` to a parent doesn't propagate to grandchildren, leaving the Tauri binary orphaned with no Vite dev server or file watcher.
 
 ## Format And Lint (CRITICAL — ALWAYS RUN)
 
