@@ -8,6 +8,7 @@
   import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";
+  import { createScrollTracker } from "./terminal-scroll";
   import { clipboardHasImage } from "./clipboard";
   import { activeSessionId, projects, type Project } from "./stores";
   import "@xterm/xterm/css/xterm.css";
@@ -33,6 +34,10 @@
   // xterm.js auto-responses to terminal queries (DA, DSR) from being
   // sent to the PTY as input. See GitHub issue #49.
   let inputReady = false;
+
+  // Scroll-position tracker: prevents resize/visibility changes from
+  // disrupting the user's scroll position while browsing history.
+  const scrollTracker = createScrollTracker();
 
   // Whether connect_session has been called for this terminal.
   let connected = false;
@@ -90,7 +95,9 @@
   ]);
 
   function isImageFile(path: string): boolean {
-    const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
+    const dotIndex = path.lastIndexOf(".");
+    if (dotIndex === -1) return false;
+    const ext = path.slice(dotIndex).toLowerCase();
     return IMAGE_EXTENSIONS.has(ext);
   }
 
@@ -118,6 +125,14 @@
       });
     }));
     term.open(containerEl);
+
+    // Track scroll position so we can avoid forcibly scrolling to bottom when
+    // the user is reading history.  xterm.js fires onScroll whenever the
+    // viewport position changes (including programmatic scrolls).
+    term.onScroll(() => {
+      if (!term) return;
+      scrollTracker.handleScroll(term, containerEl);
+    });
 
     const writeToPty = (data: string) =>
       command("write_to_pty", { sessionId, data });
@@ -271,8 +286,7 @@
           termOpened = true;
         }
 
-        fitAddon.fit();
-        term.scrollToBottom();
+        scrollTracker.fitPreservingScroll(term, fitAddon);
 
         // Guard against bogus dimensions from bad cell measurements
         if (term.cols < 10) return;
@@ -299,7 +313,7 @@
           termOpened = true;
         }
 
-        fitAddon.fit();
+        scrollTracker.fitPreservingScroll(term, fitAddon);
 
         // Guard against bogus dimensions
         if (term.cols < 10) return;
@@ -318,8 +332,6 @@
 
         // Force full repaint — canvas content may be stale after display:none
         term.refresh(0, term.rows - 1);
-        // Scroll to bottom so the user sees the latest output / input area
-        term.scrollToBottom();
         // Notify PTY of dimensions so the program gets SIGWINCH and redraws its TUI
         command("resize_pty", {
           sessionId,
