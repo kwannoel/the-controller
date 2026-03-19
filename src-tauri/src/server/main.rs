@@ -1629,9 +1629,7 @@ async fn send_note_ai_chat(Json(args): Json<Value>) -> Result<Json<Value>, (Stat
     let conversation_history: Vec<note_ai_chat::NoteAiChatMessage> =
         serde_json::from_value(args["conversationHistory"].clone()).unwrap_or_default();
 
-    let agent_instructions = args["agentInstructions"]
-        .as_str()
-        .map(|s| s.to_string());
+    let agent_instructions = args["agentInstructions"].as_str().map(|s| s.to_string());
 
     let response = note_ai_chat::send_note_ai_message(
         std::env::temp_dir().to_string_lossy().to_string(),
