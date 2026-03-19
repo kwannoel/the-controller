@@ -134,7 +134,7 @@ describe("command registry", () => {
     expect(sections.find(s => s.label === "Navigation")).toBeUndefined();
 
     const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(6); // a, e, P, p, v, ⌘t
+    expect(sess.entries).toHaveLength(7); // a, e, t, P, p, v, ⌘t
     expect(sess.entries.map(entry => entry.key)).toContain("⌘t");
 
     const proj = sections.find(s => s.label === "Projects")!;

@@ -206,6 +206,18 @@
           }
           break;
         }
+        case "autonomous-exec": {
+          const autoSkillCmd = action.kind === "codex"
+            ? "$the-controller-autonomous-execution"
+            : "/the-controller-autonomous-execution";
+          if (action.kind === "codex") {
+            command("write_to_pty", { sessionId: action.sessionId, data: autoSkillCmd })
+              .then(() => command("send_raw_to_pty", { sessionId: action.sessionId, data: "\r" }));
+          } else {
+            command("write_to_pty", { sessionId: action.sessionId, data: `${autoSkillCmd}\r` });
+          }
+          break;
+        }
         case "stage-session": {
           stageSession(action.projectId, action.sessionId);
           break;
