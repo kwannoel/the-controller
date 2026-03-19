@@ -253,7 +253,8 @@
 
 <style>
   .notes-editor {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     height: 100%;
     display: flex;
     flex-direction: column;
