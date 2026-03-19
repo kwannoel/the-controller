@@ -29,6 +29,7 @@ export type CommandId =
   | "stage"
   | "toggle-maintainer-view"
   | "e2e-eval"
+  | "autonomous-exec"
   | "spawn-agent"
   | "deploy-project"
   | "rollback-deploy";
@@ -73,7 +74,8 @@ export const commands: CommandDef[] = [
   { id: "save-prompt", key: "P", section: "Sessions", description: "Save focused session's prompt", mode: "development" },
   { id: "load-prompt", key: "p", section: "Sessions", description: "Load saved prompt into new session", mode: "development" },
   { id: "spawn-agent", key: "a", section: "Sessions", description: "Spawn agent session", mode: "development" },
-  { id: "e2e-eval", key: "e", section: "Sessions", description: "Run e2e eval on focused session", mode: "development" },
+  { id: "autonomous-exec", key: "e", section: "Sessions", description: "Inject autonomous execution skill", mode: "development" },
+  { id: "e2e-eval", key: "t", section: "Sessions", description: "Run e2e eval on focused session", mode: "development" },
   { id: "stage", key: "v", section: "Sessions", description: "Stage/unstage session as separate instance", mode: "development" },
   { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
   { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
