@@ -27,6 +27,10 @@ impl AutoGain {
 
     /// Process a chunk of int16 audio samples. Returns float32 in [-1.0, 1.0].
     pub fn apply(&mut self, samples: &[i16]) -> Vec<f32> {
+        if samples.is_empty() {
+            return Vec::new();
+        }
+
         // Convert to float32
         let float_samples: Vec<f32> = samples.iter().map(|&s| s as f32 / 32768.0).collect();
 

@@ -79,13 +79,21 @@ function processInline(line: string): string {
   return result;
 }
 
-function processInlineFormatting(text: string): string {
-  let result = renderLinks(text);
+function applyBoldItalic(text: string): string {
+  let result = text;
   // Bold: **text**
   result = result.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   // Italic: *text* (but not inside bold markers)
   result = result.replace(/\*(.+?)\*/g, "<em>$1</em>");
   return result;
+}
+
+function processInlineFormatting(text: string): string {
+  const html = renderLinks(text);
+  // Split by HTML tags so bold/italic regexes only operate on text segments,
+  // never matching across tag boundaries (e.g. <a>...</a>).
+  const parts = html.split(/(<[^>]+>)/);
+  return parts.map((part) => (part.startsWith("<") ? part : applyBoldItalic(part))).join("");
 }
 
 export function renderMarkdown(md: string): string {
