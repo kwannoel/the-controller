@@ -1,13 +1,30 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
+  import { command } from "$lib/backend";
+  import { renderMarkdown } from "$lib/markdown";
   import {
     notesChatThreads,
     activeNotesChatId,
+    notesChatSelection,
     focusTarget,
     type NotesChatThread,
     type NotesChatMessage,
+    type NotesChatSelection,
     type FocusTarget,
   } from "./stores";
+
+  interface AgentEntry {
+    name: string;
+    title: string;
+  }
+
+  interface Props {
+    projectId?: string;
+    noteContent?: string;
+  }
+
+  let { projectId, noteContent = "" }: Props = $props();
 
   const threadsState = fromStore(notesChatThreads);
   let threads: NotesChatThread[] = $derived(threadsState.current);
@@ -16,6 +33,8 @@
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
   let isFocused = $derived(currentFocus?.type === "notes-chat");
+  const selectionState = fromStore(notesChatSelection);
+  let selection: NotesChatSelection | null = $derived(selectionState.current);
 
   let activeThread = $derived(threads.find((t) => t.id === activeId) ?? null);
 
@@ -23,6 +42,22 @@
   let inputEl: HTMLTextAreaElement | undefined = $state();
   let inputFocused = $state(false);
   let scrollContainer: HTMLDivElement | undefined = $state();
+  let loading = $state(false);
+
+  // Agent state
+  let agents = $state<AgentEntry[]>([]);
+  let selectedAgent = $state<string | null>(null);
+  let agentInstructionsCache = $state(new Map<string, string>());
+
+  onMount(async () => {
+    if (projectId) {
+      try {
+        agents = await command<AgentEntry[]>("list_agents", { projectId });
+      } catch {
+        // silently fail
+      }
+    }
+  });
 
   // Expose methods for HotkeyManager to call
   export function focusInput() {
@@ -88,9 +123,27 @@
     inputFocused = false;
   }
 
-  function sendMessage() {
+  async function getAgentInstructions(): Promise<string | null> {
+    if (!selectedAgent || !projectId) return null;
+
+    const cached = agentInstructionsCache.get(selectedAgent);
+    if (cached) return cached;
+
+    try {
+      const content = await command<string>("read_agent_instructions", {
+        projectId,
+        agentName: selectedAgent,
+      });
+      agentInstructionsCache.set(selectedAgent, content);
+      return content;
+    } catch {
+      return null;
+    }
+  }
+
+  async function sendMessage() {
     const text = inputValue.trim();
-    if (!text || !activeThread) return;
+    if (!text || !activeThread || loading) return;
 
     const userMsg: NotesChatMessage = { role: "user", content: text };
     notesChatThreads.update((ts) =>
@@ -103,7 +156,54 @@
     inputValue = "";
     inputFocused = false;
     inputEl?.blur();
+    loading = true;
     scrollToBottom();
+
+    try {
+      const agentInstructions = await getAgentInstructions();
+      const history = activeThread.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const response = await command<{ type: string; text: string }>(
+        "send_note_ai_chat",
+        {
+          noteContent,
+          selectedText: selection?.selectedText ?? "",
+          conversationHistory: history,
+          prompt: text,
+          agentInstructions,
+        },
+      );
+
+      const assistantMsg: NotesChatMessage = {
+        role: "assistant",
+        content: response.text,
+      };
+      notesChatThreads.update((ts) =>
+        ts.map((t) =>
+          t.id === activeId
+            ? { ...t, messages: [...t.messages, assistantMsg] }
+            : t,
+        ),
+      );
+    } catch (error) {
+      const errMsg: NotesChatMessage = {
+        role: "assistant",
+        content: `Error: ${error instanceof Error ? error.message : String(error)}`,
+      };
+      notesChatThreads.update((ts) =>
+        ts.map((t) =>
+          t.id === activeId
+            ? { ...t, messages: [...t.messages, errMsg] }
+            : t,
+        ),
+      );
+    } finally {
+      loading = false;
+      scrollToBottom();
+    }
   }
 
   function scrollToBottom() {
@@ -113,15 +213,50 @@
       }
     });
   }
+
+  let selectedAgentTitle = $derived(
+    selectedAgent
+      ? agents.find((a) => a.name === selectedAgent)?.title ?? selectedAgent
+      : null
+  );
+
+  let selectionPreview = $derived(
+    selection?.selectedText
+      ? selection.selectedText.length > 120
+        ? selection.selectedText.slice(0, 120) + "..."
+        : selection.selectedText
+      : null
+  );
 </script>
 
 <div class="notes-chat-sidebar" class:focused={isFocused}>
   <div class="panel-header">
     <span class="panel-title">Agent Chat</span>
+    {#if agents.length > 0}
+      <select
+        class="agent-select"
+        value={selectedAgent ?? ""}
+        onchange={(e) => {
+          const val = e.currentTarget.value;
+          selectedAgent = val || null;
+        }}
+      >
+        <option value="">No agent</option>
+        {#each agents as agent}
+          <option value={agent.name}>{agent.title || agent.name}</option>
+        {/each}
+      </select>
+    {/if}
     {#if threads.length > 1}
       <span class="thread-indicator">{threads.findIndex((t) => t.id === activeId) + 1}/{threads.length}</span>
     {/if}
   </div>
+
+  {#if selectionPreview}
+    <div class="selection-context">
+      <pre>{selectionPreview}</pre>
+    </div>
+  {/if}
 
   {#if threads.length === 0}
     <div class="empty-state">
@@ -147,10 +282,22 @@
       {:else}
         {#each activeThread.messages as msg}
           <div class="message {msg.role}">
-            <span class="message-role">{msg.role === "user" ? "You" : "Agent"}</span>
-            <span class="message-content">{msg.content}</span>
+            <span class="message-role">{msg.role === "user" ? "You" : selectedAgentTitle ?? "Agent"}</span>
+            <div class="message-content">
+              {#if msg.role === "assistant"}
+                {@html renderMarkdown(msg.content)}
+              {:else}
+                {msg.content}
+              {/if}
+            </div>
           </div>
         {/each}
+        {#if loading}
+          <div class="message assistant">
+            <span class="message-role">{selectedAgentTitle ?? "Agent"}</span>
+            <span class="spinner"></span>
+          </div>
+        {/if}
       {/if}
     </div>
 
@@ -158,9 +305,10 @@
       <textarea
         bind:this={inputEl}
         bind:value={inputValue}
-        placeholder="Message..."
+        placeholder={selectedAgentTitle ? `Ask ${selectedAgentTitle}...` : "Message..."}
         rows="2"
         class:active={inputFocused}
+        disabled={loading}
         onfocus={handleInputFocus}
         onblur={handleInputBlur}
         onkeydown={handleInputKeydown}
@@ -193,6 +341,7 @@
     padding: 10px 12px;
     border-bottom: 1px solid var(--border-default);
     flex-shrink: 0;
+    gap: 8px;
   }
 
   .panel-title {
@@ -203,9 +352,46 @@
     color: var(--text-secondary);
   }
 
+  .agent-select {
+    flex: 1;
+    min-width: 0;
+    background: var(--bg-void);
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    padding: 3px 6px;
+    color: var(--text-primary);
+    font-size: 11px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .agent-select:focus {
+    border-color: var(--text-emphasis);
+  }
+
   .thread-indicator {
     font-size: 11px;
     color: var(--text-secondary);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+
+  .selection-context {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border-default);
+    max-height: 80px;
+    overflow-y: auto;
+    flex-shrink: 0;
+    background: rgba(137, 180, 250, 0.04);
+  }
+
+  .selection-context pre {
+    margin: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
     font-family: var(--font-mono);
   }
 
@@ -310,6 +496,20 @@
   .message-content {
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--bg-active);
+    border-top-color: var(--text-emphasis);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .input-area {
