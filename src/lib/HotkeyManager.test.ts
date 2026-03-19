@@ -735,6 +735,14 @@ describe('HotkeyManager', () => {
       expect(get(activeNote)).toEqual({ folder: 'proj-1', filename: 'todo.md' });
       expect(get(focusTarget)).toEqual({ type: 'notes-editor', folder: 'proj-1', entryKey: 'a' });
     });
+
+    it('f dispatches open-fuzzy-finder in notes mode', () => {
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('f');
+      expect(captured).toEqual({ type: 'open-fuzzy-finder' });
+      unsub();
+    });
   });
 
   describe('architecture mode', () => {
