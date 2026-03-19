@@ -4,7 +4,6 @@
   import { command } from "$lib/backend";
   import { activeNote, noteViewMode, focusTarget, hotkeyAction, notesChatVisible, notesChatSelection, type NoteViewMode, type FocusTarget } from "./stores";
   import CodeMirrorNoteEditor, { type VimMode, type AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
-  import NoteAiPanel from "./NoteAiPanel.svelte";
 
   interface Props {
     projectId?: string;
@@ -17,7 +16,6 @@
   let loading = $state(true);
   let saveTimer: ReturnType<typeof setTimeout> | null = $state(null);
   let editorMode = $state<VimMode | string>("normal");
-  let aiChatRequest = $state<AiChatRequest | null>(null);
   let assetUrlCache = $state(new Map<string, string>());
   let editorApi: { getSelection: () => AiChatRequest | null } | null = null;
 
@@ -202,10 +200,6 @@
 
   function handleEditorEscape(mode: VimMode | string) {
     editorMode = mode;
-    if (aiChatRequest) {
-      aiChatRequest = null;
-      return; // consume the escape
-    }
     if (editorMode !== "normal") return;
 
     void saveNow();
@@ -247,29 +241,12 @@
             editorMode = mode;
           }}
           onEscape={handleEditorEscape}
-          onAiChat={(request) => {
-            aiChatRequest = request;
-          }}
           onImageSaved={handleImageSaved}
           onViewReady={(api) => {
             editorApi = api;
           }}
         />
       </div>
-      {#if aiChatRequest}
-        <NoteAiPanel
-          noteContent={content}
-          request={aiChatRequest}
-          {projectId}
-          onReplace={(text, from, to) => {
-            content = content.slice(0, from) + text + content.slice(to);
-            scheduleSave();
-          }}
-          onDismiss={() => {
-            aiChatRequest = null;
-          }}
-        />
-      {/if}
     </div>
   {/if}
 </div>
