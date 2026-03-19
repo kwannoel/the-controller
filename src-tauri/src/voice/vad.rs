@@ -90,14 +90,7 @@ impl Vad {
         let (_, state_data) = outputs["stateN"]
             .try_extract_tensor::<f32>()
             .map_err(|e| format!("Failed to extract stateN: {e}"))?;
-        let new_state = state_data.to_vec();
-        if new_state.len() != STATE_SIZE {
-            return Err(format!(
-                "VAD state size mismatch: expected {STATE_SIZE}, got {}",
-                new_state.len()
-            ));
-        }
-        self.state = new_state;
+        self.state = state_data.to_vec();
 
         // Update context: last CONTEXT_SIZE samples from this chunk
         if chunk_len >= CONTEXT_SIZE {

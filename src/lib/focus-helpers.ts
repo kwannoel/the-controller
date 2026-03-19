@@ -77,31 +77,37 @@ export function focusForModeSwitch(
       }
       return { type: "project", projectId: current.projectId };
     }
-    if (current.type === "terminal") {
-      return { type: "project", projectId: current.projectId };
-    }
   }
 
   if (newMode === "agents") {
     if (current.type === "folder" || current.type === "note" || current.type === "notes-editor") {
       return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
     }
-    if (current.type === "session" || current.type === "terminal") {
+    if (current.type === "session") {
       return { type: "project", projectId: current.projectId };
     }
   }
 
   if (newMode === "notes") {
-    if (current.type === "session" || current.type === "terminal" || current.type === "agent" || current.type === "agent-panel" || current.type === "project") {
+    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel" || current.type === "project") {
       return null;
     }
   }
 
-  if (newMode === "architecture" || newMode === "infrastructure") {
+  if (newMode === "architecture") {
     if (current.type === "folder" || current.type === "note" || current.type === "notes-editor") {
       return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
     }
-    if (current.type === "session" || current.type === "terminal" || current.type === "agent" || current.type === "agent-panel") {
+    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel") {
+      return { type: "project", projectId: current.projectId };
+    }
+  }
+
+  if (newMode === "infrastructure") {
+    if (current.type === "folder" || current.type === "note" || current.type === "notes-editor") {
+      return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
+    }
+    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel") {
       return { type: "project", projectId: current.projectId };
     }
   }

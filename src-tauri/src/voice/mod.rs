@@ -162,7 +162,9 @@ impl VoicePipeline {
 
     /// Toggle pause state. Returns `true` if now paused.
     pub fn toggle_pause(&self) -> bool {
-        !self.pause_flag.fetch_xor(true, Ordering::SeqCst)
+        let was_paused = self.pause_flag.load(Ordering::SeqCst);
+        self.pause_flag.store(!was_paused, Ordering::SeqCst);
+        !was_paused
     }
 
     /// Returns `true` if the pipeline is currently paused.

@@ -60,61 +60,58 @@
 
   // When focusTarget changes, expand and focus the relevant DOM element
   $effect(() => {
-    const focus = currentFocus;
-    if (!focus) return;
-
-    if (focus.type === "session") {
-      if (!expandedProjectSet.has(focus.projectId)) {
+    if (currentFocus?.type === "session") {
+      if (!expandedProjectSet.has(currentFocus.projectId)) {
         const next = new Set(expandedProjectSet);
-        next.add(focus.projectId);
+        next.add(currentFocus.projectId);
         expandedProjects.set(next);
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-session-id="${focus.sessionId}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-session-id="${currentFocus.sessionId}"]`);
           if (el) el.focus();
         });
       }
-    } else if (focus.type === "project") {
+    } else if (currentFocus?.type === "project") {
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-project-id="${focus.projectId}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-project-id="${currentFocus.projectId}"]`);
           if (el) el.focus();
         });
       }
-    } else if (focus.type === "agent") {
-      if (!expandedProjectSet.has(focus.projectId)) {
+    } else if (currentFocus?.type === "agent") {
+      if (!expandedProjectSet.has(currentFocus.projectId)) {
         const next = new Set(expandedProjectSet);
-        next.add(focus.projectId);
+        next.add(currentFocus.projectId);
         expandedProjects.set(next);
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-agent-id="${focus.projectId}:${focus.agentKind}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-agent-id="${currentFocus.projectId}:${currentFocus.agentKind}"]`);
           if (el) el.focus();
         });
       }
-    } else if (focus.type === "agent-panel") {
+    } else if (currentFocus?.type === "agent-panel") {
       // Blur sidebar element so visual focus moves to the panel
       if (document.activeElement instanceof HTMLElement && sidebarEl?.contains(document.activeElement)) {
         document.activeElement.blur();
       }
-    } else if (focus.type === "folder") {
+    } else if (currentFocus?.type === "folder") {
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-folder-id="${focus.folder}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-folder-id="${currentFocus.folder}"]`);
           if (el) el.focus();
         });
       }
-    } else if (focus.type === "note") {
-      if (!expandedProjectSet.has(focus.folder)) {
+    } else if (currentFocus?.type === "note") {
+      if (!expandedProjectSet.has(currentFocus.folder)) {
         const next = new Set(expandedProjectSet);
-        next.add(focus.folder);
+        next.add(currentFocus.folder);
         expandedProjects.set(next);
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-note-id="${focus.folder}:${focus.filename}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(`[data-note-id="${currentFocus.folder}:${currentFocus.filename}"]`);
           if (el) el.focus();
         });
       }
