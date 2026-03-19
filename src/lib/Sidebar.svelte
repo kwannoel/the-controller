@@ -278,6 +278,9 @@
       for (const session of project.sessions) {
         unlisteners.push(listen<string>(`session-status-changed:${session.id}`, () => {
           markSession(session.id, "exited");
+          // Check if branch was merged — if so, auto-cleanup
+          command("auto_cleanup_if_merged", { projectId: project.id, sessionId: session.id })
+            .catch(() => {}); // Best-effort, errors logged on backend
         }));
 
         // Cleanup: backend already deleted the session and worktree.

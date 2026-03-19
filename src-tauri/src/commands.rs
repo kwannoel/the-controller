@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
 use crate::architecture::{generate_architecture_blocking_with_emitter, ArchitectureResult};
@@ -2683,6 +2683,92 @@ pub async fn list_agents(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn auto_cleanup_if_merged(
+    state: State<AppState>,
+    app_handle: AppHandle,
+    project_id: String,
+    session_id: String,
+) -> Result<bool, String> {
+    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
+
+    // Look up session info
+    let (repo_path, worktree_path, worktree_branch) = {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
+        let session = match project.sessions.iter().find(|s| s.id == session_uuid) {
+            Some(s) => s,
+            None => return Ok(false), // Session already cleaned up
+        };
+        (
+            project.repo_path.clone(),
+            session.worktree_path.clone(),
+            session.worktree_branch.clone(),
+        )
+    };
+
+    // Check if branch is merged
+    let branch = match worktree_branch {
+        Some(b) => b,
+        None => return Ok(false), // No branch to check
+    };
+
+    match WorktreeManager::is_branch_merged(&repo_path, &branch) {
+        Ok(true) => {
+            tracing::info!(
+                session_id = %session_uuid,
+                branch = %branch,
+                "branch merged into main, auto-cleaning up session"
+            );
+        }
+        Ok(false) => return Ok(false), // Not merged, no cleanup
+        Err(e) => {
+            tracing::warn!(
+                session_id = %session_uuid,
+                "failed to check if branch is merged: {}",
+                e
+            );
+            return Ok(false);
+        }
+    }
+
+    // Cleanup: kill PTY
+    {
+        let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
+        let _ = pty_manager.close_session(session_uuid);
+    }
+
+    // Remove session from project
+    {
+        let storage = state.storage.lock().map_err(|e| e.to_string())?;
+        let mut project = storage
+            .load_project(project_uuid)
+            .map_err(|e| e.to_string())?;
+        project.sessions.retain(|s| s.id != session_uuid);
+        storage.save_project(&project).map_err(|e| e.to_string())?;
+    }
+
+    // Delete worktree + branch
+    if let Some(wt_path) = worktree_path {
+        if let Err(e) = WorktreeManager::remove_worktree(&wt_path, &repo_path, &branch) {
+            tracing::error!(
+                session_id = %session_uuid,
+                "auto-cleanup worktree errors: {}",
+                e
+            );
+        }
+    }
+
+    // Notify frontend
+    let event_name = format!("session-cleanup:{}", session_uuid);
+    let _ = app_handle.emit(&event_name, "cleanup");
+
+    Ok(true)
 }
 
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
