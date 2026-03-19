@@ -547,6 +547,10 @@
       if (result.type === "pr_created") {
         showToast(`PR created: ${result.url}`, "info");
       }
+      // Backend already cleaned up session — refresh frontend state
+      clearSessionTracking(sessionId);
+      activeSessionId.update((current) => (current === sessionId ? null : current));
+      await loadProjects();
     } catch (e) {
       showToast(String(e), "error");
     } finally {
