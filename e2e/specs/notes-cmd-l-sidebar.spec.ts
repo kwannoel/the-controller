@@ -7,19 +7,7 @@ import { test, expect } from "@playwright/test";
  * Outcome: The agent chat sidebar appears on the right side
  */
 
-async function openNoteInEditor(page: any) {
-  const projectName = "the-controller";
-  const noteFilename = "cmd-l-test.md";
-
-  // Create test note
-  await page.request.post("http://localhost:3001/api/write_note", {
-    data: {
-      projectName,
-      filename: noteFilename,
-      content: "# Cmd+L Test\n\nSome test content for sidebar toggle.",
-    },
-  });
-
+async function openFirstNoteInEditor(page: any) {
   await page.goto("/");
   await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
@@ -29,27 +17,30 @@ async function openNoteInEditor(page: any) {
   await page.keyboard.press("n");
   await page.waitForTimeout(500);
 
-  // Click the project to select it
-  const projectEl = page
-    .locator(".sidebar")
-    .getByText(projectName, { exact: true });
-  await expect(projectEl).toBeVisible({ timeout: 3_000 });
-  await projectEl.click();
-  await page.waitForTimeout(300);
+  // Wait for the sidebar to show folders
+  const sidebar = page.locator(".sidebar");
+  await expect(sidebar.locator("h2")).toHaveText("Notes", { timeout: 3_000 });
 
-  // Expand the project
-  await page.keyboard.press("l");
+  // Click the first folder entry (the expand arrow button)
+  const firstFolderToggle = sidebar.locator("button").filter({ hasText: "▶" }).first();
+  await expect(firstFolderToggle).toBeVisible({ timeout: 3_000 });
+  await firstFolderToggle.click();
   await page.waitForTimeout(500);
 
-  // Click the note
-  const displayName = noteFilename.replace(/\.md$/, "");
-  const noteEl = page.locator(".sidebar").getByText(displayName);
-  await expect(noteEl).toBeVisible({ timeout: 3_000 });
-  await noteEl.click();
-  await page.waitForTimeout(300);
+  // After expanding, there should be a note entry to click
+  // The expanded folder shows note entries — click the first one
+  // Look for a ▼ (expanded state) and then find the note entry below
+  const noteEntries = sidebar.locator(".note-entry, .sidebar-item").filter({ hasNotText: /▶|▼/ });
 
-  // Open editor with Enter
-  await page.keyboard.press("Enter");
+  // If no specific note-entry class, try clicking the first item below the folder
+  // Use keyboard: press j to move to the note, then Enter to open it
+  await page.keyboard.press("j"); // move to folder
+  await page.waitForTimeout(200);
+  await page.keyboard.press("l"); // expand folder
+  await page.waitForTimeout(500);
+  await page.keyboard.press("j"); // move to note
+  await page.waitForTimeout(200);
+  await page.keyboard.press("Enter"); // open note
   await page.waitForTimeout(1000);
 
   const editor = page.locator('[data-testid="note-code-editor"]');
@@ -60,32 +51,32 @@ async function openNoteInEditor(page: any) {
 }
 
 test("Cmd+L in notes mode opens agent chat sidebar", async ({ page }) => {
-  await openNoteInEditor(page);
+  await openFirstNoteInEditor(page);
 
   // Sidebar should not be visible initially
-  const sidebar = page.locator(".notes-chat-sidebar");
-  await expect(sidebar).not.toBeVisible();
+  const chatSidebar = page.locator(".notes-chat-sidebar");
+  await expect(chatSidebar).not.toBeVisible();
 
   // Press Cmd+L to open the sidebar
   await page.keyboard.press("Meta+l");
 
   // The agent chat sidebar should appear
-  await expect(sidebar).toBeVisible({ timeout: 5_000 });
+  await expect(chatSidebar).toBeVisible({ timeout: 5_000 });
 
   // Take screenshot for visual verification
   await page.screenshot({ path: "e2e/results/cmd-l-sidebar-open.png" });
 });
 
 test("Cmd+L toggles sidebar closed when already open", async ({ page }) => {
-  await openNoteInEditor(page);
+  await openFirstNoteInEditor(page);
 
-  const sidebar = page.locator(".notes-chat-sidebar");
+  const chatSidebar = page.locator(".notes-chat-sidebar");
 
   // Open sidebar
   await page.keyboard.press("Meta+l");
-  await expect(sidebar).toBeVisible({ timeout: 5_000 });
+  await expect(chatSidebar).toBeVisible({ timeout: 5_000 });
 
   // Press Cmd+L again to close
   await page.keyboard.press("Meta+l");
-  await expect(sidebar).not.toBeVisible({ timeout: 3_000 });
+  await expect(chatSidebar).not.toBeVisible({ timeout: 3_000 });
 });
