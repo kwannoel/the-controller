@@ -328,6 +328,20 @@ fn is_api_or_ws_path(path: &str) -> bool {
     path.starts_with("/api/") || path == "/ws"
 }
 
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let dest_path = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            std::fs::copy(entry.path(), dest_path)?;
+        }
+    }
+    Ok(())
+}
+
 fn decoded_query_param(query: &str, key: &str) -> Option<String> {
     query
         .split('&')
@@ -796,15 +810,28 @@ async fn create_session(
             .join("agents")
             .join(agent);
         if !agent_dir.exists() {
-            if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
-                if let Err(e) = WorktreeManager::remove_worktree(wt, &repo_path, br) {
-                    tracing::error!(session_id = %session_id, "worktree cleanup errors: {e}");
+            // Agent may be untracked in git — copy from source repo into worktree
+            let source_agent_dir = std::path::PathBuf::from(&repo_path)
+                .join("agents")
+                .join(agent);
+            if source_agent_dir.exists() {
+                copy_dir_all(&source_agent_dir, &agent_dir).map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("failed to copy agent directory: {}", e),
+                    )
+                })?;
+            } else {
+                if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
+                    if let Err(e) = WorktreeManager::remove_worktree(wt, &repo_path, br) {
+                        tracing::error!(session_id = %session_id, "worktree cleanup errors: {e}");
+                    }
                 }
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!("Agent directory not found: agents/{}", agent),
+                ));
             }
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("Agent directory not found: agents/{}", agent),
-            ));
         }
         commands::ensure_claude_md_symlink(&agent_dir)
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
