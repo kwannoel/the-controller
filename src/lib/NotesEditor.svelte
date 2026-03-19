@@ -13,6 +13,7 @@
   let editorMode = $state<VimMode | string>("normal");
   let aiChatRequest = $state<AiChatRequest | null>(null);
   let assetUrlCache = $state(new Map<string, string>());
+  let pendingResolutions = new Set<string>();
 
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
@@ -124,9 +125,15 @@
       saveTimer = null;
     }
     if (!currentNote || !folderName || content === savedContent) return;
+    const contentToSave = content;
+    const noteFilename = currentNote.filename;
+    const folder = folderName;
     try {
-      await command("write_note", { folder: folderName, filename: currentNote.filename, content });
-      savedContent = content;
+      await command("write_note", { folder, filename: noteFilename, content: contentToSave });
+      // Only update savedContent if we're still on the same note
+      if (currentNote?.filename === noteFilename && folderName === folder) {
+        savedContent = contentToSave;
+      }
     } catch {
       // silently fail — user will see unsaved indicator
     }
@@ -167,8 +174,10 @@
     }
     const cached = assetUrlCache.get(relativePath);
     if (cached) return cached;
+    if (pendingResolutions.has(relativePath)) return null;
     // Trigger async resolution — the image will appear on next decoration rebuild
-    resolveImageSrc(relativePath);
+    pendingResolutions.add(relativePath);
+    resolveImageSrc(relativePath).finally(() => pendingResolutions.delete(relativePath));
     return null;
   }
 
