@@ -8,6 +8,7 @@
   import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";
+  import { extractLineText, findUrlAtPosition } from "./terminal-links";
   import { createScrollTracker } from "./terminal-scroll";
   import { clipboardHasImage } from "./clipboard";
   import { activeSessionId, projects, type Project } from "./stores";
@@ -160,6 +161,36 @@
       });
     }));
     term.open(containerEl);
+
+    // Handle Ctrl/Cmd+Click to open links even when mouse tracking is active.
+    // xterm.js WebLinksAddon only activates links when mouse tracking is off;
+    // in alternate screen mode (where Claude Code runs), clicks go to the app.
+    // This handler intercepts modified clicks in capture phase to bypass that.
+    containerEl.addEventListener("mousedown", (e: MouseEvent) => {
+      if (!term || !(e.metaKey || e.ctrlKey)) return;
+
+      const screen = containerEl!.querySelector(".xterm-screen");
+      if (!screen) return;
+
+      const rect = screen.getBoundingClientRect();
+      const col = Math.floor((e.clientX - rect.left) / (rect.width / term.cols));
+      const row = Math.floor((e.clientY - rect.top) / (rect.height / term.rows));
+
+      if (col < 0 || col >= term.cols || row < 0 || row >= term.rows) return;
+
+      const bufferLine = term.buffer.active.viewportY + row;
+      const line = term.buffer.active.getLine(bufferLine);
+      if (!line) return;
+
+      const url = findUrlAtPosition(extractLineText(line), col);
+      if (url) {
+        e.preventDefault();
+        e.stopPropagation();
+        openUrl(url).catch((err) => {
+          console.error("Failed to open URL:", err);
+        });
+      }
+    }, { capture: true });
 
     // Track scroll position so we can avoid forcibly scrolling to bottom when
     // the user is reading history.  xterm.js fires onScroll whenever the
