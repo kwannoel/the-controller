@@ -792,9 +792,10 @@
     <FuzzyFinder
       projects={projectList}
       onSelect={async (entry) => {
+        const mode = currentMode;
         showFuzzyFinder = false;
         if (entry.projectId) {
-          if (currentMode === "notes") {
+          if (mode === "notes") {
             activeProjectForNotes = projectList.find(p => p.id === entry.projectId);
           } else {
             expandedProjects.update(s => { const next = new Set(s); next.add(entry.projectId!); return next; });
@@ -805,7 +806,7 @@
         try {
           const project = await command<Project>("load_project", { name: entry.name, repoPath: entry.path });
           await loadProjects();
-          if (currentMode === "notes") {
+          if (mode === "notes") {
             activeProjectForNotes = projectList.find(p => p.id === project.id);
           } else {
             expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
