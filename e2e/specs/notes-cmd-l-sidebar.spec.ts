@@ -21,20 +21,17 @@ async function openFirstNoteInEditor(page: any) {
   await expect(sidebar.locator("h2")).toHaveText("Notes", { timeout: 3_000 });
 
   // Expand the first folder
-  const folderToggle = sidebar.locator("button").filter({ hasText: "▶" }).first();
+  const folderToggle = sidebar.locator("button.btn-expand").first();
   await expect(folderToggle).toBeVisible({ timeout: 3_000 });
   await folderToggle.click();
   await page.waitForTimeout(500);
 
-  // Click the first note entry (button inside the expanded folder)
-  // After expanding, the note appears as a button with the note name
-  const noteButton = sidebar.locator("button").filter({ hasText: "prd" }).first();
-  await expect(noteButton).toBeVisible({ timeout: 3_000 });
-  await noteButton.click();
-  await page.waitForTimeout(300);
+  // Click the first note-item (div with role="button")
+  const noteItem = sidebar.locator(".note-item").first();
+  await expect(noteItem).toBeVisible({ timeout: 3_000 });
 
-  // Open the editor with Enter
-  await page.keyboard.press("Enter");
+  // Double-click opens the note (ondblclick triggers onNoteSelect)
+  await noteItem.dblclick();
   await page.waitForTimeout(1000);
 
   const editor = page.locator('[data-testid="note-code-editor"]');
