@@ -57,9 +57,12 @@
   const IDLE_DEBOUNCE_MS = 1500;
   let surfacedCorruptProjectWarnings = $state(new Set<string>());
 
-  let activeProjectForNotes: Project | undefined = $derived(
-    projectList.find(p => p.sessions.some(s => s.id === activeSession)) ?? projectList[0]
-  );
+  let activeProjectForNotes: Project | undefined = $state();
+  $effect(() => {
+    if (!activeProjectForNotes || !projectList.some(p => p.id === activeProjectForNotes!.id)) {
+      activeProjectForNotes = projectList.find(p => p.sessions.some(s => s.id === activeSession)) ?? projectList[0];
+    }
+  });
 
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
@@ -779,15 +782,23 @@
       onSelect={async (entry) => {
         showFuzzyFinder = false;
         if (entry.projectId) {
-          expandedProjects.update(s => { const next = new Set(s); next.add(entry.projectId!); return next; });
-          focusTarget.set({ type: "project", projectId: entry.projectId });
+          if (currentMode === "notes") {
+            activeProjectForNotes = projectList.find(p => p.id === entry.projectId);
+          } else {
+            expandedProjects.update(s => { const next = new Set(s); next.add(entry.projectId!); return next; });
+            focusTarget.set({ type: "project", projectId: entry.projectId });
+          }
           return;
         }
         try {
           const project = await command<Project>("load_project", { name: entry.name, repoPath: entry.path });
           await loadProjects();
-          expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
-          focusTarget.set({ type: "project", projectId: project.id });
+          if (currentMode === "notes") {
+            activeProjectForNotes = projectList.find(p => p.id === project.id);
+          } else {
+            expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
+            focusTarget.set({ type: "project", projectId: project.id });
+          }
         } catch (e) {
           showToast(String(e), "error");
         }
