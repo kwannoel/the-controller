@@ -175,6 +175,11 @@ async fn run_server() -> std::io::Result<()> {
         .route("/api/list_archived_projects", post(list_archived_projects))
         .route("/api/generate_architecture", post(generate_architecture))
         .route("/api/merge_session_branch", post(merge_session_branch))
+        .route("/api/auto_cleanup_if_merged", post(auto_cleanup_if_merged))
+        .route(
+            "/api/read_agent_instructions",
+            post(read_agent_instructions),
+        )
         .route("/api/send_note_ai_chat", post(send_note_ai_chat))
         .route("/api/list_notes", post(api_list_notes))
         .route("/api/read_note", post(api_read_note))
@@ -3404,6 +3409,152 @@ async fn api_list_agents(
     let entries = agents::list_agents(&base_dir)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(Json(serde_json::to_value(entries).unwrap()))
+}
+
+async fn read_agent_instructions(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing projectId".to_string()))?;
+    let agent_name = args["agentName"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "missing agentName".to_string()))?;
+    let id =
+        uuid::Uuid::parse_str(project_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let storage = state.app.storage.clone();
+    let agent = agent_name.to_string();
+    let content = tokio::task::spawn_blocking(move || {
+        let storage = storage
+            .lock()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let project = storage
+            .load_project(id)
+            .map_err(|e| (StatusCode::NOT_FOUND, format!("project not found: {}", e)))?;
+        let agents_md = std::path::Path::new(&project.repo_path)
+            .join("agents")
+            .join(&agent)
+            .join("agents.md");
+        std::fs::read_to_string(&agents_md).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to read agents.md for {}: {}", agent, e),
+            )
+        })
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    Ok(Json(serde_json::to_value(content).unwrap()))
+}
+
+async fn auto_cleanup_if_merged(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"].as_str().unwrap_or_default();
+    let session_id = args["sessionId"].as_str().unwrap_or_default();
+    let project_uuid =
+        uuid::Uuid::parse_str(project_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let session_uuid =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    // Look up session info (short-lived lock)
+    let (repo_path, worktree_path, worktree_branch) = {
+        let storage = state
+            .app
+            .storage
+            .lock()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let project = storage
+            .load_project(project_uuid)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let session = match project.sessions.iter().find(|s| s.id == session_uuid) {
+            Some(s) => s,
+            None => return Ok(Json(serde_json::json!(false))), // Session already cleaned up
+        };
+        (
+            project.repo_path.clone(),
+            session.worktree_path.clone(),
+            session.worktree_branch.clone(),
+        )
+    };
+
+    // Check if branch is merged
+    let branch = match worktree_branch {
+        Some(b) => b,
+        None => return Ok(Json(serde_json::json!(false))),
+    };
+
+    let rp = repo_path.clone();
+    let br = branch.clone();
+    let merged = tokio::task::spawn_blocking(move || {
+        the_controller_lib::worktree::WorktreeManager::is_branch_merged(&rp, &br)
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if !merged {
+        return Ok(Json(serde_json::json!(false)));
+    }
+
+    tracing::info!(
+        session_id = %session_uuid,
+        branch = %branch,
+        "branch merged into main, auto-cleaning up session (server)"
+    );
+
+    // Cleanup: kill PTY
+    {
+        let mut pty_manager = state
+            .app
+            .pty_manager
+            .lock()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let _ = pty_manager.close_session(session_uuid);
+    }
+
+    // Remove session from project
+    {
+        let storage = state
+            .app
+            .storage
+            .lock()
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let mut project = storage
+            .load_project(project_uuid)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        project.sessions.retain(|s| s.id != session_uuid);
+        storage
+            .save_project(&project)
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    }
+
+    // Delete worktree + branch (off main thread)
+    if let Some(wt_path) = worktree_path {
+        let rp = repo_path;
+        let br = branch;
+        let sid = session_uuid;
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Err(e) =
+                the_controller_lib::worktree::WorktreeManager::remove_worktree(&wt_path, &rp, &br)
+            {
+                tracing::error!(
+                    session_id = %sid,
+                    "auto-cleanup worktree errors: {}",
+                    e
+                );
+            }
+        })
+        .await;
+    }
+
+    // Broadcast cleanup event over WebSocket
+    let event_name = format!("session-cleanup:{}", session_uuid);
+    let _ = state.ws_tx.send(event_name);
+
+    Ok(Json(serde_json::json!(true)))
 }
 
 // --- Note Migration ---
