@@ -482,7 +482,37 @@ impl WorktreeManager {
             .graph_descendant_of(main_commit.id(), branch_commit.id())
             .map_err(|e| format!("failed to check ancestry: {}", e))?;
 
-        Ok(is_ancestor)
+        if is_ancestor {
+            return Ok(true);
+        }
+
+        // Squash merge detection: if merging the branch into main would produce
+        // the same tree main already has, the branch's changes are already in main.
+        let merge_base_oid = match repo.merge_base(main_commit.id(), branch_commit.id()) {
+            Ok(oid) => oid,
+            Err(_) => return Ok(false), // No common ancestor — not merged
+        };
+        let merge_base_commit = repo
+            .find_commit(merge_base_oid)
+            .map_err(|e| format!("failed to find merge base commit: {}", e))?;
+
+        let base_tree = merge_base_commit.tree().map_err(|e| e.to_string())?;
+        let main_tree = main_commit.tree().map_err(|e| e.to_string())?;
+        let branch_tree = branch_commit.tree().map_err(|e| e.to_string())?;
+
+        let mut merge_index = repo
+            .merge_trees(&base_tree, &main_tree, &branch_tree, None)
+            .map_err(|e| format!("failed to simulate merge: {}", e))?;
+
+        if merge_index.has_conflicts() {
+            return Ok(false);
+        }
+
+        let merged_tree_oid = merge_index
+            .write_tree_to(&repo)
+            .map_err(|e| format!("failed to write merged tree: {}", e))?;
+
+        Ok(merged_tree_oid == main_tree.id())
     }
 }
 
@@ -926,6 +956,58 @@ mod tests {
 
         // After merge: branch IS merged
         assert!(WorktreeManager::is_branch_merged(&repo_path, "merge-check").unwrap());
+    }
+
+    #[test]
+    fn test_is_branch_merged_squash_merge() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("squash-check");
+
+        // Create a worktree and add a commit
+        let wt_path =
+            WorktreeManager::create_worktree(&repo_path, "squash-check", &worktree_dir)
+                .expect("create worktree");
+        let wt_repo = Repository::open(&wt_path).unwrap();
+        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+        let head = wt_repo.head().unwrap().peel_to_commit().unwrap();
+        let mut index = wt_repo.index().unwrap();
+        std::fs::write(wt_path.join("squash.txt"), "squash content").unwrap();
+        index.add_path(Path::new("squash.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = wt_repo.find_tree(tree_id).unwrap();
+        wt_repo
+            .commit(Some("HEAD"), &sig, &sig, "branch commit", &tree, &[&head])
+            .unwrap();
+
+        // Before squash merge: branch is NOT merged
+        assert!(!WorktreeManager::is_branch_merged(&repo_path, "squash-check").unwrap());
+
+        // Simulate squash merge: create a NEW commit on main with the same tree
+        // as the branch (this is what `gh pr merge --squash` produces)
+        let repo = Repository::open(&repo_path).unwrap();
+        let main_ref = repo
+            .find_reference("refs/heads/main")
+            .or_else(|_| repo.find_reference("refs/heads/master"))
+            .unwrap();
+        let main_commit = main_ref.peel_to_commit().unwrap();
+
+        // The squash commit has main as its only parent (NOT the branch commit)
+        // but carries the same tree content as the branch
+        let branch_tree = wt_repo.head().unwrap().peel_to_commit().unwrap().tree().unwrap();
+        repo.commit(
+            Some(main_ref.name().unwrap()),
+            &sig,
+            &sig,
+            "squash merge: branch commit",
+            &branch_tree,
+            &[&main_commit],
+        )
+        .unwrap();
+
+        // After squash merge: branch IS merged (even though it's not an ancestor)
+        assert!(WorktreeManager::is_branch_merged(&repo_path, "squash-check").unwrap());
     }
 
     #[test]
