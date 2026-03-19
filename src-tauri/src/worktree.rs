@@ -447,6 +447,43 @@ impl WorktreeManager {
             ))
         }
     }
+
+    /// Check if a branch has been merged into the main branch (or doesn't exist).
+    /// Returns true if the branch is gone or all its commits are reachable from main.
+    pub fn is_branch_merged(repo_path: &str, branch_name: &str) -> Result<bool, String> {
+        let repo =
+            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+
+        let branch = match repo.find_branch(branch_name, git2::BranchType::Local) {
+            Ok(b) => b,
+            Err(_) => return Ok(true), // Branch doesn't exist — treat as merged/cleaned
+        };
+
+        let branch_commit = branch
+            .get()
+            .peel_to_commit()
+            .map_err(|e| format!("failed to peel branch to commit: {}", e))?;
+
+        let main_branch_name = Self::detect_main_branch(repo_path)?;
+        let main_branch = repo
+            .find_branch(&main_branch_name, git2::BranchType::Local)
+            .map_err(|e| format!("failed to find main branch: {}", e))?;
+        let main_commit = main_branch
+            .get()
+            .peel_to_commit()
+            .map_err(|e| format!("failed to peel main to commit: {}", e))?;
+
+        // Same commit means the branch tip is already in main
+        if main_commit.id() == branch_commit.id() {
+            return Ok(true);
+        }
+
+        let is_ancestor = repo
+            .graph_descendant_of(main_commit.id(), branch_commit.id())
+            .map_err(|e| format!("failed to check ancestry: {}", e))?;
+
+        Ok(is_ancestor)
+    }
 }
 
 #[cfg(test)]
@@ -846,6 +883,56 @@ mod tests {
         let repo = git2::Repository::open(&repo_path).unwrap();
         let branch = repo.find_branch("prune-fail", git2::BranchType::Local);
         assert!(branch.is_err(), "branch should have been deleted");
+    }
+
+    #[test]
+    fn test_is_branch_merged_into_main() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("merge-check");
+
+        // Create a worktree and add a commit
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "merge-check", &worktree_dir)
+            .expect("create worktree");
+        let wt_repo = Repository::open(&wt_path).unwrap();
+        let sig = git2::Signature::now("Test", "test@example.com").unwrap();
+        let head = wt_repo.head().unwrap().peel_to_commit().unwrap();
+        let mut index = wt_repo.index().unwrap();
+        std::fs::write(wt_path.join("file.txt"), "content").unwrap();
+        index.add_path(Path::new("file.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = wt_repo.find_tree(tree_id).unwrap();
+        wt_repo
+            .commit(Some("HEAD"), &sig, &sig, "test commit", &tree, &[&head])
+            .unwrap();
+
+        // Before merge: branch is NOT merged
+        assert!(!WorktreeManager::is_branch_merged(&repo_path, "merge-check").unwrap());
+
+        // Simulate merge: fast-forward main to include the branch's commit
+        let repo = Repository::open(&repo_path).unwrap();
+        let branch_commit = repo
+            .find_branch("merge-check", git2::BranchType::Local)
+            .unwrap()
+            .get()
+            .peel_to_commit()
+            .unwrap();
+        repo.find_reference("refs/heads/main")
+            .or_else(|_| repo.find_reference("refs/heads/master"))
+            .unwrap()
+            .set_target(branch_commit.id(), "test merge")
+            .unwrap();
+
+        // After merge: branch IS merged
+        assert!(WorktreeManager::is_branch_merged(&repo_path, "merge-check").unwrap());
+    }
+
+    #[test]
+    fn test_is_branch_merged_missing_branch() {
+        let (_tmp, repo_path) = setup_test_repo();
+        // Nonexistent branch should return true (branch is gone = already cleaned up)
+        assert!(WorktreeManager::is_branch_merged(&repo_path, "nonexistent").unwrap());
     }
 
     #[test]

@@ -705,12 +705,17 @@ async fn close_session(
             if let (Some(wt_path), Some(branch)) = (session.worktree_path, session.worktree_branch)
             {
                 let rp = repo_path;
-                let _ = tokio::task::spawn_blocking(move || {
+                match tokio::task::spawn_blocking(move || {
                     the_controller_lib::worktree::WorktreeManager::remove_worktree(
                         &wt_path, &rp, &branch,
                     )
                 })
-                .await;
+                .await
+                {
+                    Ok(Err(e)) => tracing::error!("worktree cleanup errors: {e}"),
+                    Err(e) => tracing::error!("worktree cleanup task panicked: {e}"),
+                    Ok(Ok(())) => {}
+                }
             }
         }
     }
