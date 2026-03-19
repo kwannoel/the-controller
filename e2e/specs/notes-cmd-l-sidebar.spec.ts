@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 /**
  * User Story:
- * Actor:   A user in notes mode with a note open in the editor
+ * Actor:   A user in notes mode with a note open and focus in the editor
  * Action:  Presses Cmd+L to toggle the agent chat sidebar
  * Outcome: The agent chat sidebar appears on the right side
  */
@@ -26,11 +26,9 @@ async function openFirstNoteInEditor(page: any) {
   await folderToggle.click();
   await page.waitForTimeout(500);
 
-  // Click the first note-item (div with role="button")
+  // Double-click the first note-item to open it
   const noteItem = sidebar.locator(".note-item").first();
   await expect(noteItem).toBeVisible({ timeout: 3_000 });
-
-  // Double-click opens the note (ondblclick triggers onNoteSelect)
   await noteItem.dblclick();
   await page.waitForTimeout(1000);
 
@@ -40,8 +38,17 @@ async function openFirstNoteInEditor(page: any) {
   return editor;
 }
 
-test("Cmd+L in notes mode opens agent chat sidebar", async ({ page }) => {
-  await openFirstNoteInEditor(page);
+test("Cmd+L opens sidebar when focus is in notes editor", async ({ page }) => {
+  const editor = await openFirstNoteInEditor(page);
+
+  // Click into the CodeMirror content area to ensure focus is inside the editor
+  const cmContent = editor.locator(".cm-content");
+  await expect(cmContent).toBeVisible({ timeout: 3_000 });
+  await cmContent.click();
+  await page.waitForTimeout(300);
+
+  // Verify the editor is focused
+  await expect(editor.locator(".cm-focused")).toBeVisible({ timeout: 2_000 });
 
   // Sidebar should not be visible initially
   const chatSidebar = page.locator(".notes-chat-sidebar");
@@ -53,12 +60,16 @@ test("Cmd+L in notes mode opens agent chat sidebar", async ({ page }) => {
   // The agent chat sidebar should appear
   await expect(chatSidebar).toBeVisible({ timeout: 5_000 });
 
-  // Take screenshot for visual verification
   await page.screenshot({ path: "e2e/results/cmd-l-sidebar-open.png" });
 });
 
 test("Cmd+L toggles sidebar closed when already open", async ({ page }) => {
-  await openFirstNoteInEditor(page);
+  const editor = await openFirstNoteInEditor(page);
+
+  // Focus inside the editor
+  const cmContent = editor.locator(".cm-content");
+  await cmContent.click();
+  await page.waitForTimeout(300);
 
   const chatSidebar = page.locator(".notes-chat-sidebar");
 
