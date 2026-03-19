@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
  * User Story:
  * Actor:   A user in notes mode with a note open and focus in the editor
  * Action:  Presses Cmd+L to toggle the agent chat sidebar
- * Outcome: The agent chat sidebar appears on the right side
+ * Outcome: The agent chat sidebar appears visually on the right side
  */
 
 async function openFirstNoteInEditor(page: any) {
@@ -59,6 +59,18 @@ test("Cmd+L opens sidebar when focus is in notes editor", async ({ page }) => {
 
   // The agent chat sidebar should appear
   await expect(chatSidebar).toBeVisible({ timeout: 5_000 });
+
+  // Verify the sidebar is actually within the viewport (not clipped by overflow)
+  const box = await chatSidebar.boundingBox();
+  expect(box).not.toBeNull();
+  const viewport = page.viewportSize();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 1);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 1);
+
+  // Verify it contains the "Agent Chat" header
+  await expect(chatSidebar.locator(".panel-title")).toHaveText("Agent Chat");
 
   await page.screenshot({ path: "e2e/results/cmd-l-sidebar-open.png" });
 });

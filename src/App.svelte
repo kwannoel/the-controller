@@ -643,6 +643,7 @@
   }
   .terminal-area {
     flex: 1;
+    display: flex;
     overflow: hidden;
   }
   .auth-error-overlay {
