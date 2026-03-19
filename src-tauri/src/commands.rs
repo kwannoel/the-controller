@@ -2086,23 +2086,21 @@ pub async fn merge_session_branch(
 
                 // Clean up: kill PTY, remove session from project, delete worktree
                 {
-                    let mut pty_manager =
-                        state.pty_manager.lock().map_err(|e| e.to_string())?;
+                    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
                     let _ = pty_manager.close_session(session_uuid);
                 }
                 {
                     let storage = state.storage.lock().map_err(|e| e.to_string())?;
-                    let mut project =
-                        storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+                    let mut project = storage
+                        .load_project(project_uuid)
+                        .map_err(|e| e.to_string())?;
                     project.sessions.retain(|s| s.id != session_uuid);
                     storage.save_project(&project).map_err(|e| e.to_string())?;
                 }
                 // Delete worktree + branch
-                if let Err(e) = WorktreeManager::remove_worktree(
-                    &worktree_path,
-                    &repo_path,
-                    &branch_name,
-                ) {
+                if let Err(e) =
+                    WorktreeManager::remove_worktree(&worktree_path, &repo_path, &branch_name)
+                {
                     tracing::error!(session_id = %session_uuid, "post-merge worktree cleanup errors: {}", e);
                 }
 
