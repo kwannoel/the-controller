@@ -131,6 +131,11 @@ impl Broker {
         for (key, val) in &req.env {
             cmd.env(key, val);
         }
+        // The broker daemon may inherit CLAUDECODE=1 from the Tauri dev
+        // process. Since env_clear() is not used, this leaks into spawned
+        // sessions, causing Claude Code to enter restricted nested mode
+        // (disabling hooks, MCP servers, etc.). Always strip it.
+        cmd.env_remove("CLAUDECODE");
 
         let child = match pair.slave.spawn_command(cmd) {
             Ok(child) => child,
