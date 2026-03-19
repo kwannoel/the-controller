@@ -382,41 +382,70 @@ impl WorktreeManager {
             path = worktree_path,
             "removing worktree"
         );
-        let worktree_dir = Path::new(worktree_path);
 
-        // Remove the worktree directory if it exists
+        let mut errors: Vec<String> = Vec::new();
+
+        // Step 1: Remove the worktree directory if it exists
+        let worktree_dir = Path::new(worktree_path);
         if worktree_dir.exists() {
             tracing::debug!(
                 path = worktree_path,
                 "removing worktree directory from disk"
             );
-            std::fs::remove_dir_all(worktree_dir)
-                .map_err(|e| format!("failed to remove worktree dir: {}", e))?;
+            if let Err(e) = std::fs::remove_dir_all(worktree_dir) {
+                let msg = format!("failed to remove worktree dir: {}", e);
+                tracing::error!("{}", msg);
+                errors.push(msg);
+            }
         }
 
-        // Prune the worktree reference
-        let repo =
-            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+        // Step 2: Open repo (needed for prune + branch delete)
+        let repo = match Repository::open(repo_path) {
+            Ok(r) => Some(r),
+            Err(e) => {
+                let msg = format!("failed to open repo: {}", e);
+                tracing::error!("{}", msg);
+                errors.push(msg);
+                None
+            }
+        };
 
-        if let Ok(wt) = repo.find_worktree(branch_name) {
-            tracing::debug!(branch = branch_name, "pruning worktree git reference");
-            let mut prune_opts = git2::WorktreePruneOptions::new();
-            prune_opts.valid(true);
-            prune_opts.working_tree(true);
-            wt.prune(Some(&mut prune_opts))
-                .map_err(|e| format!("failed to prune worktree: {}", e))?;
+        if let Some(repo) = &repo {
+            // Step 3: Prune the worktree reference
+            if let Ok(wt) = repo.find_worktree(branch_name) {
+                tracing::debug!(branch = branch_name, "pruning worktree git reference");
+                let mut prune_opts = git2::WorktreePruneOptions::new();
+                prune_opts.valid(true);
+                prune_opts.working_tree(true);
+                if let Err(e) = wt.prune(Some(&mut prune_opts)) {
+                    let msg = format!("failed to prune worktree: {}", e);
+                    tracing::error!("{}", msg);
+                    errors.push(msg);
+                }
+            }
+
+            // Step 4: Delete the branch (always attempted, regardless of prune result)
+            if let Ok(mut branch) = repo.find_branch(branch_name, git2::BranchType::Local) {
+                tracing::debug!(
+                    branch = branch_name,
+                    "deleting branch after worktree removal"
+                );
+                if let Err(e) = branch.delete() {
+                    let msg = format!("failed to delete branch: {}", e);
+                    tracing::error!("{}", msg);
+                    errors.push(msg);
+                }
+            }
         }
 
-        // Clean up the branch so it doesn't block future worktree creation
-        if let Ok(mut branch) = repo.find_branch(branch_name, git2::BranchType::Local) {
-            tracing::debug!(
-                branch = branch_name,
-                "deleting branch after worktree removal"
-            );
-            let _ = branch.delete();
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "worktree cleanup had errors: {}",
+                errors.join("; ")
+            ))
         }
-
-        Ok(())
     }
 }
 
@@ -753,5 +782,85 @@ mod tests {
         // Verify worktree has both files after rebase
         assert!(wt_path.join("main-file.txt").exists());
         assert!(wt_path.join("wt-file.txt").exists());
+    }
+
+    #[test]
+    fn test_remove_worktree_deletes_branch_even_when_dir_already_gone() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("partial-cleanup");
+
+        // Create a worktree (creates dir + git ref + branch)
+        let wt_path =
+            WorktreeManager::create_worktree(&repo_path, "partial-cleanup", &worktree_dir)
+                .expect("create worktree");
+
+        // Simulate partial cleanup: manually delete the directory
+        std::fs::remove_dir_all(&wt_path).expect("manually remove dir");
+
+        // remove_worktree should still clean up the branch
+        let result = WorktreeManager::remove_worktree(
+            wt_path.to_str().unwrap(),
+            &repo_path,
+            "partial-cleanup",
+        );
+        // Should succeed (or at least not block on the missing dir)
+        assert!(
+            result.is_ok(),
+            "remove_worktree should not fail: {:?}",
+            result
+        );
+
+        // Branch should be gone
+        let repo = git2::Repository::open(&repo_path).unwrap();
+        let branch = repo.find_branch("partial-cleanup", git2::BranchType::Local);
+        assert!(branch.is_err(), "branch should have been deleted");
+    }
+
+    #[test]
+    fn test_remove_worktree_branch_deleted_when_ref_already_pruned() {
+        let (_tmp, repo_path) = setup_test_repo();
+        let wt_dir = TempDir::new().expect("create wt temp dir");
+        let worktree_dir = wt_dir.path().join("prune-fail");
+
+        // Create a worktree
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "prune-fail", &worktree_dir)
+            .expect("create worktree");
+
+        // Manually prune the worktree reference so it's already gone when
+        // remove_worktree runs — the prune step will be skipped (find_worktree
+        // returns Err), but the branch should still be deleted.
+        let repo = git2::Repository::open(&repo_path).unwrap();
+        let wt = repo.find_worktree("prune-fail").unwrap();
+        let mut prune_opts = git2::WorktreePruneOptions::new();
+        prune_opts.valid(true);
+        prune_opts.working_tree(true);
+        wt.prune(Some(&mut prune_opts)).unwrap();
+
+        // remove_worktree: dir removal succeeds, prune is skipped, branch delete proceeds
+        let result =
+            WorktreeManager::remove_worktree(wt_path.to_str().unwrap(), &repo_path, "prune-fail");
+        assert!(result.is_ok(), "should succeed: {:?}", result);
+
+        // Branch must be gone
+        let repo = git2::Repository::open(&repo_path).unwrap();
+        let branch = repo.find_branch("prune-fail", git2::BranchType::Local);
+        assert!(branch.is_err(), "branch should have been deleted");
+    }
+
+    #[test]
+    fn test_remove_worktree_no_op_when_nothing_exists() {
+        let (_tmp, repo_path) = setup_test_repo();
+
+        // All three cleanup steps are no-ops: the directory doesn't exist,
+        // find_worktree finds no reference, and find_branch finds no branch.
+        // The function should return Ok(()) with zero errors.
+        let result = WorktreeManager::remove_worktree(
+            "/tmp/does-not-exist-at-all",
+            &repo_path,
+            "no-such-branch",
+        );
+
+        assert!(result.is_ok());
     }
 }
