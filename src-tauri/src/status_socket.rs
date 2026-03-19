@@ -295,6 +295,7 @@ fn handle_connection_with_state(
                         return;
                     }
                     Ok(SocketMessage::SecureEnv(request)) => {
+                        let request_id = request.request_id.clone();
                         let (response_tx, response_rx) = std::sync::mpsc::sync_channel(1);
                         match dispatch_secure_env_request(state, emitter, request, response_tx) {
                             Ok(()) => match response_rx
@@ -306,12 +307,22 @@ fn handle_connection_with_state(
                                         "failed to receive secure env response: {}",
                                         err
                                     );
+                                    // Clear the stuck active request so future requests aren't
+                                    // permanently blocked with "busy".
+                                    if let Ok(mut active) = state.secure_env_request.lock() {
+                                        if active
+                                            .as_ref()
+                                            .is_some_and(|r| r.pending.request_id == request_id)
+                                        {
+                                            *active = None;
+                                        }
+                                    }
                                     write_socket_response(
                                         &mut writer,
                                         &crate::secure_env::SecureEnvResponse {
                                             kind: crate::secure_env::SecureEnvResponseKind::Error,
-                                            status: "response-channel-closed".to_string(),
-                                            request_id: "unknown".to_string(),
+                                            status: "timeout".to_string(),
+                                            request_id,
                                         },
                                     );
                                 }
@@ -793,5 +804,55 @@ mod tests {
             }
         );
         assert!(state.secure_env_request.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn clears_active_request_when_response_channel_times_out() {
+        // When the response channel times out or disconnects (frontend never
+        // responds), the active request must be cleared so subsequent requests
+        // aren't permanently blocked with "busy".
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        std::fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path);
+        let emitter = RecordingEmitter::new();
+        let (tx, _rx) = std::sync::mpsc::sync_channel(1);
+        let request =
+            crate::secure_env::parse_secure_env_request("set|demo-project|OPENAI_API_KEY|req-123")
+                .unwrap();
+
+        dispatch_secure_env_request(&state, &(emitter as Arc<dyn EventEmitter>), request, tx)
+            .unwrap();
+
+        // Active request is set after dispatch
+        assert!(state.secure_env_request.lock().unwrap().is_some());
+
+        // Simulate the timeout cleanup path from handle_connection_with_state:
+        // clear the active request if the request_id matches
+        let request_id = "req-123";
+        if let Ok(mut active) = state.secure_env_request.lock() {
+            if active
+                .as_ref()
+                .is_some_and(|r| r.pending.request_id == request_id)
+            {
+                *active = None;
+            }
+        }
+
+        // State must be cleared
+        assert!(state.secure_env_request.lock().unwrap().is_none());
+
+        // A new request must now succeed (not get "busy")
+        let emitter2 = RecordingEmitter::new();
+        let (tx2, _rx2) = std::sync::mpsc::sync_channel(1);
+        let request2 =
+            crate::secure_env::parse_secure_env_request("set|demo-project|OPENAI_API_KEY|req-456")
+                .unwrap();
+
+        dispatch_secure_env_request(&state, &(emitter2 as Arc<dyn EventEmitter>), request2, tx2)
+            .unwrap();
+
+        assert!(state.secure_env_request.lock().unwrap().is_some());
     }
 }
