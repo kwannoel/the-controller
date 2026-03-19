@@ -965,9 +965,8 @@ mod tests {
         let worktree_dir = wt_dir.path().join("squash-check");
 
         // Create a worktree and add a commit
-        let wt_path =
-            WorktreeManager::create_worktree(&repo_path, "squash-check", &worktree_dir)
-                .expect("create worktree");
+        let wt_path = WorktreeManager::create_worktree(&repo_path, "squash-check", &worktree_dir)
+            .expect("create worktree");
         let wt_repo = Repository::open(&wt_path).unwrap();
         let sig = git2::Signature::now("Test", "test@example.com").unwrap();
         let head = wt_repo.head().unwrap().peel_to_commit().unwrap();
@@ -995,7 +994,13 @@ mod tests {
 
         // The squash commit has main as its only parent (NOT the branch commit)
         // but carries the same tree content as the branch
-        let branch_tree = wt_repo.head().unwrap().peel_to_commit().unwrap().tree().unwrap();
+        let branch_tree = wt_repo
+            .head()
+            .unwrap()
+            .peel_to_commit()
+            .unwrap()
+            .tree()
+            .unwrap();
         repo.commit(
             Some(main_ref.name().unwrap()),
             &sig,

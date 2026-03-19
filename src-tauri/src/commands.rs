@@ -856,14 +856,21 @@ pub async fn create_session(
         let session_dir = if let Some(ref agent) = agent_name {
             let agent_dir = PathBuf::from(&session_dir).join("agents").join(agent);
             if !agent_dir.exists() {
-                if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
-                    let _ = cleanup_failed_session_spawn(
-                        &repo_path,
-                        Some(wt.as_str()),
-                        Some(br.as_str()),
-                    );
+                // Agent may be untracked in git — copy from source repo into worktree
+                let source_agent_dir = PathBuf::from(&repo_path).join("agents").join(agent);
+                if source_agent_dir.exists() {
+                    notes::copy_dir_recursive(&source_agent_dir, &agent_dir)
+                        .map_err(|e| format!("failed to copy agent directory: {}", e))?;
+                } else {
+                    if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
+                        let _ = cleanup_failed_session_spawn(
+                            &repo_path,
+                            Some(wt.as_str()),
+                            Some(br.as_str()),
+                        );
+                    }
+                    return Err(format!("Agent directory not found: agents/{}", agent));
                 }
-                return Err(format!("Agent directory not found: agents/{}", agent));
             }
             ensure_claude_md_symlink(&agent_dir)?;
             agent_dir.to_string_lossy().to_string()
