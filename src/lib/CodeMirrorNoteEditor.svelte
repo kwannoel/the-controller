@@ -44,12 +44,11 @@
     onChange?: (value: string) => void;
     onEscape?: (mode: VimMode | string) => void;
     onModeChange?: (mode: VimMode | string) => void;
-    onAiChat?: (request: AiChatRequest) => void;
     onImageSaved?: (relativePath: string) => void;
     onViewReady?: (api: { getSelection: () => AiChatRequest | null }) => void;
   }
 
-  let { value, focused = false, entryKey, projectId, folder, resolveImageSrc, onChange, onEscape, onModeChange, onAiChat, onImageSaved, onViewReady }: Props = $props();
+  let { value, focused = false, entryKey, projectId, folder, resolveImageSrc, onChange, onEscape, onModeChange, onImageSaved, onViewReady }: Props = $props();
 
   const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
@@ -182,17 +181,6 @@
     };
 
     cm?.on("vim-mode-change", handleModeChange);
-
-    Vim.defineAction("aiChat", (_cm: any) => {
-      if (!view) return;
-      const sel = view.state.selection.main;
-      if (sel.empty) return;
-      const from = sel.from;
-      const to = sel.to;
-      const selectedText = view.state.doc.sliceString(from, to);
-      onAiChat?.({ selectedText, from, to });
-    });
-    Vim.mapCommand("ga", "action", "aiChat", undefined, { context: "visual" });
 
     const capturedView = view;
     untrack(() => onViewReady?.({
