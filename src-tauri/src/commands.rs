@@ -743,7 +743,9 @@ pub async fn delete_project(
                 if let (Some(wt_path), Some(branch)) =
                     (&session.worktree_path, &session.worktree_branch)
                 {
-                    let _ = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+                    if let Err(e) = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch) {
+                        tracing::error!(session_id = %session.id, project = %project.name, "worktree cleanup errors: {e}");
+                    }
                 }
             }
         }
@@ -1556,7 +1558,11 @@ pub fn close_session(
         if let Some(session) = session {
             if let (Some(wt_path), Some(branch)) = (session.worktree_path, session.worktree_branch)
             {
-                let _ = WorktreeManager::remove_worktree(&wt_path, &project.repo_path, &branch);
+                if let Err(e) =
+                    WorktreeManager::remove_worktree(&wt_path, &project.repo_path, &branch)
+                {
+                    tracing::error!(session_id = %session_uuid, project = %project.name, "worktree cleanup errors: {e}");
+                }
             }
         }
     }
@@ -2076,7 +2082,30 @@ pub async fn merge_session_branch(
 
         match result {
             crate::worktree::MergeResult::PrCreated(url) => {
-                tracing::info!(session_id = %session_uuid, url = %url, "PR created");
+                tracing::info!(session_id = %session_uuid, url = %url, "PR created, cleaning up session");
+
+                // Clean up: kill PTY, remove session from project, delete worktree
+                {
+                    let mut pty_manager =
+                        state.pty_manager.lock().map_err(|e| e.to_string())?;
+                    let _ = pty_manager.close_session(session_uuid);
+                }
+                {
+                    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+                    let mut project =
+                        storage.load_project(project_uuid).map_err(|e| e.to_string())?;
+                    project.sessions.retain(|s| s.id != session_uuid);
+                    storage.save_project(&project).map_err(|e| e.to_string())?;
+                }
+                // Delete worktree + branch
+                if let Err(e) = WorktreeManager::remove_worktree(
+                    &worktree_path,
+                    &repo_path,
+                    &branch_name,
+                ) {
+                    tracing::error!(session_id = %session_uuid, "post-merge worktree cleanup errors: {}", e);
+                }
+
                 return Ok(crate::models::MergeResponse::PrCreated { url });
             }
             crate::worktree::MergeResult::RebaseConflicts => {
