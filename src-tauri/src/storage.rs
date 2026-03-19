@@ -138,7 +138,10 @@ impl Storage {
         fs::create_dir_all(&dir)?;
         let json = serde_json::to_string_pretty(project)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        fs::write(dir.join("project.json"), json)
+        let path = dir.join("project.json");
+        let tmp = path.with_extension("json.tmp");
+        fs::write(&tmp, json)?;
+        fs::rename(&tmp, &path)
     }
 
     /// Load a project's configuration from disk.
@@ -276,7 +279,10 @@ impl Storage {
     pub fn save_agents_md(&self, project_id: Uuid, content: &str) -> std::io::Result<()> {
         let dir = self.project_dir(project_id);
         fs::create_dir_all(&dir)?;
-        fs::write(dir.join("agents.md"), content)
+        let path = dir.join("agents.md");
+        let tmp = path.with_extension("md.tmp");
+        fs::write(&tmp, content)?;
+        fs::rename(&tmp, &path)
     }
 
     /// Return the path to a project's maintainer run logs directory.
@@ -292,7 +298,10 @@ impl Storage {
         let filename = format!("{}.json", log.id);
         let json = serde_json::to_string_pretty(log)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        fs::write(dir.join(filename), json)
+        let path = dir.join(filename);
+        let tmp = path.with_extension("json.tmp");
+        fs::write(&tmp, json)?;
+        fs::rename(&tmp, &path)
     }
 
     /// Load the most recent maintainer run log for a project.

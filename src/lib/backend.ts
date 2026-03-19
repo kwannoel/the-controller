@@ -152,10 +152,6 @@ export async function listenAsync<T>(event: string, handler: (payload: T) => voi
       ws.addEventListener("error", () => reject(new Error("WebSocket connection failed")), { once: true });
     });
   }
-  const callback = (msg: MessageEvent) => {
-    const data = JSON.parse(msg.data);
-    if (data.event === event) handler(data.payload);
-  };
-  ws.addEventListener("message", callback);
-  return () => ws.removeEventListener("message", callback);
+  // Use listen() internally so the listener survives WebSocket reconnects.
+  return listen<T>(event, handler);
 }

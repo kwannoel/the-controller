@@ -340,10 +340,11 @@ pub fn update_env_file(env_path: &Path, key: &str, value: &str) -> Result<EnvWri
     let mut replaced = false;
     let mut lines = Vec::new();
     for line in existing.lines() {
-        if line
-            .strip_prefix(key)
-            .and_then(|rest| rest.strip_prefix('='))
-            .is_some()
+        if !replaced
+            && line
+                .strip_prefix(key)
+                .and_then(|rest| rest.strip_prefix('='))
+                .is_some()
         {
             lines.push(format!("{key}={value}"));
             replaced = true;

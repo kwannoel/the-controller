@@ -48,7 +48,10 @@ pub fn save_config(base_dir: &Path, config: &Config) -> std::io::Result<()> {
     fs::create_dir_all(base_dir)?;
     let json = serde_json::to_string_pretty(config)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    fs::write(config_path(base_dir), json)
+    let dest = config_path(base_dir);
+    let tmp = dest.with_extension("json.tmp");
+    fs::write(&tmp, json)?;
+    fs::rename(&tmp, &dest)
 }
 
 /// Checks if the claude CLI is installed and authenticated.

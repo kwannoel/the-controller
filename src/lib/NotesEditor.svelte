@@ -18,6 +18,7 @@
   let editorMode = $state<VimMode | string>("normal");
   let assetUrlCache = $state(new Map<string, string>());
   let editorApi: { getSelection: () => AiChatRequest | null } | null = null;
+  let pendingResolutions = new Set<string>();
 
   const activeNoteState = fromStore(activeNote);
   let currentNote = $derived(activeNoteState.current);
@@ -140,16 +141,30 @@
       saveTimer = null;
     }
     if (!currentNote || !folderName || !projectId || content === savedContent) return;
+    const contentToSave = content;
+    const noteFilename = currentNote.filename;
+    const folder = folderName;
+    const pid = projectId;
     try {
-      await command("write_note", { projectId, folder: folderName, filename: currentNote.filename, content });
-      savedContent = content;
+      await command("write_note", { projectId: pid, folder, filename: noteFilename, content: contentToSave });
+      // Only update savedContent if we're still on the same note
+      if (currentNote?.filename === noteFilename && folderName === folder) {
+        savedContent = contentToSave;
+      }
     } catch {
       // silently fail — user will see unsaved indicator
     }
   }
 
   onDestroy(() => {
-    if (saveTimer) clearTimeout(saveTimer);
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    // Flush any unsaved content
+    if (currentNote && folderName && projectId && content !== savedContent) {
+      command("write_note", { projectId, folder: folderName, filename: currentNote.filename, content }).catch(() => {});
+    }
   });
 
   function handleEditorChange(nextContent: string) {
@@ -188,8 +203,10 @@
     }
     const cached = assetUrlCache.get(relativePath);
     if (cached) return cached;
+    if (pendingResolutions.has(relativePath)) return null;
     // Trigger async resolution — the image will appear on next decoration rebuild
-    resolveImageSrc(relativePath);
+    pendingResolutions.add(relativePath);
+    resolveImageSrc(relativePath).finally(() => pendingResolutions.delete(relativePath));
     return null;
   }
 

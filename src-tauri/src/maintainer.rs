@@ -180,7 +180,8 @@ impl MaintainerScheduler {
                         continue;
                     }
 
-                    let interval = Duration::from_secs(project.maintainer.interval_minutes * 60);
+                    let interval_mins = project.maintainer.interval_minutes.max(1);
+                    let interval = Duration::from_secs(interval_mins * 60);
                     let should_run = last_run
                         .get(&project.id)
                         .is_none_or(|t| t.elapsed() >= interval);

@@ -117,7 +117,15 @@ impl Vad {
             tracing::error!(error = %e, "failed to extract VAD stateN");
             format!("Failed to extract stateN: {e}")
         })?;
-        self.state = state_data.to_vec();
+        let new_state = state_data.to_vec();
+        if new_state.len() != STATE_SIZE {
+            tracing::error!(expected = STATE_SIZE, got = new_state.len(), "VAD state size mismatch");
+            return Err(format!(
+                "VAD state size mismatch: expected {STATE_SIZE}, got {}",
+                new_state.len()
+            ));
+        }
+        self.state = new_state;
 
         // Update context: last CONTEXT_SIZE samples from this chunk
         if chunk_len >= CONTEXT_SIZE {

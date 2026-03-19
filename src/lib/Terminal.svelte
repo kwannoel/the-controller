@@ -128,7 +128,9 @@
   ]);
 
   function isImageFile(path: string): boolean {
-    const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
+    const dotIndex = path.lastIndexOf(".");
+    if (dotIndex === -1) return false;
+    const ext = path.slice(dotIndex).toLowerCase();
     return IMAGE_EXTENSIONS.has(ext);
   }
 

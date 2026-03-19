@@ -3,6 +3,11 @@
   import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, maintainerStages, autoWorkerStatuses, hotkeyAction, showKeyHints, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, noteFolders, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+
+  /** Escape a value for use in a CSS attribute selector to avoid injection. */
+  function cssSel(attr: string, value: string): string {
+    return `[${attr}="${CSS.escape(value)}"]`;
+  }
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import { sendFinishBranchPrompt } from "./finish-branch";
@@ -80,14 +85,14 @@
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-session-id="${focus.sessionId}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(cssSel("data-session-id", focus.sessionId));
           if (el) el.focus();
         });
       }
     } else if (focus.type === "project") {
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-project-id="${focus.projectId}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(cssSel("data-project-id", focus.projectId));
           if (el) el.focus();
         });
       }
@@ -99,7 +104,7 @@
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-agent-id="${focus.projectId}:${focus.agentKind}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(cssSel("data-agent-id", `${focus.projectId}:${focus.agentKind}`));
           if (el) el.focus();
         });
       }
@@ -111,7 +116,7 @@
     } else if (focus.type === "folder") {
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-folder-id="${focus.folder}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(cssSel("data-folder-id", focus.folder));
           if (el) el.focus();
         });
       }
@@ -123,7 +128,7 @@
       }
       if (sidebarEl) {
         requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-note-id="${focus.folder}:${focus.filename}"]`);
+          const el = sidebarEl?.querySelector<HTMLElement>(cssSel("data-note-id", `${focus.folder}:${focus.filename}`));
           if (el) el.focus();
         });
       }

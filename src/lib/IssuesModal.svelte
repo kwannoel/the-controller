@@ -205,6 +205,8 @@
       if (e.key === "ArrowDown" || (!inSearch && e.key === "j")) {
         e.preventDefault();
         e.stopPropagation();
+        // Cancel close-comment mode when navigating away
+        if (closingIssue) { closingIssue = null; closeComment = ""; }
         if (filteredIssues.length > 0) {
           selectedIndex = (selectedIndex + 1) % filteredIssues.length;
           scrollSelectedIntoView();
@@ -214,6 +216,7 @@
       if (e.key === "ArrowUp" || (!inSearch && e.key === "k")) {
         e.preventDefault();
         e.stopPropagation();
+        if (closingIssue) { closingIssue = null; closeComment = ""; }
         if (filteredIssues.length > 0) {
           selectedIndex = (selectedIndex - 1 + filteredIssues.length) % filteredIssues.length;
           scrollSelectedIntoView();
@@ -235,7 +238,8 @@
         const issueToClose = closingIssue;
         allIssues = allIssues.filter(i => i.number !== issueToClose.number);
         closingIssue = null;
-        command("close_github_issue", { repoPath, issueNumber: issueToClose.number, comment: closeComment.trim() });
+        command("close_github_issue", { repoPath, issueNumber: issueToClose.number, comment: closeComment.trim() })
+          .catch(() => { allIssues = [...allIssues, issueToClose]; });
         closeComment = "";
         requestAnimationFrame(() => searchInput?.focus());
         return;
@@ -258,7 +262,8 @@
         e.stopPropagation();
         const issueToDelete = selectedIssue;
         allIssues = allIssues.filter(i => i.number !== issueToDelete.number);
-        command("delete_github_issue", { repoPath, issueNumber: issueToDelete.number });
+        command("delete_github_issue", { repoPath, issueNumber: issueToDelete.number })
+          .catch(() => { allIssues = [...allIssues, issueToDelete]; });
         return;
       }
 

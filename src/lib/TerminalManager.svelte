@@ -38,6 +38,16 @@
     projectList.flatMap((p) => p.sessions.map((s) => ({ id: s.id, kind: s.kind }))),
   );
 
+  // Clean up stale entries from terminalComponents when sessions are removed
+  $effect(() => {
+    const activeIds = new Set(allSessions.map((s) => s.id));
+    for (const id of Object.keys(terminalComponents)) {
+      if (!activeIds.has(id)) {
+        delete terminalComponents[id];
+      }
+    }
+  });
+
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
