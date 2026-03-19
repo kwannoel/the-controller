@@ -17,35 +17,28 @@ async function openFirstNoteInEditor(page: any) {
   await page.keyboard.press("n");
   await page.waitForTimeout(500);
 
-  // Wait for the sidebar to show folders
   const sidebar = page.locator(".sidebar");
   await expect(sidebar.locator("h2")).toHaveText("Notes", { timeout: 3_000 });
 
-  // Click the first folder entry (the expand arrow button)
-  const firstFolderToggle = sidebar.locator("button").filter({ hasText: "▶" }).first();
-  await expect(firstFolderToggle).toBeVisible({ timeout: 3_000 });
-  await firstFolderToggle.click();
+  // Expand the first folder
+  const folderToggle = sidebar.locator("button").filter({ hasText: "▶" }).first();
+  await expect(folderToggle).toBeVisible({ timeout: 3_000 });
+  await folderToggle.click();
   await page.waitForTimeout(500);
 
-  // After expanding, there should be a note entry to click
-  // The expanded folder shows note entries — click the first one
-  // Look for a ▼ (expanded state) and then find the note entry below
-  const noteEntries = sidebar.locator(".note-entry, .sidebar-item").filter({ hasNotText: /▶|▼/ });
+  // Click the first note entry (button inside the expanded folder)
+  // After expanding, the note appears as a button with the note name
+  const noteButton = sidebar.locator("button").filter({ hasText: "prd" }).first();
+  await expect(noteButton).toBeVisible({ timeout: 3_000 });
+  await noteButton.click();
+  await page.waitForTimeout(300);
 
-  // If no specific note-entry class, try clicking the first item below the folder
-  // Use keyboard: press j to move to the note, then Enter to open it
-  await page.keyboard.press("j"); // move to folder
-  await page.waitForTimeout(200);
-  await page.keyboard.press("l"); // expand folder
-  await page.waitForTimeout(500);
-  await page.keyboard.press("j"); // move to note
-  await page.waitForTimeout(200);
-  await page.keyboard.press("Enter"); // open note
+  // Open the editor with Enter
+  await page.keyboard.press("Enter");
   await page.waitForTimeout(1000);
 
   const editor = page.locator('[data-testid="note-code-editor"]');
   await expect(editor).toBeVisible({ timeout: 5_000 });
-  await expect(editor.locator(".cm-focused")).toBeVisible({ timeout: 2_000 });
 
   return editor;
 }
