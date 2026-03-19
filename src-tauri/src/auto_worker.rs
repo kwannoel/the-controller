@@ -934,11 +934,13 @@ fn cleanup_session(state: &AppState, session: &ActiveSession) {
 
             if let Some(sess) = sess {
                 if let (Some(wt_path), Some(branch)) = (sess.worktree_path, sess.worktree_branch) {
-                    let _ = crate::worktree::WorktreeManager::remove_worktree(
+                    if let Err(e) = crate::worktree::WorktreeManager::remove_worktree(
                         &wt_path,
                         &project.repo_path,
                         &branch,
-                    );
+                    ) {
+                        tracing::error!(session_id = %session.session_id, project = %project.name, "worktree cleanup errors: {e}");
+                    }
                 }
             }
         }

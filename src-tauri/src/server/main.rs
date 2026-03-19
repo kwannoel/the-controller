@@ -787,7 +787,9 @@ async fn create_session(
             .join(agent);
         if !agent_dir.exists() {
             if let (Some(ref wt), Some(ref br)) = (&wt_path, &wt_branch) {
-                let _ = WorktreeManager::remove_worktree(wt, &repo_path, br);
+                if let Err(e) = WorktreeManager::remove_worktree(wt, &repo_path, br) {
+                    tracing::error!(session_id = %session_id, "worktree cleanup errors: {e}");
+                }
             }
             return Err((
                 StatusCode::BAD_REQUEST,
@@ -871,7 +873,9 @@ async fn create_session(
         }
         // Cleanup worktree
         if let (Some(ref wt_path), Some(ref wt_branch)) = (wt_path, wt_branch) {
-            let _ = WorktreeManager::remove_worktree(wt_path, &repo_path, wt_branch);
+            if let Err(e) = WorktreeManager::remove_worktree(wt_path, &repo_path, wt_branch) {
+                tracing::error!(session_id = %session_id, "worktree cleanup errors: {e}");
+            }
         }
         return Err((StatusCode::INTERNAL_SERVER_ERROR, spawn_err));
     }
@@ -1006,7 +1010,11 @@ async fn delete_project(
             if let (Some(wt_path), Some(branch)) =
                 (&session.worktree_path, &session.worktree_branch)
             {
-                let _ = WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch);
+                if let Err(e) =
+                    WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch)
+                {
+                    tracing::error!(session_id = %session.id, project = %project.name, "worktree cleanup errors: {e}");
+                }
             }
         }
     }
