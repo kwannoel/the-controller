@@ -175,6 +175,20 @@
       if (prevMode === "visual" && currentMode === "normal") {
         window.getSelection()?.collapseToEnd();
       }
+
+      // When entering insert mode (e.g. via `a`), the vim plugin removes the
+      // cm-vimMode CSS class, making the drawSelection() cursor layer visible.
+      // But drawSelection() positions its cursor overlay asynchronously via
+      // requestAnimationFrame. Until the next frame the overlay still sits at
+      // the old normal-mode position, so the first typed character appears
+      // visually offset from the cursor. Force a synchronous measurement
+      // after the vim command finishes (this callback fires before
+      // selectForInsert, so we defer with queueMicrotask).
+      if (currentMode === "insert" || currentMode === "replace") {
+        queueMicrotask(() => {
+          view?.measure();
+        });
+      }
     };
 
     cm?.on("vim-mode-change", handleModeChange);
