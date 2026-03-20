@@ -138,6 +138,46 @@ describe("NotesEditor", () => {
     expect(get(focusTarget)).toEqual({ type: "note", filename: "a.md", folder: "Project Alpha" });
   });
 
+  it("supports vim undo (u) to revert typed text", async () => {
+    vi.mocked(command).mockImplementation((commandName: string) => {
+      if (commandName === "read_note") {
+        return Promise.resolve("original");
+      }
+
+      if (commandName === "write_note") {
+        return Promise.resolve(undefined);
+      }
+
+      return Promise.resolve(undefined);
+    });
+
+    focusTarget.set({ type: "notes-editor", folder: "Project Alpha" });
+
+    render(NotesEditor);
+    const user = userEvent.setup();
+
+    const editor = await screen.findByTestId("note-code-editor");
+    const textbox = within(editor).getByRole("textbox");
+    textbox.focus();
+
+    // Enter insert mode, type text, return to normal mode
+    await user.keyboard("A");  // append at end of line
+    await user.keyboard(" added");
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("original added");
+    });
+
+    // Press 'u' to undo
+    await user.keyboard("u");
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("original");
+      expect(editor).not.toHaveTextContent("original added");
+    });
+  });
+
   it("keeps the latest note content when read_note resolves out of order", async () => {
     const noteARequest = deferred<string>();
     const noteBRequest = deferred<string>();
