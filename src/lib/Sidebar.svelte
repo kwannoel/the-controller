@@ -6,7 +6,6 @@
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import { sendFinishBranchPrompt } from "./finish-branch";
-  import FuzzyFinder from "./FuzzyFinder.svelte";
   import NewProjectModal from "./NewProjectModal.svelte";
   import DeleteProjectModal from "./DeleteProjectModal.svelte";
   import ConfirmModal from "./ConfirmModal.svelte";
@@ -20,7 +19,6 @@
 
   let sidebarEl: HTMLElement | undefined = $state();
   const showKeyHintsState = fromStore(showKeyHints);
-  let showFuzzyFinder = $state(false);
   let showNewProjectModal = $state(false);
   const expandedProjectsState = fromStore(expandedProjects);
   let expandedProjectSet: Set<string> = $derived(expandedProjectsState.current);
@@ -123,9 +121,6 @@
     const unsub = hotkeyAction.subscribe((action) => {
       if (!action) return;
       switch (action.type) {
-        case "open-fuzzy-finder":
-          showFuzzyFinder = true;
-          break;
         case "open-new-project":
           showNewProjectModal = true;
           break;
@@ -708,23 +703,6 @@
       title="Keyboard shortcuts (?)"
     >?</button>
   </div>
-
-  {#if showFuzzyFinder}
-    <FuzzyFinder
-      onSelect={async (entry) => {
-        showFuzzyFinder = false;
-        try {
-          const project = await command<Project>("load_project", { name: entry.name, repoPath: entry.path });
-          await loadProjects();
-          expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
-          focusTarget.set({ type: "project", projectId: project.id });
-        } catch (e) {
-          showToast(String(e), "error");
-        }
-      }}
-      onClose={() => (showFuzzyFinder = false)}
-    />
-  {/if}
 
   {#if showNewProjectModal}
     <NewProjectModal
