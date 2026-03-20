@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { EditorState } from "@codemirror/state";
   import { EditorView, drawSelection } from "@codemirror/view";
+  import { history } from "@codemirror/commands";
   import { markdown } from "@codemirror/lang-markdown";
   import { Vim, getCM, vim } from "@replit/codemirror-vim";
   import { markdownLivePreview } from "./markdownLivePreview";
@@ -95,6 +96,7 @@
       doc,
       extensions: [
         vim(),
+        history(),
         drawSelection(),
         markdown(),
         markdownLivePreview({ resolveImageSrc: untrack(() => resolveImageSrc) }),
