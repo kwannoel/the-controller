@@ -132,18 +132,12 @@ impl Storage {
     }
 
     /// Save a project's configuration to disk as `project.json`.
-    ///
-    /// Uses write-to-temp-then-rename for atomic writes, preventing corruption
-    /// if the process crashes mid-write.
     pub fn save_project(&self, project: &Project) -> std::io::Result<()> {
         let dir = self.project_dir(project.id);
         fs::create_dir_all(&dir)?;
         let json = serde_json::to_string_pretty(project)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let path = dir.join("project.json");
-        let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, json)?;
-        fs::rename(&tmp, &path)
+        fs::write(dir.join("project.json"), json)
     }
 
     /// Load a project's configuration from disk.
@@ -167,17 +161,7 @@ impl Storage {
             let project_dir = entry.path();
             let project_file = project_dir.join("project.json");
             if project_file.exists() {
-                let json = match fs::read_to_string(&project_file) {
-                    Ok(json) => json,
-                    Err(e) => {
-                        inventory.corrupt_entries.push(CorruptProjectEntry {
-                            project_dir: project_dir.clone(),
-                            project_file: project_file.clone(),
-                            error: e.to_string(),
-                        });
-                        continue;
-                    }
-                };
+                let json = fs::read_to_string(&project_file)?;
                 match serde_json::from_str::<Project>(&json) {
                     Ok(project) => inventory.projects.push(project),
                     Err(error) => inventory.corrupt_entries.push(CorruptProjectEntry {
@@ -267,16 +251,10 @@ impl Storage {
     }
 
     /// Save agents.md content to the project's config directory.
-    ///
-    /// Uses write-to-temp-then-rename for atomic writes, preventing corruption
-    /// if the process crashes mid-write.
     pub fn save_agents_md(&self, project_id: Uuid, content: &str) -> std::io::Result<()> {
         let dir = self.project_dir(project_id);
         fs::create_dir_all(&dir)?;
-        let path = dir.join("agents.md");
-        let tmp = path.with_extension("md.tmp");
-        fs::write(&tmp, content)?;
-        fs::rename(&tmp, &path)
+        fs::write(dir.join("agents.md"), content)
     }
 
     /// Return the path to a project's maintainer run logs directory.
@@ -285,19 +263,13 @@ impl Storage {
     }
 
     /// Save a maintainer run log to disk.
-    ///
-    /// Uses write-to-temp-then-rename for atomic writes, preventing corruption
-    /// if the process crashes mid-write.
     pub fn save_maintainer_run_log(&self, log: &MaintainerRunLog) -> std::io::Result<()> {
         let dir = self.maintainer_run_logs_dir(log.project_id);
         fs::create_dir_all(&dir)?;
         let filename = format!("{}.json", log.id);
         let json = serde_json::to_string_pretty(log)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        let path = dir.join(filename);
-        let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, json)?;
-        fs::rename(&tmp, &path)
+        fs::write(dir.join(filename), json)
     }
 
     /// Load the most recent maintainer run log for a project.
@@ -349,17 +321,7 @@ impl Storage {
             let entry = entry?;
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "json") {
-                let json = match fs::read_to_string(&path) {
-                    Ok(json) => json,
-                    Err(error) => {
-                        eprintln!(
-                            "Warning: failed to read maintainer run log {}: {}",
-                            path.display(),
-                            error
-                        );
-                        continue;
-                    }
-                };
+                let json = fs::read_to_string(&path)?;
                 // Skip old-format files that fail to deserialize
                 if let Ok(log) = serde_json::from_str::<MaintainerRunLog>(&json) {
                     logs.push(log);
@@ -374,7 +336,6 @@ impl Storage {
 mod tests {
     use super::*;
     use crate::models::{IssueAction, IssueSummary, MaintainerRunLog, SessionConfig};
-    use std::os::unix::fs::PermissionsExt;
     use tempfile::TempDir;
 
     fn make_storage(tmp: &TempDir) -> Storage {
@@ -457,41 +418,6 @@ mod tests {
         assert_eq!(inventory.projects[0].name, "valid-project");
         assert_eq!(inventory.corrupt_entries.len(), 1);
         assert_eq!(inventory.corrupt_entries[0].project_file, corrupt_file);
-    }
-
-    #[test]
-    fn test_list_projects_reports_unreadable_project_json_as_corrupt() {
-        let tmp = TempDir::new().unwrap();
-        let storage = make_storage(&tmp);
-
-        let valid = make_project("valid-project", "/tmp/repo-valid");
-        storage.save_project(&valid).expect("save valid");
-
-        let unreadable_dir = storage.project_dir(Uuid::new_v4());
-        fs::create_dir_all(&unreadable_dir).expect("create unreadable dir");
-        let unreadable_file = unreadable_dir.join("project.json");
-        fs::write(&unreadable_file, "{}").expect("write unreadable project.json");
-
-        let original_permissions = fs::metadata(&unreadable_file)
-            .expect("stat unreadable project.json")
-            .permissions();
-        let mut unreadable_permissions = original_permissions.clone();
-        unreadable_permissions.set_mode(0o000);
-        fs::set_permissions(&unreadable_file, unreadable_permissions)
-            .expect("chmod unreadable project.json");
-
-        let inventory = storage.list_projects().expect("list");
-
-        fs::set_permissions(&unreadable_file, original_permissions)
-            .expect("restore unreadable project.json permissions");
-
-        assert_eq!(inventory.projects.len(), 1);
-        assert_eq!(inventory.projects[0].name, "valid-project");
-        assert_eq!(inventory.corrupt_entries.len(), 1);
-        assert_eq!(inventory.corrupt_entries[0].project_file, unreadable_file);
-        assert!(inventory.corrupt_entries[0]
-            .error
-            .contains("Permission denied"));
     }
 
     #[test]
@@ -758,40 +684,5 @@ mod tests {
         let history = storage.maintainer_run_log_history(project_id, 10).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].summary, "Filed 1 issue");
-    }
-
-    #[test]
-    fn test_run_log_history_skips_unreadable_log_files() {
-        let tmp = TempDir::new().unwrap();
-        let storage = make_storage(&tmp);
-        let project_id = Uuid::new_v4();
-
-        let readable_log = make_run_log(project_id, "2026-03-09T00:00:00Z");
-        storage
-            .save_maintainer_run_log(&readable_log)
-            .expect("save readable log");
-
-        let dir = storage.maintainer_run_logs_dir(project_id);
-        fs::create_dir_all(&dir).expect("create run log dir");
-        let unreadable_file = dir.join("unreadable.json");
-        fs::write(&unreadable_file, "{}").expect("write unreadable log");
-
-        let original_permissions = fs::metadata(&unreadable_file)
-            .expect("stat unreadable log")
-            .permissions();
-        let mut unreadable_permissions = original_permissions.clone();
-        unreadable_permissions.set_mode(0o000);
-        fs::set_permissions(&unreadable_file, unreadable_permissions)
-            .expect("chmod unreadable log");
-
-        let history = storage
-            .maintainer_run_log_history(project_id, 10)
-            .expect("history");
-
-        fs::set_permissions(&unreadable_file, original_permissions)
-            .expect("restore unreadable log permissions");
-
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0].id, readable_log.id);
     }
 }

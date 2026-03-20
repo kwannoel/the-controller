@@ -114,10 +114,7 @@ pub async fn ensure_models(
             on_progress(&filename, downloaded, total);
         }
 
-        // Write to temp file then atomically rename to avoid corrupt partial downloads
-        let tmp = dest.with_extension("tmp");
-        std::fs::write(&tmp, &body).map_err(|e| format!("Failed to write {filename}: {e}"))?;
-        std::fs::rename(&tmp, dest).map_err(|e| format!("Failed to rename {filename}: {e}"))?;
+        std::fs::write(dest, &body).map_err(|e| format!("Failed to write {filename}: {e}"))?;
     }
 
     Ok(paths)
