@@ -91,10 +91,10 @@ fn dispatch_secure_env_request(
     )
     .map_err(|err| crate::secure_env::SecureEnvResponse {
         kind: crate::secure_env::SecureEnvResponseKind::Error,
-        status: match err.as_str() {
-            "A secure env request is already active" => "busy".to_string(),
-            _ if err.starts_with("Unknown project:") => "unknown-project".to_string(),
-            _ => "invalid-request".to_string(),
+        status: if err.starts_with("Unknown project:") {
+            "unknown-project".to_string()
+        } else {
+            "invalid-request".to_string()
         },
         request_id: request.request_id.clone(),
     })?;
@@ -670,14 +670,15 @@ mod tests {
     }
 
     #[test]
-    fn returns_busy_error_response_for_second_secure_env_request() {
+    fn supersedes_existing_request_and_dispatches_new_one() {
         let tmp = TempDir::new().unwrap();
         let state = make_app_state(&tmp);
         let repo_path = tmp.path().join("demo-project");
         std::fs::create_dir_all(&repo_path).unwrap();
         save_project(&state, "demo-project", repo_path);
         let emitter = RecordingEmitter::new();
-        let (tx, _rx) = std::sync::mpsc::sync_channel(1);
+        let (old_tx, old_rx) = std::sync::mpsc::sync_channel(1);
+        let (new_tx, _new_rx) = std::sync::mpsc::sync_channel(1);
 
         *state.secure_env_request.lock().unwrap() = Some(ActiveSecureEnvRequest {
             pending: PendingSecureEnvRequest {
@@ -687,7 +688,7 @@ mod tests {
                 env_path: tmp.path().join("demo-project/.env"),
                 key: "OPENAI_API_KEY".to_string(),
             },
-            response_tx: None,
+            response_tx: Some(old_tx),
         });
 
         let request = crate::secure_env::parse_secure_env_request(
@@ -695,18 +696,24 @@ mod tests {
         )
         .unwrap();
 
-        let response =
-            dispatch_secure_env_request(&state, &(emitter as Arc<dyn EventEmitter>), request, tx)
-                .unwrap_err();
+        dispatch_secure_env_request(
+            &state,
+            &(emitter.clone() as Arc<dyn EventEmitter>),
+            request,
+            new_tx,
+        )
+        .unwrap();
 
-        assert_eq!(
-            response,
-            SecureEnvResponse {
-                kind: SecureEnvResponseKind::Error,
-                status: "busy".to_string(),
-                request_id: "req-123".to_string(),
-            }
-        );
+        // Old request was notified via channel
+        let old_response = old_rx.recv().unwrap();
+        assert_eq!(old_response.status, "superseded");
+        assert_eq!(old_response.request_id, "req-000");
+
+        // New request is now active
+        let events = emitter.events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].0, "secure-env-requested");
+        assert!(events[0].1.contains("\"key\":\"ANTHROPIC_API_KEY\""));
     }
 
     #[test]

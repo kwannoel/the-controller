@@ -161,8 +161,14 @@ pub(crate) fn begin_secure_env_request_with_response(
         .secure_env_request
         .lock()
         .map_err(|err| err.to_string())?;
-    if active.is_some() {
-        return Err("A secure env request is already active".to_string());
+    if let Some(existing) = active.take() {
+        if let Some(tx) = existing.response_tx {
+            let _ = tx.send(SecureEnvResponse {
+                kind: SecureEnvResponseKind::Error,
+                status: "superseded".to_string(),
+                request_id: existing.pending.request_id,
+            });
+        }
     }
     *active = Some(ActiveSecureEnvRequest {
         pending: pending.clone(),
@@ -515,7 +521,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_second_active_secure_env_request() {
+    fn supersedes_existing_active_secure_env_request() {
         let tmp = TempDir::new().unwrap();
         let state = make_app_state(&tmp);
         let repo_path = tmp.path().join("demo-project");
@@ -524,11 +530,43 @@ mod tests {
 
         begin_secure_env_request(&state, "demo-project", "OPENAI_API_KEY", "req-123").unwrap();
 
-        let error =
+        let second =
             begin_secure_env_request(&state, "demo-project", "ANTHROPIC_API_KEY", "req-456")
-                .unwrap_err();
+                .unwrap();
 
-        assert_eq!(error, "A secure env request is already active");
+        assert_eq!(second.key, "ANTHROPIC_API_KEY");
+        assert_eq!(second.request_id, "req-456");
+    }
+
+    #[test]
+    fn supersede_notifies_previous_cli_via_channel() {
+        let tmp = TempDir::new().unwrap();
+        let state = make_app_state(&tmp);
+        let repo_path = tmp.path().join("demo-project");
+        fs::create_dir_all(&repo_path).unwrap();
+        save_project(&state, "demo-project", repo_path);
+
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        super::begin_secure_env_request_with_response(
+            &state,
+            "demo-project",
+            "OPENAI_API_KEY",
+            "req-123",
+            Some(tx),
+        )
+        .unwrap();
+
+        begin_secure_env_request(&state, "demo-project", "ANTHROPIC_API_KEY", "req-456").unwrap();
+
+        let response = rx.recv().unwrap();
+        assert_eq!(
+            response,
+            SecureEnvResponse {
+                kind: SecureEnvResponseKind::Error,
+                status: "superseded".to_string(),
+                request_id: "req-123".to_string(),
+            }
+        );
     }
 
     #[test]
