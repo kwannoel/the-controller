@@ -933,4 +933,31 @@ mod tests {
         let result = push_to_remote(base);
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_push_to_remote_pushes_when_remote_exists() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+
+        // Create a bare repo to act as the remote
+        let remote_dir = tmp.path().join("remote.git");
+        Repository::init_bare(&remote_dir).unwrap();
+
+        // Create notes and commit
+        create_note(base, "proj", "hello").unwrap();
+        commit_notes(base, "init").unwrap();
+
+        // Add remote
+        let repo = Repository::open(notes_root(base)).unwrap();
+        repo.remote("origin", remote_dir.to_str().unwrap()).unwrap();
+
+        // Push should succeed
+        let result = push_to_remote(base);
+        assert!(result.is_ok(), "push failed: {:?}", result.err());
+
+        // Verify remote received the commit
+        let remote_repo = Repository::open_bare(&remote_dir).unwrap();
+        let head = remote_repo.head().unwrap().peel_to_commit().unwrap();
+        assert_eq!(head.message().unwrap(), "init");
+    }
 }
