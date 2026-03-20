@@ -15,6 +15,7 @@
   import SecureEnvModal from "./lib/SecureEnvModal.svelte";
   import DeploySetupModal from "./lib/DeploySetupModal.svelte";
   import SessionPickerModal from "./lib/SessionPickerModal.svelte";
+  import FuzzyFinder from "./lib/FuzzyFinder.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
@@ -29,6 +30,7 @@
   let issuesModalTarget: { projectId: string; repoPath: string } | null = $state(null);
   let promptPickerTarget: { projectId: string } | null = $state(null);
   let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
+  let showFuzzyFinder = $state(false);
   let deploySetupOpen = $state(false);
   let voiceModeRef: { toggleDebug: () => void; toggleTranscript: () => void } | undefined = $state();
   let screenshotPickerState: { path: string; preview: boolean } | null = $state(null);
@@ -74,7 +76,9 @@
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
-      if (action?.type === "toggle-help") {
+      if (action?.type === "open-fuzzy-finder") {
+        showFuzzyFinder = true;
+      } else if (action?.type === "toggle-help") {
         showKeyHints.update((v) => !v);
       } else if (action?.type === "open-issues-modal") {
         issuesModalTarget = { projectId: action.projectId, repoPath: action.repoPath };
@@ -551,6 +555,22 @@
     <HotkeyManager />
     {#if showKeyHintsState.current}
       <HotkeyHelp onClose={() => showKeyHints.set(false)} />
+    {/if}
+    {#if showFuzzyFinder}
+      <FuzzyFinder
+        onSelect={async (entry) => {
+          showFuzzyFinder = false;
+          try {
+            const project = await command<Project>("load_project", { name: entry.name, repoPath: entry.path });
+            await refreshProjectsFromBackend();
+            expandedProjects.update(s => { const next = new Set(s); next.add(project.id); return next; });
+            focusTarget.set({ type: "project", projectId: project.id });
+          } catch (e) {
+            showToast(String(e), "error");
+          }
+        }}
+        onClose={() => (showFuzzyFinder = false)}
+      />
     {/if}
     {#if issuesModalTarget}
       <IssuesModal
