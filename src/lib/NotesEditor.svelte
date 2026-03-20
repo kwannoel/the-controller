@@ -1,10 +1,16 @@
 <script lang="ts">
   import { fromStore } from "svelte/store";
-  import { untrack } from "svelte";
-  import { command } from "$lib/backend";
+  import { untrack, onDestroy } from "svelte";
+  import { command, listen } from "$lib/backend";
+  import { showToast } from "./toast";
   import { activeNote, noteViewMode, focusTarget, hotkeyAction, type NoteViewMode, type FocusTarget } from "./stores";
   import CodeMirrorNoteEditor, { type VimMode, type AiChatRequest } from "./CodeMirrorNoteEditor.svelte";
   import NoteAiPanel from "./NoteAiPanel.svelte";
+
+  const unlistenSyncError = listen<string>("notes-sync-error", (payload) => {
+    showToast(`Notes sync failed: ${payload}`, "error");
+  });
+  onDestroy(() => unlistenSyncError());
 
   let content = $state("");
   let savedContent = $state("");
