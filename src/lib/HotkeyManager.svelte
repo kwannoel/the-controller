@@ -336,6 +336,11 @@
         }
         return true;
       }
+      case "say-yes":
+        if (activeId) {
+          command("write_to_pty", { sessionId: activeId, data: "yes\n" });
+        }
+        return true;
       case "stage": {
         if (!activeId) return true;
         const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
