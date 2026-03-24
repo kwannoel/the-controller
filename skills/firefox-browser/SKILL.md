@@ -470,14 +470,16 @@ page.locator('.card').filter({ hasText: 'Premium' }).getByRole('button')
 
 ## Key Differences from agent-browser
 
-| Feature | agent-browser (Chrome) | firefox-browser (Playwright) |
-|---------|----------------------|---------------------------|
-| Browser | Chrome/Chromium | Firefox |
-| Protocol | CDP | Playwright internal |
-| Interaction | CLI commands with `@refs` | Node.js scripts with locators |
-| State | Persistent daemon | Per-script (save/load storage) |
-| Simple tasks | `agent-browser screenshot` | `npx playwright screenshot -b firefox` |
-| Complex tasks | CLI chaining | Inline Node.js scripts |
+Use `agent-browser` when the user says some version of "use my current browser" or needs an existing logged-in Chromium tab. Use `firefox-browser` when the task specifically needs Firefox or a managed Playwright session.
+
+| Feature | agent-browser | firefox-browser |
+|---------|---------------|-----------------|
+| Primary use | Existing logged-in Chrome or Chromium tab via relay | Managed Firefox automation with Playwright |
+| Browser reuse | Best option for "use my current browser" | Use persistent profiles or saved state, not live-tab relay |
+| Interaction | CLI commands with `@refs` | Node.js scripts with Playwright locators |
+| Session model | Attached live tab or dedicated Chromium profile | Playwright browser or persistent Firefox profile |
+| Simple tasks | `agent-browser screenshot` on the current tab | `npx playwright screenshot -b firefox` |
+| Complex tasks | Snapshot and interact on the attached tab | Inline Node.js scripts |
 
 ## Setup
 
