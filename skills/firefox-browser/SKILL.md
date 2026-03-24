@@ -6,20 +6,119 @@ allowed-tools: Bash(npx playwright:*), Bash(node -e:*), Bash(node <<:*)
 
 # Firefox Browser Automation with Playwright
 
-Uses Playwright's Firefox engine for browser automation. Install Firefox with `npx playwright install firefox`.
+**Always use the user's real Firefox profile** instead of launching a fresh automated instance. Fresh automated browsers get flagged by bot detection (Google login bans, CAPTCHAs, account locks). Using the real profile inherits cookies, extensions, and fingerprint.
 
-Two modes of operation:
+Uses Playwright's Firefox engine. Install with `npx playwright install firefox`.
 
-1. **CLI commands** — one-shot tasks (screenshots, PDFs)
-2. **Inline scripts** — interactive automation (forms, clicks, scraping)
+## Setup: Find Your Firefox Profile
+
+```bash
+# macOS
+ls ~/Library/Application\ Support/Firefox/Profiles/
+# Look for: xxxxxxxx.default-release
+
+# Linux
+ls ~/.mozilla/firefox/
+```
+
+Set the `FIREFOX_PROFILE` env var for convenience:
+
+```bash
+# macOS
+export FIREFOX_PROFILE="$HOME/Library/Application Support/Firefox/Profiles/YOUR_PROFILE.default-release"
+
+# Linux
+export FIREFOX_PROFILE="$HOME/.mozilla/firefox/YOUR_PROFILE.default-release"
+```
+
+## Core Pattern — Use Real Profile
+
+Copy the user's profile to a temp directory (avoids lock conflicts with running Firefox) and launch with it:
+
+```bash
+node <<'SCRIPT'
+const { firefox } = require('playwright');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
+
+(async () => {
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  // Copy profile (preserves cookies, extensions, history)
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  // Remove lock files and compatibility markers (Playwright's Firefox is a different version)
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+  });
+
+  const page = context.pages()[0] || await context.newPage();
+  await page.goto('https://example.com');
+  await page.waitForLoadState('domcontentloaded');
+
+  console.log('Title:', await page.title());
+  console.log('URL:', page.url());
+  await page.screenshot({ path: '/tmp/firefox-screenshot.png' });
+
+  await context.close();
+})();
+SCRIPT
+```
+
+**Key details:**
+- Close or leave Firefox running — the profile copy avoids lock conflicts
+- Remove `compatibility.ini` — Playwright's bundled Firefox is a different version than the system Firefox
+- Use `domcontentloaded` instead of `networkidle` — heavy SPAs (Gmail, etc.) never reach network idle
+- The user may already be logged in to sites via their cookies
+
+## Reusing a Copied Profile
+
+If the temp profile already exists from a previous run, reuse it (skip the copy):
+
+```bash
+node <<'SCRIPT'
+const { firefox } = require('playwright');
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
+
+(async () => {
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  if (!fs.existsSync(tempProfile)) {
+    console.error('No cached profile found. Run the full copy pattern first.');
+    process.exit(1);
+  }
+
+  // Clean stale locks from previous run
+  const { execSync } = require('child_process');
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+  });
+
+  const page = context.pages()[0] || await context.newPage();
+  await page.goto('https://example.com');
+  await page.waitForLoadState('domcontentloaded');
+
+  console.log('Title:', await page.title());
+  await context.close();
+})();
+SCRIPT
+```
 
 ## CLI Commands (Simple Tasks)
+
+For one-shot tasks that don't need authentication, CLI commands still work:
 
 ```bash
 # Screenshot
 npx playwright screenshot --browser firefox https://example.com screenshot.png
 npx playwright screenshot --browser firefox --full-page https://example.com full.png
-npx playwright screenshot --browser firefox --wait-for-timeout 3000 https://example.com delayed.png
 npx playwright screenshot --browser firefox --wait-for-selector "#content" https://example.com content.png
 
 # PDF
@@ -30,63 +129,8 @@ npx playwright screenshot --browser firefox --device "iPhone 14" https://example
 npx playwright screenshot --browser firefox --color-scheme dark https://example.com dark.png
 npx playwright screenshot --browser firefox --viewport-size "1920,1080" https://example.com desktop.png
 
-# With auth state
+# With saved auth state
 npx playwright screenshot --browser firefox --load-storage auth.json https://example.com/dashboard dash.png
-
-# Save HAR (network log)
-npx playwright screenshot --browser firefox --save-har network.har https://example.com shot.png
-```
-
-## Inline Scripts (Interactive Automation)
-
-For anything beyond screenshots/PDFs, write inline Playwright scripts. The browser persists for the duration of the script.
-
-### Core Pattern
-
-```bash
-node -e "
-const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch();
-  const page = await browser.newPage();
-  await page.goto('https://example.com');
-  console.log(await page.title());
-  await browser.close();
-})();
-"
-```
-
-For complex scripts, use a heredoc to avoid quoting issues:
-
-```bash
-node <<'SCRIPT'
-const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch();
-  const page = await browser.newPage();
-  await page.goto('https://example.com');
-
-  // Your automation here
-  console.log(await page.title());
-
-  await browser.close();
-})();
-SCRIPT
-```
-
-### Headed Mode (Visible Browser)
-
-```bash
-node -e "
-const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch({ headless: false });
-  const page = await browser.newPage();
-  await page.goto('https://example.com');
-  await page.waitForTimeout(5000);
-  await browser.close();
-})();
-"
 ```
 
 ## Common Patterns
@@ -96,28 +140,36 @@ const { firefox } = require('playwright');
 ```bash
 node <<'SCRIPT'
 const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch();
-  const page = await browser.newPage();
-  await page.goto('https://example.com/signup');
-  await page.waitForLoadState('networkidle');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
 
-  // Fill form fields
+(async () => {
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+  });
+  const page = context.pages()[0] || await context.newPage();
+
+  await page.goto('https://example.com/signup');
+  await page.waitForLoadState('domcontentloaded');
+
   await page.fill('input[name="name"]', 'Jane Doe');
   await page.fill('input[name="email"]', 'jane@example.com');
   await page.selectOption('select[name="state"]', 'California');
   await page.check('input[type="checkbox"]');
-
-  // Submit
   await page.click('button[type="submit"]');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
-  // Verify result
   console.log('URL:', page.url());
-  console.log('Title:', await page.title());
   await page.screenshot({ path: '/tmp/form-result.png' });
 
-  await browser.close();
+  await context.close();
 })();
 SCRIPT
 ```
@@ -127,17 +179,28 @@ SCRIPT
 ```bash
 node <<'SCRIPT'
 const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch();
-  const page = await browser.newPage();
-  await page.goto('https://example.com/products');
-  await page.waitForLoadState('networkidle');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
 
-  // Get all text
+(async () => {
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+  });
+  const page = context.pages()[0] || await context.newPage();
+
+  await page.goto('https://example.com/products');
+  await page.waitForLoadState('domcontentloaded');
+
   const text = await page.textContent('body');
   console.log(text);
 
-  // Get specific elements
   const items = await page.$$eval('.product', els =>
     els.map(el => ({
       name: el.querySelector('h2')?.textContent,
@@ -146,35 +209,47 @@ const { firefox } = require('playwright');
   );
   console.log(JSON.stringify(items, null, 2));
 
-  await browser.close();
+  await context.close();
 })();
 SCRIPT
 ```
 
 ### Authentication with State Persistence
 
+Since you're using the real profile, the user is likely already logged in. If you need to save/restore state explicitly:
+
 ```bash
 # Step 1: Login and save state
 node <<'SCRIPT'
 const { firefox } = require('playwright');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
+
 (async () => {
-  const browser = await firefox.launch();
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+  });
+  const page = context.pages()[0] || await context.newPage();
 
   await page.goto('https://app.example.com/login');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   await page.fill('input[name="email"]', process.env.APP_USERNAME);
   await page.fill('input[name="password"]', process.env.APP_PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForURL('**/dashboard');
 
-  // Save auth state
   await context.storageState({ path: './auth.json' });
   console.log('Auth state saved to ./auth.json');
 
-  await browser.close();
+  await context.close();
 })();
 SCRIPT
 
@@ -182,7 +257,7 @@ SCRIPT
 node -e "
 const { firefox } = require('playwright');
 (async () => {
-  const browser = await firefox.launch();
+  const browser = await firefox.launch({ headless: false });
   const context = await browser.newContext({ storageState: './auth.json' });
   const page = await context.newPage();
   await page.goto('https://app.example.com/dashboard');
@@ -197,11 +272,24 @@ const { firefox } = require('playwright');
 ```bash
 node <<'SCRIPT'
 const { firefox } = require('playwright');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
+
 (async () => {
-  const browser = await firefox.launch();
-  const page = await browser.newPage();
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+  });
+  const page = context.pages()[0] || await context.newPage();
+
   await page.goto('https://example.com');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   // Viewport screenshot
   await page.screenshot({ path: 'viewport.png' });
@@ -216,45 +304,37 @@ const { firefox } = require('playwright');
   // PDF
   await page.pdf({ path: 'page.pdf', format: 'A4' });
 
-  await browser.close();
+  await context.close();
 })();
 SCRIPT
 ```
 
 ### Waiting Strategies
 
-```bash
-node <<'SCRIPT'
-const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch();
-  const page = await browser.newPage();
-  await page.goto('https://example.com');
+```javascript
+// Wait for DOM content loaded (recommended default)
+await page.waitForLoadState('domcontentloaded');
 
-  // Wait for network idle
-  await page.waitForLoadState('networkidle');
+// Wait for selector
+await page.waitForSelector('#content');
 
-  // Wait for selector
-  await page.waitForSelector('#content');
+// Wait for text
+await page.waitForSelector('text=Welcome');
 
-  // Wait for text
-  await page.waitForSelector('text=Welcome');
+// Wait for URL pattern
+await page.waitForURL('**/dashboard');
 
-  // Wait for URL pattern
-  await page.waitForURL('**/dashboard');
+// Wait for element to disappear
+await page.waitForSelector('#spinner', { state: 'hidden' });
 
-  // Wait for element to disappear
-  await page.waitForSelector('#spinner', { state: 'hidden' });
+// Wait for JS condition
+await page.waitForFunction(() => document.readyState === 'complete');
 
-  // Wait for JS condition
-  await page.waitForFunction(() => document.readyState === 'complete');
+// Wait for network idle (avoid for heavy SPAs)
+await page.waitForLoadState('networkidle');
 
-  // Fixed wait (last resort)
-  await page.waitForTimeout(2000);
-
-  await browser.close();
-})();
-SCRIPT
+// Fixed wait (last resort)
+await page.waitForTimeout(2000);
 ```
 
 ### Viewport and Device Emulation
@@ -263,7 +343,7 @@ SCRIPT
 node <<'SCRIPT'
 const { firefox, devices } = require('playwright');
 (async () => {
-  const browser = await firefox.launch();
+  const browser = await firefox.launch({ headless: false });
 
   // Custom viewport
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
@@ -288,7 +368,7 @@ SCRIPT
 node <<'SCRIPT'
 const { firefox } = require('playwright');
 (async () => {
-  const browser = await firefox.launch();
+  const browser = await firefox.launch({ headless: false });
   const page = await browser.newPage();
 
   // Log all requests
@@ -304,7 +384,7 @@ const { firefox } = require('playwright');
   );
 
   await page.goto('https://example.com');
-  await page.waitForLoadState('networkidle');
+  await page.waitForLoadState('domcontentloaded');
 
   await browser.close();
 })();
@@ -316,11 +396,22 @@ SCRIPT
 ```bash
 node <<'SCRIPT'
 const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch();
-  const context = await browser.newContext();
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
 
-  const page1 = await context.newPage();
+(async () => {
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+  });
+
+  const page1 = context.pages()[0] || await context.newPage();
   await page1.goto('https://example.com');
 
   const page2 = await context.newPage();
@@ -329,7 +420,7 @@ const { firefox } = require('playwright');
   console.log('Tab 1:', await page1.title());
   console.log('Tab 2:', await page2.title());
 
-  await browser.close();
+  await context.close();
 })();
 SCRIPT
 ```
@@ -340,35 +431,58 @@ SCRIPT
 # CLI
 npx playwright screenshot --browser firefox --color-scheme dark https://example.com dark.png
 
-# Script
-node -e "
+# Script (with real profile)
+node <<'SCRIPT'
 const { firefox } = require('playwright');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
+
 (async () => {
-  const browser = await firefox.launch();
-  const context = await browser.newContext({ colorScheme: 'dark' });
-  const page = await context.newPage();
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+    colorScheme: 'dark',
+  });
+  const page = context.pages()[0] || await context.newPage();
   await page.goto('https://example.com');
   await page.screenshot({ path: 'dark.png' });
-  await browser.close();
+  await context.close();
 })();
-"
+SCRIPT
 ```
 
 ### Proxy
 
 ```bash
-node -e "
+node <<'SCRIPT'
 const { firefox } = require('playwright');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
+
 (async () => {
-  const browser = await firefox.launch({
-    proxy: { server: 'http://localhost:8080' }
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+    proxy: { server: 'http://localhost:8080' },
   });
-  const page = await browser.newPage();
+  const page = context.pages()[0] || await context.newPage();
   await page.goto('https://example.com');
   console.log(await page.title());
-  await browser.close();
+  await context.close();
 })();
-"
+SCRIPT
 ```
 
 ### Dialogs (alert / confirm / prompt)
@@ -377,13 +491,12 @@ const { firefox } = require('playwright');
 node <<'SCRIPT'
 const { firefox } = require('playwright');
 (async () => {
-  const browser = await firefox.launch();
+  const browser = await firefox.launch({ headless: false });
   const page = await browser.newPage();
 
-  // Handle dialogs before they appear
   page.on('dialog', async dialog => {
     console.log(`Dialog: ${dialog.type()} - ${dialog.message()}`);
-    await dialog.accept();  // or dialog.dismiss()
+    await dialog.accept();
   });
 
   await page.goto('https://example.com');
@@ -397,20 +510,27 @@ SCRIPT
 ```bash
 node <<'SCRIPT'
 const { firefox } = require('playwright');
-(async () => {
-  const browser = await firefox.launch();
-  const context = await browser.newContext({
-    recordHar: { path: 'network.har' }
-  });
-  const page = await context.newPage();
-  await page.goto('https://example.com');
-  await page.waitForLoadState('networkidle');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
 
-  // Close context to flush HAR
+(async () => {
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+    recordHar: { path: 'network.har' },
+  });
+  const page = context.pages()[0] || await context.newPage();
+  await page.goto('https://example.com');
+  await page.waitForLoadState('domcontentloaded');
+
   await context.close();
   console.log('HAR saved to network.har');
-
-  await browser.close();
 })();
 SCRIPT
 ```
@@ -420,20 +540,27 @@ SCRIPT
 ```bash
 node <<'SCRIPT'
 const { firefox } = require('playwright');
+const { execSync } = require('child_process');
+const os = require('os');
+const path = require('path');
+
 (async () => {
-  const browser = await firefox.launch();
-  const context = await browser.newContext({
-    recordVideo: { dir: './videos/', size: { width: 1280, height: 720 } }
+  const sourceProfile = process.env.FIREFOX_PROFILE;
+  const tempProfile = path.join(os.tmpdir(), 'firefox-automation-profile');
+
+  execSync(`rm -rf "${tempProfile}" && cp -R "${sourceProfile}" "${tempProfile}"`);
+  execSync(`rm -f "${tempProfile}/lock" "${tempProfile}/.parentlock" "${tempProfile}/parent.lock" "${tempProfile}/compatibility.ini"`);
+
+  const context = await firefox.launchPersistentContext(tempProfile, {
+    headless: false,
+    recordVideo: { dir: './videos/', size: { width: 1280, height: 720 } },
   });
-  const page = await context.newPage();
+  const page = context.pages()[0] || await context.newPage();
   await page.goto('https://example.com');
   await page.waitForTimeout(3000);
 
-  // Close context to save video
   await context.close();
   console.log('Video saved to ./videos/');
-
-  await browser.close();
 })();
 SCRIPT
 ```
