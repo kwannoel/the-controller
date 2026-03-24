@@ -1,120 +1,29 @@
-# Profiling
+# Profiles
 
-Capture Chrome DevTools performance profiles during browser automation for performance analysis.
+Profiles are the managed-mode fallback. They are not the primary path when the user wants to reuse an already-open browser tab.
 
-**Related**: [commands.md](commands.md) for full command reference, [SKILL.md](../SKILL.md) for quick start.
+## When to use a profile
 
-## Contents
+Use a profile when:
 
-- [Basic Profiling](#basic-profiling)
-- [Profiler Commands](#profiler-commands)
-- [Categories](#categories)
-- [Use Cases](#use-cases)
-- [Output Format](#output-format)
-- [Viewing Profiles](#viewing-profiles)
-- [Limitations](#limitations)
+- the relay is unavailable
+- the user wants isolation from their daily browser
+- the task needs a long-lived automation environment
 
-## Basic Profiling
+## Basic usage
 
 ```bash
-# Start profiling
-agent-browser profiler start
+# Create or reuse a dedicated profile
+agent-browser --profile ~/.profiles/myapp open https://app.example.com/login
 
-# Perform actions
-agent-browser navigate https://example.com
-agent-browser click "#button"
-agent-browser wait 1000
-
-# Stop and save
-agent-browser profiler stop ./trace.json
+# Reuse the same profile later
+agent-browser --profile ~/.profiles/myapp open https://app.example.com/dashboard
 ```
 
-## Profiler Commands
+Keep one profile per role or account when isolation matters.
 
-```bash
-# Start profiling with default categories
-agent-browser profiler start
+## Practical advice
 
-# Start with custom trace categories
-agent-browser profiler start --categories "devtools.timeline,v8.execute,blink.user_timing"
-
-# Stop profiling and save to file
-agent-browser profiler stop ./trace.json
-```
-
-## Categories
-
-The `--categories` flag accepts a comma-separated list of Chrome trace categories. Default categories include:
-
-- `devtools.timeline` -- standard DevTools performance traces
-- `v8.execute` -- time spent running JavaScript
-- `blink` -- renderer events
-- `blink.user_timing` -- `performance.mark()` / `performance.measure()` calls
-- `latencyInfo` -- input-to-latency tracking
-- `renderer.scheduler` -- task scheduling and execution
-- `toplevel` -- broad-spectrum basic events
-
-Several `disabled-by-default-*` categories are also included for detailed timeline, call stack, and V8 CPU profiling data.
-
-## Use Cases
-
-### Diagnosing Slow Page Loads
-
-```bash
-agent-browser profiler start
-agent-browser navigate https://app.example.com
-agent-browser wait --load networkidle
-agent-browser profiler stop ./page-load-profile.json
-```
-
-### Profiling User Interactions
-
-```bash
-agent-browser navigate https://app.example.com
-agent-browser profiler start
-agent-browser click "#submit"
-agent-browser wait 2000
-agent-browser profiler stop ./interaction-profile.json
-```
-
-### CI Performance Regression Checks
-
-```bash
-#!/bin/bash
-agent-browser profiler start
-agent-browser navigate https://app.example.com
-agent-browser wait --load networkidle
-agent-browser profiler stop "./profiles/build-${BUILD_ID}.json"
-```
-
-## Output Format
-
-The output is a JSON file in Chrome Trace Event format:
-
-```json
-{
-  "traceEvents": [
-    { "cat": "devtools.timeline", "name": "RunTask", "ph": "X", "ts": 12345, "dur": 100, ... },
-    ...
-  ],
-  "metadata": {
-    "clock-domain": "LINUX_CLOCK_MONOTONIC"
-  }
-}
-```
-
-The `metadata.clock-domain` field is set based on the host platform (Linux or macOS). On Windows it is omitted.
-
-## Viewing Profiles
-
-Load the output JSON file in any of these tools:
-
-- **Chrome DevTools**: Performance panel > Load profile (Ctrl+Shift+I > Performance)
-- **Perfetto UI**: https://ui.perfetto.dev/ -- drag and drop the JSON file
-- **Trace Viewer**: `chrome://tracing` in any Chromium browser
-
-## Limitations
-
-- Only works with Chromium-based browsers (Chrome, Edge). Not supported on Firefox or WebKit.
-- Trace data accumulates in memory while profiling is active (capped at 5 million events). Stop profiling promptly after the area of interest.
-- Data collection on stop has a 30-second timeout. If the browser is unresponsive, the stop command may fail.
+- use short descriptive profile paths
+- do not point at the user's primary personal browser profile
+- treat profile directories as sensitive because they may contain live session data
