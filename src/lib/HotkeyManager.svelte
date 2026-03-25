@@ -338,7 +338,7 @@
       }
       case "say-yes":
         if (activeId) {
-          command("write_to_pty", { sessionId: activeId, data: "yes\n" });
+          command("write_to_pty", { sessionId: activeId, data: "yes\r" });
         }
         return true;
       case "stage": {
