@@ -179,8 +179,8 @@
         }
         case "e2e-eval": {
           const skillCmd = action.kind === "codex"
-            ? "$the-controller-e2e-eval"
-            : "/the-controller-e2e-eval";
+            ? "$the-controller-general-e2e-eval"
+            : "/the-controller-general-e2e-eval";
           if (action.kind === "codex") {
             command("write_to_pty", { sessionId: action.sessionId, data: skillCmd })
               .then(() => command("send_raw_to_pty", { sessionId: action.sessionId, data: "\r" }));
