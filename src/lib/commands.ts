@@ -1,6 +1,6 @@
 import type { WorkspaceMode } from "./stores";
 
-export type CommandSection = "Essentials" | "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Notes" | "Infrastructure" | "Debug";
+export type CommandSection = "Essentials" | "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Debug";
 
 // IDs for commands handled in handleHotkey's switch
 export type CommandId =
@@ -17,21 +17,12 @@ export type CommandId =
   | "trigger-agent-check"
   | "toggle-help"
   | "clear-agent-reports"
-  | "create-note"
-  | "create-folder"
-  | "delete-note"
-  | "rename-note"
-  | "duplicate-note"
-  | "toggle-note-preview"
   | "save-prompt"
   | "load-prompt"
-  | "generate-architecture"
   | "stage"
   | "toggle-maintainer-view"
   | "e2e-eval"
-  | "say-yes"
-  | "deploy-project"
-  | "rollback-deploy";
+  | "say-yes";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -83,8 +74,6 @@ export const commands: CommandDef[] = [
   { id: "new-project", key: "n", section: "Projects", description: "New project", mode: "development" },
   { id: "delete", key: "d", section: "Projects", description: "Delete focused item (session or project)", mode: "development" },
   { id: "open-issues-modal", key: "i", section: "Projects", description: "Issues (create, find, assign)", mode: "development" },
-  { id: "generate-architecture", key: "r", section: "Projects", description: "Generate / regenerate architecture for focused project", mode: "architecture" },
-
   // ── Panels ──
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
   { id: "switch-workspace", key: "␣", section: "Panels", description: "Switch workspace mode", handledExternally: true, hidden: true },
@@ -96,24 +85,10 @@ export const commands: CommandDef[] = [
   { id: "clear-agent-reports", key: "c", section: "Agents", description: "Clear maintainer reports for focused project", mode: "agents" },
   { id: "toggle-maintainer-view", key: "t", section: "Agents", description: "Toggle between Runs / Issues view", mode: "agents" },
 
-  // ── Notes ──
-  { id: "create-folder", key: "n", section: "Notes", description: "New folder", mode: "notes" },
-  { id: "create-note", key: "c", section: "Notes", description: "Create new note", mode: "notes" },
-  { id: "delete-note", key: "d", section: "Notes", description: "Delete focused note or folder", mode: "notes" },
-  { id: "rename-note", key: "r", section: "Notes", description: "Rename focused note or folder", mode: "notes" },
-  { id: "duplicate-note", key: "y", section: "Notes", description: "Duplicate focused note", mode: "notes" },
-  { id: "toggle-note-preview", key: "p", section: "Notes", description: "Cycle edit / preview / split", mode: "notes" },
-  { id: "expand-collapse", key: "o", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
-  { id: "expand-collapse", key: "i", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
-  { id: "expand-collapse", key: "a", section: "Notes", description: "Open note for editing", mode: "notes", hidden: true },
-
-  // ── Infrastructure ──
-  { id: "deploy-project", key: "d", section: "Infrastructure", description: "Deploy focused project", mode: "infrastructure" },
-  { id: "rollback-deploy", key: "r", section: "Infrastructure", description: "Rollback last deployment", mode: "infrastructure" },
 ];
 
 // Section order for help display
-const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"];
+const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents"];
 const DEV_SECTION_ORDER: CommandSection[] = ["Essentials", "Debug", "Sessions", "Projects", "Panels"];
 
 export interface HelpEntry {

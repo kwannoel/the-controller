@@ -59,15 +59,6 @@ export function focusForModeSwitch(
   if (!current) return null;
 
   if (newMode === "development") {
-    if (current.type === "folder" || current.type === "note" || current.type === "notes-editor") {
-      if (activeSessionId) {
-        const project = projectList.find(p => p.sessions.some(s => s.id === activeSessionId && !s.auto_worker_session));
-        if (project) {
-          return { type: "session", sessionId: activeSessionId, projectId: project.id };
-        }
-      }
-      return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
-    }
     if (current.type === "agent" || current.type === "agent-panel") {
       if (activeSessionId) {
         const project = projectList.find(p => p.id === current.projectId);
@@ -80,40 +71,9 @@ export function focusForModeSwitch(
   }
 
   if (newMode === "agents") {
-    if (current.type === "folder" || current.type === "note" || current.type === "notes-editor") {
-      return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
-    }
     if (current.type === "session") {
       return { type: "project", projectId: current.projectId };
     }
-  }
-
-  if (newMode === "notes") {
-    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel" || current.type === "project") {
-      return null;
-    }
-  }
-
-  if (newMode === "architecture") {
-    if (current.type === "folder" || current.type === "note" || current.type === "notes-editor") {
-      return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
-    }
-    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel") {
-      return { type: "project", projectId: current.projectId };
-    }
-  }
-
-  if (newMode === "infrastructure") {
-    if (current.type === "folder" || current.type === "note" || current.type === "notes-editor") {
-      return projectList[0] ? { type: "project", projectId: projectList[0].id } : null;
-    }
-    if (current.type === "session" || current.type === "agent" || current.type === "agent-panel") {
-      return { type: "project", projectId: current.projectId };
-    }
-  }
-
-  if (newMode === "voice") {
-    return null;
   }
 
   return current;

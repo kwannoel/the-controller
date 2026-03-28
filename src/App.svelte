@@ -13,26 +13,19 @@
   import IssuesModal from "./lib/IssuesModal.svelte";
   import PromptPickerModal from "./lib/PromptPickerModal.svelte";
   import SecureEnvModal from "./lib/SecureEnvModal.svelte";
-  import DeploySetupModal from "./lib/DeploySetupModal.svelte";
   import SessionPickerModal from "./lib/SessionPickerModal.svelte";
   import FuzzyFinder from "./lib/FuzzyFinder.svelte";
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
-  import NotesEditor from "./lib/NotesEditor.svelte";
-  import ArchitectureExplorer from "./lib/ArchitectureExplorer.svelte";
-  import InfrastructureDashboard from "./lib/InfrastructureDashboard.svelte";
-  import VoiceMode from "./lib/VoiceMode.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
-  import { appConfig, architectureViews, createArchitectureViewState, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type ArchitectureResult, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
+  import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
   let ready = $state(false);
   let issuesModalTarget: { projectId: string; repoPath: string } | null = $state(null);
   let promptPickerTarget: { projectId: string } | null = $state(null);
   let secureEnvRequest: { requestId: string; projectId: string; projectName: string; key: string } | null = $state(null);
   let showFuzzyFinder = $state(false);
-  let deploySetupOpen = $state(false);
-  let voiceModeRef: { toggleDebug: () => void; toggleTranscript: () => void } | undefined = $state();
   let screenshotPickerState: { path: string; preview: boolean } | null = $state(null);
 
   const sidebarVisibleState = fromStore(sidebarVisible);
@@ -44,35 +37,8 @@
   const projectsState = fromStore(projects);
   const activeSessionIdState = fromStore(activeSessionId);
   const focusTargetState = fromStore(focusTarget);
-  const architectureViewsState = fromStore(architectureViews);
   const selectedSessionProviderState = fromStore(selectedSessionProvider);
   let currentSessionProvider = $derived(selectedSessionProviderState.current);
-  let currentArchitectureProject = $derived.by(() => {
-    const focus = focusTargetState.current;
-    const focusedProjectId =
-      (focus && "projectId" in focus ? focus.projectId : undefined) ??
-      projectsState.current.find((project) =>
-        project.sessions.some((session) => session.id === activeSessionIdState.current),
-      )?.id ??
-      projectsState.current[0]?.id ??
-      null;
-
-    if (!focusedProjectId) {
-      return null;
-    }
-
-    return projectsState.current.find((project) => project.id === focusedProjectId) ?? null;
-  });
-  let currentArchitectureView = $derived.by(() => {
-    if (!currentArchitectureProject) {
-      return null;
-    }
-
-    return (
-      architectureViewsState.current.get(currentArchitectureProject.id) ??
-      createArchitectureViewState()
-    );
-  });
 
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
@@ -94,37 +60,6 @@
         saveSessionPrompt(action.projectId, action.sessionId);
       } else if (action?.type === "pick-prompt-for-session") {
         promptPickerTarget = { projectId: action.projectId };
-      } else if (action?.type === "generate-architecture") {
-        generateArchitectureForProject(action.projectId, action.repoPath);
-      } else if (action?.type === "voice-toggle-panel") {
-        if (action.panel === "debug") {
-          voiceModeRef?.toggleDebug();
-        } else {
-          voiceModeRef?.toggleTranscript();
-        }
-      } else if (action?.type === "deploy-project") {
-        command<boolean>("is_deploy_provisioned").then(async (provisioned) => {
-          if (!provisioned) {
-            deploySetupOpen = true;
-          } else {
-            const project = projectsState.current.find((p) => p.id === action.projectId);
-            if (!project) return;
-            try {
-              showToast("Deploying...", "info");
-              const result = await command<{ url: string; coolify_uuid: string }>("deploy_project", {
-                request: {
-                  projectName: project.name,
-                  repoPath: project.repo_path,
-                  subdomain: project.name.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-                  projectType: "node",
-                },
-              });
-              showToast(`Deployed to ${result.url}`, "info");
-            } catch (e) {
-              showToast(String(e), "error");
-            }
-          }
-        });
       }
     });
     return unsub;
@@ -363,90 +298,6 @@
     }
   }
 
-  function handleArchitectureSelection(componentId: string) {
-    if (!currentArchitectureProject) {
-      return;
-    }
-
-    architectureViews.update((views) => {
-      const next = new Map(views);
-      const currentView =
-        next.get(currentArchitectureProject.id) ?? createArchitectureViewState();
-      next.set(currentArchitectureProject.id, {
-        ...currentView,
-        selectedComponentId: componentId,
-      });
-      return next;
-    });
-  }
-
-  async function generateArchitectureForProject(projectId: string, repoPath: string) {
-    if (architectureViewsState.current.get(projectId)?.isGenerating) {
-      return;
-    }
-
-    architectureViews.update((views) => {
-      const next = new Map(views);
-      const currentView = next.get(projectId) ?? createArchitectureViewState();
-      next.set(projectId, {
-        ...currentView,
-        isGenerating: true,
-        error: null,
-        logs: [],
-      });
-      return next;
-    });
-
-    const unlistenLogs = listen<string>("architecture-log", (message) => {
-      architectureViews.update((views) => {
-        const next = new Map(views);
-        const currentView = next.get(projectId);
-        if (!currentView?.isGenerating) return next;
-        next.set(projectId, {
-          ...currentView,
-          logs: [...currentView.logs, message],
-        });
-        return next;
-      });
-    });
-
-    try {
-      const result = await command<ArchitectureResult>("generate_architecture", { repoPath });
-      unlistenLogs();
-      architectureViews.update((views) => {
-        const next = new Map(views);
-        const currentView = next.get(projectId) ?? createArchitectureViewState();
-        const selectedComponentId =
-          currentView.selectedComponentId &&
-          result.components.some((component) => component.id === currentView.selectedComponentId)
-            ? currentView.selectedComponentId
-            : result.components[0]?.id ?? null;
-
-        next.set(projectId, {
-          result,
-          selectedComponentId,
-          isGenerating: false,
-          error: null,
-          logs: [],
-        });
-        return next;
-      });
-    } catch (error) {
-      unlistenLogs();
-      architectureViews.update((views) => {
-        const next = new Map(views);
-        const currentView = next.get(projectId) ?? createArchitectureViewState();
-        next.set(projectId, {
-          ...currentView,
-          isGenerating: false,
-          error: String(error),
-        });
-        return next;
-      });
-      showToast(`Failed to generate architecture: ${error}`, "error");
-    }
-  }
-
   onMount(() => {
     const unlistenSecureEnv = listen<string>("secure-env-requested", (payload) => {
       try {
@@ -517,36 +368,12 @@
     <Onboarding />
   {:else}
     <div class="app-layout">
-      {#if sidebarVisibleState.current && workspaceModeState.current !== "voice"}
+      {#if sidebarVisibleState.current}
         <Sidebar />
       {/if}
       <main class="terminal-area">
-        {#if workspaceModeState.current === "voice"}
-          <VoiceMode bind:this={voiceModeRef} />
-        {:else if workspaceModeState.current === "agents"}
+        {#if workspaceModeState.current === "agents"}
           <AgentDashboard />
-        {:else if workspaceModeState.current === "architecture"}
-          <ArchitectureExplorer
-            projectName={currentArchitectureProject?.name ?? "Architecture"}
-            architecture={currentArchitectureView?.result ?? null}
-            selectedComponentId={currentArchitectureView?.selectedComponentId ?? null}
-            onSelectComponent={handleArchitectureSelection}
-            onGenerateArchitecture={() => {
-              if (currentArchitectureProject) {
-                generateArchitectureForProject(
-                  currentArchitectureProject.id,
-                  currentArchitectureProject.repo_path,
-                );
-              }
-            }}
-            isGenerating={currentArchitectureView?.isGenerating ?? false}
-            error={currentArchitectureView?.error ?? null}
-            logs={currentArchitectureView?.logs ?? []}
-          />
-        {:else if workspaceModeState.current === "notes"}
-          <NotesEditor />
-        {:else if workspaceModeState.current === "infrastructure"}
-          <InfrastructureDashboard />
         {:else}
           <TerminalManager />
         {/if}
@@ -605,12 +432,6 @@
     {/if}
     {#if workspaceModePickerVisibleState.current}
       <WorkspaceModePicker />
-    {/if}
-    {#if deploySetupOpen}
-      <DeploySetupModal
-        onComplete={() => { deploySetupOpen = false; showToast("Deploy setup complete", "info"); }}
-        onClose={() => { deploySetupOpen = false; }}
-      />
     {/if}
   {/if}
 {/if}

@@ -2,9 +2,7 @@ use crate::emitter::EventEmitter;
 use crate::models::{GithubIssue, GithubLabel};
 use crate::pty_manager::PtyManager;
 use crate::storage::Storage;
-use crate::voice::VoicePipeline;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
@@ -96,11 +94,6 @@ pub struct AppState {
     pub(crate) secure_env_request: Mutex<Option<crate::secure_env::ActiveSecureEnvRequest>>,
     pub emitter: Arc<dyn EventEmitter>,
     pub staging_lock: TokioMutex<()>,
-    pub voice_pipeline: Arc<TokioMutex<Option<VoicePipeline>>>,
-    /// Incremented each time stop_voice_pipeline is called. start_voice_pipeline
-    /// reads this before init and checks again after — if it changed, a stop was
-    /// requested during init so the new pipeline is dropped instead of stored.
-    pub voice_generation: AtomicU64,
 }
 
 impl AppState {
@@ -113,8 +106,6 @@ impl AppState {
             secure_env_request: Mutex::new(None),
             emitter,
             staging_lock: TokioMutex::new(()),
-            voice_pipeline: Arc::new(TokioMutex::new(None)),
-            voice_generation: AtomicU64::new(0),
         })
     }
 
