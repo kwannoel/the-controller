@@ -128,76 +128,14 @@ export interface Config {
   projects_root: string;
 }
 
-export interface NoteEntry {
-  filename: string;
-  modified_at: string;
-}
-
-export interface ArchitectureRelationship {
-  component_id: string;
-  summary: string;
-}
-
-export interface ArchitectureComponent {
-  id: string;
-  name: string;
-  summary: string;
-  contains: string[];
-  incoming_relationships: ArchitectureRelationship[];
-  outgoing_relationships: ArchitectureRelationship[];
-  evidence_paths: string[];
-  evidence_snippets: string[];
-}
-
-export interface ArchitectureResult {
-  title: string;
-  mermaid: string;
-  components: ArchitectureComponent[];
-}
-
-export interface ArchitectureViewState {
-  result: ArchitectureResult | null;
-  selectedComponentId: string | null;
-  isGenerating: boolean;
-  error: string | null;
-  logs: string[];
-}
-
-export function createArchitectureViewState(
-  result: ArchitectureResult | null = null,
-): ArchitectureViewState {
-  return {
-    result,
-    selectedComponentId: result?.components[0]?.id ?? null,
-    isGenerating: false,
-    error: null,
-    logs: [],
-  };
-}
-
 export type WorkspaceMode =
   | "development"
-  | "agents"
-  | "notes"
-  | "architecture"
-  | "infrastructure"
-  | "voice";
+  | "agents";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
 export type SessionProvider = "claude" | "codex";
 export const selectedSessionProvider = writable<SessionProvider>("claude");
 
-export const activeNote = writable<{
-  folder: string;
-  filename: string;
-} | null>(null);
-export const noteEntries = writable<Map<string, NoteEntry[]>>(new Map());
-export const noteFolders = writable<string[]>([]);
-export type NoteViewMode = "edit" | "preview" | "split";
-export const noteViewMode = writable<NoteViewMode>("edit");
-export const architectureViews = writable<Map<string, ArchitectureViewState>>(
-  new Map(),
-);
 export const projects = writable<Project[]>([]);
 export const activeSessionId = writable<string | null>(null);
 export type SessionStatus = "working" | "idle" | "exited";
@@ -261,24 +199,12 @@ export type HotkeyAction =
   | { type: "agent-panel-navigate"; direction: 1 | -1 }
   | { type: "agent-panel-select" }
   | { type: "agent-panel-escape" }
-  | { type: "create-note"; folder?: string }
-  | { type: "create-folder" }
-  | { type: "delete-note"; folder: string; filename: string }
-  | { type: "rename-note"; folder: string; filename: string }
-  | { type: "duplicate-note"; folder: string; filename: string }
-  | { type: "rename-folder"; folder: string }
-  | { type: "delete-folder"; folder: string }
-  | { type: "toggle-note-preview" }
   | { type: "save-session-prompt"; sessionId: string; projectId: string }
   | { type: "pick-prompt-for-session"; projectId: string }
-  | { type: "generate-architecture"; projectId: string; repoPath: string }
   | { type: "stage-session"; sessionId: string; projectId: string }
   | { type: "unstage-session"; projectId: string; sessionId: string }
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
-  | { type: "deploy-project"; projectId: string; repoPath: string }
-  | { type: "rollback-deploy"; projectId: string }
-  | { type: "voice-toggle-panel"; panel: "debug" | "transcript" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);
@@ -305,8 +231,5 @@ export type FocusTarget =
   | { type: "project"; projectId: string }
   | { type: "agent"; agentKind: AgentKind; projectId: string }
   | { type: "agent-panel"; agentKind: AgentKind; projectId: string }
-  | { type: "folder"; folder: string }
-  | { type: "note"; filename: string; folder: string }
-  | { type: "notes-editor"; folder: string; entryKey?: string }
   | null;
 export const focusTarget = writable<FocusTarget>(null);

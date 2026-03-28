@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import { command } from '$lib/backend';
-import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, activeNote, noteEntries, type Project, type SessionConfig } from './stores';
+import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
 import { showToast } from './toast';
 import HotkeyManager from './HotkeyManager.svelte';
 
@@ -650,28 +650,6 @@ describe('HotkeyManager', () => {
       expect(get(workspaceModePickerVisible)).toBe(false);
     });
 
-    it('Space then r switches to architecture mode and focuses the project', () => {
-      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
-
-      pressKey(' ');
-      pressKey('r');
-
-      expect(get(workspaceMode)).toBe('architecture');
-      expect(get(workspaceModePickerVisible)).toBe(false);
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-    });
-
-    it('Space then i switches to infrastructure mode', () => {
-      focusTarget.set({ type: 'session', sessionId: 'sess-1', projectId: 'proj-1' });
-
-      pressKey(' ');
-      pressKey('i');
-
-      expect(get(workspaceMode)).toBe('infrastructure');
-      expect(get(workspaceModePickerVisible)).toBe(false);
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-    });
-
     it('Space then Escape closes picker without changing mode', () => {
       pressKey(' ');
       pressKey('Escape');
@@ -691,98 +669,6 @@ describe('HotkeyManager', () => {
       pressKey(' ');
       expect(get(workspaceModePickerVisible)).toBe(false);
       removeTerminalFocus(xtermEl);
-    });
-  });
-
-  // ── Notes mode keys ──
-
-  describe('notes mode keys', () => {
-    beforeEach(() => {
-      workspaceMode.set('notes');
-      noteEntries.set(new Map([['proj-1', [{ filename: 'todo.md', modified_at: '2026-01-01' }]]]));
-    });
-
-    afterEach(() => {
-      workspaceMode.set('development');
-    });
-
-    it('o on a focused note opens the note editor with entryKey', () => {
-      focusTarget.set({ type: 'note', filename: 'todo.md', folder: 'proj-1' });
-      pressKey('o');
-      expect(get(activeNote)).toEqual({ folder: 'proj-1', filename: 'todo.md' });
-      expect(get(focusTarget)).toEqual({ type: 'notes-editor', folder: 'proj-1', entryKey: 'o' });
-    });
-
-    it('i on a focused note opens the note editor with entryKey', () => {
-      focusTarget.set({ type: 'note', filename: 'todo.md', folder: 'proj-1' });
-      pressKey('i');
-      expect(get(activeNote)).toEqual({ folder: 'proj-1', filename: 'todo.md' });
-      expect(get(focusTarget)).toEqual({ type: 'notes-editor', folder: 'proj-1', entryKey: 'i' });
-    });
-
-    it('a on a focused note opens the note editor with entryKey', () => {
-      focusTarget.set({ type: 'note', filename: 'todo.md', folder: 'proj-1' });
-      pressKey('a');
-      expect(get(activeNote)).toEqual({ folder: 'proj-1', filename: 'todo.md' });
-      expect(get(focusTarget)).toEqual({ type: 'notes-editor', folder: 'proj-1', entryKey: 'a' });
-    });
-  });
-
-  describe('architecture mode', () => {
-    it('r dispatches generate-architecture for the focused project', () => {
-      workspaceMode.set('architecture');
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-
-      let captured: any = null;
-      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
-
-      pressKey('r');
-
-      expect(captured).toEqual({
-        type: 'generate-architecture',
-        projectId: 'proj-1',
-        repoPath: '/tmp/test',
-      });
-      unsub();
-    });
-  });
-
-  // ── Infrastructure mode navigation ──
-
-  describe('infrastructure mode navigation', () => {
-    beforeEach(() => {
-      workspaceMode.set('infrastructure');
-      projects.set([testProject, testProject2]);
-    });
-
-    afterEach(() => {
-      workspaceMode.set('development');
-    });
-
-    it('j navigates between projects only (no sessions)', () => {
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-      pressKey('j');
-      // Should go directly to proj-2, skipping sess-1 and sess-2
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
-    });
-
-    it('k navigates between projects only (no sessions)', () => {
-      focusTarget.set({ type: 'project', projectId: 'proj-2' });
-      pressKey('k');
-      // Should go directly to proj-1, skipping sessions
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-    });
-
-    it('j wraps from last project to first project', () => {
-      focusTarget.set({ type: 'project', projectId: 'proj-2' });
-      pressKey('j');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
-    });
-
-    it('k wraps from first project to last project', () => {
-      focusTarget.set({ type: 'project', projectId: 'proj-1' });
-      pressKey('k');
-      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
     });
   });
 

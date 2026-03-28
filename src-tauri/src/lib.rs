@@ -1,17 +1,13 @@
 use tauri::Manager;
 
-pub mod architecture;
 pub mod auto_worker;
 pub mod cli_install;
 pub mod commands;
 pub mod config;
-pub mod deploy;
 pub mod emitter;
 pub mod labels;
 pub mod maintainer;
 pub mod models;
-pub mod note_ai_chat;
-pub mod notes;
 pub mod pty_manager;
 pub mod secure_env;
 pub mod session_args;
@@ -22,7 +18,6 @@ pub mod status_socket;
 pub mod storage;
 pub mod tmux;
 pub mod token_usage;
-pub mod voice;
 pub mod worktree;
 
 fn show_startup_error(error: &std::io::Error) {
@@ -89,7 +84,6 @@ pub fn run() {
             commands::list_directories_at,
             commands::list_root_directories,
             commands::generate_project_names,
-            commands::generate_architecture,
             commands::scaffold_project,
             commands::list_github_issues,
             commands::list_assigned_issues,
@@ -114,36 +108,12 @@ pub fn run() {
             commands::configure_auto_worker,
             commands::get_auto_worker_queue,
             commands::get_worker_reports,
-            commands::list_notes,
-            commands::read_note,
-            commands::write_note,
-            commands::create_note,
-            commands::rename_note,
-            commands::duplicate_note,
-            commands::delete_note,
-            commands::list_folders,
-            commands::create_folder,
-            commands::rename_folder,
-            commands::delete_folder,
-            commands::commit_notes,
-            commands::save_note_image,
-            commands::resolve_note_asset_path,
-            commands::send_note_ai_chat,
             commands::save_session_prompt,
             commands::list_project_prompts,
             commands::stage_session,
             commands::unstage_session,
             commands::get_repo_head,
             commands::get_session_token_usage,
-            deploy::commands::detect_project_type,
-            deploy::commands::get_deploy_credentials,
-            deploy::commands::save_deploy_credentials,
-            deploy::commands::is_deploy_provisioned,
-            deploy::commands::deploy_project,
-            deploy::commands::list_deployed_services,
-            commands::start_voice_pipeline,
-            commands::stop_voice_pipeline,
-            commands::toggle_voice_pause,
             commands::log_frontend_error,
         ])
         .build(tauri::generate_context!())

@@ -4,11 +4,9 @@ import { command } from "$lib/backend";
 import { showToast } from "./toast";
 import {
   activeSessionId,
-  activeNote,
   expandedProjects,
   focusTarget,
   hotkeyAction,
-  noteEntries,
   projects,
   selectedSessionProvider,
   sessionStatuses,
@@ -35,22 +33,12 @@ vi.mock("./ConfirmModal.svelte", () => ({
 vi.mock("./DeleteSessionModal.svelte", () => ({
   default: function MockDeleteSessionModal() {},
 }));
-vi.mock("./NewNoteModal.svelte", () => ({
-  default: function MockNewNoteModal() {},
-}));
-vi.mock("./RenameNoteModal.svelte", () => ({
-  default: function MockRenameNoteModal() {},
-}));
 vi.mock("./sidebar/ProjectTree.svelte", () => ({
   default: function MockProjectTree() {},
 }));
 vi.mock("./sidebar/AgentTree.svelte", () => ({
   default: function MockAgentTree() {},
 }));
-vi.mock("./sidebar/NotesTree.svelte", () => ({
-  default: function MockNotesTree() {},
-}));
-
 import Sidebar from "./Sidebar.svelte";
 
 describe("Sidebar provider indicator", () => {
@@ -63,8 +51,6 @@ describe("Sidebar provider indicator", () => {
     focusTarget.set(null);
     expandedProjects.set(new Set());
     workspaceMode.set("development");
-    activeNote.set(null);
-    noteEntries.set(new Map());
     hotkeyAction.set(null);
     selectedSessionProvider.set("claude");
 

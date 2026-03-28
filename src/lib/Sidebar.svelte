@@ -2,7 +2,7 @@
   import { fromStore } from "svelte/store";
   import { command, listen } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
-  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, activeNote, noteEntries, noteFolders, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus, type NoteEntry } from "./stores";
+  import { projects, activeSessionId, sessionStatuses, maintainerStatuses, maintainerErrors, autoWorkerStatuses, hotkeyAction, showKeyHints, focusTarget, expandedProjects, focusTerminalSoon, workspaceMode, selectedSessionProvider, type CorruptProjectEntry, type Project, type ProjectInventory, type FocusTarget, type SessionStatus, type MaintainerStatus, type AutoWorkerStatus } from "./stores";
   import { showToast } from "./toast";
   import { focusAfterSessionDelete, focusAfterProjectDelete } from "./focus-helpers";
   import { sendFinishBranchPrompt } from "./finish-branch";
@@ -12,11 +12,6 @@
   import DeleteSessionModal from "./DeleteSessionModal.svelte";
   import ProjectTree from "./sidebar/ProjectTree.svelte";
   import AgentTree from "./sidebar/AgentTree.svelte";
-  import NotesTree from "./sidebar/NotesTree.svelte";
-  import NewNoteModal from "./NewNoteModal.svelte";
-  import NewFolderModal from "./NewFolderModal.svelte";
-  import RenameNoteModal from "./RenameNoteModal.svelte";
-
   let sidebarEl: HTMLElement | undefined = $state();
   const showKeyHintsState = fromStore(showKeyHints);
   let showNewProjectModal = $state(false);
@@ -33,16 +28,6 @@
   const selectedSessionProviderState = fromStore(selectedSessionProvider);
   let currentSessionProvider = $derived(selectedSessionProviderState.current);
   let currentSessionProviderLabel = $derived(currentSessionProvider === "codex" ? "Codex" : "Claude");
-  let deleteNoteTarget: { folder: string; filename: string } | null = $state(null);
-  let renameNoteTarget: { folder: string; filename: string } | null = $state(null);
-  let showNewNoteModal = $state(false);
-  let newNoteDefaultFolder: string | undefined = $state(undefined);
-  let showNewFolderModal = $state(false);
-  let renameFolderTarget: string | null = $state(null);
-  let deleteFolderTarget: string | null = $state(null);
-  const activeNoteState = fromStore(activeNote);
-  const noteFoldersState = fromStore(noteFolders);
-  let folderList: string[] = $derived(noteFoldersState.current);
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
   const activeSessionIdState = fromStore(activeSessionId);
@@ -93,25 +78,6 @@
       // Blur sidebar element so visual focus moves to the panel
       if (document.activeElement instanceof HTMLElement && sidebarEl?.contains(document.activeElement)) {
         document.activeElement.blur();
-      }
-    } else if (currentFocus?.type === "folder") {
-      if (sidebarEl) {
-        requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-folder-id="${currentFocus.folder}"]`);
-          if (el) el.focus();
-        });
-      }
-    } else if (currentFocus?.type === "note") {
-      if (!expandedProjectSet.has(currentFocus.folder)) {
-        const next = new Set(expandedProjectSet);
-        next.add(currentFocus.folder);
-        expandedProjects.set(next);
-      }
-      if (sidebarEl) {
-        requestAnimationFrame(() => {
-          const el = sidebarEl?.querySelector<HTMLElement>(`[data-note-id="${currentFocus.folder}:${currentFocus.filename}"]`);
-          if (el) el.focus();
-        });
       }
     }
   });
@@ -197,35 +163,6 @@
           unstageSession(action.projectId, action.sessionId);
           break;
         }
-        case "create-note": {
-          newNoteDefaultFolder = action.folder;
-          showNewNoteModal = true;
-          break;
-        }
-        case "create-folder": {
-          showNewFolderModal = true;
-          break;
-        }
-        case "delete-note": {
-          deleteNoteTarget = { folder: action.folder, filename: action.filename };
-          break;
-        }
-        case "rename-note": {
-          renameNoteTarget = { folder: action.folder, filename: action.filename };
-          break;
-        }
-        case "duplicate-note": {
-          handleDuplicateNote(action.folder, action.filename);
-          break;
-        }
-        case "rename-folder": {
-          renameFolderTarget = action.folder;
-          break;
-        }
-        case "delete-folder": {
-          deleteFolderTarget = action.folder;
-          break;
-        }
       }
     });
     return unsub;
@@ -233,12 +170,6 @@
 
   $effect(() => {
     loadProjects();
-  });
-
-  $effect(() => {
-    command<string[]>("list_folders", {}).then(folders => {
-      noteFolders.set(folders);
-    });
   });
 
   function markSession(sessionId: string, status: SessionStatus) {
@@ -512,131 +443,12 @@
     return statuses.get(sessionId) ?? "idle";
   }
 
-  async function handleCreateNote(title: string, folder: string) {
-    showNewNoteModal = false;
-    try {
-      const filename: string = await command("create_note", { folder, title });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
-      noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
-      expandedProjects.update(s => { const next = new Set(s); next.add(folder); return next; });
-      activeNote.set({ folder, filename });
-      focusTarget.set({ type: "notes-editor", folder });
-      const folders = await command<string[]>("list_folders", {});
-      noteFolders.set(folders);
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function handleCreateFolder(name: string) {
-    showNewFolderModal = false;
-    try {
-      await command("create_folder", { name });
-      const folders = await command<string[]>("list_folders", {});
-      noteFolders.set(folders);
-      expandedProjects.update(s => { const next = new Set(s); next.add(name); return next; });
-      focusTarget.set({ type: "folder", folder: name });
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function handleDeleteNote(folder: string, filename: string) {
-    try {
-      await command("delete_note", { folder, filename });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
-      noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
-      const an = activeNoteState.current;
-      if (an?.folder === folder && an?.filename === filename) {
-        activeNote.set(null);
-      }
-      focusTarget.set({ type: "folder", folder });
-      showToast("Note deleted", "info");
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function handleRenameNote(folder: string, oldName: string, newName: string) {
-    try {
-      const newFilename: string = await command("rename_note", { folder, oldName, newName });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
-      noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
-      const an = activeNoteState.current;
-      if (an?.folder === folder && an?.filename === oldName) {
-        activeNote.set({ folder, filename: newFilename });
-      }
-      focusTarget.set({ type: "note", filename: newFilename, folder });
-      showToast("Note renamed", "info");
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function handleDuplicateNote(folder: string, filename: string) {
-    try {
-      const newFilename: string = await command("duplicate_note", { folder, filename });
-      const notes = await command<NoteEntry[]>("list_notes", { folder });
-      noteEntries.update(m => { const next = new Map(m); next.set(folder, notes); return next; });
-      activeNote.set({ folder, filename: newFilename });
-      focusTarget.set({ type: "note", filename: newFilename, folder });
-      showToast("Note duplicated", "info");
-      renameNoteTarget = { folder, filename: newFilename };
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function handleRenameFolder(oldName: string, newName: string) {
-    try {
-      await command("rename_folder", { oldName, newName });
-      const folders = await command<string[]>("list_folders", {});
-      noteFolders.set(folders);
-      expandedProjects.update(s => {
-        const next = new Set(s);
-        if (next.has(oldName)) { next.delete(oldName); next.add(newName); }
-        return next;
-      });
-      noteEntries.update(m => {
-        const next = new Map(m);
-        const entries = next.get(oldName);
-        if (entries) { next.delete(oldName); next.set(newName, entries); }
-        return next;
-      });
-      const an = activeNoteState.current;
-      if (an?.folder === oldName) {
-        activeNote.set({ folder: newName, filename: an.filename });
-      }
-      focusTarget.set({ type: "folder", folder: newName });
-      showToast("Folder renamed", "info");
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  async function handleDeleteFolder(folder: string) {
-    try {
-      await command("delete_folder", { name: folder, force: true });
-      const folders = await command<string[]>("list_folders", {});
-      noteFolders.set(folders);
-      noteEntries.update((m) => { const next = new Map(m); next.delete(folder); return next; });
-      expandedProjects.update((s) => { const next = new Set(s); next.delete(folder); return next; });
-      const an = activeNoteState.current;
-      if (an?.folder === folder) {
-        activeNote.set(null);
-      }
-      showToast("Folder deleted", "info");
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
 
 </script>
 
 <aside class="sidebar" bind:this={sidebarEl}>
   <div class="sidebar-header">
-    <h2>{{ development: "Development", agents: "Agents", architecture: "Architecture", notes: "Notes", infrastructure: "Infrastructure", voice: "Voice" }[currentMode]}</h2>
+    <h2>{{ development: "Development", agents: "Agents" }[currentMode]}</h2>
   </div>
 
   <div class="project-list">
@@ -651,23 +463,6 @@
         }}
         onAgentFocus={(agentKind, projectId) => {
           focusTarget.set({ type: "agent", agentKind, projectId });
-        }}
-      />
-    {:else if currentMode === "notes"}
-      <NotesTree
-        folders={folderList}
-        expandedFolderSet={expandedProjectSet}
-        {currentFocus}
-        onToggleFolder={toggleProject}
-        onFolderFocus={(folder) => {
-          focusTarget.set({ type: "folder", folder });
-        }}
-        onNoteFocus={(filename, folder) => {
-          focusTarget.set({ type: "note", filename, folder });
-        }}
-        onNoteSelect={(filename, folder) => {
-          activeNote.set({ folder, filename });
-          focusTarget.set({ type: "notes-editor", folder });
         }}
       />
     {:else}
@@ -785,69 +580,6 @@
     />
   {/if}
 
-  {#if showNewNoteModal}
-    <NewNoteModal
-      folders={folderList}
-      defaultFolder={newNoteDefaultFolder}
-      onSubmit={handleCreateNote}
-      onClose={() => { showNewNoteModal = false; }}
-    />
-  {/if}
-
-  {#if showNewFolderModal}
-    <NewFolderModal
-      onSubmit={handleCreateFolder}
-      onClose={() => { showNewFolderModal = false; }}
-    />
-  {/if}
-
-  {#if deleteNoteTarget}
-    <ConfirmModal
-      title="Delete Note"
-      message={`Delete "${deleteNoteTarget.filename.replace(/\.md$/, "")}"?`}
-      confirmLabel="Delete"
-      onConfirm={() => {
-        if (deleteNoteTarget) handleDeleteNote(deleteNoteTarget.folder, deleteNoteTarget.filename);
-        deleteNoteTarget = null;
-      }}
-      onClose={() => (deleteNoteTarget = null)}
-    />
-  {/if}
-
-  {#if renameNoteTarget}
-    <RenameNoteModal
-      currentName={renameNoteTarget.filename}
-      onSubmit={(newName) => {
-        if (renameNoteTarget) handleRenameNote(renameNoteTarget.folder, renameNoteTarget.filename, newName);
-        renameNoteTarget = null;
-      }}
-      onClose={() => { renameNoteTarget = null; }}
-    />
-  {/if}
-
-  {#if deleteFolderTarget}
-    <ConfirmModal
-      title="Delete Folder"
-      message={`Delete folder "${deleteFolderTarget}" and all its notes?`}
-      confirmLabel="Delete"
-      onConfirm={() => {
-        if (deleteFolderTarget) handleDeleteFolder(deleteFolderTarget);
-        deleteFolderTarget = null;
-      }}
-      onClose={() => (deleteFolderTarget = null)}
-    />
-  {/if}
-
-  {#if renameFolderTarget}
-    <RenameNoteModal
-      currentName={renameFolderTarget}
-      onSubmit={(newName) => {
-        if (renameFolderTarget) handleRenameFolder(renameFolderTarget, newName);
-        renameFolderTarget = null;
-      }}
-      onClose={() => { renameFolderTarget = null; }}
-    />
-  {/if}
 </aside>
 
 <style>

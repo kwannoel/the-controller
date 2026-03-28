@@ -8,7 +8,7 @@ describe("command registry", () => {
     const globalSet = new Set(globalKeys);
     expect(globalKeys.length).toBe(globalSet.size);
 
-    const modes = ["development", "agents", "notes", "architecture", "infrastructure"] as const;
+    const modes = ["development", "agents"] as const;
     for (const mode of modes) {
       const modeKeys = internal.filter(c => c.mode === mode).map(c => c.key);
       const allKeys = [...globalKeys, ...modeKeys];
@@ -33,14 +33,9 @@ describe("command registry", () => {
     expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Panels", "Agents"]);
   });
 
-  it("getHelpSections returns sections for notes mode", () => {
-    const sections = getHelpSections("notes");
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Panels", "Notes"]);
-  });
-
   it("getHelpSections without mode returns all sections", () => {
     const sections = getHelpSections();
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Projects", "Panels", "Agents", "Notes", "Infrastructure"]);
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Projects", "Panels", "Agents"]);
   });
 
   it("getHelpSections excludes hidden commands", () => {
@@ -98,24 +93,6 @@ describe("command registry", () => {
     expect(map.has("n")).toBe(false); // new-project is dev-only
   });
 
-  it("buildKeyMap for notes includes notes commands but not dev or agents commands", () => {
-    const map = buildKeyMap("notes");
-    expect(map.has("j")).toBe(true);  // global nav
-    expect(map.has("n")).toBe(true);  // create-folder (notes)
-    expect(map.get("n")).toBe("create-folder");
-    expect(map.has("c")).toBe(true);  // create-note (notes)
-    expect(map.get("c")).toBe("create-note");
-    expect(map.has("d")).toBe(true);  // delete-note (notes)
-    expect(map.get("d")).toBe("delete-note");
-    expect(map.has("r")).toBe(true);  // rename-note (notes)
-    expect(map.get("r")).toBe("rename-note");
-    expect(map.has("p")).toBe(true);  // toggle-note-preview (notes)
-    expect(map.get("p")).toBe("toggle-note-preview");
-    expect(map.get("o")).toBe("expand-collapse"); // open note for editing
-    expect(map.get("i")).toBe("expand-collapse"); // open note for editing
-    expect(map.get("a")).toBe("expand-collapse"); // open note for editing
-  });
-
   it("buildKeyMap without mode includes all non-external commands", () => {
     const map = buildKeyMap();
     expect(map.has("j")).toBe(true);
@@ -161,25 +138,6 @@ describe("command registry", () => {
     expect(agents.entries).toHaveLength(4);
   });
 
-  it("help sections have correct entry counts for notes mode", () => {
-    const sections = getHelpSections("notes");
-    const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(5);
-
-    const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(3);
-
-    const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(2);
-
-    const notes = sections.find(s => s.label === "Notes")!;
-    expect(notes.entries).toHaveLength(6);
-    expect(notes.entries).toContainEqual({
-      key: "p",
-      description: "Cycle edit / preview / split",
-    });
-  });
-
   it("removed commands are not in the registry", () => {
     const ids = commands.map(c => c.id);
     expect(ids).not.toContain("jump-mode");
@@ -208,30 +166,4 @@ describe("command registry", () => {
     expect(keyMap.get("t")).toBe("toggle-maintainer-view");
   });
 
-  it("includes deploy-project command in infrastructure mode keymap", () => {
-    const map = buildKeyMap("infrastructure");
-    expect(map.get("d")).toBe("deploy-project");
-  });
-
-  it("includes rollback-deploy command in infrastructure mode keymap", () => {
-    const map = buildKeyMap("infrastructure");
-    expect(map.get("r")).toBe("rollback-deploy");
-  });
-
-  it("includes Infrastructure section in help for infrastructure mode", () => {
-    const sections = getHelpSections("infrastructure");
-    const infraSection = sections.find(s => s.label === "Infrastructure");
-    expect(infraSection).toBeTruthy();
-    expect(infraSection!.entries.length).toBeGreaterThan(0);
-  });
-
-  it("does not include infrastructure commands in development mode", () => {
-    const map = buildKeyMap("development");
-    expect(map.get("d")).not.toBe("deploy-project");
-  });
-
-  it("getHelpSections returns sections for infrastructure mode", () => {
-    const sections = getHelpSections("infrastructure");
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Panels", "Infrastructure"]);
-  });
 });

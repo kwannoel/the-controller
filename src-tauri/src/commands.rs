@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 use uuid::Uuid;
 
-use crate::architecture::{generate_architecture_blocking_with_emitter, ArchitectureResult};
 use crate::config;
 use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
 use crate::state::AppState;
@@ -13,7 +12,6 @@ use crate::worktree::WorktreeManager;
 
 mod github;
 mod media;
-mod notes;
 
 /// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
 /// if `agents.md` exists and `CLAUDE.md` does not.
@@ -1368,22 +1366,6 @@ pub fn generate_project_names(description: String) -> Result<Vec<String>, String
 }
 
 #[tauri::command]
-pub async fn generate_architecture(
-    state: State<'_, AppState>,
-    repo_path: String,
-) -> Result<ArchitectureResult, String> {
-    let emitter = state.emitter.clone();
-    tokio::task::spawn_blocking(move || {
-        generate_architecture_blocking_with_emitter(
-            std::path::Path::new(&repo_path),
-            &emitter,
-        )
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?
-}
-
-#[tauri::command]
 pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Result<Project, String> {
     validate_project_name(&name)?;
 
@@ -1517,139 +1499,6 @@ pub async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<Str
     media::capture_app_screenshot(app, cropped).await
 }
 
-#[tauri::command]
-pub fn list_notes(
-    state: State<'_, AppState>,
-    folder: String,
-) -> Result<Vec<crate::notes::NoteEntry>, String> {
-    notes::list_notes(state, folder)
-}
-
-#[tauri::command]
-pub fn read_note(
-    state: State<'_, AppState>,
-    folder: String,
-    filename: String,
-) -> Result<String, String> {
-    notes::read_note(state, folder, filename)
-}
-
-#[tauri::command]
-pub fn write_note(
-    state: State<'_, AppState>,
-    folder: String,
-    filename: String,
-    content: String,
-) -> Result<(), String> {
-    notes::write_note(state, folder, filename, content)
-}
-
-#[tauri::command]
-pub fn create_note(
-    state: State<'_, AppState>,
-    folder: String,
-    title: String,
-) -> Result<String, String> {
-    notes::create_note(state, folder, title)
-}
-
-#[tauri::command]
-pub fn rename_note(
-    state: State<'_, AppState>,
-    folder: String,
-    old_name: String,
-    new_name: String,
-) -> Result<String, String> {
-    notes::rename_note(state, folder, old_name, new_name)
-}
-
-#[tauri::command]
-pub fn duplicate_note(
-    state: State<'_, AppState>,
-    folder: String,
-    filename: String,
-) -> Result<String, String> {
-    notes::duplicate_note(state, folder, filename)
-}
-
-#[tauri::command]
-pub fn delete_note(
-    state: State<'_, AppState>,
-    folder: String,
-    filename: String,
-) -> Result<(), String> {
-    notes::delete_note(state, folder, filename)
-}
-
-#[tauri::command]
-pub fn list_folders(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    notes::list_folders(state)
-}
-
-#[tauri::command]
-pub fn create_folder(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    notes::create_folder(state, name)
-}
-
-#[tauri::command]
-pub fn rename_folder(
-    state: State<'_, AppState>,
-    old_name: String,
-    new_name: String,
-) -> Result<(), String> {
-    notes::rename_folder(state, old_name, new_name)
-}
-
-#[tauri::command]
-pub fn delete_folder(state: State<'_, AppState>, name: String, force: bool) -> Result<(), String> {
-    notes::delete_folder(state, name, force)
-}
-
-#[tauri::command]
-pub fn commit_notes(state: State<'_, AppState>) -> Result<bool, String> {
-    notes::commit_notes(state)
-}
-
-#[tauri::command]
-pub fn save_note_image(
-    state: State<'_, AppState>,
-    folder: String,
-    image_bytes: Vec<u8>,
-    extension: String,
-) -> Result<String, String> {
-    let base_dir = state.storage.lock().map_err(|e| e.to_string())?.base_dir();
-    crate::notes::save_note_image(&base_dir, &folder, &image_bytes, &extension)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn resolve_note_asset_path(
-    state: State<'_, AppState>,
-    folder: String,
-    relative_path: String,
-) -> Result<String, String> {
-    let base_dir = state.storage.lock().map_err(|e| e.to_string())?.base_dir();
-    crate::notes::resolve_note_asset_path(&base_dir, &folder, &relative_path)
-        .map(|p| p.to_string_lossy().to_string())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn send_note_ai_chat(
-    note_content: String,
-    selected_text: String,
-    conversation_history: Vec<crate::note_ai_chat::NoteAiChatMessage>,
-    prompt: String,
-) -> Result<crate::note_ai_chat::NoteAiResponse, String> {
-    crate::note_ai_chat::send_note_ai_message(
-        std::env::temp_dir().to_string_lossy().to_string(),
-        note_content,
-        selected_text,
-        conversation_history,
-        prompt,
-    )
-    .await
-}
 const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;
 const MAX_MERGE_REBASE_WAIT_SECS: u64 = 600; // 10 minutes
@@ -2150,75 +1999,6 @@ pub fn log_frontend_error(message: String) {
     eprintln!("[FRONTEND] {}", message);
 }
 
-#[tauri::command]
-pub async fn start_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    // Snapshot generation before init — if stop is called during init, this will change.
-    let gen_before = state
-        .voice_generation
-        .load(std::sync::atomic::Ordering::SeqCst);
-    // Brief lock to check if already running
-    {
-        let pipeline = state.voice_pipeline.lock().await;
-        if let Some(p) = pipeline.as_ref() {
-            // Pipeline already running — emit current state so a remounted
-            // frontend component picks up the correct label immediately.
-            let voice_state = if p.is_paused() { "paused" } else { "listening" };
-            let payload = serde_json::json!({ "state": voice_state }).to_string();
-            let _ = state.emitter.emit("voice-state-changed", &payload);
-            return Ok(());
-        }
-    }
-    // Release lock during init to avoid blocking stop_voice_pipeline
-    let emitter = state.emitter.clone();
-    let new_pipeline = crate::voice::VoicePipeline::start(emitter).await?;
-    // Re-acquire lock to store the pipeline
-    let mut pipeline = state.voice_pipeline.lock().await;
-    let gen_after = state
-        .voice_generation
-        .load(std::sync::atomic::Ordering::SeqCst);
-    if pipeline.is_some() || gen_before != gen_after {
-        // Another start raced us, or stop was called during init — drop the pipeline
-        return Ok(());
-    }
-    *pipeline = Some(new_pipeline);
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn stop_voice_pipeline(state: tauri::State<'_, AppState>) -> Result<(), String> {
-    // Bump generation so any in-flight start_voice_pipeline knows to discard its result.
-    state
-        .voice_generation
-        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    let mut pipeline = state.voice_pipeline.lock().await;
-    if let Some(p) = pipeline.take() {
-        // p.stop() calls thread::join which blocks — run on blocking thread pool
-        tokio::task::spawn_blocking(move || {
-            let mut p = p;
-            p.stop();
-        })
-        .await
-        .map_err(|e| format!("Failed to stop pipeline: {e}"))?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn toggle_voice_pause(state: tauri::State<'_, AppState>) -> Result<bool, String> {
-    let pipeline = state.voice_pipeline.lock().await;
-    match pipeline.as_ref() {
-        Some(p) => {
-            let paused = p.toggle_pause();
-            // Emit state change immediately for responsive UI
-            let voice_state = if paused { "paused" } else { "listening" };
-            let payload = serde_json::json!({ "state": voice_state }).to_string();
-            let _ = state.emitter.emit("voice-state-changed", &payload);
-            Ok(paused)
-        }
-        None => Err("Voice pipeline not running".to_string()),
-    }
-}
-
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
     for name in &["refs/heads/master", "refs/heads/main"] {
         if let Ok(reference) = repo.find_reference(name) {
@@ -2273,8 +2053,6 @@ mod tests {
             secure_env_request: Mutex::new(None),
             emitter: crate::emitter::NoopEmitter::new(),
             staging_lock: tokio::sync::Mutex::new(()),
-            voice_pipeline: Arc::new(tokio::sync::Mutex::new(None)),
-            voice_generation: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
