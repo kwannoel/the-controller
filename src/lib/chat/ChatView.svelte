@@ -30,7 +30,7 @@
       <span class="agent">{session.agent}</span>
       <span class="status status-{session.status}">{session.status}</span>
     </header>
-    <Transcript {transcript} />
+    <Transcript {transcript} {sessionId} />
   </div>
 {:else}
   <p class="missing">Session not found.</p>

@@ -4,8 +4,9 @@
   import MessageBlock from "./MessageBlock.svelte";
   import AgentMessage from "./AgentMessage.svelte";
   import ToolCallBlock from "./ToolCallBlock.svelte";
+  import ToolApprovalBlock from "./ToolApprovalBlock.svelte";
 
-  let { transcript }: { transcript: TranscriptState } = $props();
+  let { transcript, sessionId }: { transcript: TranscriptState; sessionId: string } = $props();
 
   const resultsByCallId = $derived.by(() => {
     const map = new Map<string, EventRecord>();
@@ -17,15 +18,19 @@
     }
     return map;
   });
+
+  const pendingApproval = $derived(transcript.statusState === "waiting_for_tool_approval");
 </script>
 
 <div class="scroll">
   {#each transcript.events as e (e.seq)}
     {#if e.channel === "outbox" && e.kind === "tool_call"}
-      <ToolCallBlock
-        call={e}
-        result={resultsByCallId.get((e.payload as { call_id: string }).call_id) ?? null}
-      />
+      {@const callId = (e.payload as { call_id: string }).call_id}
+      {@const hasResult = resultsByCallId.has(callId)}
+      <ToolCallBlock call={e} result={resultsByCallId.get(callId) ?? null} />
+      {#if pendingApproval && !hasResult}
+        <ToolApprovalBlock {callId} {sessionId} />
+      {/if}
     {:else if e.channel === "outbox" && e.kind === "tool_result"}
       <!-- rendered inside its parent ToolCallBlock -->
     {:else}
