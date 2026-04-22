@@ -1,4 +1,5 @@
 import { command } from "$lib/backend";
+import { SvelteMap } from "svelte/reactivity";
 import { DaemonClient } from "./client";
 import type { DaemonSession } from "./types";
 import { emptyTranscript, type TranscriptState } from "./reducer";
@@ -9,8 +10,8 @@ interface StoreState {
   token: string | null;
   reachable: boolean;
   client: DaemonClient | null;
-  sessions: Map<string, DaemonSession>;
-  transcripts: Map<string, TranscriptState>;
+  sessions: SvelteMap<string, DaemonSession>;
+  transcripts: SvelteMap<string, TranscriptState>;
   activeSessionId: string | null;
   newChatTarget: { projectId: string; projectCwd: string } | null;
 }
@@ -19,8 +20,8 @@ export const daemonStore = $state<StoreState>({
   token: null,
   reachable: false,
   client: null,
-  sessions: new Map(),
-  transcripts: new Map(),
+  sessions: new SvelteMap<string, DaemonSession>(),
+  transcripts: new SvelteMap<string, TranscriptState>(),
   activeSessionId: null,
   newChatTarget: null,
 });
@@ -55,12 +56,13 @@ export async function pingDaemon(): Promise<void> {
 export async function loadSessions(): Promise<void> {
   if (!daemonStore.client) return;
   const list = await daemonStore.client.listSessions();
-  const map = new Map<string, DaemonSession>();
+  // Replace the map contents in-place rather than assigning a new SvelteMap
+  // (because we want the subscribers to keep tracking the same reactive instance).
+  daemonStore.sessions.clear();
   for (const s of list) {
-    map.set(s.id, s);
+    daemonStore.sessions.set(s.id, s);
     if (!daemonStore.transcripts.has(s.id)) {
       daemonStore.transcripts.set(s.id, emptyTranscript());
     }
   }
-  daemonStore.sessions = map;
 }
