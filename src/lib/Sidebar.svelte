@@ -12,6 +12,8 @@
   import DeleteSessionModal from "./DeleteSessionModal.svelte";
   import ProjectTree from "./sidebar/ProjectTree.svelte";
   import AgentTree from "./sidebar/AgentTree.svelte";
+  import ChatSessionList from "./chat/ChatSessionList.svelte";
+  import { daemonStore } from "./daemon/store.svelte";
   let sidebarEl: HTMLElement | undefined = $state();
   const showKeyHintsState = fromStore(showKeyHints);
   let showNewProjectModal = $state(false);
@@ -448,7 +450,7 @@
 
 <aside class="sidebar" bind:this={sidebarEl}>
   <div class="sidebar-header">
-    <h2>{{ development: "Development", agents: "Agents", kanban: "Kanban" }[currentMode]}</h2>
+    <h2>{{ development: "Development", agents: "Agents", kanban: "Kanban", chat: "Chat" }[currentMode]}</h2>
   </div>
 
   <div class="project-list">
@@ -463,6 +465,15 @@
         }}
         onAgentFocus={(agentKind, projectId) => {
           focusTarget.set({ type: "agent", agentKind, projectId });
+        }}
+      />
+    {:else if currentMode === "chat"}
+      <ChatSessionList
+        onNewChat={() => {
+          // TODO(Task 12): open NewChatDialog for the given projectId
+        }}
+        onSelect={(sessionId) => {
+          daemonStore.activeSessionId = sessionId;
         }}
       />
     {:else}
