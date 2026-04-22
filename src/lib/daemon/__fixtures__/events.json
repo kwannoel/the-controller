@@ -1,0 +1,9 @@
+[
+  { "session_id": "s1", "seq": 1, "channel": "system", "kind": "session_started", "payload": { "agent": "claude", "cwd": "/tmp/x", "args": [] }, "created_at": 1000, "applied_at": null },
+  { "session_id": "s1", "seq": 2, "channel": "inbox", "kind": "user_text", "payload": { "text": "hello" }, "created_at": 1001, "applied_at": 1002 },
+  { "session_id": "s1", "seq": 3, "channel": "outbox", "kind": "agent_text", "payload": { "message_id": "m1", "block_id": "b1", "text": "Hi there." }, "created_at": 1003, "applied_at": null },
+  { "session_id": "s1", "seq": 4, "channel": "outbox", "kind": "tool_call", "payload": { "call_id": "c1", "tool": "Bash", "input": { "command": "ls" } }, "created_at": 1004, "applied_at": null },
+  { "session_id": "s1", "seq": 5, "channel": "outbox", "kind": "tool_result", "payload": { "call_id": "c1", "output": "file\n", "is_error": false }, "created_at": 1005, "applied_at": null },
+  { "session_id": "s1", "seq": 6, "channel": "system", "kind": "status_changed", "payload": { "state": "idle" }, "created_at": 1006, "applied_at": null },
+  { "session_id": "s1", "seq": 7, "channel": "outbox", "kind": "token_usage", "payload": { "input": 10, "output": 20, "cache_read": 0, "cache_write": 0 }, "created_at": 1007, "applied_at": null }
+]
