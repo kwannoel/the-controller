@@ -171,3 +171,16 @@ describe("focusForModeSwitch", () => {
     expect(focusForModeSwitch(null, "agents", null, [])).toBeNull();
   });
 });
+
+describe("focusForModeSwitch — chat", () => {
+  it("preserves session focus when switching to chat", () => {
+    const projects = [{ id: "p1", sessions: [{ id: "s1", auto_worker_session: false }] }] as any;
+    const result = focusForModeSwitch(
+      { type: "session", sessionId: "s1", projectId: "p1" },
+      "chat",
+      "s1",
+      projects,
+    );
+    expect(result).toEqual({ type: "session", sessionId: "s1", projectId: "p1" });
+  });
+});

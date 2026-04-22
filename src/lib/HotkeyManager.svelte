@@ -105,6 +105,12 @@
       if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
+    if (key === "c") {
+      workspaceMode.set("chat");
+      const newFocus = focusForModeSwitch(currentFocus, "chat", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      return;
+    }
     // Any other key (including Escape) cancels
   }
 
