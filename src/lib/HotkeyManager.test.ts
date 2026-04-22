@@ -5,6 +5,8 @@ import { command } from '$lib/backend';
 import { projects, activeSessionId, hotkeyAction, focusTarget, sidebarVisible, expandedProjects, workspaceMode, workspaceModePickerVisible, selectedSessionProvider, type Project, type SessionConfig } from './stores';
 import { showToast } from './toast';
 import HotkeyManager from './HotkeyManager.svelte';
+import { daemonStore } from './daemon/store.svelte';
+import type { DaemonSession } from './daemon/types';
 
 vi.mock('./toast', () => ({
   showToast: vi.fn(),
@@ -744,6 +746,108 @@ describe('HotkeyManager', () => {
       } finally {
         dialog.remove();
       }
+    });
+  });
+
+  // ── Chat mode navigation ──
+
+  describe('chat mode navigation', () => {
+    function makeDaemonSession(id: string, cwd: string, label = id): DaemonSession {
+      return {
+        id,
+        label,
+        agent: 'claude',
+        cwd,
+        args: [],
+        status: 'running',
+        native_session_id: null,
+        pid: null,
+        created_at: 0,
+        updated_at: 0,
+        ended_at: null,
+        end_reason: null,
+      };
+    }
+
+    beforeEach(() => {
+      workspaceMode.set('chat');
+      projects.set([testProject, testProject2]);
+      expandedProjects.set(new Set(['proj-1', 'proj-2']));
+      daemonStore.sessions.clear();
+      daemonStore.activeSessionId = null;
+      // proj-1 has two chat sessions, proj-2 has one
+      daemonStore.sessions.set('c1', makeDaemonSession('c1', '/tmp/test', 'chat-1'));
+      daemonStore.sessions.set('c2', makeDaemonSession('c2', '/tmp/test', 'chat-2'));
+      daemonStore.sessions.set('c3', makeDaemonSession('c3', '/tmp/other', 'chat-3'));
+    });
+
+    afterEach(() => {
+      workspaceMode.set('development');
+      daemonStore.sessions.clear();
+      daemonStore.activeSessionId = null;
+    });
+
+    it('j from project moves to first chat session of that project', () => {
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      pressKey('j');
+      expect(get(focusTarget)).toEqual({ type: 'session', sessionId: 'c1', projectId: 'proj-1' });
+      expect(daemonStore.activeSessionId).toBe('c1');
+    });
+
+    it('j from chat session moves to next chat session', () => {
+      focusTarget.set({ type: 'session', sessionId: 'c1', projectId: 'proj-1' });
+      pressKey('j');
+      expect(get(focusTarget)).toEqual({ type: 'session', sessionId: 'c2', projectId: 'proj-1' });
+      expect(daemonStore.activeSessionId).toBe('c2');
+    });
+
+    it('j crosses project boundary from last chat of proj-1 to proj-2 header', () => {
+      focusTarget.set({ type: 'session', sessionId: 'c2', projectId: 'proj-1' });
+      pressKey('j');
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
+    });
+
+    it('k from chat session moves to previous chat session or project header', () => {
+      focusTarget.set({ type: 'session', sessionId: 'c2', projectId: 'proj-1' });
+      pressKey('k');
+      expect(get(focusTarget)).toEqual({ type: 'session', sessionId: 'c1', projectId: 'proj-1' });
+      pressKey('k');
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-1' });
+    });
+
+    it('j does not walk into PTY sessions in chat mode', () => {
+      // testProject has PTY sessions sess-1 and sess-2 but chat mode must ignore them.
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      pressKey('j'); // -> c1
+      pressKey('j'); // -> c2
+      pressKey('j'); // -> proj-2 (skipping any PTY sessions)
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
+    });
+
+    it('Enter on chat session sets daemonStore.activeSessionId', () => {
+      focusTarget.set({ type: 'session', sessionId: 'c2', projectId: 'proj-1' });
+      daemonStore.activeSessionId = null;
+      let captured: any = null;
+      const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+      pressKey('Enter');
+      expect(daemonStore.activeSessionId).toBe('c2');
+      // Should NOT dispatch focus-terminal (PTY behavior) in chat mode
+      expect(captured).toBeNull();
+      unsub();
+    });
+
+    it('Enter on project still toggles expand in chat mode', () => {
+      expandedProjects.set(new Set());
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      pressKey('Enter');
+      expect(get(expandedProjects).has('proj-1')).toBe(true);
+    });
+
+    it('j skips chat sessions of collapsed project', () => {
+      expandedProjects.set(new Set(['proj-2'])); // proj-1 collapsed
+      focusTarget.set({ type: 'project', projectId: 'proj-1' });
+      pressKey('j');
+      expect(get(focusTarget)).toEqual({ type: 'project', projectId: 'proj-2' });
     });
   });
 });
