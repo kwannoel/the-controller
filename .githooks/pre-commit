@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Mirrors .github/workflows/ci.yml so local commits match CI.
+# Runs from the worktree root regardless of where `git commit` was invoked.
+cd "$(git rev-parse --show-toplevel)"
+
+# Git exports GIT_DIR/GIT_INDEX_FILE/etc. into hooks; subprocess `git`
+# calls inside tests would otherwise target the parent repo instead of
+# their tmp repos, breaking any test that shells out to git.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_EXEC_PATH \
+      GIT_AUTHOR_DATE GIT_COMMITTER_DATE GIT_EDITOR GIT_REFLOG_ACTION
+
+echo "[pre-commit] pnpm check"
+pnpm check
+
+echo "[pre-commit] pnpm test"
+pnpm test
+
+echo "[pre-commit] cargo +stable fmt --check"
+(cd src-tauri && cargo +stable fmt --check)
+
+echo "[pre-commit] cargo +stable clippy -- -D warnings"
+(cd src-tauri && cargo +stable clippy -- -D warnings)
+
+echo "[pre-commit] cargo +stable test"
+# --test-threads=1 works around a shared-env-var flake between scaffold
+# tests and worktree tests; see followup issue.
+(cd src-tauri && cargo +stable test -- --test-threads=1)
