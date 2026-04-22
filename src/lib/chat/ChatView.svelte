@@ -1,15 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { daemonStore } from "../daemon/store.svelte";
-  import { reduceTranscript, emptyTranscript, type TranscriptState } from "../daemon/reducer";
+  import { reduceTranscript, emptyTranscript } from "../daemon/reducer";
   import { openStream } from "../daemon/stream";
   import Transcript from "./Transcript.svelte";
 
   let { sessionId }: { sessionId: string } = $props();
   const session = $derived(daemonStore.sessions.get(sessionId));
-
-  let localTranscript = $state<TranscriptState>(emptyTranscript());
-  const transcript = $derived(daemonStore.transcripts.get(sessionId) ?? localTranscript);
+  const transcript = $derived(daemonStore.transcripts.get(sessionId) ?? emptyTranscript());
 
   let handle: { close(): void } | null = null;
 
@@ -19,7 +17,6 @@
     let t = daemonStore.transcripts.get(sessionId) ?? emptyTranscript();
     for (const e of events) t = reduceTranscript(t, e);
     daemonStore.transcripts.set(sessionId, t);
-    localTranscript = t;
     handle = openStream(sessionId);
   });
 

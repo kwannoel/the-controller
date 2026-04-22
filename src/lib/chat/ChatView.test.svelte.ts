@@ -1,25 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor } from "@testing-library/svelte";
 
-const readEvents = vi.hoisted(() => vi.fn());
 const openStreamMock = vi.hoisted(() => vi.fn(() => ({ close: vi.fn() })));
 
-vi.mock("../daemon/store.svelte", () => {
-  const daemonStore = {
-    client: { readEvents, wsUrl: () => "ws://x" } as any,
-    sessions: new Map([["s1", { id: "s1", label: "Chat 1", agent: "claude", status: "running" }]]),
-    transcripts: new Map(),
-    activeSessionId: "s1",
-    token: "TOK",
-    reachable: true,
-    newChatTarget: null,
-  };
-  return { daemonStore };
-});
-
+vi.mock("../daemon/store.svelte", () => import("./__mocks__/daemonStore.svelte"));
 vi.mock("../daemon/stream", () => ({ openStream: openStreamMock }));
 
 import ChatView from "./ChatView.svelte";
+import { readEvents } from "./__mocks__/daemonStore.svelte";
 
 describe("ChatView", () => {
   beforeEach(() => vi.clearAllMocks());
