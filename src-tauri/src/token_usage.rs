@@ -184,7 +184,7 @@ fn find_codex_session_file(sessions_dir: &Path, working_dir: &str) -> Result<Pat
     }
 
     // Sort most recent first, check only recent files to avoid scanning everything.
-    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.1));
 
     for (path, _) in candidates.iter().take(50) {
         if codex_session_matches_cwd(path, working_dir) {

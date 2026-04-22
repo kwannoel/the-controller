@@ -12,6 +12,10 @@
 
   const workspaceModeState = fromStore(workspaceMode);
   const sections = $derived(getHelpSections(workspaceModeState.current));
+  const modeLabel = $derived(
+    workspaceModeState.current === "chat" ? "Chat" :
+    workspaceModeState.current === "agents" ? "Agents" : "Development"
+  );
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === "Escape") {
@@ -33,7 +37,7 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">Keyboard Shortcuts</div>
-    <p class="subtitle">Mode: {workspaceModeState.current === "agents" ? "Agents" : "Development"} — Press <kbd>␣</kbd> to switch</p>
+    <p class="subtitle">Mode: {modeLabel} — Press <kbd>␣</kbd> to switch</p>
     <div class="sections-grid">
       {#each sections as section}
         <div class="section">

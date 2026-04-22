@@ -20,6 +20,7 @@
   import { showToast } from "./toast";
   import { buildKeyMap, type CommandId } from "./commands";
   import { focusForModeSwitch } from "./focus-helpers";
+  import { daemonStore } from "./daemon/store.svelte";
 
   let lastEscapeTime = 0;
 
@@ -105,6 +106,12 @@
       if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
+    if (key === "c") {
+      workspaceMode.set("chat");
+      const newFocus = focusForModeSwitch(currentFocus, "chat", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      return;
+    }
     // Any other key (including Escape) cancels
   }
 
@@ -121,6 +128,21 @@
         if (!expandedSet.has(p.id)) continue;
         result.push({ type: "agent", agentKind: "auto-worker", projectId: p.id });
         result.push({ type: "agent", agentKind: "maintainer", projectId: p.id });
+      }
+      return result;
+    }
+    if (currentMode === "chat") {
+      const result: SidebarItem[] = [];
+      const daemonSessions = [...daemonStore.sessions.values()];
+      for (const p of projectList) {
+        result.push({ type: "project", projectId: p.id });
+        if (!expandedSet.has(p.id)) continue;
+        for (const s of daemonSessions) {
+          if (s.cwd === p.repo_path) {
+            result.push({ type: "session", sessionId: s.id, projectId: p.id });
+          }
+        }
+        // "+ New chat" row is intentionally not keyboard-walkable for v1.
       }
       return result;
     }
@@ -150,7 +172,11 @@
     const len = items.length;
     const next = items[((idx + direction) % len + len) % len];
     if (next.type === "session") {
-      activeSessionId.set(next.sessionId);
+      if (currentMode === "chat") {
+        daemonStore.activeSessionId = next.sessionId;
+      } else {
+        activeSessionId.set(next.sessionId);
+      }
       focusTarget.set({ type: "session", sessionId: next.sessionId, projectId: next.projectId });
     } else if (next.type === "agent") {
       focusTarget.set({ type: "agent", agentKind: next.agentKind, projectId: next.projectId });
@@ -287,8 +313,12 @@
           }
           expandedProjects.set(next);
         } else if (currentFocus?.type === "session") {
-          activeSessionId.set(currentFocus.sessionId);
-          dispatchAction({ type: "focus-terminal" });
+          if (currentMode === "chat") {
+            daemonStore.activeSessionId = currentFocus.sessionId;
+          } else {
+            activeSessionId.set(currentFocus.sessionId);
+            dispatchAction({ type: "focus-terminal" });
+          }
         } else if (currentFocus?.type === "agent") {
           focusTarget.set({ type: "agent-panel", agentKind: currentFocus.agentKind, projectId: currentFocus.projectId });
         }

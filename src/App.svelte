@@ -19,6 +19,7 @@
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
   import KanbanBoard from "./lib/KanbanBoard.svelte";
+  import ChatWorkspace from "./lib/chat/ChatWorkspace.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
   import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
@@ -377,6 +378,8 @@
           <AgentDashboard />
         {:else if workspaceModeState.current === "kanban"}
           <KanbanBoard />
+        {:else if workspaceModeState.current === "chat"}
+          <ChatWorkspace />
         {:else}
           <TerminalManager />
         {/if}

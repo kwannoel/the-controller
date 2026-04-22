@@ -133,7 +133,8 @@ export interface Config {
 export type WorkspaceMode =
   | "development"
   | "agents"
-  | "kanban";
+  | "kanban"
+  | "chat";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
 export type SessionProvider = "claude" | "codex";

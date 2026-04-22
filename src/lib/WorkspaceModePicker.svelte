@@ -9,6 +9,7 @@
     { key: "d", id: "development", label: "Development" },
     { key: "a", id: "agents", label: "Agents" },
     { key: "k", id: "kanban", label: "Kanban" },
+    { key: "c", id: "chat", label: "Chat" },
   ];
 </script>
 
