@@ -23,9 +23,9 @@ describe("DaemonClient", () => {
     const c = new DaemonClient("http://127.0.0.1:4867", "TOK");
     const sessions = await c.listSessions();
     expect(sessions[0].id).toBe("s1");
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("http://127.0.0.1:4867/sessions");
-    expect((init as any).headers.Authorization).toBe("Bearer TOK");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer TOK");
   });
 
   it("throws DaemonHttpError on 404", async () => {

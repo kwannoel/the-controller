@@ -5,7 +5,9 @@ pub(crate) fn daemon_token_path() -> PathBuf {
         return PathBuf::from(dir).join("daemon.token");
     }
     let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".the-controller").join("daemon.token")
+    PathBuf::from(home)
+        .join(".the-controller")
+        .join("daemon.token")
 }
 
 pub(crate) fn read_token_from(path: &std::path::Path) -> Result<String, String> {
