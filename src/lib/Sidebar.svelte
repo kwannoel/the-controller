@@ -469,8 +469,10 @@
       />
     {:else if currentMode === "chat"}
       <ChatSessionList
-        onNewChat={() => {
-          // TODO(Task 12): open NewChatDialog for the given projectId
+        onNewChat={(projectId) => {
+          const project = projectList.find((p) => p.id === projectId);
+          if (!project) return;
+          daemonStore.newChatTarget = { projectId, projectCwd: project.repo_path };
         }}
         onSelect={(sessionId) => {
           daemonStore.activeSessionId = sessionId;

@@ -12,6 +12,7 @@ interface StoreState {
   sessions: Map<string, DaemonSession>;
   transcripts: Map<string, TranscriptState>;
   activeSessionId: string | null;
+  newChatTarget: { projectId: string; projectCwd: string } | null;
 }
 
 export const daemonStore = $state<StoreState>({
@@ -21,6 +22,7 @@ export const daemonStore = $state<StoreState>({
   sessions: new Map(),
   transcripts: new Map(),
   activeSessionId: null,
+  newChatTarget: null,
 });
 
 export async function bootstrap(): Promise<void> {
