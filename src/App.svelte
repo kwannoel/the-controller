@@ -121,7 +121,7 @@
 
     try {
       showToast("Generating issue description...", "info");
-      const body = await command<string>("generate_issue_body", { title });
+      const body = await command<string>("generate_issue_body", { repoPath, title });
 
       showToast("Creating issue...", "info");
       const issue = await command<GithubIssue>("create_github_issue", {

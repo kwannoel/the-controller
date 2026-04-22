@@ -1425,8 +1425,8 @@ pub async fn list_assigned_issues(
 }
 
 #[tauri::command]
-pub async fn generate_issue_body(title: String) -> Result<String, String> {
-    github::generate_issue_body(title).await
+pub async fn generate_issue_body(repo_path: String, title: String) -> Result<String, String> {
+    github::generate_issue_body(repo_path, title).await
 }
 
 #[tauri::command]
