@@ -142,7 +142,10 @@ pub(crate) async fn list_github_issues(
     Ok(issues)
 }
 
-pub(crate) async fn generate_issue_body(repo_path: String, title: String) -> Result<String, String> {
+pub(crate) async fn generate_issue_body(
+    repo_path: String,
+    title: String,
+) -> Result<String, String> {
     let prompt = format!(
         "Write a concise GitHub issue body for an issue titled: \"{}\". \
          Include a Summary section and a Details section. \

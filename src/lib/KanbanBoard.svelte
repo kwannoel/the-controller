@@ -239,7 +239,7 @@
   }
 
   .board-status--error {
-    color: var(--color-danger, #f38ba8);
+    color: var(--status-error);
   }
 
   .columns {

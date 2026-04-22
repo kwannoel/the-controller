@@ -13,8 +13,7 @@ fn order_file(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|e| format!("app_data_dir unavailable: {e}"))?;
     if !dir.exists() {
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("failed to create app_data_dir: {e}"))?;
+        std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create app_data_dir: {e}"))?;
     }
     Ok(order_file_in(&dir))
 }
