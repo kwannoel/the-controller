@@ -107,6 +107,10 @@ pub struct GithubIssue {
     #[serde(default)]
     pub body: Option<String>,
     pub labels: Vec<GithubLabel>,
+    #[serde(default)]
+    pub assignees: Vec<GithubAssignee>,
+    #[serde(default)]
+    pub milestone: Option<GithubMilestone>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +121,13 @@ pub struct GithubLabel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubAssignee {
     pub login: String,
+    #[serde(default, rename = "avatarUrl", skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubMilestone {
+    pub title: String,
 }
 
 /// An open issue that has at least one assignee.
@@ -362,7 +373,9 @@ mod tests {
                 url: "https://github.com/kwannoel/the-controller/issues/22".to_string(),
                 body: None,
                 labels: vec![],
-            }),
+                assignees: vec![],
+                milestone: None,
+}),
             initial_prompt: None,
             done_commits: vec![],
             auto_worker_session: false,
@@ -453,7 +466,9 @@ mod tests {
                     name: "priority".to_string(),
                 },
             ],
-        };
+            assignees: vec![],
+            milestone: None,
+};
         let json = serde_json::to_string(&issue).unwrap();
         let deserialized: GithubIssue = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.labels.len(), 2);
@@ -611,6 +626,7 @@ mod tests {
             url: "https://github.com/owner/repo/issues/42".to_string(),
             assignees: vec![GithubAssignee {
                 login: "alice".to_string(),
+                avatar_url: None,
             }],
             updated_at: "2026-03-01T12:00:00Z".to_string(),
             labels: vec![GithubLabel {

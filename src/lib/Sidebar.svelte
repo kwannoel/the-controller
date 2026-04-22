@@ -448,7 +448,7 @@
 
 <aside class="sidebar" bind:this={sidebarEl}>
   <div class="sidebar-header">
-    <h2>{{ development: "Development", agents: "Agents" }[currentMode]}</h2>
+    <h2>{{ development: "Development", agents: "Agents", kanban: "Kanban" }[currentMode]}</h2>
   </div>
 
   <div class="project-list">

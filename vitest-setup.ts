@@ -6,7 +6,7 @@ vi.mock('$lib/backend', () => ({
   listen: vi.fn(() => () => {}),
 }));
 
-if (!Range.prototype.getClientRects) {
+if (typeof Range !== 'undefined' && !Range.prototype.getClientRects) {
   Range.prototype.getClientRects = function getClientRects() {
     return {
       length: 0,

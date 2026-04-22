@@ -75,7 +75,7 @@ async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, Stri
             "--repo",
             &nwo,
             "--json",
-            "number,title,url,body,labels",
+            "number,title,url,body,labels,assignees,milestone",
             "--limit",
             "50",
         ])
@@ -194,7 +194,9 @@ pub(crate) async fn create_github_issue(
         url,
         body: Some(body),
         labels: vec![],
-    };
+        assignees: vec![],
+        milestone: None,
+};
 
     if let Ok(mut cache) = state.issue_cache.lock() {
         cache.add_issue(&repo_path, issue.clone());

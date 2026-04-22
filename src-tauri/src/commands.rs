@@ -11,6 +11,7 @@ use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
 mod github;
+mod kanban;
 mod media;
 
 /// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
@@ -1415,6 +1416,19 @@ pub async fn list_github_issues(
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::models::GithubIssue>, String> {
     github::list_github_issues(repo_path, state).await
+}
+
+#[tauri::command]
+pub async fn kanban_load_order(app: AppHandle) -> Result<serde_json::Value, String> {
+    kanban::kanban_load_order(app).await
+}
+
+#[tauri::command]
+pub async fn kanban_save_order(
+    app: AppHandle,
+    order: serde_json::Value,
+) -> Result<(), String> {
+    kanban::kanban_save_order(app, order).await
 }
 
 #[tauri::command]
@@ -3133,6 +3147,8 @@ mod tests {
                     name: (*label).to_string(),
                 })
                 .collect(),
+            assignees: vec![],
+            milestone: None,
         }
     }
 

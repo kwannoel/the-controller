@@ -136,7 +136,9 @@ mod tests {
             url: "https://github.com/owner/repo/issues/1".to_string(),
             body: None,
             labels: vec![],
-        }];
+            assignees: vec![],
+            milestone: None,
+}];
         cache.insert("/some/repo".to_string(), issues.clone());
         let entry = cache.get("/some/repo").unwrap();
         assert_eq!(entry.issues.len(), 1);
@@ -173,7 +175,9 @@ mod tests {
             url: "https://github.com/o/r/issues/5".to_string(),
             body: None,
             labels: vec![],
-        };
+            assignees: vec![],
+            milestone: None,
+};
         cache.add_issue("/repo", issue);
         let entry = cache.get("/repo").unwrap();
         assert_eq!(entry.issues.len(), 1);
@@ -189,7 +193,9 @@ mod tests {
             url: "https://github.com/o/r/issues/5".to_string(),
             body: None,
             labels: vec![],
-        };
+            assignees: vec![],
+            milestone: None,
+};
         cache.add_issue("/repo", issue);
         assert!(cache.get("/repo").is_none());
     }
@@ -205,7 +211,9 @@ mod tests {
                 url: "https://github.com/o/r/issues/1".to_string(),
                 body: None,
                 labels: vec![],
-            }],
+                assignees: vec![],
+                milestone: None,
+}],
         );
         cache.add_label("/repo", 1, "in-progress");
         let entry = cache.get("/repo").unwrap();
@@ -224,7 +232,9 @@ mod tests {
                 url: "https://github.com/o/r/issues/1".to_string(),
                 body: None,
                 labels: vec![],
-            }],
+                assignees: vec![],
+                milestone: None,
+}],
         );
         cache.add_label("/repo", 1, "triaged");
         cache.add_label("/repo", 1, "triaged");
@@ -245,7 +255,9 @@ mod tests {
                 labels: vec![GithubLabel {
                     name: "in-progress".to_string(),
                 }],
-            }],
+                assignees: vec![],
+                milestone: None,
+}],
         );
         cache.remove_label("/repo", 1, "in-progress");
         let entry = cache.get("/repo").unwrap();
@@ -264,14 +276,18 @@ mod tests {
                     url: "https://github.com/o/r/issues/1".to_string(),
                     body: None,
                     labels: vec![],
-                },
+                    assignees: vec![],
+                    milestone: None,
+},
                 GithubIssue {
                     number: 2,
                     title: "Second".to_string(),
                     url: "https://github.com/o/r/issues/2".to_string(),
                     body: None,
                     labels: vec![],
-                },
+                    assignees: vec![],
+                    milestone: None,
+},
             ],
         );
         cache.remove_issue("/repo", 1);
