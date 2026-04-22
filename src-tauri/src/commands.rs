@@ -10,6 +10,7 @@ use crate::storage::ProjectInventory;
 use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
+mod daemon;
 mod github;
 mod kanban;
 mod media;
@@ -2016,6 +2017,11 @@ pub async fn get_maintainer_issue_detail(
 #[tauri::command]
 pub fn log_frontend_error(message: String) {
     eprintln!("[FRONTEND] {}", message);
+}
+
+#[tauri::command]
+pub async fn read_daemon_token() -> Result<String, String> {
+    daemon::read_daemon_token().await
 }
 
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {

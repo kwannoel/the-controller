@@ -117,6 +117,7 @@ pub fn run() {
             commands::get_repo_head,
             commands::get_session_token_usage,
             commands::log_frontend_error,
+            commands::read_daemon_token,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
