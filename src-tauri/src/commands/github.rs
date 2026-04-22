@@ -142,7 +142,7 @@ pub(crate) async fn list_github_issues(
     Ok(issues)
 }
 
-pub(crate) async fn generate_issue_body(title: String) -> Result<String, String> {
+pub(crate) async fn generate_issue_body(repo_path: String, title: String) -> Result<String, String> {
     let prompt = format!(
         "Write a concise GitHub issue body for an issue titled: \"{}\". \
          Include a Summary section and a Details section. \
@@ -151,6 +151,7 @@ pub(crate) async fn generate_issue_body(title: String) -> Result<String, String>
     );
     let output = tokio::process::Command::new("claude")
         .args(["--print", &prompt])
+        .current_dir(&repo_path)
         .env_remove("CLAUDECODE")
         .output()
         .await
