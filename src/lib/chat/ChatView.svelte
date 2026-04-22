@@ -3,6 +3,8 @@
   import { daemonStore } from "../daemon/store.svelte";
   import { reduceTranscript, emptyTranscript } from "../daemon/reducer";
   import { openStream } from "../daemon/stream";
+  import { classifyError } from "../daemon/errors";
+  import { showToast } from "$lib/toast";
   import Transcript from "./Transcript.svelte";
   import ChatInput from "./ChatInput.svelte";
 
@@ -14,11 +16,25 @@
 
   onMount(async () => {
     if (!daemonStore.client) return;
-    const events = await daemonStore.client.readEvents(sessionId, 0);
-    let t = daemonStore.transcripts.get(sessionId) ?? emptyTranscript();
-    for (const e of events) t = reduceTranscript(t, e);
-    daemonStore.transcripts.set(sessionId, t);
-    handle = openStream(sessionId);
+    try {
+      const events = await daemonStore.client.readEvents(sessionId, 0);
+      let t = daemonStore.transcripts.get(sessionId) ?? emptyTranscript();
+      for (const e of events) t = reduceTranscript(t, e);
+      daemonStore.transcripts.set(sessionId, t);
+      handle = openStream(sessionId);
+    } catch (e) {
+      const c = classifyError(e);
+      if (c.kind === "not_found") {
+        daemonStore.sessions.delete(sessionId);
+        if (daemonStore.activeSessionId === sessionId) {
+          daemonStore.activeSessionId = null;
+        }
+        showToast("Session no longer exists.", "error");
+      } else {
+        // Follow-up: 401 re-read token + retry once (design doc, not v1).
+        showToast(`Failed to load session: ${c.message}`, "error");
+      }
+    }
   });
 
   onDestroy(() => handle?.close());

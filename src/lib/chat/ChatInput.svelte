@@ -1,5 +1,7 @@
 <script lang="ts">
   import { daemonStore } from "../daemon/store.svelte";
+  import { classifyError } from "../daemon/errors";
+  import { showToast } from "$lib/toast";
   import type { SessionStatus, StatusState } from "../daemon/types";
 
   let { sessionId, status, statusState }: {
@@ -10,8 +12,9 @@
 
   let value = $state("");
   let busy = $state(false);
+  let sessionEndedBanner = $state(false);
 
-  const disabled = $derived(status === "ended" || status === "failed");
+  const disabled = $derived(status === "ended" || status === "failed" || sessionEndedBanner);
   const canInterrupt = $derived(
     statusState === "working" ||
     statusState === "starting" ||
@@ -25,6 +28,21 @@
     try {
       await daemonStore.client.sendMessage(sessionId, { kind: "user_text", text });
       value = "";
+    } catch (e) {
+      const c = classifyError(e);
+      if (c.kind === "session_ended") {
+        sessionEndedBanner = true;
+      } else if (
+        c.kind === "invalid" ||
+        c.kind === "storage" ||
+        c.kind === "network" ||
+        c.kind === "auth" ||
+        c.kind === "not_found"
+      ) {
+        showToast(`Daemon error: ${c.message}`, "error");
+      } else {
+        showToast(`Error: ${c.message}`, "error");
+      }
     } finally {
       busy = false;
     }
@@ -51,6 +69,9 @@
 </script>
 
 <div class="input">
+  {#if sessionEndedBanner}
+    <div class="banner" role="alert">Session ended. Start a new one.</div>
+  {/if}
   <textarea
     aria-label="Chat input"
     bind:value
@@ -63,6 +84,15 @@
 
 <style>
   .input { padding: 8px 12px; border-top: 1px solid var(--border-default); }
+  .banner {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 12px;
+  }
   textarea {
     width: 100%; resize: vertical; min-height: 48px;
     background: var(--bg-elevated); color: var(--text-primary);
