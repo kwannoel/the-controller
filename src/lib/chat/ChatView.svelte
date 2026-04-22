@@ -4,6 +4,7 @@
   import { reduceTranscript, emptyTranscript } from "../daemon/reducer";
   import { openStream } from "../daemon/stream";
   import Transcript from "./Transcript.svelte";
+  import ChatInput from "./ChatInput.svelte";
 
   let { sessionId }: { sessionId: string } = $props();
   const session = $derived(daemonStore.sessions.get(sessionId));
@@ -31,6 +32,7 @@
       <span class="status status-{session.status}">{session.status}</span>
     </header>
     <Transcript {transcript} {sessionId} />
+    <ChatInput {sessionId} status={session.status} statusState={transcript.statusState} />
   </div>
 {:else}
   <p class="missing">Session not found.</p>
