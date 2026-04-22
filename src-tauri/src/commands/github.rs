@@ -196,7 +196,7 @@ pub(crate) async fn create_github_issue(
         labels: vec![],
         assignees: vec![],
         milestone: None,
-};
+    };
 
     if let Ok(mut cache) = state.issue_cache.lock() {
         cache.add_issue(&repo_path, issue.clone());

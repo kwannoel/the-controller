@@ -874,7 +874,11 @@ pub(crate) async fn stage_session_core(
         }
 
         // Check if this specific session is already staged
-        if let Some(existing) = project.staged_sessions.iter().find(|s| s.session_id == session_id) {
+        if let Some(existing) = project
+            .staged_sessions
+            .iter()
+            .find(|s| s.session_id == session_id)
+        {
             #[cfg(unix)]
             let alive = unsafe { libc::kill(existing.pid as i32, 0) } == 0;
             #[cfg(not(unix))]
@@ -1125,7 +1129,11 @@ pub async fn stage_session(
 }
 
 #[tauri::command]
-pub fn unstage_session(state: State<AppState>, project_id: String, session_id: String) -> Result<(), String> {
+pub fn unstage_session(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
@@ -1424,10 +1432,7 @@ pub async fn kanban_load_order(app: AppHandle) -> Result<serde_json::Value, Stri
 }
 
 #[tauri::command]
-pub async fn kanban_save_order(
-    app: AppHandle,
-    order: serde_json::Value,
-) -> Result<(), String> {
+pub async fn kanban_save_order(app: AppHandle, order: serde_json::Value) -> Result<(), String> {
     kanban::kanban_save_order(app, order).await
 }
 

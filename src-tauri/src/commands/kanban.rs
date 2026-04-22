@@ -11,10 +11,10 @@ fn order_file(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| format!("app_data_dir unavailable: {}", e))?;
+        .map_err(|e| format!("app_data_dir unavailable: {e}"))?;
     if !dir.exists() {
         std::fs::create_dir_all(&dir)
-            .map_err(|e| format!("failed to create app_data_dir: {}", e))?;
+            .map_err(|e| format!("failed to create app_data_dir: {e}"))?;
     }
     Ok(order_file_in(&dir))
 }
@@ -23,29 +23,25 @@ fn load_order_from(path: &Path) -> Result<Value, String> {
     if !path.exists() {
         return Ok(Value::Object(Default::default()));
     }
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("failed to read kanban-order.json: {}", e))?;
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("failed to read kanban-order.json: {e}"))?;
     if bytes.is_empty() {
         return Ok(Value::Object(Default::default()));
     }
-    serde_json::from_slice(&bytes)
-        .map_err(|e| format!("failed to parse kanban-order.json: {}", e))
+    serde_json::from_slice(&bytes).map_err(|e| format!("failed to parse kanban-order.json: {e}"))
 }
 
 fn save_order_to(path: &Path, order: &Value) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "invalid order file path".to_string())?;
-    std::fs::create_dir_all(parent)
-        .map_err(|e| format!("failed to create parent dir: {}", e))?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("failed to create parent dir: {e}"))?;
 
     let tmp = parent.join(".kanban-order.json.tmp");
-    let bytes = serde_json::to_vec_pretty(order)
-        .map_err(|e| format!("failed to serialize order: {}", e))?;
-    std::fs::write(&tmp, &bytes)
-        .map_err(|e| format!("failed to write tmp order: {}", e))?;
-    std::fs::rename(&tmp, path)
-        .map_err(|e| format!("failed to rename tmp order: {}", e))?;
+    let bytes =
+        serde_json::to_vec_pretty(order).map_err(|e| format!("failed to serialize order: {e}"))?;
+    std::fs::write(&tmp, &bytes).map_err(|e| format!("failed to write tmp order: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("failed to rename tmp order: {e}"))?;
     Ok(())
 }
 
@@ -53,14 +49,14 @@ pub(crate) async fn kanban_load_order(app: AppHandle) -> Result<Value, String> {
     let path = order_file(&app)?;
     tokio::task::spawn_blocking(move || load_order_from(&path))
         .await
-        .map_err(|e| format!("spawn_blocking failed: {}", e))?
+        .map_err(|e| format!("spawn_blocking failed: {e}"))?
 }
 
 pub(crate) async fn kanban_save_order(app: AppHandle, order: Value) -> Result<(), String> {
     let path = order_file(&app)?;
     tokio::task::spawn_blocking(move || save_order_to(&path, &order))
         .await
-        .map_err(|e| format!("spawn_blocking failed: {}", e))?
+        .map_err(|e| format!("spawn_blocking failed: {e}"))?
 }
 
 #[cfg(test)]
