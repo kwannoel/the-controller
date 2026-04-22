@@ -42,8 +42,8 @@
   .session-row, .new { background: transparent; border: 0; color: inherit; text-align: left; padding: 4px 8px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
   .session-row:hover, .new:hover { background: rgba(255,255,255,0.05); }
   .status { width: 8px; height: 8px; border-radius: 50%; }
-  .status-running { background: #a6e3a1; }
-  .status-ended, .status-failed { background: #f38ba8; }
-  .status-starting, .status-interrupted { background: #f9e2af; }
+  .status-running { background: var(--status-idle); }
+  .status-ended, .status-failed { background: var(--status-error); }
+  .status-starting, .status-interrupted { background: var(--status-working); }
   .agent { margin-left: auto; font-size: 11px; opacity: 0.6; }
 </style>

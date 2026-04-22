@@ -59,8 +59,8 @@
     padding: 8px;
     margin-left: 32px;
     margin-bottom: 8px;
-    background: rgba(249, 226, 175, 0.08);
-    border-left: 2px solid #f9e2af;
+    background: rgba(184, 164, 60, 0.08);
+    border-left: 2px solid var(--status-working);
     border-radius: 4px;
   }
   button {

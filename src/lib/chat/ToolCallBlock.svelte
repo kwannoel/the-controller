@@ -101,6 +101,6 @@
     font-size: 11px;
   }
   .tool-error {
-    border-left: 3px solid #f38ba8;
+    border-left: 3px solid var(--status-error);
   }
 </style>

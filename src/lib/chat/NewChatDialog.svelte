@@ -59,6 +59,6 @@
   .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 200; }
   .dialog { background: var(--bg-elevated); padding: 24px; border-radius: 8px; min-width: 360px; display: flex; flex-direction: column; gap: 12px; }
   label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-  .err { color: #f38ba8; font-size: 12px; }
+  .err { color: var(--status-error); font-size: 12px; }
   .actions { display: flex; justify-content: flex-end; gap: 8px; }
 </style>
