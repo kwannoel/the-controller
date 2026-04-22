@@ -14,6 +14,7 @@ import {
   workspaceMode,
   workspaceModePickerVisible,
 } from './stores';
+import type { WorkspaceMode } from './stores';
 
 describe('stores', () => {
   beforeEach(() => {
@@ -103,5 +104,12 @@ describe('stores', () => {
     it('picker starts hidden', () => {
       expect(get(workspaceModePickerVisible)).toBe(false);
     });
+  });
+});
+
+describe("WorkspaceMode", () => {
+  it("accepts 'chat' as a valid value", () => {
+    const m: WorkspaceMode = "chat";
+    expect(m).toBe("chat");
   });
 });
