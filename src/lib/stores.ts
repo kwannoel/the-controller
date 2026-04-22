@@ -6,6 +6,8 @@ export interface GithubIssue {
   url: string;
   body?: string | null;
   labels: { name: string }[];
+  assignees?: { login: string; avatarUrl?: string }[];
+  milestone?: { title: string } | null;
 }
 
 export interface AssignedIssue {
@@ -130,7 +132,8 @@ export interface Config {
 
 export type WorkspaceMode =
   | "development"
-  | "agents";
+  | "agents"
+  | "kanban";
 export const workspaceMode = writable<WorkspaceMode>("development");
 export const workspaceModePickerVisible = writable<boolean>(false);
 export type SessionProvider = "claude" | "codex";

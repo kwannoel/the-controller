@@ -99,6 +99,12 @@
       if (newFocus !== currentFocus) focusTarget.set(newFocus);
       return;
     }
+    if (key === "k") {
+      workspaceMode.set("kanban");
+      const newFocus = focusForModeSwitch(currentFocus, "kanban", activeId, projectList);
+      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      return;
+    }
     // Any other key (including Escape) cancels
   }
 

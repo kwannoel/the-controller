@@ -16,7 +16,11 @@ pub struct Project {
     #[serde(default)]
     pub prompts: Vec<SavedPrompt>,
     /// Sessions staged as separate Controller instances.
-    #[serde(default, alias = "staged_session", deserialize_with = "deserialize_staged_sessions")]
+    #[serde(
+        default,
+        alias = "staged_session",
+        deserialize_with = "deserialize_staged_sessions"
+    )]
     pub staged_sessions: Vec<StagedSession>,
 }
 
@@ -107,6 +111,10 @@ pub struct GithubIssue {
     #[serde(default)]
     pub body: Option<String>,
     pub labels: Vec<GithubLabel>,
+    #[serde(default)]
+    pub assignees: Vec<GithubAssignee>,
+    #[serde(default)]
+    pub milestone: Option<GithubMilestone>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +125,13 @@ pub struct GithubLabel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GithubAssignee {
     pub login: String,
+    #[serde(default, rename = "avatarUrl", skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubMilestone {
+    pub title: String,
 }
 
 /// An open issue that has at least one assignee.
@@ -362,6 +377,8 @@ mod tests {
                 url: "https://github.com/kwannoel/the-controller/issues/22".to_string(),
                 body: None,
                 labels: vec![],
+                assignees: vec![],
+                milestone: None,
             }),
             initial_prompt: None,
             done_commits: vec![],
@@ -453,6 +470,8 @@ mod tests {
                     name: "priority".to_string(),
                 },
             ],
+            assignees: vec![],
+            milestone: None,
         };
         let json = serde_json::to_string(&issue).unwrap();
         let deserialized: GithubIssue = serde_json::from_str(&json).unwrap();
@@ -611,6 +630,7 @@ mod tests {
             url: "https://github.com/owner/repo/issues/42".to_string(),
             assignees: vec![GithubAssignee {
                 login: "alice".to_string(),
+                avatar_url: None,
             }],
             updated_at: "2026-03-01T12:00:00Z".to_string(),
             labels: vec![GithubLabel {
@@ -790,8 +810,16 @@ mod tests {
             prompts: vec![],
             sessions: vec![],
             staged_sessions: vec![
-                StagedSession { session_id: Uuid::new_v4(), pid: 1001, port: 2420 },
-                StagedSession { session_id: Uuid::new_v4(), pid: 1002, port: 2421 },
+                StagedSession {
+                    session_id: Uuid::new_v4(),
+                    pid: 1001,
+                    port: 2420,
+                },
+                StagedSession {
+                    session_id: Uuid::new_v4(),
+                    pid: 1002,
+                    port: 2421,
+                },
             ],
         };
         let json = serde_json::to_string(&project).expect("serialize");

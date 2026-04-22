@@ -75,7 +75,7 @@ async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, Stri
             "--repo",
             &nwo,
             "--json",
-            "number,title,url,body,labels",
+            "number,title,url,body,labels,assignees,milestone",
             "--limit",
             "50",
         ])
@@ -142,7 +142,10 @@ pub(crate) async fn list_github_issues(
     Ok(issues)
 }
 
-pub(crate) async fn generate_issue_body(repo_path: String, title: String) -> Result<String, String> {
+pub(crate) async fn generate_issue_body(
+    repo_path: String,
+    title: String,
+) -> Result<String, String> {
     let prompt = format!(
         "Write a concise GitHub issue body for an issue titled: \"{}\". \
          Include a Summary section and a Details section. \
@@ -194,6 +197,8 @@ pub(crate) async fn create_github_issue(
         url,
         body: Some(body),
         labels: vec![],
+        assignees: vec![],
+        milestone: None,
     };
 
     if let Ok(mut cache) = state.issue_cache.lock() {

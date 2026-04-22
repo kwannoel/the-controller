@@ -979,6 +979,8 @@ mod tests {
                     name: l.to_string(),
                 })
                 .collect(),
+            assignees: vec![],
+            milestone: None,
         }
     }
 

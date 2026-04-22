@@ -86,6 +86,8 @@ pub fn run() {
             commands::generate_project_names,
             commands::scaffold_project,
             commands::list_github_issues,
+            commands::kanban_load_order,
+            commands::kanban_save_order,
             commands::list_assigned_issues,
             commands::generate_issue_body,
             commands::create_github_issue,

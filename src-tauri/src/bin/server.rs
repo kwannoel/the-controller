@@ -10,9 +10,7 @@ use axum::{
 };
 use serde_json::Value;
 use std::sync::Arc;
-use the_controller_lib::{
-    config, emitter::WsBroadcastEmitter, state::AppState,
-};
+use the_controller_lib::{config, emitter::WsBroadcastEmitter, state::AppState};
 
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;

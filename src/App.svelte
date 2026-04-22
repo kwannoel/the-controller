@@ -18,6 +18,7 @@
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
+  import KanbanBoard from "./lib/KanbanBoard.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
   import { showToast } from "./lib/toast";
   import { appConfig, onboardingComplete, hotkeyAction, showKeyHints, sidebarVisible, workspaceModePickerVisible, workspaceMode, focusTarget, projects, sessionStatuses, activeSessionId, expandedProjects, dispatchHotkeyAction, focusTerminalSoon, selectedSessionProvider, type Config, type GithubIssue, type Project, type SavedPrompt, type SessionStatus } from "./lib/stores";
@@ -374,6 +375,8 @@
       <main class="terminal-area">
         {#if workspaceModeState.current === "agents"}
           <AgentDashboard />
+        {:else if workspaceModeState.current === "kanban"}
+          <KanbanBoard />
         {:else}
           <TerminalManager />
         {/if}
