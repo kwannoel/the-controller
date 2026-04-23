@@ -11,8 +11,8 @@ use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
 pub mod daemon;
-mod github;
-mod kanban;
+pub mod github;
+pub mod kanban;
 mod media;
 
 /// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
@@ -1504,7 +1504,7 @@ pub async fn list_github_issues(
     repo_path: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::models::GithubIssue>, String> {
-    github::list_github_issues(repo_path, state).await
+    github::list_github_issues(repo_path, &state).await
 }
 
 #[tauri::command]
@@ -1536,7 +1536,7 @@ pub async fn create_github_issue(
     title: String,
     body: String,
 ) -> Result<crate::models::GithubIssue, String> {
-    github::create_github_issue(state, repo_path, title, body).await
+    github::create_github_issue(&state, repo_path, title, body).await
 }
 
 #[tauri::command]
@@ -1546,7 +1546,7 @@ pub async fn close_github_issue(
     issue_number: u64,
     comment: String,
 ) -> Result<(), String> {
-    github::close_github_issue(state, repo_path, issue_number, comment).await
+    github::close_github_issue(&state, repo_path, issue_number, comment).await
 }
 
 #[tauri::command]
@@ -1555,7 +1555,7 @@ pub async fn delete_github_issue(
     repo_path: String,
     issue_number: u64,
 ) -> Result<(), String> {
-    github::delete_github_issue(state, repo_path, issue_number).await
+    github::delete_github_issue(&state, repo_path, issue_number).await
 }
 
 #[tauri::command]
@@ -1576,7 +1576,7 @@ pub async fn add_github_label(
     description: Option<String>,
     color: Option<String>,
 ) -> Result<(), String> {
-    github::add_github_label(state, repo_path, issue_number, label, description, color).await
+    github::add_github_label(&state, repo_path, issue_number, label, description, color).await
 }
 
 #[tauri::command]
@@ -1586,7 +1586,7 @@ pub async fn remove_github_label(
     issue_number: u64,
     label: String,
 ) -> Result<(), String> {
-    github::remove_github_label(state, repo_path, issue_number, label).await
+    github::remove_github_label(&state, repo_path, issue_number, label).await
 }
 
 #[tauri::command]
@@ -1941,7 +1941,7 @@ pub async fn get_auto_worker_queue(
     };
 
     let active_issue = active_auto_worker_issue(&project);
-    let issues = github::list_github_issues(project.repo_path.clone(), state).await?;
+    let issues = github::list_github_issues(project.repo_path.clone(), &state).await?;
     Ok(build_auto_worker_queue(issues, active_issue))
 }
 

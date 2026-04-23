@@ -64,6 +64,17 @@ async fn main() {
         .route("/api/list_root_directories", post(list_root_directories))
         .route("/api/check_claude_cli", post(check_claude_cli))
         .route("/api/generate_project_names", post(generate_project_names))
+        .route("/api/list_github_issues", post(list_github_issues))
+        .route("/api/create_github_issue", post(create_github_issue))
+        .route("/api/close_github_issue", post(close_github_issue))
+        .route("/api/delete_github_issue", post(delete_github_issue))
+        .route("/api/post_github_comment", post(post_github_comment))
+        .route("/api/add_github_label", post(add_github_label))
+        .route("/api/remove_github_label", post(remove_github_label))
+        .route("/api/generate_issue_body", post(generate_issue_body))
+        .route("/api/list_assigned_issues", post(list_assigned_issues))
+        .route("/api/kanban_load_order", post(kanban_load_order))
+        .route("/api/kanban_save_order", post(kanban_save_order))
         .route("/ws", get(ws_upgrade))
         .fallback(fallback_handler)
         .layer(CorsLayer::permissive())
@@ -792,6 +803,214 @@ async fn generate_project_names(
         })?
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(serde_json::to_value(names).unwrap()))
+}
+
+// --- GitHub ---
+
+async fn list_github_issues(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let issues = commands::github::list_github_issues(repo_path, &state.app)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(issues).unwrap()))
+}
+
+async fn create_github_issue(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let title = args["title"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "title required".to_string()))?
+        .to_string();
+    let body = args["body"].as_str().unwrap_or("").to_string();
+    let issue = commands::github::create_github_issue(&state.app, repo_path, title, body)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(issue).unwrap()))
+}
+
+async fn close_github_issue(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "issueNumber required".to_string()))?;
+    let comment = args["comment"].as_str().unwrap_or("").to_string();
+    commands::github::close_github_issue(&state.app, repo_path, issue_number, comment)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn delete_github_issue(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "issueNumber required".to_string()))?;
+    commands::github::delete_github_issue(&state.app, repo_path, issue_number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn post_github_comment(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "issueNumber required".to_string()))?;
+    let body = args["body"].as_str().unwrap_or("").to_string();
+    commands::github::post_github_comment(repo_path, issue_number, body)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn add_github_label(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "issueNumber required".to_string()))?;
+    let label = args["label"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "label required".to_string()))?
+        .to_string();
+    let description = args["description"].as_str().map(str::to_string);
+    let color = args["color"].as_str().map(str::to_string);
+    commands::github::add_github_label(
+        &state.app,
+        repo_path,
+        issue_number,
+        label,
+        description,
+        color,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn remove_github_label(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "issueNumber required".to_string()))?;
+    let label = args["label"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "label required".to_string()))?
+        .to_string();
+    commands::github::remove_github_label(&state.app, repo_path, issue_number, label)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn generate_issue_body(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let title = args["title"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "title required".to_string()))?
+        .to_string();
+    let body = commands::github::generate_issue_body(repo_path, title)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::String(body)))
+}
+
+async fn list_assigned_issues(
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let issues = commands::github::list_assigned_issues(repo_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(issues).unwrap()))
+}
+
+// --- Kanban ---
+
+fn kanban_order_file(state: &AppState) -> Result<std::path::PathBuf, (StatusCode, String)> {
+    let storage = state
+        .storage
+        .lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(commands::kanban::order_file_in(&storage.base_dir()))
+}
+
+async fn kanban_load_order(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let path = kanban_order_file(&state.app)?;
+    let order = tokio::task::spawn_blocking(move || commands::kanban::load_order_from(&path))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Task failed: {}", e),
+            )
+        })?
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(order))
+}
+
+async fn kanban_save_order(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let order = args["order"].clone();
+    let path = kanban_order_file(&state.app)?;
+    tokio::task::spawn_blocking(move || commands::kanban::save_order_to(&path, &order))
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Task failed: {}", e),
+            )
+        })?
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
 }
 
 // --- WebSocket ---
