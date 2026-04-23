@@ -1,4 +1,4 @@
-const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
+export const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
 
 let sharedWs: WebSocket | null = null;
 
@@ -8,6 +8,15 @@ function getSharedWebSocket(): WebSocket {
     sharedWs = new WebSocket(wsUrl);
   }
   return sharedWs;
+}
+
+export async function openUrl(url: string): Promise<void> {
+  if (isTauri) {
+    const { openUrl: tauriOpenUrl } = await import("@tauri-apps/plugin-opener");
+    await tauriOpenUrl(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export async function command<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {

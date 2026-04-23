@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
-  import { command, listen } from "$lib/backend";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { command, isTauri, listen } from "$lib/backend";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
@@ -291,12 +290,14 @@
   }
 
   function updateWindowTitle(branch: string, commit: string) {
-    try {
-      const parts = [commit, branch, `localhost:${__DEV_PORT__}`];
-      const title = `The Controller (${parts.join(", ")})`;
-      getCurrentWindow().setTitle(title);
-    } catch {
-      // Browser mode — no Tauri window API available
+    const parts = [commit, branch, `localhost:${__DEV_PORT__}`];
+    const title = `The Controller (${parts.join(", ")})`;
+    if (isTauri) {
+      import("@tauri-apps/api/window")
+        .then(({ getCurrentWindow }) => getCurrentWindow().setTitle(title))
+        .catch(() => {});
+    } else {
+      document.title = title;
     }
   }
 

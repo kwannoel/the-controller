@@ -1,12 +1,12 @@
 type SessionKind = "claude" | "codex" | undefined;
 
-type InvokeFn = (
+type CommandFn = (
   command: string,
   args: { sessionId: string; data: string },
 ) => Promise<unknown>;
 
 export async function sendFinishBranchPrompt(
-  invoke: InvokeFn,
+  command: CommandFn,
   sessionId: string,
   kind: SessionKind,
 ) {
@@ -16,10 +16,10 @@ export async function sendFinishBranchPrompt(
     : "/the-controller-finishing-a-development-branch";
 
   if (isCodex) {
-    await invoke("write_to_pty", { sessionId, data: prompt });
-    await invoke("send_raw_to_pty", { sessionId, data: "\r" });
+    await command("write_to_pty", { sessionId, data: prompt });
+    await command("send_raw_to_pty", { sessionId, data: "\r" });
     return;
   }
 
-  await invoke("write_to_pty", { sessionId, data: `${prompt}\r` });
+  await command("write_to_pty", { sessionId, data: `${prompt}\r` });
 }

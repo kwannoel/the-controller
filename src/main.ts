@@ -1,10 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
 import App from "./App.svelte";
 import "./app.css";
 import { mount } from "svelte";
+import { command } from "$lib/backend";
 
 function logToBackend(message: string) {
-  invoke("log_frontend_error", { message }).catch(() => {});
+  command("log_frontend_error", { message }).catch(() => {});
 }
 
 window.addEventListener("error", (e) => {

@@ -4,6 +4,9 @@ import { vi } from 'vitest';
 vi.mock('$lib/backend', () => ({
   command: vi.fn().mockResolvedValue(undefined),
   listen: vi.fn(() => () => {}),
+  listenAsync: vi.fn(async () => () => {}),
+  openUrl: vi.fn().mockResolvedValue(undefined),
+  isTauri: true,
 }));
 
 if (typeof Range !== 'undefined' && !Range.prototype.getClientRects) {
