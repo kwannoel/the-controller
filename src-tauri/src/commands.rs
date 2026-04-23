@@ -1844,9 +1844,8 @@ pub(crate) fn validate_maintainer_interval(minutes: u64) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn configure_maintainer(
-    state: State<'_, AppState>,
+pub fn configure_maintainer_impl(
+    state: &AppState,
     project_id: String,
     enabled: bool,
     interval_minutes: u64,
@@ -1866,8 +1865,18 @@ pub async fn configure_maintainer(
 }
 
 #[tauri::command]
-pub async fn configure_auto_worker(
+pub async fn configure_maintainer(
     state: State<'_, AppState>,
+    project_id: String,
+    enabled: bool,
+    interval_minutes: u64,
+    github_repo: Option<String>,
+) -> Result<(), String> {
+    configure_maintainer_impl(&state, project_id, enabled, interval_minutes, github_repo)
+}
+
+pub fn configure_auto_worker_impl(
+    state: &AppState,
     project_id: String,
     enabled: bool,
 ) -> Result<(), String> {
@@ -1879,6 +1888,15 @@ pub async fn configure_auto_worker(
     project.auto_worker.enabled = enabled;
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn configure_auto_worker(
+    state: State<'_, AppState>,
+    project_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    configure_auto_worker_impl(&state, project_id, enabled)
 }
 
 #[tauri::command]
@@ -1927,9 +1945,8 @@ fn build_auto_worker_queue(
     queue
 }
 
-#[tauri::command]
-pub async fn get_auto_worker_queue(
-    state: State<'_, AppState>,
+pub async fn get_auto_worker_queue_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Vec<AutoWorkerQueueIssue>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1941,13 +1958,20 @@ pub async fn get_auto_worker_queue(
     };
 
     let active_issue = active_auto_worker_issue(&project);
-    let issues = github::list_github_issues(project.repo_path.clone(), &state).await?;
+    let issues = github::list_github_issues(project.repo_path.clone(), state).await?;
     Ok(build_auto_worker_queue(issues, active_issue))
 }
 
 #[tauri::command]
-pub async fn get_maintainer_status(
+pub async fn get_auto_worker_queue(
     state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<AutoWorkerQueueIssue>, String> {
+    get_auto_worker_queue_impl(&state, project_id).await
+}
+
+pub fn get_maintainer_status_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Option<crate::models::MaintainerRunLog>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1958,8 +1982,15 @@ pub async fn get_maintainer_status(
 }
 
 #[tauri::command]
-pub async fn get_maintainer_history(
+pub async fn get_maintainer_status(
     state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Option<crate::models::MaintainerRunLog>, String> {
+    get_maintainer_status_impl(&state, project_id)
+}
+
+pub fn get_maintainer_history_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Vec<crate::models::MaintainerRunLog>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1967,6 +1998,14 @@ pub async fn get_maintainer_history(
     storage
         .maintainer_run_log_history(project_id, 20)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_maintainer_history(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::MaintainerRunLog>, String> {
+    get_maintainer_history_impl(&state, project_id)
 }
 
 async fn run_maintainer_check_spawn_blocking_with<F>(
@@ -2001,10 +2040,8 @@ async fn run_maintainer_check_spawn_blocking(
     .await
 }
 
-#[tauri::command]
-pub async fn trigger_maintainer_check(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
+pub async fn trigger_maintainer_check_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<crate::models::MaintainerRunLog, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -2052,11 +2089,15 @@ pub async fn trigger_maintainer_check(
 }
 
 #[tauri::command]
-pub async fn clear_maintainer_reports(
+pub async fn trigger_maintainer_check(
     state: State<'_, AppState>,
     _app_handle: AppHandle,
     project_id: String,
-) -> Result<(), String> {
+) -> Result<crate::models::MaintainerRunLog, String> {
+    trigger_maintainer_check_impl(&state, project_id).await
+}
+
+pub fn clear_maintainer_reports_impl(state: &AppState, project_id: String) -> Result<(), String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     storage
@@ -2069,8 +2110,16 @@ pub async fn clear_maintainer_reports(
 }
 
 #[tauri::command]
-pub async fn get_maintainer_issues(
+pub async fn clear_maintainer_reports(
     state: State<'_, AppState>,
+    _app_handle: AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    clear_maintainer_reports_impl(&state, project_id)
+}
+
+pub async fn get_maintainer_issues_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Vec<crate::models::MaintainerIssue>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -2088,8 +2137,15 @@ pub async fn get_maintainer_issues(
 }
 
 #[tauri::command]
-pub async fn get_maintainer_issue_detail(
+pub async fn get_maintainer_issues(
     state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::MaintainerIssue>, String> {
+    get_maintainer_issues_impl(&state, project_id).await
+}
+
+pub async fn get_maintainer_issue_detail_impl(
+    state: &AppState,
     project_id: String,
     issue_number: u32,
 ) -> Result<crate::models::MaintainerIssueDetail, String> {
@@ -2105,6 +2161,15 @@ pub async fn get_maintainer_issue_detail(
         )
     };
     github::get_maintainer_issue_detail(repo_path, github_repo, issue_number).await
+}
+
+#[tauri::command]
+pub async fn get_maintainer_issue_detail(
+    state: State<'_, AppState>,
+    project_id: String,
+    issue_number: u32,
+) -> Result<crate::models::MaintainerIssueDetail, String> {
+    get_maintainer_issue_detail_impl(&state, project_id, issue_number).await
 }
 
 #[tauri::command]

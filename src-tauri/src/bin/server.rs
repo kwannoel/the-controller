@@ -75,6 +75,25 @@ async fn main() {
         .route("/api/list_assigned_issues", post(list_assigned_issues))
         .route("/api/kanban_load_order", post(kanban_load_order))
         .route("/api/kanban_save_order", post(kanban_save_order))
+        .route("/api/configure_maintainer", post(configure_maintainer))
+        .route("/api/configure_auto_worker", post(configure_auto_worker))
+        .route("/api/get_worker_reports", post(get_worker_reports))
+        .route("/api/get_auto_worker_queue", post(get_auto_worker_queue))
+        .route("/api/get_maintainer_status", post(get_maintainer_status))
+        .route("/api/get_maintainer_history", post(get_maintainer_history))
+        .route(
+            "/api/trigger_maintainer_check",
+            post(trigger_maintainer_check),
+        )
+        .route(
+            "/api/clear_maintainer_reports",
+            post(clear_maintainer_reports),
+        )
+        .route("/api/get_maintainer_issues", post(get_maintainer_issues))
+        .route(
+            "/api/get_maintainer_issue_detail",
+            post(get_maintainer_issue_detail),
+        )
         .route("/ws", get(ws_upgrade))
         .fallback(fallback_handler)
         .layer(CorsLayer::permissive())
@@ -1011,6 +1030,159 @@ async fn kanban_save_order(
         })?
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(Value::Null))
+}
+
+// --- Maintainer / auto-worker ---
+
+async fn configure_maintainer(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let enabled = args["enabled"].as_bool().unwrap_or(false);
+    let interval_minutes = args["intervalMinutes"].as_u64().ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            "intervalMinutes required".to_string(),
+        )
+    })?;
+    let github_repo = args["githubRepo"].as_str().map(str::to_string);
+    commands::configure_maintainer_impl(
+        &state.app,
+        project_id,
+        enabled,
+        interval_minutes,
+        github_repo,
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn configure_auto_worker(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let enabled = args["enabled"].as_bool().unwrap_or(false);
+    commands::configure_auto_worker_impl(&state.app, project_id, enabled)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn get_worker_reports(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
+    let repo_path = args["repoPath"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "repoPath required".to_string()))?
+        .to_string();
+    let reports = commands::github::get_worker_reports(repo_path)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(reports).unwrap()))
+}
+
+async fn get_auto_worker_queue(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let queue = commands::get_auto_worker_queue_impl(&state.app, project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(queue).unwrap()))
+}
+
+async fn get_maintainer_status(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let status = commands::get_maintainer_status_impl(&state.app, project_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(status).unwrap()))
+}
+
+async fn get_maintainer_history(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let history = commands::get_maintainer_history_impl(&state.app, project_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(history).unwrap()))
+}
+
+async fn trigger_maintainer_check(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let log = commands::trigger_maintainer_check_impl(&state.app, project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(log).unwrap()))
+}
+
+async fn clear_maintainer_reports(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    commands::clear_maintainer_reports_impl(&state.app, project_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn get_maintainer_issues(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let issues = commands::get_maintainer_issues_impl(&state.app, project_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(issues).unwrap()))
+}
+
+async fn get_maintainer_issue_detail(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let issue_number = args["issueNumber"]
+        .as_u64()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "issueNumber required".to_string()))?
+        as u32;
+    let detail = commands::get_maintainer_issue_detail_impl(&state.app, project_id, issue_number)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(detail).unwrap()))
 }
 
 // --- WebSocket ---
