@@ -900,7 +900,7 @@ pub(crate) fn kill_process_group(pid: u32) {
 /// rebase conflicts are handled by prompting the session's Claude via PTY.
 /// When false (socket path), these conditions return an error immediately —
 /// the caller is expected to commit and resolve conflicts before staging.
-pub(crate) async fn stage_session_core(
+pub async fn stage_session_core(
     state: &AppState,
     project_id: Uuid,
     session_id: Uuid,
@@ -1178,9 +1178,8 @@ pub async fn stage_session(
     Ok(())
 }
 
-#[tauri::command]
-pub fn unstage_session(
-    state: State<AppState>,
+pub fn unstage_session_impl(
+    state: &AppState,
     project_id: String,
     session_id: String,
 ) -> Result<(), String> {
@@ -1200,15 +1199,22 @@ pub fn unstage_session(
 
     let staged = project.staged_sessions.remove(idx);
 
-    // Kill the staged Controller process group
     kill_process_group(staged.pid);
 
-    // Clean up this session's socket
     let socket = crate::status_socket::staged_socket_path(&session_uuid);
     let _ = std::fs::remove_file(&socket);
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn unstage_session(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    unstage_session_impl(&state, project_id, session_id)
 }
 
 pub fn get_repo_head_impl(repo_path: String) -> Result<(String, String), String> {
@@ -1368,11 +1374,7 @@ pub fn close_session(
     close_session_impl(&state, project_id, session_id, delete_worktree)
 }
 
-#[tauri::command]
-pub fn start_claude_login(
-    state: State<AppState>,
-    _app_handle: AppHandle,
-) -> Result<String, String> {
+pub fn start_claude_login_impl(state: &AppState) -> Result<String, String> {
     let session_id = Uuid::new_v4();
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.spawn_command(session_id, "claude", &["login"], state.emitter.clone())?;
@@ -1380,10 +1382,22 @@ pub fn start_claude_login(
 }
 
 #[tauri::command]
-pub fn stop_claude_login(state: State<AppState>, session_id: String) -> Result<(), String> {
+pub fn start_claude_login(
+    state: State<AppState>,
+    _app_handle: AppHandle,
+) -> Result<String, String> {
+    start_claude_login_impl(&state)
+}
+
+pub fn stop_claude_login_impl(state: &AppState, session_id: String) -> Result<(), String> {
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.close_session(id)
+}
+
+#[tauri::command]
+pub fn stop_claude_login(state: State<AppState>, session_id: String) -> Result<(), String> {
+    stop_claude_login_impl(&state, session_id)
 }
 
 #[tauri::command]
@@ -1455,14 +1469,12 @@ pub fn generate_project_names(description: String) -> Result<Vec<String>, String
     config::generate_names_via_cli(&description)
 }
 
-#[tauri::command]
-pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Result<Project, String> {
+pub async fn scaffold_project_impl(state: &AppState, name: String) -> Result<Project, String> {
     validate_project_name(&name)?;
 
     let repo_path = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
-        // Reject duplicate project names.
         if let Ok(inventory) = storage.list_projects() {
             let existing = inventory.projects;
             if existing.iter().any(|p| p.name == name) {
@@ -1497,6 +1509,11 @@ pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Resul
     storage.save_project(&project).map_err(|e| e.to_string())?;
 
     Ok(project)
+}
+
+#[tauri::command]
+pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Result<Project, String> {
+    scaffold_project_impl(&state, name).await
 }
 
 #[tauri::command]

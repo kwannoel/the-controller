@@ -94,6 +94,19 @@ async fn main() {
             "/api/get_maintainer_issue_detail",
             post(get_maintainer_issue_detail),
         )
+        .route(
+            "/api/submit_secure_env_value",
+            post(submit_secure_env_value),
+        )
+        .route(
+            "/api/cancel_secure_env_request",
+            post(cancel_secure_env_request),
+        )
+        .route("/api/start_claude_login", post(start_claude_login))
+        .route("/api/stop_claude_login", post(stop_claude_login))
+        .route("/api/scaffold_project", post(scaffold_project))
+        .route("/api/stage_session", post(stage_session))
+        .route("/api/unstage_session", post(unstage_session))
         .route("/ws", get(ws_upgrade))
         .fallback(fallback_handler)
         .layer(CorsLayer::permissive())
@@ -1183,6 +1196,123 @@ async fn get_maintainer_issue_detail(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(serde_json::to_value(detail).unwrap()))
+}
+
+// --- Secure env / Claude login / scaffold / stage ---
+
+async fn submit_secure_env_value(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let request_id = args["requestId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "requestId required".to_string()))?
+        .to_string();
+    let value = args["value"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "value required".to_string()))?
+        .to_string();
+    let state = state.clone();
+    let status = tokio::task::spawn_blocking(move || {
+        the_controller_lib::secure_env::submit_secure_env_value_status(
+            &state.app,
+            &request_id,
+            &value,
+        )
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Task failed: {}", e),
+        )
+    })?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::String(status)))
+}
+
+async fn cancel_secure_env_request(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let request_id = args["requestId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "requestId required".to_string()))?;
+    the_controller_lib::secure_env::cancel_secure_env_request(&state.app, request_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn start_claude_login(
+    AxumState(state): AxumState<Arc<ServerState>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let session_id = commands::start_claude_login_impl(&state.app)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::String(session_id)))
+}
+
+async fn stop_claude_login(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let session_id = args["sessionId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "sessionId required".to_string()))?
+        .to_string();
+    commands::stop_claude_login_impl(&state.app, session_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn scaffold_project(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let name = args["name"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "name required".to_string()))?
+        .to_string();
+    let project = commands::scaffold_project_impl(&state.app, name)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(serde_json::to_value(project).unwrap()))
+}
+
+async fn stage_session(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?;
+    let session_id = args["sessionId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "sessionId required".to_string()))?;
+    let project_uuid =
+        uuid::Uuid::parse_str(project_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    let session_uuid =
+        uuid::Uuid::parse_str(session_id).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    commands::stage_session_core(&state.app, project_uuid, session_uuid, true)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
+}
+
+async fn unstage_session(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let session_id = args["sessionId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "sessionId required".to_string()))?
+        .to_string();
+    commands::unstage_session_impl(&state.app, project_id, session_id)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    Ok(Json(Value::Null))
 }
 
 // --- WebSocket ---
