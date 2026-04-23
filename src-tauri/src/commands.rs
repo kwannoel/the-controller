@@ -10,9 +10,9 @@ use crate::storage::ProjectInventory;
 use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
-mod daemon;
-mod github;
-mod kanban;
+pub mod daemon;
+pub mod github;
+pub mod kanban;
 mod media;
 
 /// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
@@ -410,9 +410,8 @@ pub async fn connect_session(
     .map_err(|e| format!("Task failed: {}", e))?
 }
 
-#[tauri::command]
-pub fn create_project(
-    state: State<AppState>,
+pub fn create_project_impl(
+    state: &AppState,
     name: String,
     repo_path: String,
 ) -> Result<Project, String> {
@@ -425,7 +424,6 @@ pub fn create_project(
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
-    // Reject duplicate project names.
     if let Ok(inventory) = storage.list_projects() {
         let existing = inventory.projects;
         if existing.iter().any(|p| p.name == name) {
@@ -448,7 +446,6 @@ pub fn create_project(
 
     storage.save_project(&project).map_err(|e| e.to_string())?;
 
-    // If repo doesn't have agents.md, create default one in config dir
     let repo_agents = path.join("agents.md");
     if !repo_agents.exists() {
         storage
@@ -456,7 +453,71 @@ pub fn create_project(
             .map_err(|e| e.to_string())?;
     }
 
-    // If repo has agents.md but no CLAUDE.md, create symlink
+    ensure_claude_md_symlink(path)?;
+
+    Ok(project)
+}
+
+#[tauri::command]
+pub fn create_project(
+    state: State<AppState>,
+    name: String,
+    repo_path: String,
+) -> Result<Project, String> {
+    create_project_impl(&state, name, repo_path)
+}
+
+pub fn load_project_impl(
+    state: &AppState,
+    name: String,
+    repo_path: String,
+) -> Result<Project, String> {
+    validate_project_name(&name)?;
+
+    let path = Path::new(&repo_path);
+    if !path.is_dir() {
+        return Err(format!("repo_path is not a directory: {}", repo_path));
+    }
+
+    let git_dir = path.join(".git");
+    if !git_dir.exists() {
+        return Err(format!("not a git repository: {}", repo_path));
+    }
+
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+
+    if let Ok(inventory) = storage.list_projects() {
+        let existing = inventory.projects;
+        if let Some(project) = existing.iter().find(|p| p.repo_path == repo_path) {
+            return Ok(project.clone());
+        }
+        if existing.iter().any(|p| p.name == name) {
+            return Err(format!("A project named '{}' already exists", name));
+        }
+    }
+
+    let project = Project {
+        id: Uuid::new_v4(),
+        name,
+        repo_path: repo_path.clone(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        archived: false,
+        maintainer: crate::models::MaintainerConfig::default(),
+        auto_worker: crate::models::AutoWorkerConfig::default(),
+        prompts: vec![],
+        sessions: vec![],
+        staged_sessions: vec![],
+    };
+
+    storage.save_project(&project).map_err(|e| e.to_string())?;
+
+    let repo_agents = path.join("agents.md");
+    if !repo_agents.exists() {
+        storage
+            .save_agents_md(project.id, &render_agents_md(&project.name))
+            .map_err(|e| e.to_string())?;
+    }
+
     ensure_claude_md_symlink(path)?;
 
     Ok(project)
@@ -468,60 +529,7 @@ pub fn load_project(
     name: String,
     repo_path: String,
 ) -> Result<Project, String> {
-    validate_project_name(&name)?;
-
-    let path = Path::new(&repo_path);
-    if !path.is_dir() {
-        return Err(format!("repo_path is not a directory: {}", repo_path));
-    }
-
-    // Validate it's a git repo
-    let git_dir = path.join(".git");
-    if !git_dir.exists() {
-        return Err(format!("not a git repository: {}", repo_path));
-    }
-
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
-
-    // Return existing project if one with the same repo_path exists
-    if let Ok(inventory) = storage.list_projects() {
-        let existing = inventory.projects;
-        if let Some(project) = existing.iter().find(|p| p.repo_path == repo_path) {
-            return Ok(project.clone());
-        }
-        // Reject duplicate project names when creating new.
-        if existing.iter().any(|p| p.name == name) {
-            return Err(format!("A project named '{}' already exists", name));
-        }
-    }
-
-    let project = Project {
-        id: Uuid::new_v4(),
-        name,
-        repo_path: repo_path.clone(),
-        created_at: chrono::Utc::now().to_rfc3339(),
-        archived: false,
-        maintainer: crate::models::MaintainerConfig::default(),
-        auto_worker: crate::models::AutoWorkerConfig::default(),
-        prompts: vec![],
-        sessions: vec![],
-        staged_sessions: vec![],
-    };
-
-    storage.save_project(&project).map_err(|e| e.to_string())?;
-
-    // Only create default agents.md if repo doesn't have one
-    let repo_agents = path.join("agents.md");
-    if !repo_agents.exists() {
-        storage
-            .save_agents_md(project.id, &render_agents_md(&project.name))
-            .map_err(|e| e.to_string())?;
-    }
-
-    // If repo has agents.md but no CLAUDE.md, create symlink
-    ensure_claude_md_symlink(path)?;
-
-    Ok(project)
+    load_project_impl(&state, name, repo_path)
 }
 
 #[tauri::command]
@@ -531,9 +539,8 @@ pub fn list_projects(state: State<AppState>) -> Result<ProjectInventory, String>
     Ok(inventory)
 }
 
-#[tauri::command]
-pub fn delete_project(
-    state: State<AppState>,
+pub fn delete_project_impl(
+    state: &AppState,
     project_id: String,
     delete_repo: bool,
 ) -> Result<(), String> {
@@ -542,7 +549,6 @@ pub fn delete_project(
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let project = storage.load_project(id).map_err(|e| e.to_string())?;
 
-    // Close all PTY sessions and clean up worktrees
     {
         let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
         for session in &project.sessions {
@@ -555,10 +561,8 @@ pub fn delete_project(
         }
     }
 
-    // Delete project metadata from ~/.the-controller/projects/{id}/
     storage.delete_project_dir(id).map_err(|e| e.to_string())?;
 
-    // Optionally delete the repo directory
     if delete_repo && Path::new(&project.repo_path).exists() {
         std::fs::remove_dir_all(&project.repo_path)
             .map_err(|e| format!("failed to delete repo: {}", e))?;
@@ -568,7 +572,15 @@ pub fn delete_project(
 }
 
 #[tauri::command]
-pub fn get_agents_md(state: State<AppState>, project_id: String) -> Result<String, String> {
+pub fn delete_project(
+    state: State<AppState>,
+    project_id: String,
+    delete_repo: bool,
+) -> Result<(), String> {
+    delete_project_impl(&state, project_id, delete_repo)
+}
+
+pub fn get_agents_md_impl(state: &AppState, project_id: String) -> Result<String, String> {
     let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let project = storage.load_project(id).map_err(|e| e.to_string())?;
@@ -576,8 +588,12 @@ pub fn get_agents_md(state: State<AppState>, project_id: String) -> Result<Strin
 }
 
 #[tauri::command]
-pub fn update_agents_md(
-    state: State<AppState>,
+pub fn get_agents_md(state: State<AppState>, project_id: String) -> Result<String, String> {
+    get_agents_md_impl(&state, project_id)
+}
+
+pub fn update_agents_md_impl(
+    state: &AppState,
     project_id: String,
     content: String,
 ) -> Result<(), String> {
@@ -589,9 +605,20 @@ pub fn update_agents_md(
 }
 
 #[tauri::command]
-pub fn create_session(
+pub fn update_agents_md(
     state: State<AppState>,
-    _app_handle: AppHandle,
+    project_id: String,
+    content: String,
+) -> Result<(), String> {
+    update_agents_md_impl(&state, project_id, content)
+}
+
+/// Transport-agnostic `create_session` implementation.
+///
+/// Why: both the Tauri command wrapper and the axum server handler share this
+/// body so the web and desktop frontends see identical behavior.
+pub fn create_session_impl(
+    state: &AppState,
     project_id: String,
     kind: Option<String>,
     github_issue: Option<crate::models::GithubIssue>,
@@ -603,7 +630,6 @@ pub fn create_session(
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_id = Uuid::new_v4();
 
-    // Load the project and generate session label
     let (repo_path, label, base_dir, project_name) = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
         let project = storage
@@ -618,10 +644,8 @@ pub fn create_session(
         )
     };
 
-    // Create worktree under ~/.the-controller/worktrees/{project_name}/{label}/
     let worktree_dir = base_dir.join("worktrees").join(&project_name).join(&label);
 
-    // Try to create a worktree; fall back to repo path for repos without commits
     let (session_dir, wt_path, wt_branch) =
         match WorktreeManager::create_worktree(&repo_path, &label, &worktree_dir) {
             Ok(worktree_path) => {
@@ -631,14 +655,10 @@ pub fn create_session(
                     .to_string();
                 (wt_str.clone(), Some(wt_str), Some(label.clone()))
             }
-            Err(e) if e == "unborn_branch" => {
-                // Repo has no commits — use repo path directly, no worktree
-                (repo_path.clone(), None, None)
-            }
+            Err(e) if e == "unborn_branch" => (repo_path.clone(), None, None),
             Err(e) => return Err(e),
         };
 
-    // Build initial prompt: explicit prompt takes priority, then GitHub issue context
     let initial_prompt = initial_prompt.or_else(|| {
         github_issue.as_ref().map(|issue| {
             crate::session_args::build_issue_prompt(
@@ -665,7 +685,7 @@ pub fn create_session(
     };
 
     update_project_with_rollback(
-        &state,
+        state,
         project_uuid,
         |project| {
             project.sessions.push(session_config);
@@ -706,6 +726,26 @@ pub fn create_session(
 }
 
 #[tauri::command]
+pub fn create_session(
+    state: State<AppState>,
+    _app_handle: AppHandle,
+    project_id: String,
+    kind: Option<String>,
+    github_issue: Option<crate::models::GithubIssue>,
+    background: Option<bool>,
+    initial_prompt: Option<String>,
+) -> Result<String, String> {
+    create_session_impl(
+        &state,
+        project_id,
+        kind,
+        github_issue,
+        background,
+        initial_prompt,
+    )
+}
+
+#[tauri::command]
 pub fn write_to_pty(
     state: State<AppState>,
     session_id: String,
@@ -739,9 +779,8 @@ pub fn resize_pty(
     pty_manager.resize_session(id, rows, cols)
 }
 
-#[tauri::command]
-pub fn set_initial_prompt(
-    state: State<AppState>,
+pub fn set_initial_prompt_impl(
+    state: &AppState,
     project_id: String,
     session_id: String,
     prompt: String,
@@ -762,6 +801,16 @@ pub fn set_initial_prompt(
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_initial_prompt(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+    prompt: String,
+) -> Result<(), String> {
+    set_initial_prompt_impl(&state, project_id, session_id, prompt)
 }
 
 #[tauri::command]
@@ -851,7 +900,7 @@ pub(crate) fn kill_process_group(pid: u32) {
 /// rebase conflicts are handled by prompting the session's Claude via PTY.
 /// When false (socket path), these conditions return an error immediately —
 /// the caller is expected to commit and resolve conflicts before staging.
-pub(crate) async fn stage_session_core(
+pub async fn stage_session_core(
     state: &AppState,
     project_id: Uuid,
     session_id: Uuid,
@@ -1129,9 +1178,8 @@ pub async fn stage_session(
     Ok(())
 }
 
-#[tauri::command]
-pub fn unstage_session(
-    state: State<AppState>,
+pub fn unstage_session_impl(
+    state: &AppState,
     project_id: String,
     session_id: String,
 ) -> Result<(), String> {
@@ -1151,10 +1199,8 @@ pub fn unstage_session(
 
     let staged = project.staged_sessions.remove(idx);
 
-    // Kill the staged Controller process group
     kill_process_group(staged.pid);
 
-    // Clean up this session's socket
     let socket = crate::status_socket::staged_socket_path(&session_uuid);
     let _ = std::fs::remove_file(&socket);
 
@@ -1163,7 +1209,15 @@ pub fn unstage_session(
 }
 
 #[tauri::command]
-pub fn get_repo_head(repo_path: String) -> Result<(String, String), String> {
+pub fn unstage_session(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    unstage_session_impl(&state, project_id, session_id)
+}
+
+pub fn get_repo_head_impl(repo_path: String) -> Result<(String, String), String> {
     let repo =
         git2::Repository::open(&repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
 
@@ -1181,8 +1235,12 @@ pub fn get_repo_head(repo_path: String) -> Result<(String, String), String> {
 }
 
 #[tauri::command]
-pub fn save_session_prompt(
-    state: State<AppState>,
+pub fn get_repo_head(repo_path: String) -> Result<(String, String), String> {
+    get_repo_head_impl(repo_path)
+}
+
+pub fn save_session_prompt_impl(
+    state: &AppState,
     project_id: String,
     session_id: String,
 ) -> Result<(), String> {
@@ -1200,7 +1258,6 @@ pub fn save_session_prompt(
         .find(|s| s.id == session_uuid)
         .ok_or_else(|| "Session not found".to_string())?;
 
-    // Build prompt text: use initial_prompt, or derive from github_issue
     let prompt_text = session
         .initial_prompt
         .clone()
@@ -1216,7 +1273,6 @@ pub fn save_session_prompt(
         })
         .ok_or_else(|| "Session has no prompt to save".to_string())?;
 
-    // Auto-generate name: first ~60 chars (safe for multi-byte UTF-8)
     let name = {
         let truncated: String = prompt_text.chars().take(60).collect();
         if truncated.len() < prompt_text.len() {
@@ -1241,8 +1297,16 @@ pub fn save_session_prompt(
 }
 
 #[tauri::command]
-pub fn list_project_prompts(
+pub fn save_session_prompt(
     state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<(), String> {
+    save_session_prompt_impl(&state, project_id, session_id)
+}
+
+pub fn list_project_prompts_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Vec<crate::models::SavedPrompt>, String> {
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1254,8 +1318,15 @@ pub fn list_project_prompts(
 }
 
 #[tauri::command]
-pub fn close_session(
+pub fn list_project_prompts(
     state: State<AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::SavedPrompt>, String> {
+    list_project_prompts_impl(&state, project_id)
+}
+
+pub fn close_session_impl(
+    state: &AppState,
     project_id: String,
     session_id: String,
     delete_worktree: bool,
@@ -1263,13 +1334,11 @@ pub fn close_session(
     let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
 
-    // Try to close the PTY session even if the terminal is already gone.
     {
         let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
         let _ = pty_manager.close_session(session_uuid);
     }
 
-    // Remove session from project
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let mut project = storage
         .load_project(project_uuid)
@@ -1283,7 +1352,6 @@ pub fn close_session(
     project.sessions.retain(|s| s.id != session_uuid);
     storage.save_project(&project).map_err(|e| e.to_string())?;
 
-    // Optionally clean up worktree
     if delete_worktree {
         if let Some(session) = session {
             if let (Some(wt_path), Some(branch)) = (session.worktree_path, session.worktree_branch)
@@ -1297,10 +1365,16 @@ pub fn close_session(
 }
 
 #[tauri::command]
-pub fn start_claude_login(
+pub fn close_session(
     state: State<AppState>,
-    _app_handle: AppHandle,
-) -> Result<String, String> {
+    project_id: String,
+    session_id: String,
+    delete_worktree: bool,
+) -> Result<(), String> {
+    close_session_impl(&state, project_id, session_id, delete_worktree)
+}
+
+pub fn start_claude_login_impl(state: &AppState) -> Result<String, String> {
     let session_id = Uuid::new_v4();
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.spawn_command(session_id, "claude", &["login"], state.emitter.clone())?;
@@ -1308,10 +1382,22 @@ pub fn start_claude_login(
 }
 
 #[tauri::command]
-pub fn stop_claude_login(state: State<AppState>, session_id: String) -> Result<(), String> {
+pub fn start_claude_login(
+    state: State<AppState>,
+    _app_handle: AppHandle,
+) -> Result<String, String> {
+    start_claude_login_impl(&state)
+}
+
+pub fn stop_claude_login_impl(state: &AppState, session_id: String) -> Result<(), String> {
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.close_session(id)
+}
+
+#[tauri::command]
+pub fn stop_claude_login(state: State<AppState>, session_id: String) -> Result<(), String> {
+    stop_claude_login_impl(&state, session_id)
 }
 
 #[tauri::command]
@@ -1328,8 +1414,7 @@ pub fn check_onboarding(state: State<AppState>) -> Result<Option<config::Config>
     Ok(config::load_config(&base_dir))
 }
 
-#[tauri::command]
-pub fn save_onboarding_config(state: State<AppState>, projects_root: String) -> Result<(), String> {
+pub fn save_onboarding_config_impl(state: &AppState, projects_root: String) -> Result<(), String> {
     let path = Path::new(&projects_root);
     if !path.is_dir() {
         return Err(format!(
@@ -1342,6 +1427,11 @@ pub fn save_onboarding_config(state: State<AppState>, projects_root: String) -> 
     let base_dir = storage.base_dir();
     let cfg = config::Config { projects_root };
     config::save_config(&base_dir, &cfg).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_onboarding_config(state: State<AppState>, projects_root: String) -> Result<(), String> {
+    save_onboarding_config_impl(&state, projects_root)
 }
 
 #[tauri::command]
@@ -1361,8 +1451,7 @@ pub fn list_directories_at(path: String) -> Result<Vec<config::DirEntry>, String
     config::list_directories(p).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn list_root_directories(state: State<AppState>) -> Result<Vec<config::DirEntry>, String> {
+pub fn list_root_directories_impl(state: &AppState) -> Result<Vec<config::DirEntry>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let base_dir = storage.base_dir();
     let cfg = config::load_config(&base_dir)
@@ -1371,18 +1460,21 @@ pub fn list_root_directories(state: State<AppState>) -> Result<Vec<config::DirEn
 }
 
 #[tauri::command]
+pub fn list_root_directories(state: State<AppState>) -> Result<Vec<config::DirEntry>, String> {
+    list_root_directories_impl(&state)
+}
+
+#[tauri::command]
 pub fn generate_project_names(description: String) -> Result<Vec<String>, String> {
     config::generate_names_via_cli(&description)
 }
 
-#[tauri::command]
-pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Result<Project, String> {
+pub async fn scaffold_project_impl(state: &AppState, name: String) -> Result<Project, String> {
     validate_project_name(&name)?;
 
     let repo_path = {
         let storage = state.storage.lock().map_err(|e| e.to_string())?;
 
-        // Reject duplicate project names.
         if let Ok(inventory) = storage.list_projects() {
             let existing = inventory.projects;
             if existing.iter().any(|p| p.name == name) {
@@ -1420,11 +1512,16 @@ pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[tauri::command]
+pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Result<Project, String> {
+    scaffold_project_impl(&state, name).await
+}
+
+#[tauri::command]
 pub async fn list_github_issues(
     repo_path: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<crate::models::GithubIssue>, String> {
-    github::list_github_issues(repo_path, state).await
+    github::list_github_issues(repo_path, &state).await
 }
 
 #[tauri::command]
@@ -1456,7 +1553,7 @@ pub async fn create_github_issue(
     title: String,
     body: String,
 ) -> Result<crate::models::GithubIssue, String> {
-    github::create_github_issue(state, repo_path, title, body).await
+    github::create_github_issue(&state, repo_path, title, body).await
 }
 
 #[tauri::command]
@@ -1466,7 +1563,7 @@ pub async fn close_github_issue(
     issue_number: u64,
     comment: String,
 ) -> Result<(), String> {
-    github::close_github_issue(state, repo_path, issue_number, comment).await
+    github::close_github_issue(&state, repo_path, issue_number, comment).await
 }
 
 #[tauri::command]
@@ -1475,7 +1572,7 @@ pub async fn delete_github_issue(
     repo_path: String,
     issue_number: u64,
 ) -> Result<(), String> {
-    github::delete_github_issue(state, repo_path, issue_number).await
+    github::delete_github_issue(&state, repo_path, issue_number).await
 }
 
 #[tauri::command]
@@ -1496,7 +1593,7 @@ pub async fn add_github_label(
     description: Option<String>,
     color: Option<String>,
 ) -> Result<(), String> {
-    github::add_github_label(state, repo_path, issue_number, label, description, color).await
+    github::add_github_label(&state, repo_path, issue_number, label, description, color).await
 }
 
 #[tauri::command]
@@ -1506,7 +1603,7 @@ pub async fn remove_github_label(
     issue_number: u64,
     label: String,
 ) -> Result<(), String> {
-    github::remove_github_label(state, repo_path, issue_number, label).await
+    github::remove_github_label(&state, repo_path, issue_number, label).await
 }
 
 #[tauri::command]
@@ -1623,9 +1720,8 @@ pub async fn merge_session_branch(
     ))
 }
 
-#[tauri::command]
-pub fn get_session_commits(
-    state: State<AppState>,
+pub fn get_session_commits_impl(
+    state: &AppState,
     project_id: String,
     session_id: String,
 ) -> Result<Vec<CommitInfo>, String> {
@@ -1648,10 +1744,8 @@ pub fn get_session_commits(
         None => return Ok(session.done_commits.clone()),
     };
 
-    // Discover new commits on the branch that aren't on main
     let new_commits = discover_branch_commits(&worktree_path).unwrap_or_default();
 
-    // Merge with previously stored commits (new first, then stored, dedup by hash)
     let mut seen = std::collections::HashSet::new();
     let mut all_commits = Vec::new();
     for c in new_commits.iter().chain(session.done_commits.iter()) {
@@ -1660,7 +1754,6 @@ pub fn get_session_commits(
         }
     }
 
-    // Persist if we found new commits
     if all_commits.len() > session.done_commits.len() {
         let mut project = project.clone();
         if let Some(s) = project.sessions.iter_mut().find(|s| s.id == session_uuid) {
@@ -1673,8 +1766,16 @@ pub fn get_session_commits(
 }
 
 #[tauri::command]
-pub fn get_session_token_usage(
+pub fn get_session_commits(
     state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<Vec<CommitInfo>, String> {
+    get_session_commits_impl(&state, project_id, session_id)
+}
+
+pub fn get_session_token_usage_impl(
+    state: &AppState,
     project_id: String,
     session_id: String,
 ) -> Result<Vec<TokenDataPoint>, String> {
@@ -1698,6 +1799,15 @@ pub fn get_session_token_usage(
         .unwrap_or(&project.repo_path);
 
     token_usage::get_token_usage(working_dir, &session.kind)
+}
+
+#[tauri::command]
+pub fn get_session_token_usage(
+    state: State<AppState>,
+    project_id: String,
+    session_id: String,
+) -> Result<Vec<TokenDataPoint>, String> {
+    get_session_token_usage_impl(&state, project_id, session_id)
 }
 
 /// Walk commits on the worktree branch that aren't on the main branch.
@@ -1751,9 +1861,8 @@ pub(crate) fn validate_maintainer_interval(minutes: u64) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn configure_maintainer(
-    state: State<'_, AppState>,
+pub fn configure_maintainer_impl(
+    state: &AppState,
     project_id: String,
     enabled: bool,
     interval_minutes: u64,
@@ -1773,8 +1882,18 @@ pub async fn configure_maintainer(
 }
 
 #[tauri::command]
-pub async fn configure_auto_worker(
+pub async fn configure_maintainer(
     state: State<'_, AppState>,
+    project_id: String,
+    enabled: bool,
+    interval_minutes: u64,
+    github_repo: Option<String>,
+) -> Result<(), String> {
+    configure_maintainer_impl(&state, project_id, enabled, interval_minutes, github_repo)
+}
+
+pub fn configure_auto_worker_impl(
+    state: &AppState,
     project_id: String,
     enabled: bool,
 ) -> Result<(), String> {
@@ -1786,6 +1905,15 @@ pub async fn configure_auto_worker(
     project.auto_worker.enabled = enabled;
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn configure_auto_worker(
+    state: State<'_, AppState>,
+    project_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    configure_auto_worker_impl(&state, project_id, enabled)
 }
 
 #[tauri::command]
@@ -1834,9 +1962,8 @@ fn build_auto_worker_queue(
     queue
 }
 
-#[tauri::command]
-pub async fn get_auto_worker_queue(
-    state: State<'_, AppState>,
+pub async fn get_auto_worker_queue_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Vec<AutoWorkerQueueIssue>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1853,8 +1980,15 @@ pub async fn get_auto_worker_queue(
 }
 
 #[tauri::command]
-pub async fn get_maintainer_status(
+pub async fn get_auto_worker_queue(
     state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<AutoWorkerQueueIssue>, String> {
+    get_auto_worker_queue_impl(&state, project_id).await
+}
+
+pub fn get_maintainer_status_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Option<crate::models::MaintainerRunLog>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1865,8 +1999,15 @@ pub async fn get_maintainer_status(
 }
 
 #[tauri::command]
-pub async fn get_maintainer_history(
+pub async fn get_maintainer_status(
     state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Option<crate::models::MaintainerRunLog>, String> {
+    get_maintainer_status_impl(&state, project_id)
+}
+
+pub fn get_maintainer_history_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Vec<crate::models::MaintainerRunLog>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1874,6 +2015,14 @@ pub async fn get_maintainer_history(
     storage
         .maintainer_run_log_history(project_id, 20)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_maintainer_history(
+    state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::MaintainerRunLog>, String> {
+    get_maintainer_history_impl(&state, project_id)
 }
 
 async fn run_maintainer_check_spawn_blocking_with<F>(
@@ -1908,10 +2057,8 @@ async fn run_maintainer_check_spawn_blocking(
     .await
 }
 
-#[tauri::command]
-pub async fn trigger_maintainer_check(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
+pub async fn trigger_maintainer_check_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<crate::models::MaintainerRunLog, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1959,11 +2106,15 @@ pub async fn trigger_maintainer_check(
 }
 
 #[tauri::command]
-pub async fn clear_maintainer_reports(
+pub async fn trigger_maintainer_check(
     state: State<'_, AppState>,
     _app_handle: AppHandle,
     project_id: String,
-) -> Result<(), String> {
+) -> Result<crate::models::MaintainerRunLog, String> {
+    trigger_maintainer_check_impl(&state, project_id).await
+}
+
+pub fn clear_maintainer_reports_impl(state: &AppState, project_id: String) -> Result<(), String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     storage
@@ -1976,8 +2127,16 @@ pub async fn clear_maintainer_reports(
 }
 
 #[tauri::command]
-pub async fn get_maintainer_issues(
+pub async fn clear_maintainer_reports(
     state: State<'_, AppState>,
+    _app_handle: AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    clear_maintainer_reports_impl(&state, project_id)
+}
+
+pub async fn get_maintainer_issues_impl(
+    state: &AppState,
     project_id: String,
 ) -> Result<Vec<crate::models::MaintainerIssue>, String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
@@ -1995,8 +2154,15 @@ pub async fn get_maintainer_issues(
 }
 
 #[tauri::command]
-pub async fn get_maintainer_issue_detail(
+pub async fn get_maintainer_issues(
     state: State<'_, AppState>,
+    project_id: String,
+) -> Result<Vec<crate::models::MaintainerIssue>, String> {
+    get_maintainer_issues_impl(&state, project_id).await
+}
+
+pub async fn get_maintainer_issue_detail_impl(
+    state: &AppState,
     project_id: String,
     issue_number: u32,
 ) -> Result<crate::models::MaintainerIssueDetail, String> {
@@ -2012,6 +2178,15 @@ pub async fn get_maintainer_issue_detail(
         )
     };
     github::get_maintainer_issue_detail(repo_path, github_repo, issue_number).await
+}
+
+#[tauri::command]
+pub async fn get_maintainer_issue_detail(
+    state: State<'_, AppState>,
+    project_id: String,
+    issue_number: u32,
+) -> Result<crate::models::MaintainerIssueDetail, String> {
+    get_maintainer_issue_detail_impl(&state, project_id, issue_number).await
 }
 
 #[tauri::command]

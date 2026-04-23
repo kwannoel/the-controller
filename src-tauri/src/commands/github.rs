@@ -1,5 +1,3 @@
-use tauri::State;
-
 use crate::models::{AssignedIssue, GithubIssue};
 use crate::state::AppState;
 
@@ -94,9 +92,9 @@ async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, Stri
     Ok(issues)
 }
 
-pub(crate) async fn list_github_issues(
+pub async fn list_github_issues(
     repo_path: String,
-    state: State<'_, AppState>,
+    state: &AppState,
 ) -> Result<Vec<GithubIssue>, String> {
     // Check cache (lock is dropped at end of block before any .await)
     let cache_result = {
@@ -142,10 +140,7 @@ pub(crate) async fn list_github_issues(
     Ok(issues)
 }
 
-pub(crate) async fn generate_issue_body(
-    repo_path: String,
-    title: String,
-) -> Result<String, String> {
+pub async fn generate_issue_body(repo_path: String, title: String) -> Result<String, String> {
     let prompt = format!(
         "Write a concise GitHub issue body for an issue titled: \"{}\". \
          Include a Summary section and a Details section. \
@@ -167,8 +162,8 @@ pub(crate) async fn generate_issue_body(
     }
 }
 
-pub(crate) async fn create_github_issue(
-    state: State<'_, AppState>,
+pub async fn create_github_issue(
+    state: &AppState,
     repo_path: String,
     title: String,
     body: String,
@@ -208,7 +203,7 @@ pub(crate) async fn create_github_issue(
     Ok(issue)
 }
 
-pub(crate) async fn post_github_comment(
+pub async fn post_github_comment(
     repo_path: String,
     issue_number: u64,
     body: String,
@@ -237,8 +232,8 @@ pub(crate) async fn post_github_comment(
     Ok(())
 }
 
-pub(crate) async fn add_github_label(
-    state: State<'_, AppState>,
+pub async fn add_github_label(
+    state: &AppState,
     repo_path: String,
     issue_number: u64,
     label: String,
@@ -294,8 +289,8 @@ pub(crate) async fn add_github_label(
     Ok(())
 }
 
-pub(crate) async fn remove_github_label(
-    state: State<'_, AppState>,
+pub async fn remove_github_label(
+    state: &AppState,
     repo_path: String,
     issue_number: u64,
     label: String,
@@ -328,8 +323,8 @@ pub(crate) async fn remove_github_label(
     Ok(())
 }
 
-pub(crate) async fn close_github_issue(
-    state: State<'_, AppState>,
+pub async fn close_github_issue(
+    state: &AppState,
     repo_path: String,
     issue_number: u64,
     comment: String,
@@ -368,8 +363,8 @@ pub(crate) async fn close_github_issue(
     Ok(())
 }
 
-pub(crate) async fn delete_github_issue(
-    state: State<'_, AppState>,
+pub async fn delete_github_issue(
+    state: &AppState,
     repo_path: String,
     issue_number: u64,
 ) -> Result<(), String> {
@@ -400,7 +395,7 @@ pub(crate) async fn delete_github_issue(
     Ok(())
 }
 
-pub(crate) async fn get_maintainer_issues(
+pub async fn get_maintainer_issues(
     repo_path: String,
     github_repo: Option<String>,
 ) -> Result<Vec<crate::models::MaintainerIssue>, String> {
@@ -436,7 +431,7 @@ pub(crate) async fn get_maintainer_issues(
     serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
 }
 
-pub(crate) async fn get_maintainer_issue_detail(
+pub async fn get_maintainer_issue_detail(
     repo_path: String,
     github_repo: Option<String>,
     issue_number: u32,
@@ -468,7 +463,7 @@ pub(crate) async fn get_maintainer_issue_detail(
     serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
 }
 
-pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue>, String> {
+pub async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue>, String> {
     let nwo = extract_github_repo_async(repo_path).await?;
 
     let output = tokio::process::Command::new("gh")
@@ -503,7 +498,7 @@ pub(crate) async fn list_assigned_issues(repo_path: String) -> Result<Vec<Assign
     Ok(assigned)
 }
 
-pub(crate) async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerReport>, String> {
+pub async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerReport>, String> {
     let nwo = extract_github_repo_async(repo_path).await?;
 
     let output = tokio::process::Command::new("gh")

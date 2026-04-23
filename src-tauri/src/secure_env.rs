@@ -179,7 +179,7 @@ pub(crate) fn begin_secure_env_request_with_response(
 }
 
 #[allow(dead_code)]
-pub(crate) fn cancel_secure_env_request(state: &AppState, request_id: &str) -> Result<(), String> {
+pub fn cancel_secure_env_request(state: &AppState, request_id: &str) -> Result<(), String> {
     let mut active = state
         .secure_env_request
         .lock()
@@ -275,6 +275,21 @@ pub(crate) fn submit_secure_env_value(
         response_tx,
         update_env_file(&pending.env_path, &pending.key, value),
     )
+}
+
+/// Transport-agnostic submit that produces the `"created"`/`"updated"` string
+/// the UI expects, without exposing the internal `EnvWriteResult` type.
+pub fn submit_secure_env_value_status(
+    state: &AppState,
+    request_id: &str,
+    value: &str,
+) -> Result<String, String> {
+    let result = submit_secure_env_value(state, request_id, value)?;
+    Ok(if result.created {
+        "created".to_string()
+    } else {
+        "updated".to_string()
+    })
 }
 
 #[allow(dead_code)]

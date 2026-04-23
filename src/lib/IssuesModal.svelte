@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { command } from "$lib/backend";
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { command, openUrl } from "$lib/backend";
   import type { GithubIssue } from "./stores";
 
   type Priority = "high" | "low";

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
-fn order_file_in(dir: &Path) -> PathBuf {
+pub fn order_file_in(dir: &Path) -> PathBuf {
     dir.join("kanban-order.json")
 }
 
@@ -18,7 +18,7 @@ fn order_file(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(order_file_in(&dir))
 }
 
-fn load_order_from(path: &Path) -> Result<Value, String> {
+pub fn load_order_from(path: &Path) -> Result<Value, String> {
     if !path.exists() {
         return Ok(Value::Object(Default::default()));
     }
@@ -30,7 +30,7 @@ fn load_order_from(path: &Path) -> Result<Value, String> {
     serde_json::from_slice(&bytes).map_err(|e| format!("failed to parse kanban-order.json: {e}"))
 }
 
-fn save_order_to(path: &Path, order: &Value) -> Result<(), String> {
+pub fn save_order_to(path: &Path, order: &Value) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "invalid order file path".to_string())?;

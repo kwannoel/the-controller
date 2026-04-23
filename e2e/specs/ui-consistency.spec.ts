@@ -8,7 +8,7 @@ import { test, expect, type Page } from "@playwright/test";
 test.describe("Layout integrity", () => {
   test("app loads with sidebar and main content area", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle("The Controller");
+    await expect(page).toHaveTitle(/^The Controller/);
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(".terminal-area")).toBeVisible();
 
@@ -168,19 +168,15 @@ test.describe("Sidebar header updates per mode", () => {
     if (pickerVisible) {
       await expect(picker.locator(".picker-title")).toHaveText("Switch Workspace");
 
-      // Verify all 6 modes are listed
       const options = picker.locator(".picker-option");
-      await expect(options).toHaveCount(6);
+      await expect(options).toHaveCount(4);
 
-      // Check mode labels
       const labels = await options.locator(".option-label").allTextContents();
       expect(labels).toEqual([
         "Development",
         "Agents",
-        "Architecture",
-        "Notes",
-        "Infrastructure",
-        "Voice",
+        "Kanban",
+        "Chat",
       ]);
 
       // Current mode should have "current" badge
@@ -268,131 +264,6 @@ test.describe("No overlapping or clipped elements", () => {
       getComputedStyle(el).borderBottomStyle
     );
     expect(headerBorderBottom).toBe("solid");
-  });
-});
-
-test.describe("Architecture mode empty state", () => {
-  test("architecture view shows empty state with generate hint", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
-
-    // Switch to architecture mode
-    await page.evaluate(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" }));
-    });
-
-    const picker = page.locator(".picker");
-    const pickerVisible = await picker.isVisible({ timeout: 2_000 }).catch(() => false);
-
-    if (pickerVisible) {
-      // Press 'r' for architecture
-      await page.keyboard.press("r");
-
-      // Wait for architecture view to render
-      const archExplorer = page.locator(".architecture-explorer");
-      const visible = await archExplorer.isVisible({ timeout: 3_000 }).catch(() => false);
-
-      if (visible) {
-        // Check diagram pane exists
-        await expect(page.locator(".diagram-pane")).toBeVisible();
-        // Check inspector rail exists
-        await expect(page.locator(".inspector-rail")).toBeVisible();
-        // Check generate button exists
-        await expect(page.locator(".generate-action")).toBeVisible();
-
-        // Switch back to development
-        await page.evaluate(() => {
-          window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" }));
-        });
-        const pickerAgain = page.locator(".picker");
-        if (await pickerAgain.isVisible({ timeout: 1_000 }).catch(() => false)) {
-          await page.keyboard.press("d");
-        }
-      }
-    }
-  });
-});
-
-test.describe("Infrastructure mode empty state", () => {
-  test("infrastructure view shows empty state", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
-
-    // Switch to infrastructure mode
-    await page.evaluate(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" }));
-    });
-
-    const picker = page.locator(".picker");
-    const pickerVisible = await picker.isVisible({ timeout: 2_000 }).catch(() => false);
-
-    if (pickerVisible) {
-      await page.keyboard.press("i");
-
-      // Infrastructure empty state (two-line pattern)
-      const emptyTitle = page.locator(".empty-state .empty-title");
-      const visible = await emptyTitle.isVisible({ timeout: 3_000 }).catch(() => false);
-
-      if (visible) {
-        await expect(emptyTitle).toHaveText("No services deployed yet");
-        await expect(page.locator(".empty-state .empty-hint")).toContainText(
-          "press"
-        );
-      }
-
-      // Switch back
-      await page.evaluate(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" }));
-      });
-      if (await page.locator(".picker").isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await page.keyboard.press("d");
-      }
-    }
-  });
-});
-
-test.describe("Notes mode", () => {
-  test("notes mode shows Notes header and editor area", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
-
-    // Switch to notes mode
-    await page.evaluate(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" }));
-    });
-
-    const picker = page.locator(".picker");
-    const pickerVisible = await picker.isVisible({ timeout: 2_000 }).catch(() => false);
-
-    if (pickerVisible) {
-      await page.keyboard.press("n");
-
-      // Sidebar header should now say "Notes"
-      await expect(page.locator(".sidebar-header h2")).toHaveText("Notes", {
-        timeout: 3_000,
-      });
-
-      // Notes editor should be visible
-      const notesEditor = page.locator(".notes-editor");
-      const visible = await notesEditor.isVisible({ timeout: 3_000 }).catch(() => false);
-
-      if (visible) {
-        // Should show empty state if no note selected
-        const emptyTitle = notesEditor.locator(".empty-title");
-        const hasEmpty = await emptyTitle.isVisible().catch(() => false);
-        if (hasEmpty) {
-          await expect(emptyTitle).toHaveText("No note selected");
-        }
-      }
-
-      // Switch back
-      await page.evaluate(() => {
-        window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" }));
-      });
-      if (await page.locator(".picker").isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await page.keyboard.press("d");
-      }
-    }
   });
 });
 

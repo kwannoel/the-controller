@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { openUrl } from "@tauri-apps/plugin-opener";
+  import { openUrl } from "$lib/backend";
   import type { GithubIssue } from "../stores";
   import { isStatusLabel } from "./columns";
 

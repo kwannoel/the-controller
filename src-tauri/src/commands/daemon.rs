@@ -17,7 +17,7 @@ pub(crate) fn read_token_from(path: &std::path::Path) -> Result<String, String> 
     Ok(s.trim().to_string())
 }
 
-pub(crate) async fn read_daemon_token() -> Result<String, String> {
+pub async fn read_daemon_token() -> Result<String, String> {
     let path = daemon_token_path();
     tokio::task::spawn_blocking(move || read_token_from(&path))
         .await
