@@ -92,12 +92,18 @@ fn parse_env_output(data: &[u8]) -> HashMap<String, String> {
             continue;
         }
         if let Some((key, val)) = line.split_once('=') {
-            if is_valid_env_name(key) && !SKIP_VARS.contains(&key) {
+            if is_valid_env_name(key) {
+                // New key starts — flush whatever we were accumulating.
                 if !current_key.is_empty() {
                     env.insert(
                         std::mem::take(&mut current_key),
                         std::mem::take(&mut current_val),
                     );
+                }
+                // Don't record skipped vars, but do open a fresh (empty) slot
+                // so their trailing lines aren't mistaken for continuations.
+                if SKIP_VARS.contains(&key) {
+                    continue;
                 }
                 current_key = key.to_string();
                 current_val = val.to_string();
@@ -169,6 +175,18 @@ mod tests {
         assert_eq!(env.get("NORMAL").unwrap(), "abc");
         assert_eq!(env.get("MULTI").unwrap(), "line1\nline2\nline3");
         assert_eq!(env.get("AFTER").unwrap(), "ok");
+    }
+
+    #[test]
+    fn skipped_var_does_not_bleed_into_previous_value() {
+        // Reproduces the bug where `PORT=3001\n_=/usr/bin/env` got parsed as
+        // PORT="3001\n_=/usr/bin/env" because SKIP_VARS lines were treated as
+        // continuations of the previous key.
+        let data = with_marker("PORT=3001\n_=/usr/bin/env\nHOME=/Users/test\n");
+        let env = parse_env_output(&data);
+        assert_eq!(env.get("PORT").unwrap(), "3001");
+        assert!(!env.contains_key("_"));
+        assert_eq!(env.get("HOME").unwrap(), "/Users/test");
     }
 
     #[test]
