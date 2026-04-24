@@ -18,12 +18,12 @@ echo "[pre-commit] pnpm test"
 pnpm test
 
 echo "[pre-commit] cargo +stable fmt --check"
-(cd src-tauri && cargo +stable fmt --check)
+(cd server && cargo +stable fmt --check)
 
 echo "[pre-commit] cargo +stable clippy -- -D warnings"
-(cd src-tauri && cargo +stable clippy -- -D warnings)
+(cd server && cargo +stable clippy -- -D warnings)
 
 echo "[pre-commit] cargo +stable test"
 # --test-threads=1 works around a shared-env-var flake between scaffold
 # tests and worktree tests; see followup issue.
-(cd src-tauri && cargo +stable test -- --test-threads=1)
+(cd server && cargo +stable test -- --test-threads=1)

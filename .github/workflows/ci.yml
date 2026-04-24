@@ -37,13 +37,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - run: cd src-tauri && cargo fmt --check
-      - run: cd src-tauri && cargo clippy -- -D warnings
+          workspaces: server
+      - run: cd server && cargo fmt --check
+      - run: cd server && cargo clippy -- -D warnings
 
   rust-test:
     runs-on: ubuntu-latest
@@ -60,9 +56,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      - run: cd src-tauri && cargo test
+          workspaces: server
+      - run: cd server && cargo test

@@ -10,20 +10,33 @@ use axum::{
 };
 use serde_json::Value;
 use std::sync::Arc;
-use the_controller_lib::{commands, config, emitter::WsBroadcastEmitter, state::AppState};
+use the_controller_lib::{
+    auto_worker::AutoWorkerScheduler, cli_install, commands, config, emitter::WsBroadcastEmitter,
+    maintainer::MaintainerScheduler, shell_env, skills, state::AppState, status_socket,
+};
 
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 
 struct ServerState {
-    app: AppState,
+    app: Arc<AppState>,
     ws_tx: broadcast::Sender<String>,
 }
 
 #[tokio::main]
 async fn main() {
+    // Inherit the user's shell env (e.g. vars from .zshrc) before spawning
+    // threads so PTY sessions and tmux inherit them.
+    shell_env::inherit_shell_env();
+
     let (emitter, ws_tx) = WsBroadcastEmitter::new();
-    let app_state = AppState::new(emitter).expect("Failed to initialize app state");
+    let app_state = Arc::new(AppState::new(emitter).expect("Failed to initialize app state"));
+
+    cli_install::install_controller_cli();
+    skills::sync_skills();
+    status_socket::start_listener(app_state.clone());
+    MaintainerScheduler::start(app_state.clone());
+    AutoWorkerScheduler::start(app_state.clone());
 
     let state = Arc::new(ServerState {
         app: app_state,

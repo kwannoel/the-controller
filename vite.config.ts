@@ -7,9 +7,10 @@ import { execSync } from "child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // @ts-expect-error process is a nodejs global
-const host = process.env.TAURI_DEV_HOST;
+const host = process.env.DEV_HOST;
 // @ts-expect-error process is a nodejs global
 const port = parseInt(process.env.DEV_PORT || "1420", 10);
+// @ts-expect-error process is a nodejs global
 const axumPort = process.env.AXUM_PORT || "3001";
 
 function git(cmd: string): string {
@@ -36,11 +37,7 @@ export default defineConfig(async () => ({
     __DEV_PORT__: JSON.stringify(port),
   },
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port,
     strictPort: true,
@@ -53,8 +50,7 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      ignored: ["**/server/**"],
     },
     proxy: {
       "/api": `http://localhost:${axumPort}`,

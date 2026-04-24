@@ -14,6 +14,5 @@ describe("CI workflow", () => {
     expect(workflow).toMatch(/cargo fmt --check/);
     expect(workflow).toMatch(/cargo clippy -- -D warnings/);
     expect(workflow).toMatch(/cargo test/);
-    expect(workflow).toMatch(/apt-get install -y[\s\S]*libasound2-dev/);
   });
 });

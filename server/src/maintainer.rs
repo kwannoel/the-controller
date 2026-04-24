@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use serde::Deserialize;
-use tauri::{AppHandle, Manager};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::labels;
@@ -135,17 +135,12 @@ pub struct MaintainerScheduler;
 impl MaintainerScheduler {
     /// Start the scheduler loop in a background thread.
     /// Checks every 60 seconds which projects are due for a health check.
-    pub fn start(app_handle: AppHandle) {
+    pub fn start(state: Arc<AppState>) {
         std::thread::spawn(move || {
             let mut last_run: HashMap<Uuid, Instant> = HashMap::new();
 
             loop {
                 std::thread::sleep(Duration::from_secs(60));
-
-                let state = match app_handle.try_state::<AppState>() {
-                    Some(s) => s,
-                    None => continue,
-                };
 
                 let projects = {
                     let storage = match state.storage.lock() {

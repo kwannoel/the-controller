@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
-use tauri::{AppHandle, Manager};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::labels;
@@ -137,14 +137,9 @@ impl AutoWorkerScheduler {
     /// is orphaned from a previous run and must be cleaned up so the issue
     /// becomes eligible again.
     fn cleanup_stale_labels(
-        app_handle: &AppHandle,
+        state: &Arc<AppState>,
         protected_issues: &HashMap<String, HashSet<u64>>,
     ) {
-        let state = match app_handle.try_state::<AppState>() {
-            Some(s) => s,
-            None => return,
-        };
-
         let projects = {
             let storage = match state.storage.lock() {
                 Ok(s) => s,
@@ -179,7 +174,7 @@ impl AutoWorkerScheduler {
                         issue.number
                     );
                     let _ = remove_label_sync(
-                        state.inner(),
+                        state,
                         &project.repo_path,
                         issue.number,
                         LABEL_IN_PROGRESS,
@@ -189,9 +184,9 @@ impl AutoWorkerScheduler {
         }
     }
 
-    pub fn start(app_handle: AppHandle) {
+    pub fn start(state: Arc<AppState>) {
         std::thread::spawn(move || {
-            let mut active_sessions = Self::restore_startup_state(&app_handle);
+            let mut active_sessions = Self::restore_startup_state(&state);
 
             loop {
                 std::thread::sleep(Duration::from_secs(POLL_INTERVAL_SECS));
@@ -206,11 +201,6 @@ impl AutoWorkerScheduler {
                         }
                     }
                 }
-
-                let state = match app_handle.try_state::<AppState>() {
-                    Some(s) => s,
-                    None => continue,
-                };
 
                 // 1. Check timed-out sessions
                 let timed_out: Vec<Uuid> = active_sessions
@@ -296,7 +286,7 @@ impl AutoWorkerScheduler {
                             session.issue_number
                         );
                         let (issue_number, issue_title) = session_issue_context(&session);
-                        mark_issue_finished(state.inner(), &session);
+                        mark_issue_finished(&state, &session);
                         cleanup_session(&state, &session);
                         emit_status(
                             &state,
@@ -351,7 +341,7 @@ impl AutoWorkerScheduler {
                     match spawn_auto_worker_session(&state, project, &eligible) {
                         Ok(session_id) => {
                             apply_worker_label_plan_sync(
-                                state.inner(),
+                                &state,
                                 &project.repo_path,
                                 eligible.number,
                                 &worker_claim_label_plan(),
@@ -391,12 +381,7 @@ impl AutoWorkerScheduler {
         });
     }
 
-    fn restore_startup_state(app_handle: &AppHandle) -> HashMap<Uuid, ActiveSession> {
-        let state = match app_handle.try_state::<AppState>() {
-            Some(s) => s,
-            None => return HashMap::new(),
-        };
-
+    fn restore_startup_state(state: &Arc<AppState>) -> HashMap<Uuid, ActiveSession> {
         let projects = {
             let storage = match state.storage.lock() {
                 Ok(s) => s,
@@ -481,10 +466,10 @@ impl AutoWorkerScheduler {
         let finalized = finalize_startup_restoration(reconciliation, &attached_session_ids);
         let protected_issues = protected_issue_numbers_by_repo(&finalized.restore);
 
-        Self::cleanup_stale_labels(app_handle, &protected_issues);
+        Self::cleanup_stale_labels(state, &protected_issues);
 
         for candidate in &finalized.cleanup {
-            cleanup_startup_worker(&state, candidate, &protected_issues);
+            cleanup_startup_worker(state, candidate, &protected_issues);
         }
 
         active_sessions

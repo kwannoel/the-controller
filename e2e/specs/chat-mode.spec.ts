@@ -14,13 +14,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 //          is started, retrying transitions out of the empty state.
 //
 // NOTE: The daemon-reachable leg of this test is skipped by default because
-// it requires both (a) the daemon & fake_agent binaries to be built at the
-// canonical paths below, and (b) the Axum test server (src-tauri/bin/server)
-// to expose `/api/read_daemon_token`. As of Task 21 the Axum server does not
-// expose that route, so the browser harness cannot load the daemon token even
-// if the daemon is running. Full end-to-end validation requires running under
-// Tauri (where `read_daemon_token` is a real Tauri command). See Task 21
-// follow-ups in docs/plans/chat-mode.md.
+// it requires the daemon & fake_agent binaries to be built at the canonical
+// paths below. The axum server (server/src/main.rs) exposes
+// `/api/read_daemon_token` so the browser harness can load the daemon token
+// when the daemon is running.
 
 const DAEMON_REPO = "/Users/noelkwan/projects/the-controller-daemon";
 const DAEMON_BIN = `${DAEMON_REPO}/target/release/the-controller-daemon`;
