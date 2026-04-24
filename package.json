@@ -1,14 +1,13 @@
 {
   "name": "the-controller",
   "version": "0.5.0",
-  "description": "A Tauri desktop app for managing multiple Claude Code sessions",
+  "description": "A web app for managing multiple Claude Code sessions",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "tauri": "tauri",
     "test": "vitest run",
     "test:e2e": "npx playwright test --project=e2e",
     "demo": "npx playwright test --project=demo",
@@ -25,9 +24,6 @@
     "@fontsource/geist-mono": "^5.2.7",
     "@fontsource/geist-sans": "^5.2.5",
     "@replit/codemirror-vim": "^6.3.0",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
-    "@tauri-apps/plugin-opener": "^2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
@@ -42,7 +38,6 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
-    "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.3.1",
     "@testing-library/user-event": "^14.6.1",

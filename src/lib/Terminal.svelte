@@ -4,7 +4,7 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
-  import { command, isTauri, listen, openUrl } from "$lib/backend";
+  import { command, listen, openUrl } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
@@ -26,7 +26,6 @@
   let mutationObserver: MutationObserver | undefined;
   let unlistenOutput: (() => void) | undefined;
   let unlistenStatus: (() => void) | undefined;
-  let unlistenDragDrop: (() => void) | undefined;
   let unlistenDomDrop: (() => void) | undefined;
 
   // Gate: suppress onData forwarding during initialization to prevent
@@ -85,14 +84,6 @@
     });
   }
 
-  const IMAGE_EXTENSIONS = new Set([
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
-  ]);
-
-  function isImageFile(path: string): boolean {
-    const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
-    return IMAGE_EXTENSIONS.has(ext);
-  }
 
   onMount(async () => {
     if (!containerEl) return;
@@ -241,24 +232,10 @@
       }
     });
 
-    // Listen for drag-and-drop file events (from Finder).
-    // Gate on active session — this is a window-level event so all
-    // mounted Terminal instances receive it; only the active one should act.
-    if (isTauri) {
-      unlistenDragDrop = listen<{ paths: string[] }>("tauri://drag-drop", async (payload) => {
-        if (get(activeSessionId) !== sessionId) return;
-
-        const imagePath = payload.paths.find(isImageFile);
-        if (imagePath) {
-          try {
-            await command("copy_image_file_to_clipboard", { path: imagePath });
-            await writeToPty("\x1b[200~\x1b[201~");
-          } catch (err) {
-            console.error("Failed to handle dropped image:", err);
-          }
-        }
-      });
-    } else if (containerEl) {
+    // Drag-and-drop image files onto the terminal: copy to clipboard so
+    // Claude Code can read it via its clipboard-image handler, then send the
+    // empty bracket-paste to trigger the reader.
+    if (containerEl) {
       const handleDragOver = (e: DragEvent) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
@@ -377,7 +354,6 @@
   onDestroy(() => {
     unlistenOutput?.();
     unlistenStatus?.();
-    unlistenDragDrop?.();
     unlistenDomDrop?.();
     resizeObserver?.disconnect();
     mutationObserver?.disconnect();

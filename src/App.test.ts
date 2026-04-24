@@ -18,16 +18,13 @@ import {
 } from "./lib/stores";
 
 const mocks = vi.hoisted(() => ({
-  openPath: vi.fn(),
-  setTitle: vi.fn(),
+  captureScreenshotPath: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: () => ({ setTitle: mocks.setTitle }),
-}));
-
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openPath: mocks.openPath,
+vi.mock("$lib/native", () => ({
+  captureScreenshotPath: mocks.captureScreenshotPath,
+  copyImageBlobToClipboard: vi.fn(),
+  captureScreenshotDataUrl: vi.fn(),
 }));
 
 vi.mock("./lib/toast", () => ({
@@ -86,10 +83,10 @@ describe("App screenshot flow", () => {
   });
 
   function setupMocks() {
+    mocks.captureScreenshotPath.mockResolvedValue("/tmp/the-controller-screenshot.png");
     vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "capture_app_screenshot") return "/tmp/the-controller-screenshot.png";
       if (cmd === "connect_session") return;
       if (cmd === "create_session") return "sess-new";
       if (cmd === "list_projects") {
@@ -125,7 +122,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", direct: true });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
+      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
     });
 
     // Should directly create session without showing picker
@@ -146,7 +143,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", direct: true, cropped: true });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
+      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
     });
 
     await waitFor(() => {
@@ -166,7 +163,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
+      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
     });
 
     // Session picker modal should appear
@@ -250,7 +247,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", cropped: true });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
+      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
     });
 
     await waitFor(() => {
@@ -291,7 +288,7 @@ describe("Window title updates on staging", () => {
     render(App);
 
     await waitFor(() => {
-      expect(mocks.setTitle).toHaveBeenCalledWith(
+      expect(document.title).toBe(
         "The Controller (test-commit, test-branch, localhost:1420)",
       );
     });
@@ -306,14 +303,12 @@ describe("Window title updates on staging", () => {
 
     render(App);
 
+    const expected = "The Controller (test-commit, test-branch, localhost:1420)";
     await waitFor(() => {
-      expect(mocks.setTitle).toHaveBeenCalledWith(
-        "The Controller (test-commit, test-branch, localhost:1420)",
-      );
+      expect(document.title).toBe(expected);
     });
 
     // Stage a session — title should NOT change
-    mocks.setTitle.mockClear();
     projects.set([{
       ...baseProject,
       staged_sessions: [{
@@ -329,7 +324,7 @@ describe("Window title updates on staging", () => {
 
     // Give reactivity a tick, then verify title was NOT updated
     await new Promise((r) => setTimeout(r, 50));
-    expect(mocks.setTitle).not.toHaveBeenCalled();
+    expect(document.title).toBe(expected);
   });
 });
 

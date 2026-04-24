@@ -1,5 +1,3 @@
-export const isTauri = typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
-
 let sharedWs: WebSocket | null = null;
 
 function getSharedWebSocket(): WebSocket {
@@ -11,19 +9,10 @@ function getSharedWebSocket(): WebSocket {
 }
 
 export async function openUrl(url: string): Promise<void> {
-  if (isTauri) {
-    const { openUrl: tauriOpenUrl } = await import("@tauri-apps/plugin-opener");
-    await tauriOpenUrl(url);
-    return;
-  }
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export async function command<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (isTauri) {
-    const { invoke } = await import("@tauri-apps/api/core");
-    return invoke<T>(cmd, args);
-  }
   const res = await fetch(`/api/${cmd}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -34,21 +23,6 @@ export async function command<T>(cmd: string, args?: Record<string, unknown>): P
 }
 
 export function listen<T>(event: string, handler: (payload: T) => void): () => void {
-  if (isTauri) {
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      listen<T>(event, (e) => handler(e.payload)).then((fn) => {
-        if (cancelled) fn();
-        else unlisten = fn;
-      });
-    });
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }
-
   const ws = getSharedWebSocket();
   const callback = (msg: MessageEvent) => {
     const data = JSON.parse(msg.data);
@@ -64,11 +38,6 @@ export function listen<T>(event: string, handler: (payload: T) => void): () => v
  * active before triggering events (e.g., starting a pipeline).
  */
 export async function listenAsync<T>(event: string, handler: (payload: T) => void): Promise<() => void> {
-  if (isTauri) {
-    const { listen } = await import("@tauri-apps/api/event");
-    return listen<T>(event, (e) => handler(e.payload));
-  }
-
   const ws = getSharedWebSocket();
   if (ws.readyState === WebSocket.CONNECTING) {
     await new Promise<void>((resolve, reject) => {
