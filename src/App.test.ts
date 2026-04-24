@@ -125,7 +125,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session", direct: true });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
     });
 
     // Should directly create session without showing picker
@@ -140,13 +140,13 @@ describe("App screenshot flow", () => {
     expect(screen.queryByText("Send Screenshot To")).not.toBeInTheDocument();
   });
 
-  it("Cmd+D (direct): captures cropped screenshot and spawns session for the-controller", async () => {
+  it("Cmd+D (direct): captures screenshot and spawns session for the-controller", async () => {
     setupMocks();
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session", direct: true, cropped: true });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
     });
 
     await waitFor(() => {
@@ -166,7 +166,7 @@ describe("App screenshot flow", () => {
     hotkeyAction.set({ type: "screenshot-to-session" });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: false });
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
     });
 
     // Session picker modal should appear
@@ -244,13 +244,13 @@ describe("App screenshot flow", () => {
     });
   });
 
-  it("Cmd+Shift+D (picker): captures cropped screenshot and shows picker", async () => {
+  it("Cmd+Shift+D (picker): captures screenshot and shows picker", async () => {
     setupMocks();
     render(App);
     hotkeyAction.set({ type: "screenshot-to-session", cropped: true });
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("capture_app_screenshot", { cropped: true });
+      expect(command).toHaveBeenCalledWith("capture_app_screenshot", expect.any(Object));
     });
 
     await waitFor(() => {

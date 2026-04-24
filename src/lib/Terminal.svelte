@@ -4,7 +4,7 @@
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebLinksAddon } from "@xterm/addon-web-links";
-  import { command, listen, openUrl } from "$lib/backend";
+  import { command, isTauri, listen, openUrl } from "$lib/backend";
   import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
@@ -27,6 +27,7 @@
   let unlistenOutput: (() => void) | undefined;
   let unlistenStatus: (() => void) | undefined;
   let unlistenDragDrop: (() => void) | undefined;
+  let unlistenDomDrop: (() => void) | undefined;
 
   // Gate: suppress onData forwarding during initialization to prevent
   // xterm.js auto-responses to terminal queries (DA, DSR) from being
@@ -243,19 +244,48 @@
     // Listen for drag-and-drop file events (from Finder).
     // Gate on active session — this is a window-level event so all
     // mounted Terminal instances receive it; only the active one should act.
-    unlistenDragDrop = listen<{ paths: string[] }>("tauri://drag-drop", async (payload) => {
-      if (get(activeSessionId) !== sessionId) return;
+    if (isTauri) {
+      unlistenDragDrop = listen<{ paths: string[] }>("tauri://drag-drop", async (payload) => {
+        if (get(activeSessionId) !== sessionId) return;
 
-      const imagePath = payload.paths.find(isImageFile);
-      if (imagePath) {
+        const imagePath = payload.paths.find(isImageFile);
+        if (imagePath) {
+          try {
+            await command("copy_image_file_to_clipboard", { path: imagePath });
+            await writeToPty("\x1b[200~\x1b[201~");
+          } catch (err) {
+            console.error("Failed to handle dropped image:", err);
+          }
+        }
+      });
+    } else if (containerEl) {
+      const handleDragOver = (e: DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      };
+      const handleDrop = async (e: DragEvent) => {
+        e.preventDefault();
+        if (get(activeSessionId) !== sessionId) return;
+
+        const file = Array.from(e.dataTransfer?.files ?? []).find((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (!file) return;
         try {
-          await command("copy_image_file_to_clipboard", { path: imagePath });
+          const { copyImageBlobToClipboard } = await import("$lib/native");
+          await copyImageBlobToClipboard(file);
           await writeToPty("\x1b[200~\x1b[201~");
         } catch (err) {
           console.error("Failed to handle dropped image:", err);
         }
-      }
-    });
+      };
+      containerEl.addEventListener("dragover", handleDragOver);
+      containerEl.addEventListener("drop", handleDrop);
+      unlistenDomDrop = () => {
+        containerEl?.removeEventListener("dragover", handleDragOver);
+        containerEl?.removeEventListener("drop", handleDrop);
+      };
+    }
 
     // Handle resize
     resizeObserver = new ResizeObserver(() => {
@@ -348,6 +378,7 @@
     unlistenOutput?.();
     unlistenStatus?.();
     unlistenDragDrop?.();
+    unlistenDomDrop?.();
     resizeObserver?.disconnect();
     mutationObserver?.disconnect();
     term?.dispose();

@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
   import { command, isTauri, listen } from "$lib/backend";
+  import { captureScreenshotPath } from "$lib/native";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
@@ -227,13 +228,20 @@
 
   async function captureScreenshot(direct: boolean, cropped: boolean) {
     try {
-      showToast(cropped ? "Select area to capture..." : "Capturing screenshot...", "info");
-      const screenshotPath: string = await command("capture_app_screenshot", { cropped });
+      showToast(
+        cropped && isTauri ? "Select area to capture..." : "Capturing screenshot...",
+        "info",
+      );
+      let screenshotPath: string;
+      if (isTauri) {
+        screenshotPath = await command("capture_app_screenshot", { cropped });
+      } else {
+        screenshotPath = await captureScreenshotPath();
+      }
 
       if (direct) {
         await createScreenshotSession(screenshotPath);
       } else {
-        // Show session picker
         screenshotPickerState = { path: screenshotPath, preview: false };
       }
     } catch (e) {
