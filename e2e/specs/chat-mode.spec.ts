@@ -14,13 +14,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 //          is started, retrying transitions out of the empty state.
 //
 // NOTE: The daemon-reachable leg of this test is skipped by default because
-// it requires both (a) the daemon & fake_agent binaries to be built at the
-// canonical paths below, and (b) the Axum test server (src-tauri/bin/server)
-// to expose `/api/read_daemon_token`. As of Task 21 the Axum server does not
-// expose that route, so the browser harness cannot load the daemon token even
-// if the daemon is running. Full end-to-end validation requires running under
-// Tauri (where `read_daemon_token` is a real Tauri command). See Task 21
-// follow-ups in docs/plans/chat-mode.md.
+// it requires the daemon & fake_agent binaries to be built at the canonical
+// paths below. The axum server (server/src/main.rs) exposes
+// `/api/read_daemon_token` so the browser harness can load the daemon token
+// when the daemon is running.
 
 const DAEMON_REPO = "/Users/noelkwan/projects/the-controller-daemon";
 const DAEMON_BIN = `${DAEMON_REPO}/target/release/the-controller-daemon`;
@@ -62,8 +59,6 @@ test("chat mode shows DaemonEmptyState when daemon is unreachable", async ({ pag
 
 // ---------------------------------------------------------------------------
 // Daemon-reachable leg — SKIPPED unless the daemon binaries are built.
-// Even when they are, this cannot pass under the browser harness; it is
-// retained as a hook for a future Tauri-native e2e runner.
 // ---------------------------------------------------------------------------
 const daemonBinariesPresent = existsSync(DAEMON_BIN) && existsSync(FAKE_AGENT_BIN);
 
@@ -107,14 +102,6 @@ test.describe("chat mode with daemon reachable", () => {
   });
 
   test("workspace renders out of the empty state after Retry", async ({ page }) => {
-    // Known limitation: the Axum test server does not forward
-    // `read_daemon_token`, so the bootstrap still fails here. This test is
-    // intentionally marked as an expected failure until either (a) the
-    // Axum server exposes the route or (b) we run the e2e against a real
-    // Tauri build. Keeping the scaffolding makes it trivial to flip on once
-    // that unblock lands.
-    test.fixme(true, "Requires /api/read_daemon_token on the Axum test server");
-
     await page.goto("/");
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
     await switchToChatMode(page);

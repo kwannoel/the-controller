@@ -1,21 +1,15 @@
 [package]
-name = "the-controller"
+name = "the-controller-server"
 version = "0.5.0"
-description = "A Tauri desktop app for managing multiple Claude Code sessions"
+description = "Web server for managing multiple Claude Code sessions"
 authors = ["Noel Kwan"]
 edition = "2021"
-default-run = "the-controller"
 
 [lib]
 name = "the_controller_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
-
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
+crate-type = ["rlib"]
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.8"
@@ -25,25 +19,17 @@ tokio = { version = "1", features = ["full"] }
 dirs = "5"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
-tauri-plugin-clipboard-manager = "2.3.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
-raw-window-handle = "0.6"
 once_cell = "1"
 libc = "0.2"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
-rfd = "0.16.0"
-axum = { version = "0.8", features = ["ws"], optional = true }
-tower-http = { version = "0.6", features = ["cors"], optional = true }
-
-[features]
-default = []
-server = ["axum", "tower-http"]
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors"] }
 
 [[bin]]
-name = "server"
-path = "src/bin/server.rs"
-required-features = ["server"]
+name = "the-controller-server"
+path = "src/main.rs"
 
 [[bin]]
 name = "controller-cli"

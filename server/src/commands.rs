@@ -1,19 +1,16 @@
 use std::path::{Path, PathBuf};
 
-use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::config;
 use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
 use crate::state::AppState;
-use crate::storage::ProjectInventory;
 use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
 pub mod daemon;
 pub mod github;
 pub mod kanban;
-mod media;
 
 /// Create a `CLAUDE.md` symlink pointing to `agents.md` in the given directory,
 /// if `agents.md` exists and `CLAUDE.md` does not.
@@ -111,6 +108,7 @@ fn cleanup_failed_session_spawn(
     Ok(())
 }
 
+#[cfg(test)]
 async fn wait_for_merge_rebase_resolution<F, Fut>(
     mut is_rebase_in_progress: F,
     max_polls: u64,
@@ -331,85 +329,6 @@ fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project
     })
 }
 
-/// Run storage migrations on startup (worktree path format, etc.).
-/// PTY connections are deferred to `connect_session` so each terminal
-/// can attach at the correct size.
-#[tauri::command]
-pub fn restore_sessions(state: State<AppState>) -> Result<(), String> {
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let inventory = storage.list_projects().map_err(|e| e.to_string())?;
-    inventory.warn_if_corrupt("restore_sessions");
-    // Migrate worktree paths from UUID-based to name-based directories
-    for project in &inventory.projects {
-        if let Err(e) = storage.migrate_worktree_paths(project) {
-            eprintln!(
-                "Failed to migrate worktrees for project '{}': {}",
-                project.name, e
-            );
-        }
-    }
-    Ok(())
-}
-
-/// Connect a terminal to its PTY session at the given size.
-/// Called by each Terminal component after it measures its dimensions.
-/// No-op if the session is already connected.
-///
-/// This command is async because it shells out to tmux (create, resize, attach),
-/// which would block the main thread and prevent event delivery — including the
-/// alternate-screen escape sequence that xterm.js needs for correct scrolling.
-#[tauri::command]
-pub async fn connect_session(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
-    session_id: String,
-    rows: u16,
-    cols: u16,
-) -> Result<(), String> {
-    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
-
-    // Check if already connected
-    {
-        let pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-        if pty_manager.sessions.contains_key(&id) {
-            return Ok(());
-        }
-    }
-
-    // Find session config from storage
-    let (session_dir, kind) = {
-        let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let inventory = storage.list_projects().map_err(|e| e.to_string())?;
-        inventory.warn_if_corrupt("connect_session");
-        inventory
-            .projects
-            .iter()
-            .flat_map(|p| p.sessions.iter().map(move |s| (p, s)))
-            .find(|(_, s)| s.id == id)
-            .map(|(p, s)| {
-                let dir = s
-                    .worktree_path
-                    .clone()
-                    .unwrap_or_else(|| p.repo_path.clone());
-                (dir, s.kind.clone())
-            })
-            .ok_or_else(|| format!("session not found: {}", session_id))?
-    };
-
-    // Run on a background thread to avoid blocking the main thread.
-    // This is critical: the reader thread spawned inside spawn_session emits
-    // pty-output events immediately, and the main thread must be free to
-    // deliver them to the webview (especially the smcup/alternate-screen escape).
-    let pty_manager = state.pty_manager.clone();
-    let emitter = state.emitter.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut mgr = pty_manager.lock().map_err(|e| e.to_string())?;
-        mgr.spawn_session(id, &session_dir, &kind, emitter, true, None, rows, cols)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {}", e))?
-}
-
 pub fn create_project_impl(
     state: &AppState,
     name: String,
@@ -456,15 +375,6 @@ pub fn create_project_impl(
     ensure_claude_md_symlink(path)?;
 
     Ok(project)
-}
-
-#[tauri::command]
-pub fn create_project(
-    state: State<AppState>,
-    name: String,
-    repo_path: String,
-) -> Result<Project, String> {
-    create_project_impl(&state, name, repo_path)
 }
 
 pub fn load_project_impl(
@@ -523,22 +433,6 @@ pub fn load_project_impl(
     Ok(project)
 }
 
-#[tauri::command]
-pub fn load_project(
-    state: State<AppState>,
-    name: String,
-    repo_path: String,
-) -> Result<Project, String> {
-    load_project_impl(&state, name, repo_path)
-}
-
-#[tauri::command]
-pub fn list_projects(state: State<AppState>) -> Result<ProjectInventory, String> {
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let inventory = storage.list_projects().map_err(|e| e.to_string())?;
-    Ok(inventory)
-}
-
 pub fn delete_project_impl(
     state: &AppState,
     project_id: String,
@@ -571,25 +465,11 @@ pub fn delete_project_impl(
     Ok(())
 }
 
-#[tauri::command]
-pub fn delete_project(
-    state: State<AppState>,
-    project_id: String,
-    delete_repo: bool,
-) -> Result<(), String> {
-    delete_project_impl(&state, project_id, delete_repo)
-}
-
 pub fn get_agents_md_impl(state: &AppState, project_id: String) -> Result<String, String> {
     let id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let project = storage.load_project(id).map_err(|e| e.to_string())?;
     storage.get_agents_md(&project).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_agents_md(state: State<AppState>, project_id: String) -> Result<String, String> {
-    get_agents_md_impl(&state, project_id)
 }
 
 pub fn update_agents_md_impl(
@@ -604,19 +484,6 @@ pub fn update_agents_md_impl(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn update_agents_md(
-    state: State<AppState>,
-    project_id: String,
-    content: String,
-) -> Result<(), String> {
-    update_agents_md_impl(&state, project_id, content)
-}
-
-/// Transport-agnostic `create_session` implementation.
-///
-/// Why: both the Tauri command wrapper and the axum server handler share this
-/// body so the web and desktop frontends see identical behavior.
 pub fn create_session_impl(
     state: &AppState,
     project_id: String,
@@ -725,60 +592,6 @@ pub fn create_session_impl(
     Ok(session_id.to_string())
 }
 
-#[tauri::command]
-pub fn create_session(
-    state: State<AppState>,
-    _app_handle: AppHandle,
-    project_id: String,
-    kind: Option<String>,
-    github_issue: Option<crate::models::GithubIssue>,
-    background: Option<bool>,
-    initial_prompt: Option<String>,
-) -> Result<String, String> {
-    create_session_impl(
-        &state,
-        project_id,
-        kind,
-        github_issue,
-        background,
-        initial_prompt,
-    )
-}
-
-#[tauri::command]
-pub fn write_to_pty(
-    state: State<AppState>,
-    session_id: String,
-    data: String,
-) -> Result<(), String> {
-    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
-    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.write_to_session(id, data.as_bytes())
-}
-
-#[tauri::command]
-pub fn send_raw_to_pty(
-    state: State<AppState>,
-    session_id: String,
-    data: String,
-) -> Result<(), String> {
-    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
-    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.send_raw_to_session(id, data.as_bytes())
-}
-
-#[tauri::command]
-pub fn resize_pty(
-    state: State<AppState>,
-    session_id: String,
-    rows: u16,
-    cols: u16,
-) -> Result<(), String> {
-    let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
-    let pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-    pty_manager.resize_session(id, rows, cols)
-}
-
 pub fn set_initial_prompt_impl(
     state: &AppState,
     project_id: String,
@@ -801,48 +614,6 @@ pub fn set_initial_prompt_impl(
     }
 
     Ok(())
-}
-
-#[tauri::command]
-pub fn set_initial_prompt(
-    state: State<AppState>,
-    project_id: String,
-    session_id: String,
-    prompt: String,
-) -> Result<(), String> {
-    set_initial_prompt_impl(&state, project_id, session_id, prompt)
-}
-
-#[tauri::command]
-pub async fn submit_secure_env_value(
-    state: State<'_, AppState>,
-    request_id: String,
-    value: String,
-) -> Result<String, String> {
-    let (pending, response_tx) =
-        crate::secure_env::take_secure_env_submission(&state, &request_id)?;
-    let request_id_for_blocking = request_id.clone();
-    let value_for_blocking = value;
-    let result = tokio::task::spawn_blocking(move || {
-        crate::secure_env::update_env_file(&pending.env_path, &pending.key, &value_for_blocking)
-    })
-    .await
-    .map_err(|e| format!("Task failed: {e}"))?;
-    let result = crate::secure_env::finish_secure_env_submission(
-        &request_id_for_blocking,
-        response_tx,
-        result,
-    )?;
-    Ok(if result.created {
-        "created".to_string()
-    } else {
-        "updated".to_string()
-    })
-}
-
-#[tauri::command]
-pub fn cancel_secure_env_request(state: State<AppState>, request_id: String) -> Result<(), String> {
-    crate::secure_env::cancel_secure_env_request(&state, &request_id)
 }
 
 const COMMIT_POLL_INTERVAL_SECS: u64 = 3;
@@ -896,10 +667,10 @@ pub(crate) fn kill_process_group(pid: u32) {
 
 /// Core staging logic. Returns the port on success.
 ///
-/// When `allow_pty_prompts` is true (Tauri command path), dirty worktrees and
-/// rebase conflicts are handled by prompting the session's Claude via PTY.
-/// When false (socket path), these conditions return an error immediately —
-/// the caller is expected to commit and resolve conflicts before staging.
+/// When `allow_pty_prompts` is true, dirty worktrees and rebase conflicts are
+/// handled by prompting the session's Claude via PTY. When false (socket
+/// path), these conditions return an error immediately — the caller is
+/// expected to commit and resolve conflicts before staging.
 pub async fn stage_session_core(
     state: &AppState,
     project_id: Uuid,
@@ -1165,19 +936,6 @@ pub async fn stage_session_core(
     Ok(port)
 }
 
-#[tauri::command]
-pub async fn stage_session(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
-    project_id: String,
-    session_id: String,
-) -> Result<(), String> {
-    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
-    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
-    stage_session_core(&state, project_uuid, session_uuid, true).await?;
-    Ok(())
-}
-
 pub fn unstage_session_impl(
     state: &AppState,
     project_id: String,
@@ -1208,15 +966,6 @@ pub fn unstage_session_impl(
     Ok(())
 }
 
-#[tauri::command]
-pub fn unstage_session(
-    state: State<AppState>,
-    project_id: String,
-    session_id: String,
-) -> Result<(), String> {
-    unstage_session_impl(&state, project_id, session_id)
-}
-
 pub fn get_repo_head_impl(repo_path: String) -> Result<(String, String), String> {
     let repo =
         git2::Repository::open(&repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
@@ -1232,11 +981,6 @@ pub fn get_repo_head_impl(repo_path: String) -> Result<(String, String), String>
     let short_hash = commit.id().to_string()[..7].to_string();
 
     Ok((branch, short_hash))
-}
-
-#[tauri::command]
-pub fn get_repo_head(repo_path: String) -> Result<(String, String), String> {
-    get_repo_head_impl(repo_path)
 }
 
 pub fn save_session_prompt_impl(
@@ -1296,15 +1040,6 @@ pub fn save_session_prompt_impl(
     Ok(())
 }
 
-#[tauri::command]
-pub fn save_session_prompt(
-    state: State<AppState>,
-    project_id: String,
-    session_id: String,
-) -> Result<(), String> {
-    save_session_prompt_impl(&state, project_id, session_id)
-}
-
 pub fn list_project_prompts_impl(
     state: &AppState,
     project_id: String,
@@ -1315,14 +1050,6 @@ pub fn list_project_prompts_impl(
         .load_project(project_uuid)
         .map_err(|e| e.to_string())?;
     Ok(project.prompts)
-}
-
-#[tauri::command]
-pub fn list_project_prompts(
-    state: State<AppState>,
-    project_id: String,
-) -> Result<Vec<crate::models::SavedPrompt>, String> {
-    list_project_prompts_impl(&state, project_id)
 }
 
 pub fn close_session_impl(
@@ -1364,16 +1091,6 @@ pub fn close_session_impl(
     Ok(())
 }
 
-#[tauri::command]
-pub fn close_session(
-    state: State<AppState>,
-    project_id: String,
-    session_id: String,
-    delete_worktree: bool,
-) -> Result<(), String> {
-    close_session_impl(&state, project_id, session_id, delete_worktree)
-}
-
 pub fn start_claude_login_impl(state: &AppState) -> Result<String, String> {
     let session_id = Uuid::new_v4();
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
@@ -1381,37 +1098,10 @@ pub fn start_claude_login_impl(state: &AppState) -> Result<String, String> {
     Ok(session_id.to_string())
 }
 
-#[tauri::command]
-pub fn start_claude_login(
-    state: State<AppState>,
-    _app_handle: AppHandle,
-) -> Result<String, String> {
-    start_claude_login_impl(&state)
-}
-
 pub fn stop_claude_login_impl(state: &AppState, session_id: String) -> Result<(), String> {
     let id = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
     let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
     pty_manager.close_session(id)
-}
-
-#[tauri::command]
-pub fn stop_claude_login(state: State<AppState>, session_id: String) -> Result<(), String> {
-    stop_claude_login_impl(&state, session_id)
-}
-
-#[tauri::command]
-pub fn home_dir() -> Result<String, String> {
-    dirs::home_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .ok_or_else(|| "Could not determine home directory".to_string())
-}
-
-#[tauri::command]
-pub fn check_onboarding(state: State<AppState>) -> Result<Option<config::Config>, String> {
-    let storage = state.storage.lock().map_err(|e| e.to_string())?;
-    let base_dir = storage.base_dir();
-    Ok(config::load_config(&base_dir))
 }
 
 pub fn save_onboarding_config_impl(state: &AppState, projects_root: String) -> Result<(), String> {
@@ -1429,44 +1119,12 @@ pub fn save_onboarding_config_impl(state: &AppState, projects_root: String) -> R
     config::save_config(&base_dir, &cfg).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn save_onboarding_config(state: State<AppState>, projects_root: String) -> Result<(), String> {
-    save_onboarding_config_impl(&state, projects_root)
-}
-
-#[tauri::command]
-pub async fn check_claude_cli() -> Result<String, String> {
-    let result = tokio::task::spawn_blocking(config::check_claude_cli_status)
-        .await
-        .map_err(|e| format!("Task failed: {}", e))?;
-    Ok(result)
-}
-
-#[tauri::command]
-pub fn list_directories_at(path: String) -> Result<Vec<config::DirEntry>, String> {
-    let p = Path::new(&path);
-    if !p.is_dir() {
-        return Err(format!("Not a directory: {}", path));
-    }
-    config::list_directories(p).map_err(|e| e.to_string())
-}
-
 pub fn list_root_directories_impl(state: &AppState) -> Result<Vec<config::DirEntry>, String> {
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     let base_dir = storage.base_dir();
     let cfg = config::load_config(&base_dir)
         .ok_or_else(|| "No config found. Complete onboarding first.".to_string())?;
     config::list_directories(Path::new(&cfg.projects_root)).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn list_root_directories(state: State<AppState>) -> Result<Vec<config::DirEntry>, String> {
-    list_root_directories_impl(&state)
-}
-
-#[tauri::command]
-pub fn generate_project_names(description: String) -> Result<Vec<String>, String> {
-    config::generate_names_via_cli(&description)
 }
 
 pub async fn scaffold_project_impl(state: &AppState, name: String) -> Result<Project, String> {
@@ -1511,214 +1169,7 @@ pub async fn scaffold_project_impl(state: &AppState, name: String) -> Result<Pro
     Ok(project)
 }
 
-#[tauri::command]
-pub async fn scaffold_project(state: State<'_, AppState>, name: String) -> Result<Project, String> {
-    scaffold_project_impl(&state, name).await
-}
-
-#[tauri::command]
-pub async fn list_github_issues(
-    repo_path: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::models::GithubIssue>, String> {
-    github::list_github_issues(repo_path, &state).await
-}
-
-#[tauri::command]
-pub async fn kanban_load_order(app: AppHandle) -> Result<serde_json::Value, String> {
-    kanban::kanban_load_order(app).await
-}
-
-#[tauri::command]
-pub async fn kanban_save_order(app: AppHandle, order: serde_json::Value) -> Result<(), String> {
-    kanban::kanban_save_order(app, order).await
-}
-
-#[tauri::command]
-pub async fn list_assigned_issues(
-    repo_path: String,
-) -> Result<Vec<crate::models::AssignedIssue>, String> {
-    github::list_assigned_issues(repo_path).await
-}
-
-#[tauri::command]
-pub async fn generate_issue_body(repo_path: String, title: String) -> Result<String, String> {
-    github::generate_issue_body(repo_path, title).await
-}
-
-#[tauri::command]
-pub async fn create_github_issue(
-    state: State<'_, AppState>,
-    repo_path: String,
-    title: String,
-    body: String,
-) -> Result<crate::models::GithubIssue, String> {
-    github::create_github_issue(&state, repo_path, title, body).await
-}
-
-#[tauri::command]
-pub async fn close_github_issue(
-    state: State<'_, AppState>,
-    repo_path: String,
-    issue_number: u64,
-    comment: String,
-) -> Result<(), String> {
-    github::close_github_issue(&state, repo_path, issue_number, comment).await
-}
-
-#[tauri::command]
-pub async fn delete_github_issue(
-    state: State<'_, AppState>,
-    repo_path: String,
-    issue_number: u64,
-) -> Result<(), String> {
-    github::delete_github_issue(&state, repo_path, issue_number).await
-}
-
-#[tauri::command]
-pub async fn post_github_comment(
-    repo_path: String,
-    issue_number: u64,
-    body: String,
-) -> Result<(), String> {
-    github::post_github_comment(repo_path, issue_number, body).await
-}
-
-#[tauri::command]
-pub async fn add_github_label(
-    state: State<'_, AppState>,
-    repo_path: String,
-    issue_number: u64,
-    label: String,
-    description: Option<String>,
-    color: Option<String>,
-) -> Result<(), String> {
-    github::add_github_label(&state, repo_path, issue_number, label, description, color).await
-}
-
-#[tauri::command]
-pub async fn remove_github_label(
-    state: State<'_, AppState>,
-    repo_path: String,
-    issue_number: u64,
-    label: String,
-) -> Result<(), String> {
-    github::remove_github_label(&state, repo_path, issue_number, label).await
-}
-
-#[tauri::command]
-pub async fn copy_image_file_to_clipboard(app: AppHandle, path: String) -> Result<(), String> {
-    media::copy_image_file_to_clipboard(app, path).await
-}
-
-#[tauri::command]
-pub async fn capture_app_screenshot(app: AppHandle, cropped: bool) -> Result<String, String> {
-    media::capture_app_screenshot(app, cropped).await
-}
-
-const MAX_MERGE_RETRIES: u32 = 5;
 const REBASE_POLL_INTERVAL_SECS: u64 = 3;
-const MAX_MERGE_REBASE_WAIT_SECS: u64 = 600; // 10 minutes
-
-#[tauri::command]
-pub async fn merge_session_branch(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
-    project_id: String,
-    session_id: String,
-) -> Result<crate::models::MergeResponse, String> {
-    let project_uuid = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
-    let session_uuid = Uuid::parse_str(&session_id).map_err(|e| e.to_string())?;
-
-    let (repo_path, worktree_path, branch_name) = {
-        let storage = state.storage.lock().map_err(|e| e.to_string())?;
-        let project = storage
-            .load_project(project_uuid)
-            .map_err(|e| e.to_string())?;
-        let session = project
-            .sessions
-            .iter()
-            .find(|s| s.id == session_uuid)
-            .ok_or_else(|| "Session not found".to_string())?;
-        let wt_path = session
-            .worktree_path
-            .clone()
-            .ok_or_else(|| "Session has no worktree".to_string())?;
-        let branch = session
-            .worktree_branch
-            .clone()
-            .ok_or_else(|| "Session has no branch".to_string())?;
-        (project.repo_path.clone(), wt_path, branch)
-    };
-
-    for attempt in 0..MAX_MERGE_RETRIES {
-        let rp = repo_path.clone();
-        let wt = worktree_path.clone();
-        let br = branch_name.clone();
-
-        let result = tokio::task::spawn_blocking(move || {
-            if WorktreeManager::is_rebase_in_progress(&wt) {
-                // Rebase still in progress from a previous attempt — wait
-                Ok(crate::worktree::MergeResult::RebaseConflicts)
-            } else {
-                WorktreeManager::merge_via_pr(&rp, &wt, &br)
-            }
-        })
-        .await
-        .map_err(|e| format!("Task failed: {}", e))??;
-
-        match result {
-            crate::worktree::MergeResult::PrCreated(url) => {
-                return Ok(crate::models::MergeResponse::PrCreated { url });
-            }
-            crate::worktree::MergeResult::RebaseConflicts => {
-                // Send a prompt to Claude to resolve conflicts
-                let prompt = "merge\r";
-                {
-                    let mut pty_manager = state.pty_manager.lock().map_err(|e| e.to_string())?;
-                    let _ = pty_manager.write_to_session(session_uuid, prompt.as_bytes());
-                }
-
-                // Emit status event so frontend can show progress
-                let _ = state.emitter.emit(
-                    "merge-status",
-                    &format!(
-                        "Rebase conflicts (attempt {}/{}). Claude is resolving...",
-                        attempt + 1,
-                        MAX_MERGE_RETRIES
-                    ),
-                );
-
-                // Poll until rebase is no longer in progress, but stop waiting
-                // eventually so the frontend can recover if Claude never resolves it.
-                let wt_poll = worktree_path.clone();
-                wait_for_merge_rebase_resolution(
-                    move || {
-                        let wt_check = wt_poll.clone();
-                        async move {
-                            tokio::task::spawn_blocking(move || {
-                                WorktreeManager::is_rebase_in_progress(&wt_check)
-                            })
-                            .await
-                            .map_err(|e| format!("Task failed: {}", e))
-                        }
-                    },
-                    MAX_MERGE_REBASE_WAIT_SECS / REBASE_POLL_INTERVAL_SECS,
-                    std::time::Duration::from_secs(REBASE_POLL_INTERVAL_SECS),
-                )
-                .await?;
-
-                // Loop back — will sync main and rebase again
-                continue;
-            }
-        }
-    }
-
-    Err(format!(
-        "Merge failed after {} attempts due to recurring conflicts",
-        MAX_MERGE_RETRIES
-    ))
-}
 
 pub fn get_session_commits_impl(
     state: &AppState,
@@ -1765,15 +1216,6 @@ pub fn get_session_commits_impl(
     Ok(all_commits)
 }
 
-#[tauri::command]
-pub fn get_session_commits(
-    state: State<AppState>,
-    project_id: String,
-    session_id: String,
-) -> Result<Vec<CommitInfo>, String> {
-    get_session_commits_impl(&state, project_id, session_id)
-}
-
 pub fn get_session_token_usage_impl(
     state: &AppState,
     project_id: String,
@@ -1799,15 +1241,6 @@ pub fn get_session_token_usage_impl(
         .unwrap_or(&project.repo_path);
 
     token_usage::get_token_usage(working_dir, &session.kind)
-}
-
-#[tauri::command]
-pub fn get_session_token_usage(
-    state: State<AppState>,
-    project_id: String,
-    session_id: String,
-) -> Result<Vec<TokenDataPoint>, String> {
-    get_session_token_usage_impl(&state, project_id, session_id)
 }
 
 /// Walk commits on the worktree branch that aren't on the main branch.
@@ -1881,17 +1314,6 @@ pub fn configure_maintainer_impl(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn configure_maintainer(
-    state: State<'_, AppState>,
-    project_id: String,
-    enabled: bool,
-    interval_minutes: u64,
-    github_repo: Option<String>,
-) -> Result<(), String> {
-    configure_maintainer_impl(&state, project_id, enabled, interval_minutes, github_repo)
-}
-
 pub fn configure_auto_worker_impl(
     state: &AppState,
     project_id: String,
@@ -1905,20 +1327,6 @@ pub fn configure_auto_worker_impl(
     project.auto_worker.enabled = enabled;
     storage.save_project(&project).map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-pub async fn configure_auto_worker(
-    state: State<'_, AppState>,
-    project_id: String,
-    enabled: bool,
-) -> Result<(), String> {
-    configure_auto_worker_impl(&state, project_id, enabled)
-}
-
-#[tauri::command]
-pub async fn get_worker_reports(repo_path: String) -> Result<Vec<github::WorkerReport>, String> {
-    github::get_worker_reports(repo_path).await
 }
 
 fn queue_issue_from_github(issue: GithubIssue, is_active: bool) -> AutoWorkerQueueIssue {
@@ -1979,14 +1387,6 @@ pub async fn get_auto_worker_queue_impl(
     Ok(build_auto_worker_queue(issues, active_issue))
 }
 
-#[tauri::command]
-pub async fn get_auto_worker_queue(
-    state: State<'_, AppState>,
-    project_id: String,
-) -> Result<Vec<AutoWorkerQueueIssue>, String> {
-    get_auto_worker_queue_impl(&state, project_id).await
-}
-
 pub fn get_maintainer_status_impl(
     state: &AppState,
     project_id: String,
@@ -1998,14 +1398,6 @@ pub fn get_maintainer_status_impl(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn get_maintainer_status(
-    state: State<'_, AppState>,
-    project_id: String,
-) -> Result<Option<crate::models::MaintainerRunLog>, String> {
-    get_maintainer_status_impl(&state, project_id)
-}
-
 pub fn get_maintainer_history_impl(
     state: &AppState,
     project_id: String,
@@ -2015,14 +1407,6 @@ pub fn get_maintainer_history_impl(
     storage
         .maintainer_run_log_history(project_id, 20)
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn get_maintainer_history(
-    state: State<'_, AppState>,
-    project_id: String,
-) -> Result<Vec<crate::models::MaintainerRunLog>, String> {
-    get_maintainer_history_impl(&state, project_id)
 }
 
 async fn run_maintainer_check_spawn_blocking_with<F>(
@@ -2105,15 +1489,6 @@ pub async fn trigger_maintainer_check_impl(
     Ok(log)
 }
 
-#[tauri::command]
-pub async fn trigger_maintainer_check(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
-    project_id: String,
-) -> Result<crate::models::MaintainerRunLog, String> {
-    trigger_maintainer_check_impl(&state, project_id).await
-}
-
 pub fn clear_maintainer_reports_impl(state: &AppState, project_id: String) -> Result<(), String> {
     let project_id = Uuid::parse_str(&project_id).map_err(|e| e.to_string())?;
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
@@ -2124,15 +1499,6 @@ pub fn clear_maintainer_reports_impl(state: &AppState, project_id: String) -> Re
         .emitter
         .emit(&format!("maintainer-status:{}", project_id), "idle");
     Ok(())
-}
-
-#[tauri::command]
-pub async fn clear_maintainer_reports(
-    state: State<'_, AppState>,
-    _app_handle: AppHandle,
-    project_id: String,
-) -> Result<(), String> {
-    clear_maintainer_reports_impl(&state, project_id)
 }
 
 pub async fn get_maintainer_issues_impl(
@@ -2153,14 +1519,6 @@ pub async fn get_maintainer_issues_impl(
     github::get_maintainer_issues(repo_path, github_repo).await
 }
 
-#[tauri::command]
-pub async fn get_maintainer_issues(
-    state: State<'_, AppState>,
-    project_id: String,
-) -> Result<Vec<crate::models::MaintainerIssue>, String> {
-    get_maintainer_issues_impl(&state, project_id).await
-}
-
 pub async fn get_maintainer_issue_detail_impl(
     state: &AppState,
     project_id: String,
@@ -2178,25 +1536,6 @@ pub async fn get_maintainer_issue_detail_impl(
         )
     };
     github::get_maintainer_issue_detail(repo_path, github_repo, issue_number).await
-}
-
-#[tauri::command]
-pub async fn get_maintainer_issue_detail(
-    state: State<'_, AppState>,
-    project_id: String,
-    issue_number: u32,
-) -> Result<crate::models::MaintainerIssueDetail, String> {
-    get_maintainer_issue_detail_impl(&state, project_id, issue_number).await
-}
-
-#[tauri::command]
-pub fn log_frontend_error(message: String) {
-    eprintln!("[FRONTEND] {}", message);
-}
-
-#[tauri::command]
-pub async fn read_daemon_token() -> Result<String, String> {
-    daemon::read_daemon_token().await
 }
 
 fn find_main_branch_oid(repo: &git2::Repository) -> Option<git2::Oid> {
@@ -2254,10 +1593,6 @@ mod tests {
             emitter: crate::emitter::NoopEmitter::new(),
             staging_lock: tokio::sync::Mutex::new(()),
         }
-    }
-
-    fn state_from_ref<T: Send + Sync + 'static>(value: &T) -> tauri::State<'_, T> {
-        unsafe { std::mem::transmute(value) }
     }
 
     fn run_async_test<T>(future: impl Future<Output = T>) -> T {
@@ -2575,8 +1910,8 @@ mod tests {
             fs::write(state_dir.join("gh-create-fails"), "")
                 .expect("mark first gh create as failed");
 
-            let error = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let error = run_async_test(scaffold_project_impl(
+                &app_state,
                 "gh-create-failure-test".to_string(),
             ))
             .expect_err("gh create failure should bubble up");
@@ -2603,8 +1938,8 @@ mod tests {
 
             fs::remove_file(state_dir.join("gh-create-fails")).expect("allow gh create retry");
 
-            let project = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let project = run_async_test(scaffold_project_impl(
+                &app_state,
                 "gh-create-failure-test".to_string(),
             ))
             .expect("retry should succeed after rollback");
@@ -2637,8 +1972,8 @@ mod tests {
 
             let app_state_for_thread = Arc::clone(&app_state);
             let handle = thread::spawn(move || {
-                run_async_test(scaffold_project(
-                    state_from_ref(app_state_for_thread.as_ref()),
+                run_async_test(scaffold_project_impl(
+                    app_state_for_thread.as_ref(),
                     "lock-scope-test".to_string(),
                 ))
             });
@@ -2687,8 +2022,8 @@ mod tests {
 
             let app_state_for_thread = Arc::clone(&app_state);
             let handle = thread::spawn(move || {
-                run_async_test(scaffold_project(
-                    state_from_ref(app_state_for_thread.as_ref()),
+                run_async_test(scaffold_project_impl(
+                    app_state_for_thread.as_ref(),
                     "lock-race-test".to_string(),
                 ))
             });
@@ -2698,8 +2033,8 @@ mod tests {
                 "scaffold should reach gh repo create"
             );
 
-            let imported = create_project(
-                state_from_ref(app_state.as_ref()),
+            let imported = create_project_impl(
+                app_state.as_ref(),
                 "lock-race-test".to_string(),
                 imported_repo.path().to_string_lossy().to_string(),
             )
@@ -2844,8 +2179,8 @@ mod tests {
             );
             fs::write(state_dir.join("push-fails"), "").expect("mark first push as failed");
 
-            let error = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let error = run_async_test(scaffold_project_impl(
+                &app_state,
                 "rollback-test".to_string(),
             ))
             .expect_err("push failure should bubble up");
@@ -2874,8 +2209,8 @@ mod tests {
             fs::remove_file(state_dir.join("remote-deleted"))
                 .expect("clear previous delete marker");
 
-            let project = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let project = run_async_test(scaffold_project_impl(
+                &app_state,
                 "rollback-test".to_string(),
             ))
             .expect("retry should succeed after rollback");
@@ -2908,8 +2243,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "rollback-session-create".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2963,8 +2298,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "rollback-session-concurrency".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -3080,8 +2415,8 @@ mod tests {
         fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
         fs::write(corrupt_dir.join("project.json"), "{ invalid json").expect("write corrupt json");
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "fresh-project".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -3097,8 +2432,8 @@ mod tests {
         let app_state = make_test_state(base_dir.path(), projects_root.path());
         let repo_dir = TempDir::new().unwrap();
 
-        let error = create_project(
-            state_from_ref(&app_state),
+        let error = create_project_impl(
+            &app_state,
             "invalid/name".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -3133,8 +2468,8 @@ mod tests {
                 .expect("save existing project");
         }
 
-        let error = create_project(
-            state_from_ref(&app_state),
+        let error = create_project_impl(
+            &app_state,
             "duplicate-name".to_string(),
             new_repo.path().to_string_lossy().to_string(),
         )
@@ -3158,8 +2493,8 @@ mod tests {
         fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
         fs::write(corrupt_dir.join("project.json"), "{ invalid json").expect("write corrupt json");
 
-        let project = load_project(
-            state_from_ref(&app_state),
+        let project = load_project_impl(
+            &app_state,
             "imported-project".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -3176,8 +2511,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         git2::Repository::init(repo_dir.path()).expect("init git repo");
 
-        let error = load_project(
-            state_from_ref(&app_state),
+        let error = load_project_impl(
+            &app_state,
             "invalid/name".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -3214,7 +2549,12 @@ mod tests {
                 .expect("save archived-flagged project");
         }
 
-        let inventory = list_projects(state_from_ref(&app_state)).expect("list projects");
+        let inventory = app_state
+            .storage
+            .lock()
+            .unwrap()
+            .list_projects()
+            .expect("list projects");
 
         assert_eq!(inventory.projects.len(), 1);
         assert_eq!(inventory.projects[0].name, "stored-project");
@@ -3244,8 +2584,8 @@ mod tests {
             );
             write_fake_command(git_path, "exit 0");
 
-            let project = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let project = run_async_test(scaffold_project_impl(
+                &app_state,
                 "scaffold-with-corrupt-sibling".to_string(),
             ))
             .expect("scaffold should ignore corrupt sibling metadata");
@@ -3272,17 +2612,21 @@ mod tests {
             fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/commands.rs"))
                 .expect("read commands source");
         let start = source
-            .find("pub async fn trigger_maintainer_check")
-            .expect("find trigger_maintainer_check");
+            .find("pub async fn trigger_maintainer_check_impl")
+            .expect("find trigger_maintainer_check_impl");
         let rest = &source[start..];
-        let end = rest
-            .find("\n#[tauri::command]")
-            .expect("find end of trigger_maintainer_check");
+        // End at next top-level item (pub fn/pub async fn/#[cfg]) or end of file.
+        let end_candidates = ["\npub fn ", "\npub async fn ", "\n#[cfg("];
+        let end = end_candidates
+            .iter()
+            .filter_map(|needle| rest[1..].find(needle).map(|i| i + 1))
+            .min()
+            .unwrap_or(rest.len());
         let function_body = &rest[..end];
 
         assert!(
             function_body.contains("spawn_blocking"),
-            "trigger_maintainer_check must offload blocking maintainer work with spawn_blocking"
+            "trigger_maintainer_check_impl must offload blocking maintainer work with spawn_blocking"
         );
     }
 
@@ -3450,8 +2794,8 @@ mod tests {
             );
         }
 
-        let queue = run_async_test(get_auto_worker_queue(
-            state_from_ref(&app_state),
+        let queue = run_async_test(get_auto_worker_queue_impl(
+            &app_state,
             project_id.to_string(),
         ))
         .expect("queue command should succeed");
@@ -3470,8 +2814,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "secure-env-submit".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -3485,12 +2829,9 @@ mod tests {
         )
         .expect("begin secure env request");
 
-        let status = run_async_test(submit_secure_env_value(
-            state_from_ref(&app_state),
-            "req-123".to_string(),
-            "new-secret".to_string(),
-        ))
-        .expect("submit secure env value");
+        let status =
+            crate::secure_env::submit_secure_env_value_status(&app_state, "req-123", "new-secret")
+                .expect("submit secure env value");
 
         assert_eq!(status, "created");
         let written = fs::read_to_string(repo_dir.path().join(".env")).expect("read .env");
@@ -3504,8 +2845,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "secure-env-cancel".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -3519,7 +2860,7 @@ mod tests {
         )
         .expect("begin secure env request");
 
-        cancel_secure_env_request(state_from_ref(&app_state), "req-123".to_string())
+        crate::secure_env::cancel_secure_env_request(&app_state, "req-123")
             .expect("cancel secure env request");
 
         assert!(app_state.secure_env_request.lock().unwrap().is_none());

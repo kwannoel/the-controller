@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fromStore } from "svelte/store";
-  import { command, isTauri, listen } from "$lib/backend";
+  import { command, listen } from "$lib/backend";
+  import { captureScreenshotPath } from "$lib/native";
   import Sidebar from "./lib/Sidebar.svelte";
   import TerminalManager from "./lib/TerminalManager.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
@@ -225,15 +226,14 @@
     return `I just took a screenshot of the app. The screenshot is saved at: ${path}\nPlease read the screenshot image and share what you see, but wait for further prompts before taking any action.`;
   }
 
-  async function captureScreenshot(direct: boolean, cropped: boolean) {
+  async function captureScreenshot(direct: boolean, _cropped: boolean) {
     try {
-      showToast(cropped ? "Select area to capture..." : "Capturing screenshot...", "info");
-      const screenshotPath: string = await command("capture_app_screenshot", { cropped });
+      showToast("Capturing screenshot...", "info");
+      const screenshotPath = await captureScreenshotPath();
 
       if (direct) {
         await createScreenshotSession(screenshotPath);
       } else {
-        // Show session picker
         screenshotPickerState = { path: screenshotPath, preview: false };
       }
     } catch (e) {
@@ -291,14 +291,7 @@
 
   function updateWindowTitle(branch: string, commit: string) {
     const parts = [commit, branch, `localhost:${__DEV_PORT__}`];
-    const title = `The Controller (${parts.join(", ")})`;
-    if (isTauri) {
-      import("@tauri-apps/api/window")
-        .then(({ getCurrentWindow }) => getCurrentWindow().setTitle(title))
-        .catch(() => {});
-    } else {
-      document.title = title;
-    }
+    document.title = `The Controller (${parts.join(", ")})`;
   }
 
   onMount(() => {

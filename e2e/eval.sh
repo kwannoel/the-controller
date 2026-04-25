@@ -85,7 +85,7 @@ fi
 
 # --- Start Axum server ---
 echo "Starting Axum server on port $AXUM_PORT..."
-(cd "$WORKTREE/src-tauri" && PORT="$AXUM_PORT" cargo run --bin server --features server) &
+(cd "$WORKTREE/server" && PORT="$AXUM_PORT" cargo run --bin the-controller-server) &
 AXUM_PID=$!
 
 # --- Start Vite dev server ---

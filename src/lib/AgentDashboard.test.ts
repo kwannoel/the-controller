@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
-import { command } from "$lib/backend";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { command, openUrl } from "$lib/backend";
 import AgentDashboard from "./AgentDashboard.svelte";
 import {
   autoWorkerStatuses,
@@ -13,10 +12,6 @@ import {
   type Project,
   type WorkerReport,
 } from "./stores";
-
-vi.mock("@tauri-apps/plugin-opener", () => ({
-  openUrl: vi.fn(),
-}));
 
 vi.mock("./toast", () => ({
   showToast: vi.fn(),

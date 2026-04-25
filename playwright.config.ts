@@ -9,7 +9,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "cd src-tauri && cargo run --bin server --features server",
+      command: "cd server && cargo run --bin the-controller-server",
       port: 3001,
       reuseExistingServer: true,
       timeout: 120_000,

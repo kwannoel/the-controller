@@ -1,6 +1,6 @@
 # The Controller
 
-Tauri v2 + Svelte 5 desktop app for orchestrating multiple Claude Code terminal sessions.
+Axum + Svelte 5 web app for orchestrating multiple Claude Code terminal sessions.
 
 ## Task Structure (CRITICAL — NEVER SKIP)
 
@@ -14,13 +14,13 @@ Tauri v2 + Svelte 5 desktop app for orchestrating multiple Claude Code terminal 
 
 ## Key Docs
 
-- `docs/domain-knowledge.md` — Hard-won lessons (Tauri main thread blocking, CLAUDECODE env var). **Read this before modifying Tauri commands or spawning processes.**
+- `docs/domain-knowledge.md` — Hard-won lessons (main-thread blocking, CLAUDECODE env var). **Read this before modifying request handlers or spawning processes.**
 - `docs/plans/` — Design and implementation plans.
 
 ## Tech Stack
 
-- **Frontend:** Svelte 5 (runes: `$state`, `$derived`, `$props`, `$effect`), xterm.js
-- **Backend:** Rust (Tauri v2), portable-pty, git2
+- **Frontend:** Svelte 5 (runes: `$state`, `$derived`, `$props`, `$effect`), xterm.js, vite
+- **Backend:** Rust (axum), portable-pty, git2
 - **Theme:** Catppuccin Mocha
 
 ## Branch Completion Rules
@@ -43,6 +43,6 @@ git branch -d <feature-branch>
 
 ## Dev Commands
 
-- `pnpm tauri dev` — Run the app in development mode
-- `cd src-tauri && cargo test` — Run Rust tests
+- `./dev.sh` — Run the app (axum on 3001, vite on 1420); open http://localhost:1420
+- `cd server && cargo test` — Run Rust tests
 - `pnpm test` — Run frontend tests

@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use serde::Deserialize;
-use tauri::{AppHandle, Manager};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::labels;
@@ -59,7 +59,7 @@ const STOPWORDS: &[&str] = &[
     "agent",
     "src",
     "lib",
-    "tauri",
+    "server",
     "rs",
     "svelte",
 ];
@@ -135,17 +135,12 @@ pub struct MaintainerScheduler;
 impl MaintainerScheduler {
     /// Start the scheduler loop in a background thread.
     /// Checks every 60 seconds which projects are due for a health check.
-    pub fn start(app_handle: AppHandle) {
+    pub fn start(state: Arc<AppState>) {
         std::thread::spawn(move || {
             let mut last_run: HashMap<Uuid, Instant> = HashMap::new();
 
             loop {
                 std::thread::sleep(Duration::from_secs(60));
-
-                let state = match app_handle.try_state::<AppState>() {
-                    Some(s) => s,
-                    None => continue,
-                };
 
                 let projects = {
                     let storage = match state.storage.lock() {
@@ -1121,7 +1116,7 @@ mod tests {
             body: "The app crashes during startup if filesystem initialization fails. This is a reliability bug that blocks app launch.".to_string(),
             priority: "high".to_string(),
             complexity: "low".to_string(),
-            affected_files: vec!["src-tauri/src/state.rs".to_string()],
+            affected_files: vec!["server/src/state.rs".to_string()],
             symptom_type: "startup panic".to_string(),
             keywords: vec!["panic".to_string(), "startup".to_string()],
         }];
@@ -1161,7 +1156,7 @@ mod tests {
       "body": "Startup panics when storage init fails.",
       "priority": "high",
       "complexity": "low",
-      "affected_files": ["src-tauri/src/state.rs"],
+      "affected_files": ["server/src/state.rs"],
       "symptom_type": "startup panic",
       "keywords": ["appstate", "filesystem", "initialization"]
     }
@@ -1256,8 +1251,8 @@ mod tests {
             priority: "high".to_string(),
             complexity: "simple".to_string(),
             affected_files: vec![
-                "src-tauri/src/state.rs".to_string(),
-                "src-tauri/src/state.rs".to_string(),
+                "server/src/state.rs".to_string(),
+                "server/src/state.rs".to_string(),
             ],
             symptom_type: "Startup Panic".to_string(),
             keywords: vec![
@@ -1283,7 +1278,7 @@ mod tests {
             body: "App crashes at startup if filesystem init fails in AppState::new.".to_string(),
             priority: "high".to_string(),
             complexity: "simple".to_string(),
-            affected_files: vec!["src-tauri/src/state.rs".to_string()],
+            affected_files: vec!["server/src/state.rs".to_string()],
             symptom_type: "startup panic".to_string(),
             keywords: vec![
                 "appstate".to_string(),
@@ -1376,7 +1371,7 @@ mod tests {
             body: "Body".to_string(),
             priority: "high".to_string(),
             complexity: "simple".to_string(),
-            affected_files: vec!["src-tauri/src/state.rs".to_string()],
+            affected_files: vec!["server/src/state.rs".to_string()],
             symptom_type: "startup panic".to_string(),
             keywords: vec!["appstate".to_string(), "filesystem".to_string()],
         };
@@ -1384,7 +1379,7 @@ mod tests {
         let existing = vec![ExistingIssue {
             number: 277,
             title: "Old title".to_string(),
-            body: "## Maintainer Metadata\n- Fingerprint: `appstate|filesystem|panic|src|state|startup|tauri`"
+            body: "## Maintainer Metadata\n- Fingerprint: `appstate|filesystem|panic|server|src|state|startup`"
                 .to_string(),
             url: "https://github.com/owner/repo/issues/277".to_string(),
             labels: vec!["filed-by-maintainer".to_string()],
@@ -1401,7 +1396,7 @@ mod tests {
             body: "Body".to_string(),
             priority: "high".to_string(),
             complexity: "simple".to_string(),
-            affected_files: vec!["src-tauri/src/state.rs".to_string()],
+            affected_files: vec!["server/src/state.rs".to_string()],
             symptom_type: "startup panic".to_string(),
             keywords: vec!["appstate".to_string(), "filesystem".to_string()],
         };

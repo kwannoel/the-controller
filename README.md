@@ -42,7 +42,7 @@ Reload with `tmux source-file ~/.tmux.conf`.
 The app now includes a companion CLI for secure `.env` editing:
 
 ```bash
-cd src-tauri
+cd server
 cargo run --bin controller-cli -- env set --project <project-name> --key <ENV_KEY>
 ```
 

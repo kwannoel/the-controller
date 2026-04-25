@@ -26,7 +26,7 @@
   let mutationObserver: MutationObserver | undefined;
   let unlistenOutput: (() => void) | undefined;
   let unlistenStatus: (() => void) | undefined;
-  let unlistenDragDrop: (() => void) | undefined;
+  let unlistenDomDrop: (() => void) | undefined;
 
   // Gate: suppress onData forwarding during initialization to prevent
   // xterm.js auto-responses to terminal queries (DA, DSR) from being
@@ -84,14 +84,6 @@
     });
   }
 
-  const IMAGE_EXTENSIONS = new Set([
-    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp",
-  ]);
-
-  function isImageFile(path: string): boolean {
-    const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
-    return IMAGE_EXTENSIONS.has(ext);
-  }
 
   onMount(async () => {
     if (!containerEl) return;
@@ -240,22 +232,37 @@
       }
     });
 
-    // Listen for drag-and-drop file events (from Finder).
-    // Gate on active session — this is a window-level event so all
-    // mounted Terminal instances receive it; only the active one should act.
-    unlistenDragDrop = listen<{ paths: string[] }>("tauri://drag-drop", async (payload) => {
-      if (get(activeSessionId) !== sessionId) return;
+    // Drag-and-drop image files onto the terminal: copy to clipboard so
+    // Claude Code can read it via its clipboard-image handler, then send the
+    // empty bracket-paste to trigger the reader.
+    if (containerEl) {
+      const handleDragOver = (e: DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      };
+      const handleDrop = async (e: DragEvent) => {
+        e.preventDefault();
+        if (get(activeSessionId) !== sessionId) return;
 
-      const imagePath = payload.paths.find(isImageFile);
-      if (imagePath) {
+        const file = Array.from(e.dataTransfer?.files ?? []).find((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (!file) return;
         try {
-          await command("copy_image_file_to_clipboard", { path: imagePath });
+          const { copyImageBlobToClipboard } = await import("$lib/native");
+          await copyImageBlobToClipboard(file);
           await writeToPty("\x1b[200~\x1b[201~");
         } catch (err) {
           console.error("Failed to handle dropped image:", err);
         }
-      }
-    });
+      };
+      containerEl.addEventListener("dragover", handleDragOver);
+      containerEl.addEventListener("drop", handleDrop);
+      unlistenDomDrop = () => {
+        containerEl?.removeEventListener("dragover", handleDragOver);
+        containerEl?.removeEventListener("drop", handleDrop);
+      };
+    }
 
     // Handle resize
     resizeObserver = new ResizeObserver(() => {
@@ -347,7 +354,7 @@
   onDestroy(() => {
     unlistenOutput?.();
     unlistenStatus?.();
-    unlistenDragDrop?.();
+    unlistenDomDrop?.();
     resizeObserver?.disconnect();
     mutationObserver?.disconnect();
     term?.dispose();

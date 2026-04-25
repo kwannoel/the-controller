@@ -1,21 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
-use tauri::{AppHandle, Manager};
 
 pub fn order_file_in(dir: &Path) -> PathBuf {
     dir.join("kanban-order.json")
-}
-
-fn order_file(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("app_data_dir unavailable: {e}"))?;
-    if !dir.exists() {
-        std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create app_data_dir: {e}"))?;
-    }
-    Ok(order_file_in(&dir))
 }
 
 pub fn load_order_from(path: &Path) -> Result<Value, String> {
@@ -42,20 +30,6 @@ pub fn save_order_to(path: &Path, order: &Value) -> Result<(), String> {
     std::fs::write(&tmp, &bytes).map_err(|e| format!("failed to write tmp order: {e}"))?;
     std::fs::rename(&tmp, path).map_err(|e| format!("failed to rename tmp order: {e}"))?;
     Ok(())
-}
-
-pub(crate) async fn kanban_load_order(app: AppHandle) -> Result<Value, String> {
-    let path = order_file(&app)?;
-    tokio::task::spawn_blocking(move || load_order_from(&path))
-        .await
-        .map_err(|e| format!("spawn_blocking failed: {e}"))?
-}
-
-pub(crate) async fn kanban_save_order(app: AppHandle, order: Value) -> Result<(), String> {
-    let path = order_file(&app)?;
-    tokio::task::spawn_blocking(move || save_order_to(&path, &order))
-        .await
-        .map_err(|e| format!("spawn_blocking failed: {e}"))?
 }
 
 #[cfg(test)]
