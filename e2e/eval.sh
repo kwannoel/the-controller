@@ -79,8 +79,8 @@ echo "Eval ports: Axum=$AXUM_PORT, Vite=$VITE_PORT"
 
 # --- Ensure node_modules ---
 if [[ ! -d "$WORKTREE/node_modules" ]]; then
-  echo "Installing npm dependencies in worktree..."
-  (cd "$WORKTREE" && npm install --silent)
+  echo "Installing pnpm dependencies in worktree..."
+  (cd "$WORKTREE" && pnpm install --silent)
 fi
 
 # --- Start Axum server ---
@@ -90,7 +90,7 @@ AXUM_PID=$!
 
 # --- Start Vite dev server ---
 echo "Starting Vite dev server on port $VITE_PORT..."
-(cd "$WORKTREE" && DEV_PORT="$VITE_PORT" AXUM_PORT="$AXUM_PORT" npm run dev -- --strictPort) &
+(cd "$WORKTREE" && DEV_PORT="$VITE_PORT" AXUM_PORT="$AXUM_PORT" pnpm dev -- --strictPort) &
 VITE_PID=$!
 
 # --- Wait for servers to be ready ---

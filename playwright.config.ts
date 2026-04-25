@@ -15,7 +15,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: "npm run dev",
+      command: "pnpm dev",
       port: 1420,
       reuseExistingServer: true,
     },

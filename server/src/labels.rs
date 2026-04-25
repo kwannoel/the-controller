@@ -27,14 +27,12 @@ pub fn validate_triage_label(label: &str) -> Result<&str, String> {
     if label.starts_with("priority:") || label.starts_with("complexity:") {
         if label.contains(": ") {
             return Err(format!(
-                "Label '{}' has a space after the colon. Use the canonical format (e.g. 'priority:high', not 'priority: high')",
-                label
+                "Label '{label}' has a space after the colon. Use the canonical format (e.g. 'priority:high', not 'priority: high')"
             ));
         }
         if !TRIAGE_LABELS.contains(&label) {
             return Err(format!(
-                "Unknown triage label '{}'. Valid labels: {:?}",
-                label, TRIAGE_LABELS
+                "Unknown triage label '{label}'. Valid labels: {TRIAGE_LABELS:?}"
             ));
         }
     }

@@ -102,15 +102,14 @@ pub fn generate_names_via_cli(description: &str) -> Result<Vec<String>, String> 
     }
 
     let prompt = format!(
-        "Suggest 3 short, lowercase, hyphenated project directory names for: {}. Return only the 3 names, one per line, nothing else.",
-        description
+        "Suggest 3 short, lowercase, hyphenated project directory names for: {description}. Return only the 3 names, one per line, nothing else."
     );
 
     let output = Command::new("claude")
         .args(["--print", &prompt])
         .env_remove("CLAUDECODE")
         .output()
-        .map_err(|e| format!("Failed to run claude CLI: {}", e))?;
+        .map_err(|e| format!("Failed to run claude CLI: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -33,7 +33,7 @@ pub fn inherit_shell_env() {
 fn resolve_shell_env() -> HashMap<String, String> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
 
-    let script = format!("echo '{}'; /usr/bin/env", ENV_MARKER);
+    let script = format!("echo '{ENV_MARKER}'; /usr/bin/env");
 
     let mut child = match Command::new(&shell)
         .args(["-ilc", &script])

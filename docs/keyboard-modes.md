@@ -4,16 +4,14 @@ All keyboard input flows through `HotkeyManager.svelte`. Hotkey definitions live
 
 ## Workspace Modes
 
-The Controller has six workspace modes, each with its own hotkeys. Press `Space` then a key to switch:
+The Controller has four workspace modes, each with its own hotkeys. Press `Space` then a key to switch:
 
 | Key | Mode |
 |-----|------|
 | d | Development — manage sessions, branches, projects |
 | a | Agents — toggle auto-workers and maintainers |
-| r | Architecture — generate project architecture docs |
-| n | Notes — markdown notes organized by folder |
-| i | Infrastructure — deploy and rollback projects |
-| v | Voice — voice interaction mode |
+| k | Kanban — organize GitHub issues |
+| c | Chat — use daemon-backed chat sessions |
 
 ## Keyboard State Machine
 
@@ -36,8 +34,7 @@ The Controller has six workspace modes, each with its own hotkeys. Press `Space`
      v
 +-------------------+
 | Workspace Mode    |
-| Picker (d/a/r/n/  |
-|          i/v)     |
+| Picker (d/a/k/c)  |
 +-------------------+
 ```
 
@@ -92,36 +89,20 @@ These work in all workspace modes when no terminal or editable element is focuse
 | c | Clear maintainer reports |
 | t | Toggle between Runs / Issues view |
 
-## Ambient Mode — Architecture Keys
+## Ambient Mode — Kanban Keys
 
 | Key | Action |
 |-----|--------|
-| r | Generate / regenerate architecture for focused project |
+| Space then k | Open the Kanban board for the focused project |
+| Drag issue cards | Move issues between lifecycle columns |
 
-## Ambient Mode — Notes Keys
-
-| Key | Action |
-|-----|--------|
-| n | Create new note |
-| d | Delete focused note or folder |
-| r | Rename focused note or folder |
-| y | Duplicate focused note |
-| p | Cycle note preview mode (edit / preview / split) |
-| o / i / a | Open note for editing (vim-style) |
-
-## Ambient Mode — Infrastructure Keys
+## Ambient Mode — Chat Keys
 
 | Key | Action |
 |-----|--------|
-| d | Deploy focused project |
-| r | Rollback last deployment |
-
-## Ambient Mode — Voice Keys
-
-| Key | Action |
-|-----|--------|
-| d | Toggle debug panel |
-| t | Toggle transcript panel |
+| Space then c | Open daemon-backed chat mode |
+| j / k | Move through visible chat sessions |
+| l / Enter | Select a chat session or expand/collapse a project |
 
 ## Agent Panel Keys
 
@@ -145,7 +126,7 @@ Press `v` again to unstage (kills the staged instance).
 **What happens when you stage:**
 1. Worktree is committed (prompts Claude to commit if dirty)
 2. Branch is rebased onto main if behind
-3. `npm install` runs in the worktree if needed
+3. `pnpm install` runs in the worktree if needed
 4. `./dev.sh <port>` launches a separate Controller instance
 5. Main Controller title bar shows "staging: session-label"
 

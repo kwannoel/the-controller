@@ -20,7 +20,7 @@ pub fn ensure_claude_md_symlink(dir: &Path) -> Result<(), String> {
     if agents_md.exists() && !claude_md.exists() {
         #[cfg(unix)]
         std::os::unix::fs::symlink("agents.md", &claude_md)
-            .map_err(|e| format!("failed to create CLAUDE.md symlink: {}", e))?;
+            .map_err(|e| format!("failed to create CLAUDE.md symlink: {e}"))?;
         #[cfg(windows)]
         std::os::windows::fs::symlink_file("agents.md", &claude_md)
             .map_err(|e| format!("failed to create CLAUDE.md symlink: {}", e))?;
@@ -32,7 +32,7 @@ pub fn ensure_claude_md_symlink(dir: &Path) -> Result<(), String> {
 /// and names starting with `.`.
 pub(crate) fn validate_project_name(name: &str) -> Result<(), String> {
     if name.is_empty() || name.contains('/') || name.contains('\\') || name.starts_with('.') {
-        return Err(format!("Invalid project name: {}", name));
+        return Err(format!("Invalid project name: {name}"));
     }
     Ok(())
 }
@@ -88,10 +88,7 @@ where
 
             match rollback {
                 Ok(()) => Err(action_err),
-                Err(rollback_err) => Err(format!(
-                    "{} (rollback failed: {})",
-                    action_err, rollback_err
-                )),
+                Err(rollback_err) => Err(format!("{action_err} (rollback failed: {rollback_err})")),
             }
         }
     }
@@ -162,7 +159,7 @@ pub fn render_agents_md(name: &str) -> String {
 fn rollback_scaffold_dir(repo_path: &Path, error: String) -> String {
     match std::fs::remove_dir_all(repo_path) {
         Ok(_) => error,
-        Err(cleanup_error) => format!("{} (cleanup failed: {})", error, cleanup_error),
+        Err(cleanup_error) => format!("{error} (cleanup failed: {cleanup_error})"),
     }
 }
 
@@ -177,7 +174,7 @@ fn parse_github_nwo(url: &str) -> Result<String, String> {
         return Ok(rest.trim_end_matches(".git").to_string());
     }
 
-    Err(format!("Not a GitHub remote URL: {}", url))
+    Err(format!("Not a GitHub remote URL: {url}"))
 }
 
 fn github_cli_command() -> std::process::Command {
@@ -208,7 +205,7 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
                             "remote cleanup failed: {}",
                             String::from_utf8_lossy(&output.stderr).trim()
                         )),
-                        Err(e) => cleanup_errors.push(format!("remote cleanup failed: {}", e)),
+                        Err(e) => cleanup_errors.push(format!("remote cleanup failed: {e}")),
                     }
                 }
             }
@@ -216,7 +213,7 @@ fn rollback_scaffold_state(repo_path: &Path, error: String) -> String {
     }
 
     if let Err(cleanup_error) = std::fs::remove_dir_all(repo_path) {
-        cleanup_errors.push(format!("local cleanup failed: {}", cleanup_error));
+        cleanup_errors.push(format!("local cleanup failed: {cleanup_error}"));
     }
 
     if cleanup_errors.is_empty() {
@@ -233,7 +230,7 @@ fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project
     std::fs::create_dir_all(parent_dir).map_err(|e| e.to_string())?;
     std::fs::create_dir(&repo_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
-            format!("Directory already exists: {}", name)
+            format!("Directory already exists: {name}")
         } else {
             e.to_string()
         }
@@ -247,38 +244,38 @@ fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project
 
     let agents_content = render_agents_md(&name);
     std::fs::write(repo_path.join("agents.md"), &agents_content)
-        .map_err(|e| rollback_dir(format!("failed to write agents.md: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to write agents.md: {e}")))?;
     ensure_claude_md_symlink(&repo_path).map_err(rollback_dir)?;
     let plans_dir = repo_path.join("docs").join("plans");
     std::fs::create_dir_all(&plans_dir)
-        .map_err(|e| rollback_dir(format!("failed to create docs/plans: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to create docs/plans: {e}")))?;
     std::fs::write(plans_dir.join(".gitkeep"), "")
-        .map_err(|e| rollback_dir(format!("failed to write .gitkeep: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to write .gitkeep: {e}")))?;
 
     let mut index = repo
         .index()
-        .map_err(|e| rollback_dir(format!("failed to get index: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to get index: {e}")))?;
     index
         .add_path(std::path::Path::new("agents.md"))
-        .map_err(|e| rollback_dir(format!("failed to add agents.md to index: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to add agents.md to index: {e}")))?;
     index
         .add_path(std::path::Path::new("CLAUDE.md"))
-        .map_err(|e| rollback_dir(format!("failed to add CLAUDE.md to index: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to add CLAUDE.md to index: {e}")))?;
     index
         .add_path(std::path::Path::new("docs/plans/.gitkeep"))
-        .map_err(|e| rollback_dir(format!("failed to add .gitkeep to index: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to add .gitkeep to index: {e}")))?;
     index
         .write()
-        .map_err(|e| rollback_dir(format!("failed to write index: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to write index: {e}")))?;
     let tree_id = index
         .write_tree()
-        .map_err(|e| rollback_dir(format!("failed to write tree: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to write tree: {e}")))?;
     let tree = repo
         .find_tree(tree_id)
-        .map_err(|e| rollback_dir(format!("failed to find tree: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to find tree: {e}")))?;
 
     repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
-        .map_err(|e| rollback_dir(format!("failed to create initial commit: {}", e)))?;
+        .map_err(|e| rollback_dir(format!("failed to create initial commit: {e}")))?;
 
     let gh_output = github_cli_command()
         .args([
@@ -291,7 +288,7 @@ fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project
         ])
         .current_dir(&repo_path)
         .output()
-        .map_err(|e| rollback_dir(format!("Failed to run gh CLI: {}. Is gh installed?", e)))?;
+        .map_err(|e| rollback_dir(format!("Failed to run gh CLI: {e}. Is gh installed?")))?;
     if !gh_output.status.success() {
         let stderr = String::from_utf8_lossy(&gh_output.stderr);
         return Err(rollback_dir(format!(
@@ -304,9 +301,7 @@ fn scaffold_project_blocking(name: String, repo_path: PathBuf) -> Result<Project
         .args(["push", "--set-upstream", "origin", "HEAD"])
         .current_dir(&repo_path)
         .output()
-        .map_err(|e| {
-            rollback_scaffold_state(&repo_path, format!("Failed to run git push: {}", e))
-        })?;
+        .map_err(|e| rollback_scaffold_state(&repo_path, format!("Failed to run git push: {e}")))?;
     if !push_output.status.success() {
         let stderr = String::from_utf8_lossy(&push_output.stderr);
         return Err(rollback_scaffold_state(
@@ -338,7 +333,7 @@ pub fn create_project_impl(
 
     let path = Path::new(&repo_path);
     if !path.is_dir() {
-        return Err(format!("repo_path is not a directory: {}", repo_path));
+        return Err(format!("repo_path is not a directory: {repo_path}"));
     }
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
@@ -346,7 +341,7 @@ pub fn create_project_impl(
     if let Ok(inventory) = storage.list_projects() {
         let existing = inventory.projects;
         if existing.iter().any(|p| p.name == name) {
-            return Err(format!("A project named '{}' already exists", name));
+            return Err(format!("A project named '{name}' already exists"));
         }
     }
 
@@ -386,12 +381,12 @@ pub fn load_project_impl(
 
     let path = Path::new(&repo_path);
     if !path.is_dir() {
-        return Err(format!("repo_path is not a directory: {}", repo_path));
+        return Err(format!("repo_path is not a directory: {repo_path}"));
     }
 
     let git_dir = path.join(".git");
     if !git_dir.exists() {
-        return Err(format!("not a git repository: {}", repo_path));
+        return Err(format!("not a git repository: {repo_path}"));
     }
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
@@ -402,7 +397,7 @@ pub fn load_project_impl(
             return Ok(project.clone());
         }
         if existing.iter().any(|p| p.name == name) {
-            return Err(format!("A project named '{}' already exists", name));
+            return Err(format!("A project named '{name}' already exists"));
         }
     }
 
@@ -459,7 +454,7 @@ pub fn delete_project_impl(
 
     if delete_repo && Path::new(&project.repo_path).exists() {
         std::fs::remove_dir_all(&project.repo_path)
-            .map_err(|e| format!("failed to delete repo: {}", e))?;
+            .map_err(|e| format!("failed to delete repo: {e}"))?;
     }
 
     Ok(())
@@ -583,7 +578,7 @@ pub fn create_session_impl(
                 Some(worktree_path.as_str()),
                 Some(worktree_branch.as_str()),
             ) {
-                return format!("{} (worktree cleanup failed: {})", spawn_err, cleanup_err);
+                return format!("{spawn_err} (worktree cleanup failed: {cleanup_err})");
             }
         }
         spawn_err
@@ -742,7 +737,7 @@ pub async fn stage_session_core(
         let wt = worktree_path.clone();
         let is_clean = tokio::task::spawn_blocking(move || WorktreeManager::is_worktree_clean(&wt))
             .await
-            .map_err(|e| format!("Task failed: {}", e))??;
+            .map_err(|e| format!("Task failed: {e}"))??;
 
         if !is_clean {
             if !allow_pty_prompts {
@@ -768,7 +763,7 @@ pub async fn stage_session_core(
                     WorktreeManager::is_worktree_clean(&wt_check)
                 })
                 .await
-                .map_err(|e| format!("Task failed: {}", e))??;
+                .map_err(|e| format!("Task failed: {e}"))??;
                 if clean {
                     committed = true;
                     break;
@@ -788,7 +783,7 @@ pub async fn stage_session_core(
         let main_branch =
             tokio::task::spawn_blocking(move || WorktreeManager::detect_main_branch(&rp))
                 .await
-                .map_err(|e| format!("Task failed: {}", e))??;
+                .map_err(|e| format!("Task failed: {e}"))??;
 
         let rp = repo_path.clone();
         let _ = tokio::task::spawn_blocking(move || WorktreeManager::sync_main(&rp)).await;
@@ -799,7 +794,7 @@ pub async fn stage_session_core(
         let is_behind =
             tokio::task::spawn_blocking(move || WorktreeManager::is_branch_behind(&rp, &br, &mb))
                 .await
-                .map_err(|e| format!("Task failed: {}", e))??;
+                .map_err(|e| format!("Task failed: {e}"))??;
 
         if is_behind {
             let wt = worktree_path.clone();
@@ -807,7 +802,7 @@ pub async fn stage_session_core(
             let rebase_clean =
                 tokio::task::spawn_blocking(move || WorktreeManager::rebase_onto(&wt, &mb))
                     .await
-                    .map_err(|e| format!("Task failed: {}", e))??;
+                    .map_err(|e| format!("Task failed: {e}"))??;
 
             if !rebase_clean {
                 if !allow_pty_prompts {
@@ -836,7 +831,7 @@ pub async fn stage_session_core(
                         WorktreeManager::is_rebase_in_progress(&wt_check)
                     })
                     .await
-                    .map_err(|e| format!("Task failed: {}", e))?;
+                    .map_err(|e| format!("Task failed: {e}"))?;
                     if !still_rebasing {
                         resolved = true;
                         break;
@@ -870,8 +865,8 @@ pub async fn stage_session_core(
                 .status()
         })
         .await
-        .map_err(|e| format!("Task failed: {}", e))?
-        .map_err(|e| format!("npm install failed: {}", e))?;
+        .map_err(|e| format!("Task failed: {e}"))?
+        .map_err(|e| format!("npm install failed: {e}"))?;
 
         if !install_status.success() {
             return Err("npm install failed in worktree".to_string());
@@ -882,15 +877,15 @@ pub async fn stage_session_core(
 
     let _ = state
         .emitter
-        .emit("staging-status", &format!("Starting on port {}...", port));
+        .emit("staging-status", &format!("Starting on port {port}..."));
 
     let wt = worktree_path.clone();
     let log_path = PathBuf::from(&wt).join("staging.log");
     let log_file = std::fs::File::create(&log_path)
-        .map_err(|e| format!("Failed to create staging log: {}", e))?;
+        .map_err(|e| format!("Failed to create staging log: {e}"))?;
     let log_stderr = log_file
         .try_clone()
-        .map_err(|e| format!("Failed to clone log file: {}", e))?;
+        .map_err(|e| format!("Failed to clone log file: {e}"))?;
     let mut child = std::process::Command::new("bash")
         .args(["./dev.sh", &port.to_string()])
         .current_dir(&wt)
@@ -902,7 +897,7 @@ pub async fn stage_session_core(
         .stderr(Stdio::from(log_stderr))
         .process_group(0)
         .spawn()
-        .map_err(|e| format!("Failed to spawn staged instance: {}", e))?;
+        .map_err(|e| format!("Failed to spawn staged instance: {e}"))?;
 
     let pid = child.id();
     // Reap the child in a background thread to prevent zombie entries.
@@ -968,16 +963,16 @@ pub fn unstage_session_impl(
 
 pub fn get_repo_head_impl(repo_path: String) -> Result<(String, String), String> {
     let repo =
-        git2::Repository::open(&repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+        git2::Repository::open(&repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
 
     let head = repo
         .head()
-        .map_err(|e| format!("Failed to get HEAD: {}", e))?;
+        .map_err(|e| format!("Failed to get HEAD: {e}"))?;
     let branch = head.shorthand().unwrap_or("HEAD").to_string();
 
     let commit = head
         .peel_to_commit()
-        .map_err(|e| format!("Failed to peel to commit: {}", e))?;
+        .map_err(|e| format!("Failed to peel to commit: {e}"))?;
     let short_hash = commit.id().to_string()[..7].to_string();
 
     Ok((branch, short_hash))
@@ -1020,7 +1015,7 @@ pub fn save_session_prompt_impl(
     let name = {
         let truncated: String = prompt_text.chars().take(60).collect();
         if truncated.len() < prompt_text.len() {
-            format!("{}...", truncated)
+            format!("{truncated}...")
         } else {
             truncated
         }
@@ -1108,8 +1103,7 @@ pub fn save_onboarding_config_impl(state: &AppState, projects_root: String) -> R
     let path = Path::new(&projects_root);
     if !path.is_dir() {
         return Err(format!(
-            "projects_root is not an existing directory: {}",
-            projects_root
+            "projects_root is not an existing directory: {projects_root}"
         ));
     }
 
@@ -1136,7 +1130,7 @@ pub async fn scaffold_project_impl(state: &AppState, name: String) -> Result<Pro
         if let Ok(inventory) = storage.list_projects() {
             let existing = inventory.projects;
             if existing.iter().any(|p| p.name == name) {
-                return Err(format!("A project named '{}' already exists", name));
+                return Err(format!("A project named '{name}' already exists"));
             }
         }
 
@@ -1146,12 +1140,12 @@ pub async fn scaffold_project_impl(state: &AppState, name: String) -> Result<Pro
         std::path::Path::new(&cfg.projects_root).join(&name)
     };
     if repo_path.exists() {
-        return Err(format!("Directory already exists: {}", name));
+        return Err(format!("Directory already exists: {name}"));
     }
 
     let project = tokio::task::spawn_blocking(move || scaffold_project_blocking(name, repo_path))
         .await
-        .map_err(|e| format!("Task failed: {}", e))??;
+        .map_err(|e| format!("Task failed: {e}"))??;
 
     let storage = state.storage.lock().map_err(|e| e.to_string())?;
     if let Ok(inventory) = storage.list_projects() {
@@ -1460,17 +1454,17 @@ pub async fn trigger_maintainer_check_impl(
 
     let _ = state
         .emitter
-        .emit(&format!("maintainer-status:{}", project_id), "running");
+        .emit(&format!("maintainer-status:{project_id}"), "running");
 
     let log = match run_maintainer_check_spawn_blocking(repo_path, project_id, github_repo).await {
         Ok(log) => log,
         Err(e) => {
             let _ = state
                 .emitter
-                .emit(&format!("maintainer-status:{}", project_id), "error");
+                .emit(&format!("maintainer-status:{project_id}"), "error");
             let _ = state
                 .emitter
-                .emit(&format!("maintainer-error:{}", project_id), &e.to_string());
+                .emit(&format!("maintainer-error:{project_id}"), &e.to_string());
             return Err(e);
         }
     };
@@ -1484,7 +1478,7 @@ pub async fn trigger_maintainer_check_impl(
 
     let _ = state
         .emitter
-        .emit(&format!("maintainer-status:{}", project_id), "idle");
+        .emit(&format!("maintainer-status:{project_id}"), "idle");
 
     Ok(log)
 }
@@ -1497,7 +1491,7 @@ pub fn clear_maintainer_reports_impl(state: &AppState, project_id: String) -> Re
         .map_err(|e| e.to_string())?;
     let _ = state
         .emitter
-        .emit(&format!("maintainer-status:{}", project_id), "idle");
+        .emit(&format!("maintainer-status:{project_id}"), "idle");
     Ok(())
 }
 

@@ -49,9 +49,9 @@ Affected files:
 - `server/src/pty_manager.rs` — `spawn_session`, `close_session`, `attach_tmux_session`
 - `server/src/main.rs` — axum entry point; schedulers + status_socket start here
 
-## Shell Environment Inheritance (macOS GUI)
+## Shell Environment Inheritance
 
-macOS GUI apps inherit a minimal launchd environment missing `.zshrc` vars. `shell_env::inherit_shell_env()` resolves the user's full shell env at startup and applies it to the process. Must run before any threads (`set_var` is not thread-safe). For tmux, all process env vars are passed via `-e` flags in `build_create_args` because tmux sessions inherit the **server's** environment, not the client's.
+The server may start from a shell, launcher, or automation process that does not have the user's full login environment. `shell_env::inherit_shell_env()` resolves the user's shell env at startup and applies it to the process. It must run before any threads (`set_var` is not thread-safe). For tmux, all process env vars are passed via `-e` flags in `build_create_args` because tmux sessions inherit the **server's** environment, not the client's.
 
 Affected files: `server/src/shell_env.rs`, `server/src/main.rs`, `server/src/tmux.rs`
 

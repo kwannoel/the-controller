@@ -10,7 +10,7 @@ use crate::worktree::WorktreeManager;
 const DEFAULT_SOCKET_PATH: &str = "/tmp/the-controller.sock";
 /// Return the socket path for a specific staged session.
 pub fn staged_socket_path(session_id: &Uuid) -> String {
-    format!("/tmp/the-controller-staged-{}.sock", session_id)
+    format!("/tmp/the-controller-staged-{session_id}.sock")
 }
 
 /// Return the socket path, checking the CONTROLLER_SOCKET env var first.
@@ -71,7 +71,7 @@ fn write_socket_response(stream: &mut UnixStream, response: &crate::secure_env::
         crate::secure_env::format_secure_env_response(response)
     );
     if let Err(err) = stream.write_all(line.as_bytes()) {
-        eprintln!("Failed to write socket response: {}", err);
+        eprintln!("Failed to write socket response: {err}");
     }
 }
 
@@ -136,8 +136,7 @@ pub fn start_listener(state: Arc<AppState>) {
         match UnixStream::connect(&path) {
             Ok(_) => {
                 eprintln!(
-                    "Warning: another instance appears to be running (socket {} is active)",
-                    path
+                    "Warning: another instance appears to be running (socket {path} is active)"
                 );
                 return;
             }
@@ -151,7 +150,7 @@ pub fn start_listener(state: Arc<AppState>) {
     let listener = match UnixListener::bind(&path) {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("Failed to bind Unix socket at {}: {}", path, e);
+            eprintln!("Failed to bind Unix socket at {path}: {e}");
             return;
         }
     };
@@ -169,7 +168,7 @@ pub fn start_listener(state: Arc<AppState>) {
                     });
                 }
                 Err(e) => {
-                    eprintln!("Error accepting connection on status socket: {}", e);
+                    eprintln!("Error accepting connection on status socket: {e}");
                 }
             }
         }
@@ -180,7 +179,7 @@ fn handle_connection(stream: UnixStream, state: &Arc<AppState>, emitter: &Arc<dy
     let mut writer = match stream.try_clone() {
         Ok(stream) => stream,
         Err(err) => {
-            eprintln!("Failed to clone status socket stream: {}", err);
+            eprintln!("Failed to clone status socket stream: {err}");
             return;
         }
     };
@@ -195,9 +194,9 @@ fn handle_connection(stream: UnixStream, state: &Arc<AppState>, emitter: &Arc<dy
                             handle_cleanup(state, session_id);
                             return;
                         }
-                        let event_name = format!("session-status-hook:{}", session_id);
+                        let event_name = format!("session-status-hook:{session_id}");
                         if let Err(e) = emitter.emit(&event_name, &status) {
-                            eprintln!("Failed to emit {}: {}", event_name, e);
+                            eprintln!("Failed to emit {event_name}: {e}");
                         }
                         if status == "idle" {
                             crate::auto_worker::notify_session_idle(session_id);
@@ -220,12 +219,12 @@ fn handle_connection(stream: UnixStream, state: &Arc<AppState>, emitter: &Arc<dy
                             let _ = tx.send(result);
                         });
                         let response = match rx.recv() {
-                            Ok(Ok(port)) => format!("staged:{}\n", port),
-                            Ok(Err(e)) => format!("error:{}\n", e),
+                            Ok(Ok(port)) => format!("staged:{port}\n"),
+                            Ok(Err(e)) => format!("error:{e}\n"),
                             Err(_) => "error:internal channel error\n".to_string(),
                         };
                         if let Err(e) = writer.write_all(response.as_bytes()) {
-                            eprintln!("Failed to write stage response: {}", e);
+                            eprintln!("Failed to write stage response: {e}");
                         }
                         return;
                     }
@@ -235,7 +234,7 @@ fn handle_connection(stream: UnixStream, state: &Arc<AppState>, emitter: &Arc<dy
                             Ok(()) => match response_rx.recv() {
                                 Ok(response) => write_socket_response(&mut writer, &response),
                                 Err(err) => {
-                                    eprintln!("Failed to receive secure env response: {}", err);
+                                    eprintln!("Failed to receive secure env response: {err}");
                                     write_socket_response(
                                         &mut writer,
                                         &crate::secure_env::SecureEnvResponse {
@@ -251,7 +250,7 @@ fn handle_connection(stream: UnixStream, state: &Arc<AppState>, emitter: &Arc<dy
                         return;
                     }
                     Err(err) if msg.starts_with("secure-env:") => {
-                        eprintln!("Invalid secure env socket message: {}", err);
+                        eprintln!("Invalid secure env socket message: {err}");
                         write_socket_response(
                             &mut writer,
                             &crate::secure_env::SecureEnvResponse {
@@ -266,7 +265,7 @@ fn handle_connection(stream: UnixStream, state: &Arc<AppState>, emitter: &Arc<dy
                 }
             }
             Err(e) => {
-                eprintln!("Error reading from status socket connection: {}", e);
+                eprintln!("Error reading from status socket connection: {e}");
                 break;
             }
         }
@@ -287,7 +286,7 @@ fn handle_cleanup(state: &Arc<AppState>, session_id: Uuid) {
                 if let Some(pos) = project.sessions.iter().position(|s| s.id == session_id) {
                     let session = project.sessions.remove(pos);
                     if let Err(e) = storage.save_project(project) {
-                        eprintln!("cleanup: failed to save project: {}", e);
+                        eprintln!("cleanup: failed to save project: {e}");
                     }
                     // Delete the worktree
                     if let (Some(wt_path), Some(branch)) =
@@ -296,7 +295,7 @@ fn handle_cleanup(state: &Arc<AppState>, session_id: Uuid) {
                         if let Err(e) =
                             WorktreeManager::remove_worktree(wt_path, &project.repo_path, branch)
                         {
-                            eprintln!("cleanup: failed to remove worktree: {}", e);
+                            eprintln!("cleanup: failed to remove worktree: {e}");
                         }
                     }
                     break;
@@ -311,9 +310,9 @@ fn handle_cleanup(state: &Arc<AppState>, session_id: Uuid) {
     }
 
     // Tell the frontend to refresh its project list
-    let event_name = format!("session-cleanup:{}", session_id);
+    let event_name = format!("session-cleanup:{session_id}");
     if let Err(e) = state.emitter.emit(&event_name, "cleanup") {
-        eprintln!("Failed to emit {}: {}", event_name, e);
+        eprintln!("Failed to emit {event_name}: {e}");
     }
 }
 
@@ -321,14 +320,9 @@ fn handle_cleanup(state: &Arc<AppState>, session_id: Uuid) {
 /// Configures hooks that report session status changes over the Unix socket.
 pub fn hook_settings_json(session_id: Uuid) -> String {
     let path = socket_path();
-    let working_cmd = format!(
-        "echo \"working:{}\" | nc -U -w 2 {} 2>/dev/null; true",
-        session_id, path
-    );
-    let idle_cmd = format!(
-        "echo \"idle:{}\" | nc -U -w 2 {} 2>/dev/null; true",
-        session_id, path
-    );
+    let working_cmd =
+        format!("echo \"working:{session_id}\" | nc -U -w 2 {path} 2>/dev/null; true");
+    let idle_cmd = format!("echo \"idle:{session_id}\" | nc -U -w 2 {path} 2>/dev/null; true");
 
     serde_json::json!({
         "hooks": {
