@@ -167,9 +167,9 @@ fn test_sessions_persist_across_restarts() {
 }
 
 /// Verify that no two projects can have the same name.
-/// The `create_project`/`load_project`/`scaffold_project` commands check at
-/// the Tauri command level, but we also test at the storage layer to document
-/// the invariant: project names MUST be unique.
+/// The `create_project_impl`/`load_project_impl`/`scaffold_project_impl`
+/// functions check at the request-handler level, but we also test at the
+/// storage layer to document the invariant: project names MUST be unique.
 #[test]
 fn test_no_duplicate_project_names() {
     let tmp = TempDir::new().unwrap();

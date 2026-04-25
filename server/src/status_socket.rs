@@ -277,9 +277,8 @@ fn handle_connection(stream: UnixStream, state: &Arc<AppState>, emitter: &Arc<dy
 /// on the backend, then telling the frontend to refresh.
 fn handle_cleanup(state: &Arc<AppState>, session_id: Uuid) {
     // Find and remove the session from its project, delete worktree
-    // IMPORTANT: acquire storage lock BEFORE pty_manager to match
-    // the lock ordering used by Tauri commands (storage → pty_manager).
-    // Reversed order causes deadlock.
+    // IMPORTANT: acquire storage lock BEFORE pty_manager. Reversed order
+    // causes deadlock against the axum command handlers.
     if let Ok(storage) = state.storage.lock() {
         if let Ok(inventory) = storage.list_projects() {
             inventory.warn_if_corrupt("status socket cleanup");

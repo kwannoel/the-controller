@@ -484,10 +484,6 @@ pub fn update_agents_md_impl(
         .map_err(|e| e.to_string())
 }
 
-/// Transport-agnostic `create_session` implementation.
-///
-/// Why: both the Tauri command wrapper and the axum server handler share this
-/// body so the web and desktop frontends see identical behavior.
 pub fn create_session_impl(
     state: &AppState,
     project_id: String,
@@ -671,10 +667,10 @@ pub(crate) fn kill_process_group(pid: u32) {
 
 /// Core staging logic. Returns the port on success.
 ///
-/// When `allow_pty_prompts` is true (Tauri command path), dirty worktrees and
-/// rebase conflicts are handled by prompting the session's Claude via PTY.
-/// When false (socket path), these conditions return an error immediately —
-/// the caller is expected to commit and resolve conflicts before staging.
+/// When `allow_pty_prompts` is true, dirty worktrees and rebase conflicts are
+/// handled by prompting the session's Claude via PTY. When false (socket
+/// path), these conditions return an error immediately — the caller is
+/// expected to commit and resolve conflicts before staging.
 pub async fn stage_session_core(
     state: &AppState,
     project_id: Uuid,
