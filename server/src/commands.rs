@@ -1556,7 +1556,7 @@ mod tests {
     use crate::models::{MaintainerRunLog, SavedPrompt, SessionConfig};
     use crate::pty_manager::PtyManager;
     use crate::state::{AppState, IssueCache};
-    use crate::storage::{ProjectInventory, Storage};
+    use crate::storage::Storage;
     use once_cell::sync::Lazy;
     use std::env;
     use std::fs;
@@ -1593,55 +1593,6 @@ mod tests {
             emitter: crate::emitter::NoopEmitter::new(),
             staging_lock: tokio::sync::Mutex::new(()),
         }
-    }
-
-    fn state_from_ref(value: &AppState) -> &AppState {
-        value
-    }
-
-    // Test shims that replace the deleted #[tauri::command] wrappers.
-    async fn scaffold_project(state: &AppState, name: String) -> Result<Project, String> {
-        scaffold_project_impl(state, name).await
-    }
-
-    fn create_project(
-        state: &AppState,
-        name: String,
-        repo_path: String,
-    ) -> Result<Project, String> {
-        create_project_impl(state, name, repo_path)
-    }
-
-    fn load_project(state: &AppState, name: String, repo_path: String) -> Result<Project, String> {
-        load_project_impl(state, name, repo_path)
-    }
-
-    fn list_projects(state: &AppState) -> Result<ProjectInventory, String> {
-        state
-            .storage
-            .lock()
-            .map_err(|e| e.to_string())?
-            .list_projects()
-            .map_err(|e| e.to_string())
-    }
-
-    async fn get_auto_worker_queue(
-        state: &AppState,
-        project_id: String,
-    ) -> Result<Vec<AutoWorkerQueueIssue>, String> {
-        get_auto_worker_queue_impl(state, project_id).await
-    }
-
-    fn cancel_secure_env_request(state: &AppState, request_id: String) -> Result<(), String> {
-        crate::secure_env::cancel_secure_env_request(state, &request_id)
-    }
-
-    async fn submit_secure_env_value(
-        state: &AppState,
-        request_id: String,
-        value: String,
-    ) -> Result<String, String> {
-        crate::secure_env::submit_secure_env_value_status(state, &request_id, &value)
     }
 
     fn run_async_test<T>(future: impl Future<Output = T>) -> T {
@@ -1959,8 +1910,8 @@ mod tests {
             fs::write(state_dir.join("gh-create-fails"), "")
                 .expect("mark first gh create as failed");
 
-            let error = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let error = run_async_test(scaffold_project_impl(
+                &app_state,
                 "gh-create-failure-test".to_string(),
             ))
             .expect_err("gh create failure should bubble up");
@@ -1987,8 +1938,8 @@ mod tests {
 
             fs::remove_file(state_dir.join("gh-create-fails")).expect("allow gh create retry");
 
-            let project = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let project = run_async_test(scaffold_project_impl(
+                &app_state,
                 "gh-create-failure-test".to_string(),
             ))
             .expect("retry should succeed after rollback");
@@ -2021,8 +1972,8 @@ mod tests {
 
             let app_state_for_thread = Arc::clone(&app_state);
             let handle = thread::spawn(move || {
-                run_async_test(scaffold_project(
-                    state_from_ref(app_state_for_thread.as_ref()),
+                run_async_test(scaffold_project_impl(
+                    app_state_for_thread.as_ref(),
                     "lock-scope-test".to_string(),
                 ))
             });
@@ -2071,8 +2022,8 @@ mod tests {
 
             let app_state_for_thread = Arc::clone(&app_state);
             let handle = thread::spawn(move || {
-                run_async_test(scaffold_project(
-                    state_from_ref(app_state_for_thread.as_ref()),
+                run_async_test(scaffold_project_impl(
+                    app_state_for_thread.as_ref(),
                     "lock-race-test".to_string(),
                 ))
             });
@@ -2082,8 +2033,8 @@ mod tests {
                 "scaffold should reach gh repo create"
             );
 
-            let imported = create_project(
-                state_from_ref(app_state.as_ref()),
+            let imported = create_project_impl(
+                app_state.as_ref(),
                 "lock-race-test".to_string(),
                 imported_repo.path().to_string_lossy().to_string(),
             )
@@ -2228,8 +2179,8 @@ mod tests {
             );
             fs::write(state_dir.join("push-fails"), "").expect("mark first push as failed");
 
-            let error = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let error = run_async_test(scaffold_project_impl(
+                &app_state,
                 "rollback-test".to_string(),
             ))
             .expect_err("push failure should bubble up");
@@ -2258,8 +2209,8 @@ mod tests {
             fs::remove_file(state_dir.join("remote-deleted"))
                 .expect("clear previous delete marker");
 
-            let project = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let project = run_async_test(scaffold_project_impl(
+                &app_state,
                 "rollback-test".to_string(),
             ))
             .expect("retry should succeed after rollback");
@@ -2292,8 +2243,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "rollback-session-create".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2347,8 +2298,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "rollback-session-concurrency".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2464,8 +2415,8 @@ mod tests {
         fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
         fs::write(corrupt_dir.join("project.json"), "{ invalid json").expect("write corrupt json");
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "fresh-project".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2481,8 +2432,8 @@ mod tests {
         let app_state = make_test_state(base_dir.path(), projects_root.path());
         let repo_dir = TempDir::new().unwrap();
 
-        let error = create_project(
-            state_from_ref(&app_state),
+        let error = create_project_impl(
+            &app_state,
             "invalid/name".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2517,8 +2468,8 @@ mod tests {
                 .expect("save existing project");
         }
 
-        let error = create_project(
-            state_from_ref(&app_state),
+        let error = create_project_impl(
+            &app_state,
             "duplicate-name".to_string(),
             new_repo.path().to_string_lossy().to_string(),
         )
@@ -2542,8 +2493,8 @@ mod tests {
         fs::create_dir_all(&corrupt_dir).expect("create corrupt dir");
         fs::write(corrupt_dir.join("project.json"), "{ invalid json").expect("write corrupt json");
 
-        let project = load_project(
-            state_from_ref(&app_state),
+        let project = load_project_impl(
+            &app_state,
             "imported-project".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2560,8 +2511,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         git2::Repository::init(repo_dir.path()).expect("init git repo");
 
-        let error = load_project(
-            state_from_ref(&app_state),
+        let error = load_project_impl(
+            &app_state,
             "invalid/name".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2598,7 +2549,12 @@ mod tests {
                 .expect("save archived-flagged project");
         }
 
-        let inventory = list_projects(state_from_ref(&app_state)).expect("list projects");
+        let inventory = app_state
+            .storage
+            .lock()
+            .unwrap()
+            .list_projects()
+            .expect("list projects");
 
         assert_eq!(inventory.projects.len(), 1);
         assert_eq!(inventory.projects[0].name, "stored-project");
@@ -2628,8 +2584,8 @@ mod tests {
             );
             write_fake_command(git_path, "exit 0");
 
-            let project = run_async_test(scaffold_project(
-                state_from_ref(&app_state),
+            let project = run_async_test(scaffold_project_impl(
+                &app_state,
                 "scaffold-with-corrupt-sibling".to_string(),
             ))
             .expect("scaffold should ignore corrupt sibling metadata");
@@ -2838,8 +2794,8 @@ mod tests {
             );
         }
 
-        let queue = run_async_test(get_auto_worker_queue(
-            state_from_ref(&app_state),
+        let queue = run_async_test(get_auto_worker_queue_impl(
+            &app_state,
             project_id.to_string(),
         ))
         .expect("queue command should succeed");
@@ -2858,8 +2814,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "secure-env-submit".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2873,12 +2829,9 @@ mod tests {
         )
         .expect("begin secure env request");
 
-        let status = run_async_test(submit_secure_env_value(
-            state_from_ref(&app_state),
-            "req-123".to_string(),
-            "new-secret".to_string(),
-        ))
-        .expect("submit secure env value");
+        let status =
+            crate::secure_env::submit_secure_env_value_status(&app_state, "req-123", "new-secret")
+                .expect("submit secure env value");
 
         assert_eq!(status, "created");
         let written = fs::read_to_string(repo_dir.path().join(".env")).expect("read .env");
@@ -2892,8 +2845,8 @@ mod tests {
         let repo_dir = TempDir::new().unwrap();
         let app_state = make_test_state(base_dir.path(), projects_root.path());
 
-        let project = create_project(
-            state_from_ref(&app_state),
+        let project = create_project_impl(
+            &app_state,
             "secure-env-cancel".to_string(),
             repo_dir.path().to_string_lossy().to_string(),
         )
@@ -2907,7 +2860,7 @@ mod tests {
         )
         .expect("begin secure env request");
 
-        cancel_secure_env_request(state_from_ref(&app_state), "req-123".to_string())
+        crate::secure_env::cancel_secure_env_request(&app_state, "req-123")
             .expect("cancel secure env request");
 
         assert!(app_state.secure_env_request.lock().unwrap().is_none());
