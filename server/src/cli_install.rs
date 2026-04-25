@@ -44,7 +44,7 @@ pub fn install_controller_cli() {
 
     let dest = bin_dir.join("controller-cli");
     if let Err(e) = std::fs::copy(&source, &dest) {
-        eprintln!("Warning: could not install controller-cli: {}", e);
+        eprintln!("Warning: could not install controller-cli: {e}");
         return;
     }
 

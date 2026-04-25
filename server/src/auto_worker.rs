@@ -491,7 +491,7 @@ fn emit_status(
         "issue_title": issue_title.unwrap_or(""),
     });
     let _ = state.emitter.emit(
-        &format!("auto-worker-status:{}", project_id),
+        &format!("auto-worker-status:{project_id}"),
         &payload.to_string(),
     );
 }
@@ -586,14 +586,14 @@ fn fetch_issues_sync(repo_path: &str) -> Result<Vec<GithubIssue>, String> {
         ])
         .current_dir(repo_path)
         .output()
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue list failed: {}", stderr));
+        return Err(format!("gh issue list failed: {stderr}"));
     }
 
-    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {e}"))
 }
 
 fn finish_label_edit<F>(state: &AppState, repo_path: &str, edit: F) -> Result<(), String>
@@ -637,11 +637,11 @@ fn edit_label_sync(
         .args(["issue", "edit", &issue_number.to_string(), mode, label])
         .current_dir(repo_path)
         .output()
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue edit failed: {}", stderr));
+        return Err(format!("gh issue edit failed: {stderr}"));
     }
     Ok(())
 }
@@ -679,15 +679,15 @@ fn issue_is_closed_sync(repo_path: &str, issue_number: u64) -> Result<bool, Stri
         ])
         .current_dir(repo_path)
         .output()
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue view failed: {}", stderr));
+        return Err(format!("gh issue view failed: {stderr}"));
     }
 
     let raw: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+        .map_err(|e| format!("Failed to parse gh output: {e}"))?;
 
     Ok(raw["state"].as_str() == Some("CLOSED"))
 }
@@ -788,7 +788,7 @@ fn json_has_results(json: &str) -> bool {
 }
 
 fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
-    let search_query = format!("#{}", issue_number);
+    let search_query = format!("#{issue_number}");
     let output = Command::new("gh")
         .args([
             "pr",
@@ -816,10 +816,7 @@ fn has_merged_pr_sync(repo_path: &str, issue_number: u64) -> bool {
             false
         }
         Err(e) => {
-            eprintln!(
-                "Auto-worker: failed to run gh pr list for #{}: {}",
-                issue_number, e
-            );
+            eprintln!("Auto-worker: failed to run gh pr list for #{issue_number}: {e}");
             false
         }
     }
@@ -830,11 +827,11 @@ fn close_issue_sync(repo_path: &str, issue_number: u64) -> Result<(), String> {
         .args(["issue", "close", &issue_number.to_string()])
         .current_dir(repo_path)
         .output()
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue close failed: {}", stderr));
+        return Err(format!("gh issue close failed: {stderr}"));
     }
     Ok(())
 }

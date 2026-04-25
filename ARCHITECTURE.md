@@ -1,5 +1,11 @@
 # Architecture
 
+## Runtime Shape
+
+The Controller runs as a browser frontend backed by a local Rust server. Vite
+serves the Svelte app from `src/`; the backend in `server/` exposes HTTP routes
+under `/api/*` and broadcasts app events over `/ws`.
+
 ## Agent Compatibility: Claude Code & Codex
 
 The Controller supports both Claude Code and Codex as coding agents. Compatibility is maintained through two mechanisms: a shared instruction file and skill synchronization.
@@ -13,7 +19,7 @@ Claude Code reads project instructions from `CLAUDE.md`. Rather than maintaining
 
 The symlink is non-invasive: if a real `CLAUDE.md` already exists, it's left alone.
 
-See: `src-tauri/src/commands.rs` (`ensure_claude_md_symlink`)
+See: `server/src/commands.rs` (`ensure_claude_md_symlink`)
 
 ### Skill Synchronization on Bootstrap
 
@@ -24,7 +30,7 @@ Skills live in `skills/the-controller-*/` inside the repo. On app startup, `sync
 
 The sync is idempotent, worktree-aware (resolves to the main repo via `git rev-parse --git-common-dir`), and cleans up stale symlinks whose targets no longer exist. Regular files are never overwritten — only symlinks are managed.
 
-See: `src-tauri/src/skills.rs`
+See: `server/src/skills.rs`
 
 ## Why We Vendorize Skills
 
@@ -90,7 +96,7 @@ This is the authoritative record. If a worktree directory exists but has no matc
 
 Labels are auto-generated: `session-{N}-{6-char-uuid}`. The number increments based on the highest existing session number in the project. The UUID suffix ensures uniqueness across parallel creation.
 
-See: `commands.rs` (`next_session_label`)
+See: `server/src/commands.rs` (`next_session_label`)
 
 ### Worktree Creation
 
@@ -101,7 +107,7 @@ When a session is created:
 3. The main repo's `.env` is symlinked into the worktree so secrets are shared
 4. If the repo has no commits (unborn branch), the repo path is used directly — no worktree is created
 
-See: `worktree.rs` (`create_worktree`)
+See: `server/src/worktree.rs` (`create_worktree`)
 
 ### Worktree Cleanup
 
@@ -109,7 +115,7 @@ See: `worktree.rs` (`create_worktree`)
 - **Delete project**: iterates all sessions, closes PTYs, and removes each worktree
 - **Failed spawn**: if PTY spawn fails after worktree creation, the worktree and branch are rolled back automatically
 
-See: `worktree.rs` (`remove_worktree`), `commands.rs` (`cleanup_failed_session_spawn`)
+See: `server/src/worktree.rs` (`remove_worktree`), `server/src/commands.rs` (`cleanup_failed_session_spawn`)
 
 ### Recovery
 

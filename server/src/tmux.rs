@@ -28,7 +28,7 @@ impl TmuxManager {
     }
 
     pub fn session_name(session_id: Uuid) -> String {
-        format!("{}{}", SESSION_PREFIX, session_id)
+        format!("{SESSION_PREFIX}{session_id}")
     }
 
     pub fn has_session(session_id: Uuid) -> bool {
@@ -70,7 +70,7 @@ impl TmuxManager {
         // Prepend ~/.the-controller/bin to PATH so controller-cli is available
         if let Some(path_val) = crate::cli_install::path_with_controller_bin() {
             args.push("-e".to_string());
-            args.push(format!("PATH={}", path_val));
+            args.push(format!("PATH={path_val}"));
         }
         // Pass all current process env vars so the tmux session inherits
         // the full shell environment even when the tmux server was started
@@ -85,7 +85,7 @@ impl TmuxManager {
                 "_" | "SHLVL" | "OLDPWD" | "PWD" => continue,
                 _ => {
                     args.push("-e".to_string());
-                    args.push(format!("{}={}", key, val));
+                    args.push(format!("{key}={val}"));
                 }
             }
         }
@@ -120,7 +120,7 @@ impl TmuxManager {
             .env("THE_CONTROLLER_SESSION_ID", session_id.to_string())
             .env_remove("CLAUDECODE")
             .output()
-            .map_err(|e| format!("failed to run tmux: {}", e))?;
+            .map_err(|e| format!("failed to run tmux: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -145,7 +145,7 @@ impl TmuxManager {
     pub fn send_keys_hex(session_id: Uuid, data: &[u8]) -> Result<(), String> {
         let name = Self::session_name(session_id);
         let tmux_bin = Self::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
-        let hex_bytes: Vec<String> = data.iter().map(|b| format!("{:02x}", b)).collect();
+        let hex_bytes: Vec<String> = data.iter().map(|b| format!("{b:02x}")).collect();
         let mut args = vec![
             "send-keys".to_string(),
             "-H".to_string(),
@@ -157,7 +157,7 @@ impl TmuxManager {
         let output = Command::new(&tmux_bin)
             .args(&args)
             .output()
-            .map_err(|e| format!("failed to run tmux send-keys: {}", e))?;
+            .map_err(|e| format!("failed to run tmux send-keys: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -175,7 +175,7 @@ impl TmuxManager {
         let output = Command::new(&tmux_bin)
             .args(["kill-session", "-t", &name])
             .output()
-            .map_err(|e| format!("failed to run tmux: {}", e))?;
+            .map_err(|e| format!("failed to run tmux: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -234,7 +234,7 @@ impl TmuxManager {
                 &rows.to_string(),
             ])
             .output()
-            .map_err(|e| format!("failed to run tmux: {}", e))?;
+            .map_err(|e| format!("failed to run tmux: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

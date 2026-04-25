@@ -128,13 +128,13 @@ async fn main() {
 
     let port: u16 = match std::env::var("PORT") {
         Ok(val) => val.parse().unwrap_or_else(|_| {
-            eprintln!("Invalid PORT value '{}', must be a u16", val);
+            eprintln!("Invalid PORT value '{val}', must be a u16");
             std::process::exit(1);
         }),
         Err(_) => 3001,
     };
-    println!("Server listening on http://localhost:{}", port);
-    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+    println!("Server listening on http://localhost:{port}");
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
         .unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -247,7 +247,7 @@ async fn connect_session(
             .ok_or_else(|| {
                 (
                     StatusCode::NOT_FOUND,
-                    format!("session not found: {}", session_id),
+                    format!("session not found: {session_id}"),
                 )
             })?
     };
@@ -265,7 +265,7 @@ async fn connect_session(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })??;
 
@@ -292,7 +292,7 @@ async fn load_project(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -319,7 +319,7 @@ async fn create_project(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -343,7 +343,7 @@ async fn delete_project(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -426,7 +426,7 @@ async fn close_session(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -449,7 +449,7 @@ async fn create_session(
     } else {
         Some(
             serde_json::from_value(args["githubIssue"].clone())
-                .map_err(|e| (StatusCode::BAD_REQUEST, format!("githubIssue: {}", e)))?,
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("githubIssue: {e}")))?,
         )
     };
 
@@ -468,7 +468,7 @@ async fn create_session(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -485,7 +485,7 @@ async fn read_daemon_token() -> Result<Json<Value>, (StatusCode, String)> {
 
 async fn log_frontend_error(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
     let message = args["message"].as_str().unwrap_or("");
-    eprintln!("[FRONTEND] {}", message);
+    eprintln!("[FRONTEND] {message}");
     Ok(Json(Value::Null))
 }
 
@@ -565,7 +565,7 @@ async fn merge_session_branch(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Task failed: {}", e),
+                format!("Task failed: {e}"),
             )
         })?
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -606,7 +606,7 @@ async fn merge_session_branch(
                     .map_err(|e| {
                         (
                             StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Task failed: {}", e),
+                            format!("Task failed: {e}"),
                         )
                     })?;
                     if !still_rebasing {
@@ -620,10 +620,7 @@ async fn merge_session_branch(
 
     Err((
         StatusCode::INTERNAL_SERVER_ERROR,
-        format!(
-            "Merge failed after {} attempts due to recurring conflicts",
-            MAX_RETRIES
-        ),
+        format!("Merge failed after {MAX_RETRIES} attempts due to recurring conflicts"),
     ))
 }
 
@@ -728,7 +725,7 @@ async fn get_session_commits(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -763,7 +760,7 @@ async fn get_repo_head(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCo
             .map_err(|e| {
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Task failed: {}", e),
+                    format!("Task failed: {e}"),
                 )
             })?
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -802,10 +799,7 @@ async fn list_directories_at(Json(args): Json<Value>) -> Result<Json<Value>, (St
         .to_string();
     let p = std::path::PathBuf::from(&path);
     if !p.is_dir() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!("Not a directory: {}", path),
-        ));
+        return Err((StatusCode::BAD_REQUEST, format!("Not a directory: {path}")));
     }
     let entries = config::list_directories(&p)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -826,7 +820,7 @@ async fn check_claude_cli() -> Result<Json<Value>, (StatusCode, String)> {
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Task failed: {}", e),
+                format!("Task failed: {e}"),
             )
         })?;
     Ok(Json(Value::String(result)))
@@ -844,7 +838,7 @@ async fn generate_project_names(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Task failed: {}", e),
+                format!("Task failed: {e}"),
             )
         })?
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -1034,7 +1028,7 @@ async fn kanban_load_order(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Task failed: {}", e),
+                format!("Task failed: {e}"),
             )
         })?
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -1052,7 +1046,7 @@ async fn kanban_save_order(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Task failed: {}", e),
+                format!("Task failed: {e}"),
             )
         })?
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
@@ -1238,7 +1232,7 @@ async fn submit_secure_env_value(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Task failed: {}", e),
+            format!("Task failed: {e}"),
         )
     })?
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;

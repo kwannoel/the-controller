@@ -22,8 +22,7 @@ impl WorktreeManager {
         branch_name: &str,
         worktree_dir: &Path,
     ) -> Result<PathBuf, String> {
-        let repo =
-            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+        let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
 
         // Check if the repo has any commits (HEAD exists)
         let head = match repo.head() {
@@ -32,7 +31,7 @@ impl WorktreeManager {
                 // Repo has no commits — can't create worktree, use repo path directly
                 return Err("unborn_branch".to_string());
             }
-            Err(e) => return Err(format!("failed to get HEAD: {}", e)),
+            Err(e) => return Err(format!("failed to get HEAD: {e}")),
         };
 
         if worktree_dir.exists() {
@@ -45,11 +44,11 @@ impl WorktreeManager {
         // Create the parent directory
         if let Some(parent) = worktree_dir.parent() {
             std::fs::create_dir_all(parent)
-                .map_err(|e| format!("failed to create worktree parent dir: {}", e))?;
+                .map_err(|e| format!("failed to create worktree parent dir: {e}"))?;
         }
         let commit = head
             .peel_to_commit()
-            .map_err(|e| format!("failed to peel HEAD to commit: {}", e))?;
+            .map_err(|e| format!("failed to peel HEAD to commit: {e}"))?;
 
         // Delete stale branch if it exists (left over from a previous session)
         if let Ok(mut existing) = repo.find_branch(branch_name, git2::BranchType::Local) {
@@ -58,7 +57,7 @@ impl WorktreeManager {
 
         let branch = repo
             .branch(branch_name, &commit, false)
-            .map_err(|e| format!("failed to create branch '{}': {}", branch_name, e))?;
+            .map_err(|e| format!("failed to create branch '{branch_name}': {e}"))?;
 
         // Create the worktree with the new branch as its HEAD
         let reference = branch.into_reference();
@@ -66,7 +65,7 @@ impl WorktreeManager {
         opts.reference(Some(&reference));
 
         repo.worktree(branch_name, worktree_dir, Some(&opts))
-            .map_err(|e| format!("failed to create worktree: {}", e))?;
+            .map_err(|e| format!("failed to create worktree: {e}"))?;
 
         // Symlink .env from the main repo into the worktree so all sessions
         // share the same secrets file (and controller-cli env set updates are
@@ -75,7 +74,7 @@ impl WorktreeManager {
         let env_dst = worktree_dir.join(".env");
         #[cfg(unix)]
         if let Err(e) = std::os::unix::fs::symlink(&env_src, &env_dst) {
-            eprintln!("Warning: failed to symlink .env to worktree: {}", e);
+            eprintln!("Warning: failed to symlink .env to worktree: {e}");
         }
         #[cfg(windows)]
         if let Err(e) = std::os::windows::fs::symlink_file(&env_src, &env_dst) {
@@ -87,8 +86,7 @@ impl WorktreeManager {
 
     /// Detect the main branch name (main or master) for a repository.
     pub fn detect_main_branch(repo_path: &str) -> Result<String, String> {
-        let repo =
-            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+        let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
 
         for name in &["main", "master"] {
             if repo.find_branch(name, git2::BranchType::Local).is_ok() {
@@ -99,7 +97,7 @@ impl WorktreeManager {
         // Fall back to whatever HEAD points to
         let head = repo
             .head()
-            .map_err(|e| format!("failed to get HEAD: {}", e))?;
+            .map_err(|e| format!("failed to get HEAD: {e}"))?;
         if let Some(shorthand) = head.shorthand() {
             return Ok(shorthand.to_string());
         }
@@ -114,7 +112,7 @@ impl WorktreeManager {
             .args(["pull"])
             .current_dir(repo_path)
             .output()
-            .map_err(|e| format!("failed to run git pull: {}", e))?;
+            .map_err(|e| format!("failed to run git pull: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -150,7 +148,7 @@ impl WorktreeManager {
             .args(["rebase", &main_branch])
             .current_dir(worktree_path)
             .output()
-            .map_err(|e| format!("failed to run git rebase: {}", e))?;
+            .map_err(|e| format!("failed to run git rebase: {e}"))?;
 
         if !rebase_output.status.success() {
             // Leave the rebase in progress — don't abort.
@@ -173,7 +171,7 @@ impl WorktreeManager {
             .args(["push", "-u", "origin", branch_name, "--force-with-lease"])
             .current_dir(worktree_path)
             .output()
-            .map_err(|e| format!("failed to run git push: {}", e))?;
+            .map_err(|e| format!("failed to run git push: {e}"))?;
 
         if !push_output.status.success() {
             let stderr = String::from_utf8_lossy(&push_output.stderr);
@@ -185,7 +183,7 @@ impl WorktreeManager {
             .args(["pr", "create", "--fill", "--head", branch_name])
             .current_dir(worktree_path)
             .output()
-            .map_err(|e| format!("failed to run gh pr create: {}", e))?;
+            .map_err(|e| format!("failed to run gh pr create: {e}"))?;
 
         if !pr_output.status.success() {
             let stderr = String::from_utf8_lossy(&pr_output.stderr);
@@ -195,7 +193,7 @@ impl WorktreeManager {
                     .args(["pr", "view", branch_name, "--json", "url", "-q", ".url"])
                     .current_dir(worktree_path)
                     .output()
-                    .map_err(|e| format!("failed to get existing PR: {}", e))?;
+                    .map_err(|e| format!("failed to get existing PR: {e}"))?;
 
                 if view_output.status.success() {
                     let url = String::from_utf8_lossy(&view_output.stdout)
@@ -236,23 +234,22 @@ impl WorktreeManager {
         branch: &str,
         main_branch: &str,
     ) -> Result<bool, String> {
-        let repo =
-            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+        let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
 
         let branch_commit = repo
             .find_branch(branch, git2::BranchType::Local)
-            .map_err(|e| format!("branch '{}' not found: {}", branch, e))?
+            .map_err(|e| format!("branch '{branch}' not found: {e}"))?
             .get()
             .peel_to_commit()
-            .map_err(|e| format!("failed to resolve branch commit: {}", e))?
+            .map_err(|e| format!("failed to resolve branch commit: {e}"))?
             .id();
 
         let main_commit = repo
             .find_branch(main_branch, git2::BranchType::Local)
-            .map_err(|e| format!("branch '{}' not found: {}", main_branch, e))?
+            .map_err(|e| format!("branch '{main_branch}' not found: {e}"))?
             .get()
             .peel_to_commit()
-            .map_err(|e| format!("failed to resolve main commit: {}", e))?
+            .map_err(|e| format!("failed to resolve main commit: {e}"))?
             .id();
 
         if branch_commit == main_commit {
@@ -261,7 +258,7 @@ impl WorktreeManager {
 
         let merge_base = repo
             .merge_base(branch_commit, main_commit)
-            .map_err(|e| format!("failed to find merge base: {}", e))?;
+            .map_err(|e| format!("failed to find merge base: {e}"))?;
 
         // Branch needs rebase if main has commits not in branch (behind or diverged)
         Ok(merge_base != main_commit)
@@ -275,7 +272,7 @@ impl WorktreeManager {
             .args(["rebase", main_branch])
             .current_dir(worktree_path)
             .output()
-            .map_err(|e| format!("failed to run git rebase: {}", e))?;
+            .map_err(|e| format!("failed to run git rebase: {e}"))?;
 
         if output.status.success() {
             Ok(true)
@@ -293,14 +290,14 @@ impl WorktreeManager {
     /// Check if a worktree has a clean working tree (no uncommitted or untracked changes).
     pub fn is_worktree_clean(worktree_path: &str) -> Result<bool, String> {
         let repo = Repository::open(worktree_path)
-            .map_err(|e| format!("failed to open worktree repo: {}", e))?;
+            .map_err(|e| format!("failed to open worktree repo: {e}"))?;
         let statuses = repo
             .statuses(Some(
                 git2::StatusOptions::new()
                     .include_untracked(true)
                     .recurse_untracked_dirs(false),
             ))
-            .map_err(|e| format!("failed to check worktree status: {}", e))?;
+            .map_err(|e| format!("failed to check worktree status: {e}"))?;
         Ok(statuses.is_empty())
     }
 
@@ -319,19 +316,18 @@ impl WorktreeManager {
         // Remove the worktree directory if it exists
         if worktree_dir.exists() {
             std::fs::remove_dir_all(worktree_dir)
-                .map_err(|e| format!("failed to remove worktree dir: {}", e))?;
+                .map_err(|e| format!("failed to remove worktree dir: {e}"))?;
         }
 
         // Prune the worktree reference
-        let repo =
-            Repository::open(repo_path).map_err(|e| format!("failed to open repo: {}", e))?;
+        let repo = Repository::open(repo_path).map_err(|e| format!("failed to open repo: {e}"))?;
 
         if let Ok(wt) = repo.find_worktree(branch_name) {
             let mut prune_opts = git2::WorktreePruneOptions::new();
             prune_opts.valid(true);
             prune_opts.working_tree(true);
             wt.prune(Some(&mut prune_opts))
-                .map_err(|e| format!("failed to prune worktree: {}", e))?;
+                .map_err(|e| format!("failed to prune worktree: {e}"))?;
         }
 
         // Clean up the branch so it doesn't block future worktree creation

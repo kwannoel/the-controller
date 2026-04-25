@@ -27,7 +27,7 @@ fn parse_github_nwo(url: &str) -> Result<String, String> {
         return Ok(rest.trim_end_matches(".git").to_string());
     }
 
-    Err(format!("Not a GitHub remote URL: {}", url))
+    Err(format!("Not a GitHub remote URL: {url}"))
 }
 
 /// Parse a GitHub issue URL like "https://github.com/owner/repo/issues/42" and return the issue number.
@@ -39,14 +39,14 @@ fn parse_github_issue_url(url: &str) -> Result<u64, String> {
             return Ok(num);
         }
     }
-    Err(format!("Could not parse issue number from URL: {}", url))
+    Err(format!("Could not parse issue number from URL: {url}"))
 }
 
 /// Extract the GitHub owner/repo from a local git repository's origin remote.
 /// Handles both SSH (git@github.com:owner/repo.git) and HTTPS (https://github.com/owner/repo.git) URLs.
 fn extract_github_repo(repo_path: &str) -> Result<String, String> {
     let repo =
-        git2::Repository::discover(repo_path).map_err(|e| format!("Failed to open repo: {}", e))?;
+        git2::Repository::discover(repo_path).map_err(|e| format!("Failed to open repo: {e}"))?;
     let remote = repo
         .find_remote("origin")
         .map_err(|_| "No 'origin' remote found".to_string())?;
@@ -60,7 +60,7 @@ fn extract_github_repo(repo_path: &str) -> Result<String, String> {
 async fn extract_github_repo_async(repo_path: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || extract_github_repo(&repo_path))
         .await
-        .map_err(|e| format!("Task failed: {}", e))?
+        .map_err(|e| format!("Task failed: {e}"))?
 }
 
 async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, String> {
@@ -79,15 +79,15 @@ async fn fetch_github_issues(repo_path: String) -> Result<Vec<GithubIssue>, Stri
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue list failed: {}", stderr));
+        return Err(format!("gh issue list failed: {stderr}"));
     }
 
     let issues: Vec<GithubIssue> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+        .map_err(|e| format!("Failed to parse gh output: {e}"))?;
 
     Ok(issues)
 }
@@ -101,7 +101,7 @@ pub async fn list_github_issues(
         let cache = state
             .issue_cache
             .lock()
-            .map_err(|e| format!("Cache lock error: {}", e))?;
+            .map_err(|e| format!("Cache lock error: {e}"))?;
         match cache.get(&repo_path) {
             Some(entry) if entry.is_fresh() => {
                 return Ok(entry.issues.clone());
@@ -134,7 +134,7 @@ pub async fn list_github_issues(
         let mut cache = state
             .issue_cache
             .lock()
-            .map_err(|e| format!("Cache lock error: {}", e))?;
+            .map_err(|e| format!("Cache lock error: {e}"))?;
         cache.insert(repo_path, issues.clone());
     }
     Ok(issues)
@@ -142,10 +142,9 @@ pub async fn list_github_issues(
 
 pub async fn generate_issue_body(repo_path: String, title: String) -> Result<String, String> {
     let prompt = format!(
-        "Write a concise GitHub issue body for an issue titled: \"{}\". \
+        "Write a concise GitHub issue body for an issue titled: \"{title}\". \
          Include a Summary section and a Details section. \
-         Keep it under 200 words. Return only the markdown body, nothing else.",
-        title
+         Keep it under 200 words. Return only the markdown body, nothing else."
     );
     let output = tokio::process::Command::new("claude")
         .args(["--print", &prompt])
@@ -153,7 +152,7 @@ pub async fn generate_issue_body(repo_path: String, title: String) -> Result<Str
         .env_remove("CLAUDECODE")
         .output()
         .await
-        .map_err(|e| format!("Failed to run claude: {}", e))?;
+        .map_err(|e| format!("Failed to run claude: {e}"))?;
 
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
@@ -176,11 +175,11 @@ pub async fn create_github_issue(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue create failed: {}", stderr));
+        return Err(format!("gh issue create failed: {stderr}"));
     }
 
     let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -222,11 +221,11 @@ pub async fn post_github_comment(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue comment failed: {}", stderr));
+        return Err(format!("gh issue comment failed: {stderr}"));
     }
 
     Ok(())
@@ -275,11 +274,11 @@ pub async fn add_github_label(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue edit failed: {}", stderr));
+        return Err(format!("gh issue edit failed: {stderr}"));
     }
 
     if let Ok(mut cache) = state.issue_cache.lock() {
@@ -309,11 +308,11 @@ pub async fn remove_github_label(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue edit failed: {}", stderr));
+        return Err(format!("gh issue edit failed: {stderr}"));
     }
 
     if let Ok(mut cache) = state.issue_cache.lock() {
@@ -348,11 +347,11 @@ pub async fn close_github_issue(
         .args(&args)
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue close failed: {}", stderr));
+        return Err(format!("gh issue close failed: {stderr}"));
     }
 
     // Remove from cache since list only shows open issues
@@ -381,11 +380,11 @@ pub async fn delete_github_issue(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue delete failed: {}", stderr));
+        return Err(format!("gh issue delete failed: {stderr}"));
     }
 
     if let Ok(mut cache) = state.issue_cache.lock() {
@@ -421,14 +420,14 @@ pub async fn get_maintainer_issues(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue list failed: {}", stderr));
+        return Err(format!("gh issue list failed: {stderr}"));
     }
 
-    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {e}"))
 }
 
 pub async fn get_maintainer_issue_detail(
@@ -453,14 +452,14 @@ pub async fn get_maintainer_issue_detail(
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue view failed: {}", stderr));
+        return Err(format!("gh issue view failed: {stderr}"));
     }
 
-    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {}", e))
+    serde_json::from_slice(&output.stdout).map_err(|e| format!("Failed to parse gh output: {e}"))
 }
 
 pub async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue>, String> {
@@ -479,15 +478,15 @@ pub async fn list_assigned_issues(repo_path: String) -> Result<Vec<AssignedIssue
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue list failed: {}", stderr));
+        return Err(format!("gh issue list failed: {stderr}"));
     }
 
     let all_issues: Vec<AssignedIssue> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+        .map_err(|e| format!("Failed to parse gh output: {e}"))?;
 
     // Filter to only issues that have at least one assignee
     let assigned = all_issues
@@ -518,15 +517,15 @@ pub async fn get_worker_reports(repo_path: String) -> Result<Vec<WorkerReport>, 
         ])
         .output()
         .await
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("gh issue list failed: {}", stderr));
+        return Err(format!("gh issue list failed: {stderr}"));
     }
 
     let raw: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh output: {}", e))?;
+        .map_err(|e| format!("Failed to parse gh output: {e}"))?;
 
     let reports = parse_worker_reports(raw);
 

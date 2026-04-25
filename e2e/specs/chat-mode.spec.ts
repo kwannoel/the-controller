@@ -39,8 +39,8 @@ test("chat mode shows DaemonEmptyState when daemon is unreachable", async ({ pag
   await switchToChatMode(page);
 
   // Core assertion: the DaemonEmptyState component renders its heading when
-  // the daemon cannot be reached. In browser-mode e2e, `read_daemon_token`
-  // is not exposed by the Axum server, so bootstrap fails deterministically.
+  // the daemon cannot be reached. The Axum server exposes `read_daemon_token`,
+  // but this test does not start the daemon, so bootstrap fails deterministically.
   await expect(page.getByRole("heading", { name: "Daemon not running" })).toBeVisible({
     timeout: 5_000,
   });

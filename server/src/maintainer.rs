@@ -290,12 +290,12 @@ pub fn extract_json(output: &str) -> Option<&str> {
 fn parse_findings_output(output: &str) -> Result<FindingsOutput, String> {
     let json_str = extract_json(output).ok_or("No JSON found in output")?;
     let raw: RawFindingsOutput =
-        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {e}"))?;
 
     let mut findings = Vec::with_capacity(raw.findings.len());
     for (idx, finding) in raw.findings.into_iter().enumerate() {
         let sanitized =
-            sanitize_finding(finding).ok_or_else(|| format!("Invalid finding at index {}", idx))?;
+            sanitize_finding(finding).ok_or_else(|| format!("Invalid finding at index {idx}"))?;
         findings.push(sanitized);
     }
 
@@ -702,7 +702,7 @@ fn run_gh_checked(
 ) -> Result<std::process::Output, String> {
     let output = command
         .output()
-        .map_err(|e| format!("Failed to run gh: {}", e))?;
+        .map_err(|e| format!("Failed to run gh: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -763,7 +763,7 @@ fn list_open_maintainer_issues(
 
     let output = run_gh_checked(cmd, "gh issue list failed")?;
     let raw_issues: Vec<RawExistingIssue> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh issue list output: {}", e))?;
+        .map_err(|e| format!("Failed to parse gh issue list output: {e}"))?;
 
     Ok(raw_issues
         .into_iter()
@@ -797,7 +797,7 @@ fn list_closed_maintainer_issues(
 
     let output = run_gh_checked(cmd, "gh issue list (closed) failed")?;
     let raw_issues: Vec<RawExistingIssue> = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse gh issue list output: {}", e))?;
+        .map_err(|e| format!("Failed to parse gh issue list output: {e}"))?;
 
     Ok(raw_issues
         .into_iter()
@@ -816,9 +816,9 @@ fn parse_issue_number_from_url(url: &str) -> Result<u32, String> {
     let last = trimmed
         .rsplit('/')
         .next()
-        .ok_or_else(|| format!("Could not parse issue number from URL: {}", url))?;
+        .ok_or_else(|| format!("Could not parse issue number from URL: {url}"))?;
     last.parse::<u32>()
-        .map_err(|_| format!("Could not parse issue number from URL: {}", url))
+        .map_err(|_| format!("Could not parse issue number from URL: {url}"))
 }
 
 fn create_issue(
@@ -938,11 +938,11 @@ pub fn run_maintainer_check(
         .current_dir(repo_path)
         .env_remove("CLAUDECODE")
         .output()
-        .map_err(|e| format!("Failed to run codex exec: {}", e))?;
+        .map_err(|e| format!("Failed to run codex exec: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("codex exec failed: {}", stderr));
+        return Err(format!("codex exec failed: {stderr}"));
     }
 
     let findings_output = parse_findings_output(&String::from_utf8_lossy(&output.stdout))?;
@@ -1053,7 +1053,7 @@ pub fn run_maintainer_check(
                 skip_reasons.push(format!("{} semantic", filtered_findings.skipped_semantic));
             }
             if skipped_closed > 0 {
-                skip_reasons.push(format!("{} closed", skipped_closed));
+                skip_reasons.push(format!("{skipped_closed} closed"));
             }
             parts.push(format!(
                 "skipped {} ({})",

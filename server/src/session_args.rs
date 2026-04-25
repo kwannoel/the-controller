@@ -6,11 +6,10 @@ const BACKGROUND_WORKFLOW_SUFFIX: &str = "\n\nYou are an autonomous background w
 /// When `background` is true, appends the autonomous workflow instructions.
 pub fn build_issue_prompt(issue_number: u64, title: &str, url: &str, background: bool) -> String {
     let base = format!(
-        "You are working on GitHub issue #{}: {}\nIssue URL: {}\nPlease include 'closes #{}' in any PR descriptions or final commit messages.",
-        issue_number, title, url, issue_number
+        "You are working on GitHub issue #{issue_number}: {title}\nIssue URL: {url}\nPlease include 'closes #{issue_number}' in any PR descriptions or final commit messages."
     );
     if background {
-        format!("{}{}", base, BACKGROUND_WORKFLOW_SUFFIX)
+        format!("{base}{BACKGROUND_WORKFLOW_SUFFIX}")
     } else {
         base
     }

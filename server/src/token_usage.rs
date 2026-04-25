@@ -17,7 +17,7 @@ pub fn get_token_usage(working_dir: &str, kind: &str) -> Result<Vec<TokenDataPoi
     match kind {
         "claude" => get_claude_token_usage(working_dir),
         "codex" => get_codex_token_usage(working_dir),
-        _ => Err(format!("Unknown session kind: {}", kind)),
+        _ => Err(format!("Unknown session kind: {kind}")),
     }
 }
 
@@ -62,7 +62,7 @@ fn claude_project_dir(working_dir: &str) -> Result<PathBuf, String> {
         }
     }
 
-    best.ok_or_else(|| format!("No Claude project directory found for {}", working_dir))
+    best.ok_or_else(|| format!("No Claude project directory found for {working_dir}"))
 }
 
 /// Find the most recently modified `.jsonl` file in a directory.
@@ -193,8 +193,7 @@ fn find_codex_session_file(sessions_dir: &Path, working_dir: &str) -> Result<Pat
     }
 
     Err(format!(
-        "No Codex session file found for working dir: {}",
-        working_dir
+        "No Codex session file found for working dir: {working_dir}"
     ))
 }
 

@@ -1,8 +1,8 @@
 # The Controller
 
-A shapeable, personal desktop system — starting with terminal multiplexing.
+A shapeable, personal web control surface — starting with terminal multiplexing.
 
-Built with Tauri v2 + Svelte 5 + Rust.
+Built with Svelte 5 + a local Axum/Rust backend.
 
 > grug have many claude terminal. alt-tab alt-tab alt-tab. where thing go. brain so smooth. so tired.
 > then grug find controller. all terminal one place. grug not lose thing no more.
@@ -13,17 +13,19 @@ Built with Tauri v2 + Svelte 5 + Rust.
 
 Install prerequisites:
 
-- [Rust](https://rustup.rs/) + Tauri v2
-- [Node.js](https://nodejs.org/) + npm
+- [Rust](https://rustup.rs/)
+- [Node.js](https://nodejs.org/) + pnpm
 - tmux (`brew install tmux`)
-- espeak-ng (`brew install espeak-ng`) — required for voice mode TTS
 
 Then:
 
 ```bash
-npm install
-npm run tauri dev
+pnpm install
+./dev.sh
 ```
+
+Open `http://localhost:1420`. `dev.sh` starts the Rust backend on port 3001
+and the Vite frontend on port 1420.
 
 ### tmux Configuration
 
@@ -108,7 +110,8 @@ Not sure what a feature does or how something works? Just ask Claude. The defaul
 Or browse the docs directly:
 
 - [Keyboard Shortcuts & Modes](docs/keyboard-modes.md) — all hotkeys, workspace modes, and how to stage/preview changes
-- [Domain Knowledge](docs/domain-knowledge.md) — hard-won lessons about Tauri, tmux, and session architecture
+- [Domain Knowledge](docs/domain-knowledge.md) — hard-won lessons about the backend, tmux, and session architecture
+- [Web Backend Parity Audit](docs/web-backend-parity-audit.md) — how the web frontend maps to the old desktop command surface
 - [Demo Recording](docs/demo.md) — how to record demos of The Controller
 
 ## Caveats
@@ -117,6 +120,6 @@ The Controller is a strongly opinionated power tool — built for efficiency, si
 
 This project is in early stages. Some features may be overhauled or removed entirely without concern for backwards compatibility. Things will stabilize eventually, but not in the near term.
 
-**Maintain your own fork.** This is the single best way to use The Controller without being caught off guard by breaking changes. Keep your customizations on your own branch and periodically rebase onto the latest commits from `master`. We may provide a skill (`the-controller-maintain-fork`) to automate this — PRs welcome.
+**Maintain your own fork.** This is the single best way to use The Controller without being caught off guard by breaking changes. Keep your customizations on your own branch and periodically rebase onto the latest commits from `main`. We may provide a skill (`the-controller-maintain-fork`) to automate this — PRs welcome.
 
 Several things are still being refined, including the [contribution guide](CONTRIBUTING.md).

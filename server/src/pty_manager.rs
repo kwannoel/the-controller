@@ -114,7 +114,7 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("failed to open pty: {}", e))?;
+            .map_err(|e| format!("failed to open pty: {e}"))?;
 
         let mut cmd = CommandBuilder::new(command);
         cmd.cwd(working_dir);
@@ -133,25 +133,25 @@ impl PtyManager {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| format!("failed to spawn {}: {}", command, e))?;
+            .map_err(|e| format!("failed to spawn {command}: {e}"))?;
 
         drop(pair.slave);
 
         let writer = pair
             .master
             .take_writer()
-            .map_err(|e| format!("failed to get pty writer: {}", e))?;
+            .map_err(|e| format!("failed to get pty writer: {e}"))?;
 
         let mut reader = pair
             .master
             .try_clone_reader()
-            .map_err(|e| format!("failed to get pty reader: {}", e))?;
+            .map_err(|e| format!("failed to get pty reader: {e}"))?;
 
         let alive = Arc::new(Mutex::new(true));
         let alive_clone = Arc::clone(&alive);
 
-        let output_event = format!("pty-output:{}", session_id);
-        let status_event = format!("session-status-changed:{}", session_id);
+        let output_event = format!("pty-output:{session_id}");
+        let status_event = format!("session-status-changed:{session_id}");
 
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
@@ -211,7 +211,7 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("failed to open pty: {}", e))?;
+            .map_err(|e| format!("failed to open pty: {e}"))?;
 
         let tmux_bin =
             TmuxManager::tmux_binary().ok_or_else(|| "tmux binary not found".to_string())?;
@@ -220,25 +220,25 @@ impl PtyManager {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| format!("failed to spawn tmux attach: {}", e))?;
+            .map_err(|e| format!("failed to spawn tmux attach: {e}"))?;
 
         drop(pair.slave);
 
         let writer = pair
             .master
             .take_writer()
-            .map_err(|e| format!("failed to get pty writer: {}", e))?;
+            .map_err(|e| format!("failed to get pty writer: {e}"))?;
 
         let mut reader = pair
             .master
             .try_clone_reader()
-            .map_err(|e| format!("failed to get pty reader: {}", e))?;
+            .map_err(|e| format!("failed to get pty reader: {e}"))?;
 
         let alive = Arc::new(Mutex::new(true));
         let alive_clone = Arc::clone(&alive);
 
-        let output_event = format!("pty-output:{}", session_id);
-        let status_event = format!("session-status-changed:{}", session_id);
+        let output_event = format!("pty-output:{session_id}");
+        let status_event = format!("session-status-changed:{session_id}");
 
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
@@ -295,7 +295,7 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("failed to open pty: {}", e))?;
+            .map_err(|e| format!("failed to open pty: {e}"))?;
 
         let mut cmd = CommandBuilder::new(program);
         for arg in args {
@@ -306,25 +306,25 @@ impl PtyManager {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| format!("failed to spawn {}: {}", program, e))?;
+            .map_err(|e| format!("failed to spawn {program}: {e}"))?;
 
         drop(pair.slave);
 
         let writer = pair
             .master
             .take_writer()
-            .map_err(|e| format!("failed to get pty writer: {}", e))?;
+            .map_err(|e| format!("failed to get pty writer: {e}"))?;
 
         let mut reader = pair
             .master
             .try_clone_reader()
-            .map_err(|e| format!("failed to get pty reader: {}", e))?;
+            .map_err(|e| format!("failed to get pty reader: {e}"))?;
 
         let alive = Arc::new(Mutex::new(true));
         let alive_clone = Arc::clone(&alive);
 
-        let output_event = format!("pty-output:{}", session_id);
-        let status_event = format!("session-status-changed:{}", session_id);
+        let output_event = format!("pty-output:{session_id}");
+        let status_event = format!("session-status-changed:{session_id}");
 
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
@@ -368,17 +368,17 @@ impl PtyManager {
         let session = self
             .sessions
             .get_mut(&session_id)
-            .ok_or_else(|| format!("session not found: {}", session_id))?;
+            .ok_or_else(|| format!("session not found: {session_id}"))?;
 
         session
             .writer
             .write_all(data)
-            .map_err(|e| format!("failed to write to pty: {}", e))?;
+            .map_err(|e| format!("failed to write to pty: {e}"))?;
 
         session
             .writer
             .flush()
-            .map_err(|e| format!("failed to flush pty writer: {}", e))?;
+            .map_err(|e| format!("failed to flush pty writer: {e}"))?;
 
         Ok(())
     }
@@ -390,7 +390,7 @@ impl PtyManager {
         let session = self
             .sessions
             .get_mut(&session_id)
-            .ok_or_else(|| format!("session not found: {}", session_id))?;
+            .ok_or_else(|| format!("session not found: {session_id}"))?;
 
         if session.tmux_session {
             TmuxManager::send_keys_hex(session_id, data)
@@ -398,11 +398,11 @@ impl PtyManager {
             session
                 .writer
                 .write_all(data)
-                .map_err(|e| format!("failed to write to pty: {}", e))?;
+                .map_err(|e| format!("failed to write to pty: {e}"))?;
             session
                 .writer
                 .flush()
-                .map_err(|e| format!("failed to flush pty writer: {}", e))?;
+                .map_err(|e| format!("failed to flush pty writer: {e}"))?;
             Ok(())
         }
     }
@@ -411,7 +411,7 @@ impl PtyManager {
         let session = self
             .sessions
             .get(&session_id)
-            .ok_or_else(|| format!("session not found: {}", session_id))?;
+            .ok_or_else(|| format!("session not found: {session_id}"))?;
 
         // Resize via tmux so the claude process sees the new size
         if session.tmux_session {
@@ -427,7 +427,7 @@ impl PtyManager {
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(|e| format!("failed to resize pty: {}", e))
+            .map_err(|e| format!("failed to resize pty: {e}"))
     }
 
     pub fn is_alive(&self, session_id: Uuid) -> bool {

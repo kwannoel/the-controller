@@ -153,11 +153,11 @@ pub fn sync_skills() {
     };
 
     if let Err(e) = sync_claude_skills(&skills_dir) {
-        eprintln!("Warning: failed to sync Claude skills: {}", e);
+        eprintln!("Warning: failed to sync Claude skills: {e}");
     }
 
     if let Err(e) = sync_codex_skills(&skills_dir) {
-        eprintln!("Warning: failed to sync Codex skills: {}", e);
+        eprintln!("Warning: failed to sync Codex skills: {e}");
     }
 }
 

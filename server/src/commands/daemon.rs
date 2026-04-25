@@ -13,7 +13,7 @@ pub(crate) fn daemon_token_path() -> PathBuf {
 pub(crate) fn read_token_from(path: &std::path::Path) -> Result<String, String> {
     let bytes = std::fs::read(path)
         .map_err(|e| format!("read daemon token at {}: {}", path.display(), e))?;
-    let s = String::from_utf8(bytes).map_err(|e| format!("token not utf-8: {}", e))?;
+    let s = String::from_utf8(bytes).map_err(|e| format!("token not utf-8: {e}"))?;
     Ok(s.trim().to_string())
 }
 
@@ -21,7 +21,7 @@ pub async fn read_daemon_token() -> Result<String, String> {
     let path = daemon_token_path();
     tokio::task::spawn_blocking(move || read_token_from(&path))
         .await
-        .map_err(|e| format!("join error: {}", e))?
+        .map_err(|e| format!("join error: {e}"))?
 }
 
 #[cfg(test)]
