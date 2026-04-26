@@ -61,6 +61,13 @@
     }
   }
 
+  function handleOptionKeydown(e: KeyboardEvent, entry: DirEntry) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      selectDirectory(entry);
+    }
+  }
+
   $effect(() => {
     query;
     selectedIndex = 0;
@@ -135,6 +142,7 @@
             class="result-item"
             class:selected={i === selectedIndex}
             onclick={() => selectDirectory(entry)}
+            onkeydown={(e) => handleOptionKeydown(e, entry)}
             role="option"
             tabindex="0"
             aria-selected={i === selectedIndex}

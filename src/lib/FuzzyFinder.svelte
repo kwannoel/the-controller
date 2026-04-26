@@ -52,6 +52,22 @@
     }
   }
 
+  function handleOverlayKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    }
+  }
+
+  function handleOptionKeydown(e: KeyboardEvent, entry: DirEntry) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect(entry);
+    }
+  }
+
   // Reset selection when query changes
   $effect(() => {
     query;
@@ -59,7 +75,7 @@
   });
 </script>
 
-<div class="overlay" onclick={onClose} role="dialog">
+<div class="overlay" onclick={onClose} onkeydown={handleOverlayKeydown} role="dialog" tabindex="0">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <input
@@ -75,7 +91,9 @@
           class="result-item"
           class:selected={i === selectedIndex}
           onclick={() => onSelect(entry)}
+          onkeydown={(e) => handleOptionKeydown(e, entry)}
           role="option"
+          tabindex="0"
           aria-selected={i === selectedIndex}
         >
           <span class="entry-name">{entry.name}</span>

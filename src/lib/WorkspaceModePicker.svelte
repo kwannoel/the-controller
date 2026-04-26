@@ -6,7 +6,6 @@
   let currentMode: WorkspaceMode = $derived(workspaceModeState.current);
 
   const modes: { key: string; id: WorkspaceMode; label: string }[] = [
-    { key: "d", id: "development", label: "Development" },
     { key: "a", id: "agents", label: "Agents" },
     { key: "k", id: "kanban", label: "Kanban" },
     { key: "c", id: "chat", label: "Chat" },

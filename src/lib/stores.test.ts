@@ -2,8 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
 import {
   projects,
-  activeSessionId,
-  sessionStatuses,
   maintainerStatuses,
   hotkeyAction,
   showKeyHints,
@@ -19,8 +17,6 @@ import type { WorkspaceMode } from './stores';
 describe('stores', () => {
   beforeEach(() => {
     projects.set([]);
-    activeSessionId.set(null);
-    sessionStatuses.set(new Map());
     hotkeyAction.set(null);
     showKeyHints.set(false);
     appConfig.set(null);
@@ -29,25 +25,6 @@ describe('stores', () => {
 
   it('projects starts empty', () => {
     expect(get(projects)).toEqual([]);
-  });
-
-  it('activeSessionId starts null', () => {
-    expect(get(activeSessionId)).toBeNull();
-  });
-
-  it('sessionStatuses can track working/idle/exited', () => {
-    sessionStatuses.update((m) => {
-      const next = new Map(m);
-      next.set('sess-1', 'working');
-      next.set('sess-2', 'idle');
-      next.set('sess-3', 'exited');
-      return next;
-    });
-    const statuses = get(sessionStatuses);
-    expect(statuses.get('sess-1')).toBe('working');
-    expect(statuses.get('sess-2')).toBe('idle');
-    expect(statuses.get('sess-3')).toBe('exited');
-    expect(statuses.size).toBe(3);
   });
 
   it('hotkeyAction dispatch and reset', () => {
@@ -91,14 +68,20 @@ describe('stores', () => {
   });
 
   describe('workspace mode store', () => {
-    it('defaults to development', () => {
-      expect(get(workspaceMode)).toBe('development');
+    it('defaults to chat', () => {
+      expect(get(workspaceMode)).toBe('chat');
     });
 
     it('can switch to agents', () => {
       workspaceMode.set('agents');
       expect(get(workspaceMode)).toBe('agents');
-      workspaceMode.set('development'); // reset
+      workspaceMode.set('chat'); // reset
+    });
+
+    it('can switch to kanban', () => {
+      workspaceMode.set('kanban');
+      expect(get(workspaceMode)).toBe('kanban');
+      workspaceMode.set('chat'); // reset
     });
 
     it('picker starts hidden', () => {
@@ -108,8 +91,8 @@ describe('stores', () => {
 });
 
 describe("WorkspaceMode", () => {
-  it("accepts 'chat' as a valid value", () => {
-    const m: WorkspaceMode = "chat";
-    expect(m).toBe("chat");
+  it("accepts the three remaining workspace modes", () => {
+    const modes: WorkspaceMode[] = ["agents", "kanban", "chat"];
+    expect(modes).toEqual(["agents", "kanban", "chat"]);
   });
 });

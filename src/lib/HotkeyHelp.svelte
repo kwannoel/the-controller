@@ -13,8 +13,8 @@
   const workspaceModeState = fromStore(workspaceMode);
   const sections = $derived(getHelpSections(workspaceModeState.current));
   const modeLabel = $derived(
-    workspaceModeState.current === "chat" ? "Chat" :
-    workspaceModeState.current === "agents" ? "Agents" : "Development"
+    workspaceModeState.current === "agents" ? "Agents" :
+    workspaceModeState.current === "kanban" ? "Kanban" : "Chat"
   );
 
   function handleKeydown(e: KeyboardEvent) {
@@ -33,7 +33,7 @@
   });
 </script>
 
-<div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog">
+<div class="overlay" onclick={onClose} onkeydown={handleKeydown} role="dialog" tabindex="0">
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="modal" onclick={(e) => e.stopPropagation()} role="presentation">
     <div class="modal-header">Keyboard Shortcuts</div>

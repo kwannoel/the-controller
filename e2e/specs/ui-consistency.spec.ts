@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 /**
  * UI consistency checks across the app's workspace modes,
@@ -41,7 +41,7 @@ test.describe("Layout integrity", () => {
     await expect(page.locator(".sidebar-footer")).toBeVisible();
   });
 
-  test("sidebar footer has help button and provider indicator", async ({ page }) => {
+  test("sidebar footer has a help button", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
@@ -50,9 +50,7 @@ test.describe("Layout integrity", () => {
     await expect(helpBtn).toHaveText("?");
 
     const provider = page.locator(".provider-indicator");
-    await expect(provider).toBeVisible();
-    // Should show "Provider: Claude" or "Provider: Codex"
-    await expect(provider).toContainText("Provider:");
+    await expect(provider).toHaveCount(0);
   });
 });
 
@@ -100,50 +98,21 @@ test.describe("Theme consistency", () => {
   });
 });
 
-test.describe("Development mode (default)", () => {
-  test("shows Development in sidebar header", async ({ page }) => {
+test.describe("Chat mode (default)", () => {
+  test("shows Chat in sidebar header", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
-    await expect(page.locator(".sidebar-header h2")).toHaveText("Development");
+    await expect(page.locator(".sidebar-header h2")).toHaveText("Chat");
   });
 
-  test("shows empty state when no session is active", async ({ page }) => {
+  test("shows the chat workspace empty state", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
-    // The terminal manager should show the empty state
-    const emptyTitle = page.locator(".terminal-manager .empty-title");
-    // If there are existing sessions this may not be visible, so check either:
-    // - empty state is shown OR
-    // - a terminal wrapper is visible
-    const hasEmptyState = await emptyTitle.isVisible().catch(() => false);
-    const hasTerminal = await page.locator(".terminal-wrapper.visible").isVisible().catch(() => false);
-
-    expect(hasEmptyState || hasTerminal).toBe(true);
-  });
-
-  test("empty state kbd elements are styled", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
-
-    const emptyHint = page.locator(".terminal-manager .empty-hint");
-    const hasEmptyState = await emptyHint.isVisible().catch(() => false);
-
-    if (hasEmptyState) {
-      const kbds = emptyHint.locator("kbd");
-      const count = await kbds.count();
-      expect(count).toBeGreaterThan(0);
-
-      // Check kbd styling
-      for (let i = 0; i < count; i++) {
-        const bg = await kbds.nth(i).evaluate((el) =>
-          getComputedStyle(el).backgroundColor
-        );
-        // --bg-hover: #242424 → rgb(36, 36, 36)
-        expect(bg).toBe("rgb(36, 36, 36)");
-      }
-    }
+    await expect(
+      page.locator(".chat-empty").or(page.getByRole("heading", { name: "Daemon not running" })),
+    ).toBeVisible();
   });
 });
 
@@ -152,8 +121,8 @@ test.describe("Sidebar header updates per mode", () => {
     await page.goto("/");
     await expect(page.locator(".sidebar")).toBeVisible({ timeout: 10_000 });
 
-    // Default: Development
-    await expect(page.locator(".sidebar-header h2")).toHaveText("Development");
+    // Default: Chat
+    await expect(page.locator(".sidebar-header h2")).toHaveText("Chat");
 
     // Switch to Agents mode via store manipulation
     await page.evaluate(() => {
@@ -169,11 +138,10 @@ test.describe("Sidebar header updates per mode", () => {
       await expect(picker.locator(".picker-title")).toHaveText("Switch Workspace");
 
       const options = picker.locator(".picker-option");
-      await expect(options).toHaveCount(4);
+      await expect(options).toHaveCount(3);
 
       const labels = await options.locator(".option-label").allTextContents();
       expect(labels).toEqual([
-        "Development",
         "Agents",
         "Kanban",
         "Chat",
@@ -292,7 +260,7 @@ test.describe("Agents mode", () => {
         window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space" }));
       });
       if (await page.locator(".picker").isVisible({ timeout: 1_000 }).catch(() => false)) {
-        await page.keyboard.press("d");
+        await page.keyboard.press("c");
       }
     }
   });

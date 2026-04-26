@@ -1,47 +1,51 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import userEvent from "@testing-library/user-event";
+import { get } from "svelte/store";
 import { command, listen } from "$lib/backend";
 import {
-  activeSessionId,
   appConfig,
   expandedProjects,
   focusTarget,
   hotkeyAction,
   onboardingComplete,
   projects,
-  selectedSessionProvider,
-  sessionStatuses,
   showKeyHints,
   sidebarVisible,
   workspaceMode,
+  workspaceModePickerVisible,
   type Project,
 } from "./lib/stores";
 
-const mocks = vi.hoisted(() => ({
-  captureScreenshotPath: vi.fn(),
+const componentMocks = vi.hoisted(() => ({
+  sidebar: vi.fn(),
+  onboarding: vi.fn(),
+  toast: vi.fn(),
+  hotkeyManager: vi.fn(),
+  hotkeyHelp: vi.fn(),
+  keystrokeVisualizer: vi.fn(),
+  workspaceModePicker: vi.fn(),
+  agentDashboard: vi.fn(),
+  kanbanBoard: vi.fn(),
+  chatWorkspace: vi.fn(),
 }));
 
-vi.mock("$lib/native", () => ({
-  captureScreenshotPath: mocks.captureScreenshotPath,
-  copyImageBlobToClipboard: vi.fn(),
-  captureScreenshotDataUrl: vi.fn(),
-}));
-
+vi.mock("./lib/Sidebar.svelte", () => ({ default: componentMocks.sidebar }));
+vi.mock("./lib/Onboarding.svelte", () => ({ default: componentMocks.onboarding }));
+vi.mock("./lib/Toast.svelte", () => ({ default: componentMocks.toast }));
+vi.mock("./lib/HotkeyManager.svelte", () => ({ default: componentMocks.hotkeyManager }));
+vi.mock("./lib/HotkeyHelp.svelte", () => ({ default: componentMocks.hotkeyHelp }));
+vi.mock("./lib/KeystrokeVisualizer.svelte", () => ({ default: componentMocks.keystrokeVisualizer }));
+vi.mock("./lib/WorkspaceModePicker.svelte", () => ({ default: componentMocks.workspaceModePicker }));
+vi.mock("./lib/AgentDashboard.svelte", () => ({ default: componentMocks.agentDashboard }));
+vi.mock("./lib/KanbanBoard.svelte", () => ({ default: componentMocks.kanbanBoard }));
+vi.mock("./lib/chat/ChatWorkspace.svelte", () => ({ default: componentMocks.chatWorkspace }));
 vi.mock("./lib/toast", () => ({
   showToast: vi.fn(),
 }));
 
-vi.mock("./lib/Sidebar.svelte", () => ({ default: function MockSidebar() {} }));
-vi.mock("./lib/TerminalManager.svelte", () => ({ default: function MockTerminalManager() {} }));
-vi.mock("./lib/Onboarding.svelte", () => ({ default: function MockOnboarding() {} }));
-vi.mock("./lib/Toast.svelte", () => ({ default: function MockToast() {} }));
-vi.mock("./lib/HotkeyManager.svelte", () => ({ default: function MockHotkeyManager() {} }));
-vi.mock("./lib/HotkeyHelp.svelte", () => ({ default: function MockHotkeyHelp() {} }));
-vi.mock("./lib/IssuesModal.svelte", async () => ({
-  default: (await import("./test/IssuesModalMock.svelte")).default,
-}));
-
 import App from "./App.svelte";
+import { showToast } from "./lib/toast";
 
 const baseProject: Project = {
   id: "proj-1",
@@ -56,7 +60,27 @@ const baseProject: Project = {
   staged_sessions: [],
 };
 
-describe("App screenshot flow", () => {
+function resetStores() {
+  projects.set([baseProject]);
+  focusTarget.set({ type: "project", projectId: "proj-1" });
+  hotkeyAction.set(null);
+  showKeyHints.set(false);
+  sidebarVisible.set(true);
+  workspaceMode.set("chat");
+  workspaceModePickerVisible.set(false);
+  onboardingComplete.set(true);
+  appConfig.set({ projects_root: "/tmp/projects" });
+  expandedProjects.set(new Set());
+}
+
+function mockDefaultCommands() {
+  vi.mocked(command).mockImplementation(async (cmd: string) => {
+    if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+    return undefined;
+  });
+}
+
+describe("App shell", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // @ts-expect-error compile-time constants injected in app builds
@@ -65,386 +89,73 @@ describe("App screenshot flow", () => {
     globalThis.__BUILD_BRANCH__ = "test-branch";
     // @ts-expect-error compile-time constants injected in app builds
     globalThis.__DEV_PORT__ = "1420";
-
-    projects.set([baseProject]);
-    activeSessionId.set(null);
-    focusTarget.set({ type: "project", projectId: "proj-1" });
-    hotkeyAction.set(null);
-    showKeyHints.set(false);
-    sidebarVisible.set(true);
-    selectedSessionProvider.set("claude");
-    workspaceMode.set("development");
-
-
-    onboardingComplete.set(true);
-    appConfig.set({ projects_root: "/tmp/projects" });
-    sessionStatuses.set(new Map());
-    expandedProjects.set(new Set());
+    vi.mocked(listen).mockReturnValue(() => {});
+    mockDefaultCommands();
+    resetStores();
   });
 
-  function setupMocks() {
-    mocks.captureScreenshotPath.mockResolvedValue("/tmp/the-controller-screenshot.png");
-    vi.mocked(command).mockImplementation(async (cmd: string) => {
-      if (cmd === "restore_sessions") return;
-      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "connect_session") return;
-      if (cmd === "create_session") return "sess-new";
-      if (cmd === "list_projects") {
-        return {
-          projects: [
-            {
-              ...baseProject,
-              sessions: [
-                {
-                  id: "sess-new",
-                  label: "session-1",
-                  worktree_path: null,
-                  worktree_branch: null,
-                  archived: false,
-                  kind: "claude",
-                  github_issue: null,
-                  initial_prompt: null,
-                  auto_worker_session: false,
-                },
-              ],
-            },
-          ],
-          corrupt_entries: [],
-        };
-      }
-      return;
-    });
-  }
-
-  it("Cmd+S (direct): captures screenshot and spawns session for the-controller", async () => {
-    setupMocks();
+  it("opens in chat mode by default and updates the window title", async () => {
     render(App);
-    hotkeyAction.set({ type: "screenshot-to-session", direct: true });
 
     await waitFor(() => {
-      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
+      expect(componentMocks.chatWorkspace).toHaveBeenCalled();
     });
 
-    // Should directly create session without showing picker
-    await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
-        kind: "claude",
-        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
-      }));
-    });
-
-    expect(screen.queryByText("Send Screenshot To")).not.toBeInTheDocument();
+    expect(componentMocks.agentDashboard).not.toHaveBeenCalled();
+    expect(componentMocks.kanbanBoard).not.toHaveBeenCalled();
+    expect(document.title).toBe("The Controller (test-commit, test-branch, localhost:1420)");
   });
 
-  it("Cmd+D (direct): captures screenshot and spawns session for the-controller", async () => {
-    setupMocks();
+  it("renders the agents and kanban workspaces", async () => {
+    workspaceMode.set("agents");
     render(App);
-    hotkeyAction.set({ type: "screenshot-to-session", direct: true, cropped: true });
-
     await waitFor(() => {
-      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
+      expect(componentMocks.agentDashboard).toHaveBeenCalled();
     });
 
-    await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
-        kind: "claude",
-        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
-      }));
-    });
-
-    expect(screen.queryByText("Send Screenshot To")).not.toBeInTheDocument();
-  });
-
-  it("Cmd+Shift+S (picker): captures screenshot and shows session picker", async () => {
-    setupMocks();
-    render(App);
-    hotkeyAction.set({ type: "screenshot-to-session" });
-
-    await waitFor(() => {
-      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
-    });
-
-    // Session picker modal should appear
-    await waitFor(() => {
-      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
-      expect(screen.getByText("+ New session")).toBeInTheDocument();
-    });
-  });
-
-  it("new session option in picker routes to the-controller project", async () => {
-    const controllerProject = { ...baseProject, id: "proj-controller", name: "the-controller", repo_path: "/tmp/the-controller" };
-    const otherProject = { ...baseProject, id: "proj-other", name: "client-app", repo_path: "/tmp/client-app" };
-    setupMocks();
-    projects.set([otherProject, controllerProject]);
-    focusTarget.set({ type: "project", projectId: "proj-other" });
-
-    render(App);
-    hotkeyAction.set({ type: "screenshot-to-session" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
-    });
-
-    // Click "+ New session" — should create session in the-controller project
-    await fireEvent.click(screen.getByText("+ New session"));
-
-    await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-controller",
-        kind: "claude",
-        initialPrompt: expect.stringContaining("/tmp/the-controller-screenshot.png"),
-      }));
-    });
-  });
-
-  it("sends screenshot to an existing session when picked", async () => {
-    const projectWithSession = {
-      ...baseProject,
-      sessions: [
-        {
-          id: "sess-existing",
-          label: "session-1",
-          worktree_path: null,
-          worktree_branch: null,
-          archived: false,
-          kind: "claude",
-          github_issue: null,
-          initial_prompt: null,
-          auto_worker_session: false,
-        },
-      ],
-    };
-    setupMocks();
-    projects.set([projectWithSession]);
-
-    render(App);
-    hotkeyAction.set({ type: "screenshot-to-session" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
-    });
-
-    // Click the existing session
-    await fireEvent.click(screen.getByText("session-1"));
-
-    await waitFor(() => {
-      // Should connect the PTY first, then write
-      expect(command).toHaveBeenCalledWith("connect_session", expect.objectContaining({
-        sessionId: "sess-existing",
-      }));
-      expect(command).toHaveBeenCalledWith("write_to_pty", expect.objectContaining({
-        sessionId: "sess-existing",
-        data: expect.stringContaining("/tmp/the-controller-screenshot.png"),
-      }));
-    });
-  });
-
-  it("Cmd+Shift+D (picker): captures screenshot and shows picker", async () => {
-    setupMocks();
-    render(App);
-    hotkeyAction.set({ type: "screenshot-to-session", cropped: true });
-
-    await waitFor(() => {
-      expect(mocks.captureScreenshotPath).toHaveBeenCalled();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Send Screenshot To")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("Window title updates on staging", () => {
-  beforeEach(() => {
     vi.clearAllMocks();
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__BUILD_COMMIT__ = "test-commit";
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__BUILD_BRANCH__ = "test-branch";
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__DEV_PORT__ = "1420";
+    workspaceMode.set("kanban");
+    render(App);
+    await waitFor(() => {
+      expect(componentMocks.kanbanBoard).toHaveBeenCalled();
+    });
 
-    projects.set([{ ...baseProject, staged_sessions: [], maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [] }]);
-    activeSessionId.set(null);
-    focusTarget.set(null);
-    hotkeyAction.set(null);
-    showKeyHints.set(false);
-    sidebarVisible.set(true);
-    onboardingComplete.set(true);
-    appConfig.set({ projects_root: "/tmp/projects" });
-    sessionStatuses.set(new Map());
-    expandedProjects.set(new Set());
+    expect(componentMocks.chatWorkspace).not.toHaveBeenCalled();
   });
 
-  it("shows build-time info in title when no session is staged", async () => {
+  it("shows onboarding when config is missing", async () => {
+    onboardingComplete.set(false);
+    appConfig.set(null);
     vi.mocked(command).mockImplementation(async (cmd: string) => {
-      if (cmd === "restore_sessions") return;
-      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      return;
+      if (cmd === "check_onboarding") return null;
+      return undefined;
     });
 
     render(App);
 
     await waitFor(() => {
-      expect(document.title).toBe(
-        "The Controller (test-commit, test-branch, localhost:1420)",
-      );
+      expect(componentMocks.onboarding).toHaveBeenCalled();
     });
   });
 
-  it("does not change title when a session is staged", async () => {
+  it("loads a project from fuzzy finder selection", async () => {
+    const loadedProject = { ...baseProject, id: "proj-loaded", name: "alpha-project", repo_path: "/tmp/alpha" };
     vi.mocked(command).mockImplementation(async (cmd: string) => {
-      if (cmd === "restore_sessions") return;
       if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      return;
+      if (cmd === "list_root_directories") return [{ name: "alpha-project", path: "/tmp/alpha" }];
+      if (cmd === "load_project") return loadedProject;
+      if (cmd === "list_projects") return { projects: [loadedProject], corrupt_entries: [] };
+      return undefined;
     });
 
     render(App);
+    hotkeyAction.set({ type: "open-fuzzy-finder" });
 
-    const expected = "The Controller (test-commit, test-branch, localhost:1420)";
-    await waitFor(() => {
-      expect(document.title).toBe(expected);
-    });
-
-    // Stage a session — title should NOT change
-    projects.set([{
-      ...baseProject,
-      staged_sessions: [{
-        session_id: "sess-1",
-        pid: 12345,
-        port: 1421,
-      }],
-      maintainer: { enabled: false, interval_minutes: 60 },
-      auto_worker: { enabled: false },
-      prompts: [],
-      sessions: [{ id: "sess-1", label: "fix-foo", worktree_path: null, worktree_branch: null, archived: false, kind: "claude", github_issue: null, initial_prompt: null, auto_worker_session: false }],
-    }]);
-
-    // Give reactivity a tick, then verify title was NOT updated
-    await new Promise((r) => setTimeout(r, 50));
-    expect(document.title).toBe(expected);
-  });
-});
-
-describe("App issue assign flow", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__BUILD_COMMIT__ = "test-commit";
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__BUILD_BRANCH__ = "test-branch";
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__DEV_PORT__ = "1420";
-
-    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [] }]);
-    activeSessionId.set(null);
-    focusTarget.set({ type: "project", projectId: "proj-1" });
-    hotkeyAction.set(null);
-    showKeyHints.set(false);
-    sidebarVisible.set(true);
-    selectedSessionProvider.set("claude");
-    onboardingComplete.set(true);
-    appConfig.set({ projects_root: "/tmp/projects" });
-    sessionStatuses.set(new Map());
-    expandedProjects.set(new Set());
-
-    vi.mocked(command).mockImplementation(async (cmd: string) => {
-      if (cmd === "restore_sessions") return;
-      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "create_session") return "sess-new";
-      if (cmd === "list_projects") {
-        return {
-          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [], sessions: [] }],
-          corrupt_entries: [],
-        };
-      }
-      return;
-    });
-  });
-
-  it("creates a session when assigning an issue from the issues modal", async () => {
-    render(App);
-
-    hotkeyAction.set({
-      type: "open-issues-modal",
-      projectId: "proj-1",
-      repoPath: "/tmp/the-controller",
-    });
-
-    await fireEvent.click(await screen.findByTestId("mock-issue-assign"));
+    await fireEvent.click(await screen.findByText("alpha-project"));
 
     await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("create_session", expect.objectContaining({
-        projectId: "proj-1",
-        githubIssue: expect.objectContaining({ number: 42 }),
-      }));
-    });
-  });
-});
-
-describe("App issue creation flow", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__BUILD_COMMIT__ = "test-commit";
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__BUILD_BRANCH__ = "test-branch";
-    // @ts-expect-error compile-time constants injected in app builds
-    globalThis.__DEV_PORT__ = "1420";
-
-    projects.set([{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [] }]);
-    activeSessionId.set(null);
-    focusTarget.set({ type: "project", projectId: "proj-1" });
-    hotkeyAction.set(null);
-    showKeyHints.set(false);
-    sidebarVisible.set(true);
-    selectedSessionProvider.set("claude");
-    onboardingComplete.set(true);
-    appConfig.set({ projects_root: "/tmp/projects" });
-    sessionStatuses.set(new Map());
-    expandedProjects.set(new Set());
-
-    vi.mocked(command).mockImplementation(async (cmd: string) => {
-      if (cmd === "restore_sessions") return;
-      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "generate_issue_body") return "Generated body";
-      if (cmd === "create_github_issue") {
-        return {
-          number: 77,
-          title: "Mock issue",
-          url: "https://example.com/issues/77",
-          body: "Generated body",
-          labels: [],
-        };
-      }
-      if (cmd === "list_projects") {
-        return {
-          projects: [{ ...baseProject, maintainer: { enabled: false, interval_minutes: 60 }, auto_worker: { enabled: false }, prompts: [], staged_sessions: [], sessions: [] }],
-          corrupt_entries: [],
-        };
-      }
-      return;
-    });
-  });
-
-  it("creates low-complexity issues with the canonical complexity:low label", async () => {
-    render(App);
-
-    hotkeyAction.set({
-      type: "open-issues-modal",
-      projectId: "proj-1",
-      repoPath: "/tmp/the-controller",
-    });
-
-    await fireEvent.click(await screen.findByTestId("mock-create-issue-submit"));
-
-    await waitFor(() => {
-      expect(command).toHaveBeenCalledWith("add_github_label", expect.objectContaining({
-        issueNumber: 77,
-        label: "complexity:low",
-      }));
+      expect(command).toHaveBeenCalledWith("load_project", { name: "alpha-project", repoPath: "/tmp/alpha" });
+      expect(get(focusTarget)).toEqual({ type: "project", projectId: "proj-loaded" });
     });
   });
 });
@@ -458,37 +169,23 @@ describe("App secure env flow", () => {
     globalThis.__BUILD_BRANCH__ = "test-branch";
     // @ts-expect-error compile-time constants injected in app builds
     globalThis.__DEV_PORT__ = "1420";
-
-    projects.set([baseProject]);
-    activeSessionId.set(null);
-    focusTarget.set({ type: "project", projectId: "proj-1" });
-    hotkeyAction.set(null);
-    showKeyHints.set(false);
-    sidebarVisible.set(true);
-    selectedSessionProvider.set("claude");
-    onboardingComplete.set(true);
-    appConfig.set({ projects_root: "/tmp/projects" });
-    sessionStatuses.set(new Map());
-    expandedProjects.set(new Set());
-
-    vi.mocked(command).mockImplementation(async (cmd: string) => {
-      if (cmd === "restore_sessions") return;
-      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
-      if (cmd === "submit_secure_env_value") return "created";
-      if (cmd === "cancel_secure_env_request") return;
-      return;
-    });
+    mockDefaultCommands();
+    resetStores();
   });
 
-  it("opens the secure env modal from the backend event and submits without leaking the secret to toast text", async () => {
+  it("submits secure env values without leaking the secret to toast text", async () => {
     let secureEnvHandler: ((payload: string) => void) | undefined;
     vi.mocked(listen).mockImplementation((event: string, handler: (payload: string) => void) => {
       if (event === "secure-env-requested") secureEnvHandler = handler;
       return () => {};
     });
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "submit_secure_env_value") return "created";
+      return undefined;
+    });
 
     render(App);
-
     secureEnvHandler?.(JSON.stringify({
       requestId: "req-123",
       projectId: "proj-1",
@@ -497,7 +194,7 @@ describe("App secure env flow", () => {
     }));
 
     const input = await screen.findByLabelText("Secret value");
-    await fireEvent.input(input, { target: { value: "new-secret" } });
+    await userEvent.type(input, "new-secret");
     await fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
@@ -507,20 +204,23 @@ describe("App secure env flow", () => {
       });
     });
 
-    const { showToast } = await import("./lib/toast");
     expect(showToast).toHaveBeenCalledWith("Saved OPENAI_API_KEY for demo-project", "info");
     expect(showToast).not.toHaveBeenCalledWith(expect.stringContaining("new-secret"), expect.anything());
   });
 
-  it("cancels the secure env request from the modal", async () => {
+  it("cancels secure env requests", async () => {
     let secureEnvHandler: ((payload: string) => void) | undefined;
     vi.mocked(listen).mockImplementation((event: string, handler: (payload: string) => void) => {
       if (event === "secure-env-requested") secureEnvHandler = handler;
       return () => {};
     });
+    vi.mocked(command).mockImplementation(async (cmd: string) => {
+      if (cmd === "check_onboarding") return { projects_root: "/tmp/projects" };
+      if (cmd === "cancel_secure_env_request") return undefined;
+      return undefined;
+    });
 
     render(App);
-
     secureEnvHandler?.(JSON.stringify({
       requestId: "req-123",
       projectId: "proj-1",

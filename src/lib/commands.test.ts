@@ -8,7 +8,7 @@ describe("command registry", () => {
     const globalSet = new Set(globalKeys);
     expect(globalKeys.length).toBe(globalSet.size);
 
-    const modes = ["development", "agents"] as const;
+    const modes = ["agents", "kanban", "chat"] as const;
     for (const mode of modes) {
       const modeKeys = internal.filter(c => c.mode === mode).map(c => c.key);
       const allKeys = [...globalKeys, ...modeKeys];
@@ -23,19 +23,24 @@ describe("command registry", () => {
     }
   });
 
-  it("getHelpSections returns sections in order for development mode", () => {
-    const sections = getHelpSections("development");
-    expect(sections.map(s => s.label)).toEqual(["Essentials", "Debug", "Sessions", "Projects", "Panels"]);
-  });
-
   it("getHelpSections returns sections for agents mode", () => {
     const sections = getHelpSections("agents");
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Panels", "Agents"]);
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels", "Agents"]);
+  });
+
+  it("getHelpSections returns sections for kanban mode", () => {
+    const sections = getHelpSections("kanban");
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels"]);
+  });
+
+  it("getHelpSections returns sections for chat mode", () => {
+    const sections = getHelpSections("chat");
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels"]);
   });
 
   it("getHelpSections without mode returns all sections", () => {
     const sections = getHelpSections();
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Sessions", "Projects", "Panels", "Agents"]);
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels", "Agents"]);
   });
 
   it("getHelpSections excludes hidden commands", () => {
@@ -52,7 +57,6 @@ describe("command registry", () => {
     const sections = getHelpSections();
     const allKeys = sections.flatMap(s => s.entries.map(e => e.key));
     expect(allKeys).toContain("Esc");
-    expect(allKeys).toContain("⌘s");
     expect(allKeys).toContain("⌘k");
   });
 
@@ -72,64 +76,33 @@ describe("command registry", () => {
     expect(map.get("?")).toBe("toggle-help");
   });
 
-  it("buildKeyMap for development includes dev commands but not agents commands", () => {
-    const map = buildKeyMap("development");
-    expect(map.has("c")).toBe(true); // create-session (dev)
-    expect(map.get("c")).toBe("create-session");
-    expect(map.has("a")).toBe(false);
-    expect(map.has("A")).toBe(false);
-    expect(map.has("x")).toBe(false);
-    expect(map.has("X")).toBe(false);
-    expect(map.has("C")).toBe(false);
-    expect(map.has("j")).toBe(true); // global nav
-    expect(map.has("o")).toBe(false); // toggle-mode removed
-  });
-
   it("buildKeyMap for agents includes agents commands but not dev commands", () => {
     const map = buildKeyMap("agents");
     expect(map.has("j")).toBe(true); // global nav
     expect(map.has("o")).toBe(true); // toggle-agent (agents)
     expect(map.get("o")).toBe("toggle-agent");
-    expect(map.has("n")).toBe(false); // new-project is dev-only
+    expect(map.has("n")).toBe(false);
+  });
+
+  it("buildKeyMap for chat excludes removed session-management keys", () => {
+    const map = buildKeyMap("chat");
+    expect(map.has("j")).toBe(true);
+    expect(map.has("c")).toBe(false);
+    expect(map.has("n")).toBe(false);
+    expect(map.has("m")).toBe(false);
+    expect(map.has("v")).toBe(false);
   });
 
   it("buildKeyMap without mode includes all non-external commands", () => {
     const map = buildKeyMap();
     expect(map.has("j")).toBe(true);
-    expect(map.has("c")).toBe(true);
     expect(map.has("o")).toBe(true);
-  });
-
-  it("help sections have correct entry counts for development mode", () => {
-    const sections = getHelpSections("development");
-
-    const essentials = sections.find(s => s.label === "Essentials")!;
-    expect(essentials.entries).toHaveLength(9);
-    expect(essentials.entries.map(e => e.key)).toEqual(["c", "j / k", "n", "d", "m", "f", "l / Enter", "Esc", "Esc Esc"]);
-
-    expect(sections.find(s => s.label === "Navigation")).toBeUndefined();
-
-    const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(6); // y, e, P, p, v, ⌘t
-    expect(sess.entries.map(entry => entry.key)).toContain("⌘t");
-
-    const proj = sections.find(s => s.label === "Projects")!;
-    expect(proj.entries).toHaveLength(1); // i (open-issues-modal)
-
-    const panels = sections.find(s => s.label === "Panels")!;
-    expect(panels.entries).toHaveLength(2); // ?, ⌘k
-
-    const debug = sections.find(s => s.label === "Debug")!;
-    expect(debug.entries).toHaveLength(3); // ⌘s, ⌘d, ⌘S/⌘D
   });
 
   it("help sections have correct entry counts for agents mode", () => {
     const sections = getHelpSections("agents");
     const nav = sections.find(s => s.label === "Navigation")!;
-    expect(nav.entries).toHaveLength(5);
-
-    const sess = sections.find(s => s.label === "Sessions")!;
-    expect(sess.entries).toHaveLength(3);
+    expect(nav.entries).toHaveLength(4);
 
     const panels = sections.find(s => s.label === "Panels")!;
     expect(panels.entries).toHaveLength(2);
@@ -142,8 +115,9 @@ describe("command registry", () => {
     const ids = commands.map(c => c.id);
     expect(ids).not.toContain("jump-mode");
     expect(ids).not.toContain("toggle-maintainer-panel");
-    expect(ids).not.toContain("trigger-maintainer-check");
-    expect(ids).not.toContain("clear-maintainer-reports");
+    expect(ids).not.toContain("create-session");
+    expect(ids).not.toContain("finish-branch");
+    expect(ids).not.toContain("stage");
   });
 
   it("new agents commands are in the registry", () => {

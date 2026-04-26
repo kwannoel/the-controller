@@ -3,13 +3,10 @@ import { render, screen, waitFor } from "@testing-library/svelte";
 import { command } from "$lib/backend";
 import { showToast } from "./toast";
 import {
-  activeSessionId,
   expandedProjects,
   focusTarget,
   hotkeyAction,
   projects,
-  selectedSessionProvider,
-  sessionStatuses,
   showKeyHints,
   workspaceMode,
 } from "./stores";
@@ -18,41 +15,27 @@ vi.mock("./toast", () => ({
   showToast: vi.fn(),
 }));
 
-vi.mock("./FuzzyFinder.svelte", () => ({
-  default: function MockFuzzyFinder() {},
-}));
-vi.mock("./NewProjectModal.svelte", () => ({
-  default: function MockNewProjectModal() {},
-}));
-vi.mock("./DeleteProjectModal.svelte", () => ({
-  default: function MockDeleteProjectModal() {},
-}));
-vi.mock("./ConfirmModal.svelte", () => ({
-  default: function MockConfirmModal() {},
-}));
-vi.mock("./DeleteSessionModal.svelte", () => ({
-  default: function MockDeleteSessionModal() {},
-}));
-vi.mock("./sidebar/ProjectTree.svelte", () => ({
-  default: function MockProjectTree() {},
-}));
 vi.mock("./sidebar/AgentTree.svelte", () => ({
   default: function MockAgentTree() {},
 }));
+vi.mock("./sidebar/ProjectList.svelte", () => ({
+  default: function MockProjectList() {},
+}));
+vi.mock("./chat/ChatSessionList.svelte", () => ({
+  default: function MockChatSessionList() {},
+}));
+
 import Sidebar from "./Sidebar.svelte";
 
-describe("Sidebar provider indicator", () => {
+describe("Sidebar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     projects.set([]);
-    activeSessionId.set(null);
-    sessionStatuses.set(new Map());
     showKeyHints.set(false);
     focusTarget.set(null);
     expandedProjects.set(new Set());
-    workspaceMode.set("development");
+    workspaceMode.set("chat");
     hotkeyAction.set(null);
-    selectedSessionProvider.set("claude");
 
     vi.mocked(command).mockImplementation(async (cmd: string) => {
       if (cmd === "list_projects") return { projects: [], corrupt_entries: [] };
@@ -60,21 +43,25 @@ describe("Sidebar provider indicator", () => {
     });
   });
 
-  it("shows the active provider in the development footer", async () => {
+  it("shows Chat in the default sidebar header", async () => {
     render(Sidebar);
 
     await waitFor(() => {
-      expect(screen.getByText(/Provider: Claude/i)).toBeInTheDocument();
+      expect(screen.getByText("Chat")).toBeInTheDocument();
     });
   });
 
-  it("updates the footer indicator when the selected provider changes", async () => {
+  it("updates the sidebar header for agents and kanban", async () => {
     render(Sidebar);
 
-    selectedSessionProvider.set("codex");
-
+    workspaceMode.set("agents");
     await waitFor(() => {
-      expect(screen.getByText(/Provider: Codex/i)).toBeInTheDocument();
+      expect(screen.getByText("Agents")).toBeInTheDocument();
+    });
+
+    workspaceMode.set("kanban");
+    await waitFor(() => {
+      expect(screen.getByText("Kanban")).toBeInTheDocument();
     });
   });
 

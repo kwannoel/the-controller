@@ -1,14 +1,10 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
-  import { fromStore, get } from "svelte/store";
-  import { command } from "$lib/backend";
+  import { onMount } from "svelte";
+  import { fromStore } from "svelte/store";
   import {
     projects,
-    activeSessionId,
-    sidebarVisible,
     workspaceMode,
     workspaceModePickerVisible,
-    selectedSessionProvider,
     focusTarget,
     expandedProjects,
     dispatchHotkeyAction,
@@ -17,22 +13,14 @@
     type FocusTarget,
   } from "./stores";
   import { toggleKeystrokeVisualizer, pushKeystroke } from "./keystroke-visualizer";
-  import { showToast } from "./toast";
   import { buildKeyMap, type CommandId } from "./commands";
   import { focusForModeSwitch } from "./focus-helpers";
   import { daemonStore } from "./daemon/store.svelte";
 
-  let lastEscapeTime = 0;
-
-  const DOUBLE_ESCAPE_MS = 300;
-
-  // Workspace mode state (Space prefix)
   let workspaceModeActive = $state(false);
 
   const projectsState = fromStore(projects);
   let projectList: Project[] = $derived(projectsState.current);
-  const activeSessionIdState = fromStore(activeSessionId);
-  let activeId: string | null = $derived(activeSessionIdState.current);
   const focusTargetState = fromStore(focusTarget);
   let currentFocus: FocusTarget = $derived(focusTargetState.current);
   const expandedProjectsState = fromStore(expandedProjects);
@@ -40,18 +28,7 @@
   const workspaceModeState = fromStore(workspaceMode);
   let currentMode = $derived(workspaceModeState.current);
   let keyMap = $derived(buildKeyMap(currentMode));
-  const selectedSessionProviderState = fromStore(selectedSessionProvider);
-  let currentSessionProvider = $derived(selectedSessionProviderState.current);
 
-  // Detect if a terminal (xterm) has focus
-  function isTerminalFocused(): boolean {
-    const el = document.activeElement;
-    if (!el) return false;
-    // xterm renders a textarea for input capture
-    return el.closest(".xterm") !== null;
-  }
-
-  // Detect if an input/textarea/contenteditable has focus
   function isEditableElementFocused(): boolean {
     const el = document.activeElement;
     if (!el) return false;
@@ -64,55 +41,30 @@
     return document.querySelector('[role="dialog"]') !== null;
   }
 
-  function forwardEscape() {
-    if (activeId) {
-      command("write_to_pty", { sessionId: activeId, data: "\x1b" });
-    }
-  }
-
-  function focusActiveSession() {
-    if (!activeId) return;
-    const project = projectList.find((p) =>
-      p.sessions.some((s) => s.id === activeId),
-    );
-    if (project) {
-      sidebarVisible.set(true);
-      focusTarget.set({ type: "session", sessionId: activeId, projectId: project.id });
-    }
-  }
-
   function dispatchAction(action: NonNullable<HotkeyAction>) {
     dispatchHotkeyAction(action);
+  }
+
+  function switchWorkspaceMode(mode: typeof currentMode) {
+    workspaceMode.set(mode);
+    const newFocus = focusForModeSwitch(currentFocus, mode);
+    if (newFocus !== currentFocus) focusTarget.set(newFocus);
   }
 
   function handleWorkspaceModeKey(key: string) {
     workspaceModeActive = false;
     workspaceModePickerVisible.set(false);
-    if (key === "d") {
-      workspaceMode.set("development");
-      const newFocus = focusForModeSwitch(currentFocus, "development", activeId, projectList);
-      if (newFocus !== currentFocus) focusTarget.set(newFocus);
-      return;
-    }
     if (key === "a") {
-      workspaceMode.set("agents");
-      const newFocus = focusForModeSwitch(currentFocus, "agents", activeId, projectList);
-      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      switchWorkspaceMode("agents");
       return;
     }
     if (key === "k") {
-      workspaceMode.set("kanban");
-      const newFocus = focusForModeSwitch(currentFocus, "kanban", activeId, projectList);
-      if (newFocus !== currentFocus) focusTarget.set(newFocus);
+      switchWorkspaceMode("kanban");
       return;
     }
     if (key === "c") {
-      workspaceMode.set("chat");
-      const newFocus = focusForModeSwitch(currentFocus, "chat", activeId, projectList);
-      if (newFocus !== currentFocus) focusTarget.set(newFocus);
-      return;
+      switchWorkspaceMode("chat");
     }
-    // Any other key (including Escape) cancels
   }
 
   type SidebarItem =
@@ -131,6 +83,7 @@
       }
       return result;
     }
+
     if (currentMode === "chat") {
       const result: SidebarItem[] = [];
       const daemonSessions = [...daemonStore.sessions.values()];
@@ -142,20 +95,11 @@
             result.push({ type: "session", sessionId: s.id, projectId: p.id });
           }
         }
-        // "+ New chat" row is intentionally not keyboard-walkable for v1.
       }
       return result;
     }
-    const result: SidebarItem[] = [];
-    for (const p of projectList) {
-      result.push({ type: "project", projectId: p.id });
-      if (!expandedSet.has(p.id)) continue;
-      const sessions = p.sessions.filter(s => !s.auto_worker_session);
-      for (const s of sessions) {
-        result.push({ type: "session", sessionId: s.id, projectId: p.id });
-      }
-    }
-    return result;
+
+    return projectList.map((p) => ({ type: "project", projectId: p.id }));
   }
 
   function navigateItem(direction: 1 | -1) {
@@ -172,48 +116,13 @@
     const len = items.length;
     const next = items[((idx + direction) % len + len) % len];
     if (next.type === "session") {
-      if (currentMode === "chat") {
-        daemonStore.activeSessionId = next.sessionId;
-      } else {
-        activeSessionId.set(next.sessionId);
-      }
+      daemonStore.activeSessionId = next.sessionId;
       focusTarget.set({ type: "session", sessionId: next.sessionId, projectId: next.projectId });
     } else if (next.type === "agent") {
       focusTarget.set({ type: "agent", agentKind: next.agentKind, projectId: next.projectId });
     } else {
       focusTarget.set({ type: "project", projectId: next.projectId });
     }
-  }
-
-  function navigateProject(direction: 1 | -1) {
-    if (projectList.length === 0) return;
-    const focusedProjectId = currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel"
-      ? currentFocus.projectId
-      : null;
-    let idx = -1;
-    if (focusedProjectId) idx = projectList.findIndex(p => p.id === focusedProjectId);
-    const len = projectList.length;
-    const next = projectList[((idx + direction) % len + len) % len];
-    focusTarget.set({ type: "project", projectId: next.id });
-  }
-
-  function getFocusedProject(): Project | null {
-    if (currentFocus?.type === "project" || currentFocus?.type === "session" || currentFocus?.type === "agent" || currentFocus?.type === "agent-panel") {
-      return projectList.find((p) => p.id === currentFocus.projectId) ?? null;
-    }
-    return null;
-  }
-
-  function dispatchDeleteAction() {
-    if (currentFocus?.type === "session") {
-      dispatchAction({ type: "delete-session", sessionId: currentFocus.sessionId, projectId: currentFocus.projectId });
-      return;
-    }
-    if (currentFocus?.type === "project") {
-      dispatchAction({ type: "delete-project", projectId: currentFocus.projectId });
-      return;
-    }
-    dispatchAction({ type: "delete-project" });
   }
 
   function handleHotkey(key: string): boolean {
@@ -230,79 +139,6 @@
       case "fuzzy-finder":
         dispatchAction({ type: "open-fuzzy-finder" });
         return true;
-      case "new-project":
-        dispatchAction({ type: "open-new-project" });
-        return true;
-      case "delete":
-        dispatchDeleteAction();
-        return true;
-      case "create-session": {
-        const project = getFocusedProject();
-        if (!project) {
-          if (projectList.length === 0) {
-            showToast("No projects yet — press 'f' to find a directory or 'n' to create a new project", "error");
-          } else {
-            showToast("Select a project first (j/k to navigate, or 'f' to find a directory)", "error");
-          }
-          return true;
-        }
-        dispatchAction({ type: "create-session", projectId: project.id, kind: currentSessionProvider });
-        return true;
-      }
-      case "finish-branch":
-        if (activeId) {
-          const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
-          const sess = proj?.sessions.find((s) => s.id === activeId);
-          dispatchHotkeyAction({ type: "finish-branch", sessionId: activeId, kind: sess?.kind as "claude" | "codex" | undefined });
-        }
-        return true;
-      case "e2e-eval":
-        if (activeId) {
-          const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
-          const sess = proj?.sessions.find((s) => s.id === activeId);
-          dispatchHotkeyAction({ type: "e2e-eval", sessionId: activeId, kind: sess?.kind as "claude" | "codex" | undefined });
-        }
-        return true;
-      case "save-prompt": {
-        if (currentFocus?.type === "session") {
-          dispatchAction({
-            type: "save-session-prompt",
-            sessionId: currentFocus.sessionId,
-            projectId: currentFocus.projectId,
-          });
-        }
-        return true;
-      }
-      case "load-prompt": {
-        const project = getFocusedProject();
-        if (project) {
-          dispatchAction({ type: "pick-prompt-for-session", projectId: project.id });
-        }
-        return true;
-      }
-      case "say-yes":
-        if (activeId) {
-          command("write_to_pty", { sessionId: activeId, data: "yes\r" });
-        }
-        return true;
-      case "stage": {
-        if (!activeId) return true;
-        const proj = projectList.find((p) => p.sessions.some((s) => s.id === activeId));
-        if (!proj || proj.name !== "the-controller") return true;
-        const isStaged = proj.staged_sessions.some((s) => s.session_id === activeId);
-        if (isStaged) {
-          dispatchHotkeyAction({ type: "unstage-session", projectId: proj.id, sessionId: activeId });
-        } else {
-          dispatchHotkeyAction({ type: "stage-session", sessionId: activeId, projectId: proj.id });
-        }
-        return true;
-      }
-      case "open-issues-modal": {
-        const project = getFocusedProject();
-        if (!project) return true;
-        dispatchAction({ type: "open-issues-modal", projectId: project.id, repoPath: project.repo_path });
-        return true;
-      }
       case "expand-collapse":
         if (currentFocus?.type === "project") {
           const next = new Set(expandedSet);
@@ -313,12 +149,7 @@
           }
           expandedProjects.set(next);
         } else if (currentFocus?.type === "session") {
-          if (currentMode === "chat") {
-            daemonStore.activeSessionId = currentFocus.sessionId;
-          } else {
-            activeSessionId.set(currentFocus.sessionId);
-            dispatchAction({ type: "focus-terminal" });
-          }
+          daemonStore.activeSessionId = currentFocus.sessionId;
         } else if (currentFocus?.type === "agent") {
           focusTarget.set({ type: "agent-panel", agentKind: currentFocus.agentKind, projectId: currentFocus.projectId });
         }
@@ -352,27 +183,9 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    // Ignore modifier-only keypresses
     if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
-
-    // Ignore held-down key repeats to prevent toast/action spam
     if (e.repeat) return;
 
-    // Cmd+S/Cmd+D: screenshot → direct to the-controller session
-    // Cmd+Shift+S/Cmd+Shift+D: screenshot → session picker
-    if (e.metaKey && (e.key === "s" || e.key === "d")) {
-      e.stopPropagation();
-      e.preventDefault();
-      dispatchAction({
-        type: "screenshot-to-session",
-        direct: !e.shiftKey,
-        cropped: e.key === "d",
-      });
-      pushKeystroke("⌘" + e.key.toUpperCase());
-      return;
-    }
-
-    // Cmd+K: toggle keystroke visualizer
     if (e.metaKey && e.key === "k") {
       e.stopPropagation();
       e.preventDefault();
@@ -380,18 +193,6 @@
       return;
     }
 
-    // Cmd+T: toggle foreground session provider
-    if (e.metaKey && e.key === "t") {
-      if (isDialogOpen()) return;
-      if (isEditableElementFocused() && !isTerminalFocused()) return;
-      e.stopPropagation();
-      e.preventDefault();
-      selectedSessionProvider.update((provider) => provider === "claude" ? "codex" : "claude");
-      pushKeystroke("⌘T");
-      return;
-    }
-
-    // Workspace mode intercepts all keys
     if (workspaceModeActive) {
       e.stopPropagation();
       e.preventDefault();
@@ -400,48 +201,11 @@
       return;
     }
 
-    const inTerminal = isTerminalFocused();
-
-    // --- Terminal focused: Escape moves focus to sidebar session ---
-    if (inTerminal) {
-      if (e.key === "Escape") {
-        const now = Date.now();
-        if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
-          // Double-tap Escape: forward to terminal
-          forwardEscape();
-          lastEscapeTime = 0;
-        } else {
-          // Single Escape: move focus to active session in sidebar
-          e.stopPropagation();
-          e.preventDefault();
-          lastEscapeTime = now;
-          focusActiveSession();
-          pushKeystroke("Esc");
-        }
-      }
-      // All other keys pass through to terminal
-      return;
-    }
-
-    // --- Ambient mode (not in terminal) ---
-
-    // Allow dialog-local keyboard handlers to own key events.
     if (isDialogOpen()) return;
-
-    // Don't intercept keys when typing in input fields
     if (isEditableElementFocused()) return;
 
-    // Escape: check for double-tap (forward to terminal), else walk up focus hierarchy
     if (e.key === "Escape") {
-      const now = Date.now();
-      if (now - lastEscapeTime < DOUBLE_ESCAPE_MS) {
-        // Double-tap Escape: forward to terminal and refocus it
-        forwardEscape();
-        lastEscapeTime = 0;
-        dispatchAction({ type: "focus-terminal" });
-        e.stopPropagation();
-        e.preventDefault();
-      } else if (currentFocus?.type === "session") {
+      if (currentFocus?.type === "session") {
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
         e.preventDefault();
@@ -460,7 +224,6 @@
       return;
     }
 
-    // Space: workspace mode picker
     if (e.key === " ") {
       e.stopPropagation();
       e.preventDefault();
@@ -470,7 +233,6 @@
       return;
     }
 
-    // Agent panel focused: intercept navigation keys
     if (currentFocus?.type === "agent-panel") {
       if (e.key === "j" || e.key === "k") {
         e.stopPropagation();
@@ -495,13 +257,11 @@
       }
     }
 
-    // Try to handle as hotkey
     if (handleHotkey(e.key)) {
       e.stopPropagation();
       e.preventDefault();
       pushKeystroke(e.key);
     }
-    // Unrecognized keys pass through normally
   }
 
   onMount(() => {

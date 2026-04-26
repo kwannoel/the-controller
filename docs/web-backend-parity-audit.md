@@ -15,17 +15,14 @@ through Tauri now travel through the shared WebSocket broadcaster.
 The old desktop frontend registered 59 Tauri commands. The web backend exposes
 59 HTTP routes.
 
-Two desktop-native commands do not have same-name HTTP routes:
+One desktop-native command does not have a same-name HTTP route:
 
-- `capture_app_screenshot`: replaced by `src/lib/native.ts`, which captures the
-  browser DOM with `html2canvas`, then saves it through `/api/save_screenshot`.
 - `copy_image_file_to_clipboard`: replaced by the browser drag/drop path in
   `src/lib/Terminal.svelte`, which reads dropped image files and writes them
   with `ClipboardItem`.
 
-The backend also exposes two web-only routes:
+The backend also exposes one web-only route:
 
-- `save_screenshot`: persists browser-captured screenshots to a temporary PNG.
 - `list_archived_projects`: supports archived project inventory reads.
 
 ## Event Coverage
@@ -53,8 +50,8 @@ Covered event families:
 
 1. Every production frontend `command("...")` literal has a matching `/api/...`
    route.
-2. The old desktop command surface remains covered by HTTP routes or by the two
-   browser replacements.
+2. The remaining browser replacement for desktop clipboard-image support stays
+   wired.
 3. Active docs do not point users at stale Tauri commands, `src-tauri/`, or
    removed workspace modes.
 

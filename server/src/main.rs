@@ -120,7 +120,6 @@ async fn main() {
         .route("/api/scaffold_project", post(scaffold_project))
         .route("/api/stage_session", post(stage_session))
         .route("/api/unstage_session", post(unstage_session))
-        .route("/api/save_screenshot", post(save_screenshot))
         .route("/ws", get(ws_upgrade))
         .fallback(fallback_handler)
         .layer(CorsLayer::permissive())
@@ -1321,28 +1320,6 @@ async fn unstage_session(
     commands::unstage_session_impl(&state.app, project_id, session_id)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(Value::Null))
-}
-
-async fn save_screenshot(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
-    use base64::{engine::general_purpose, Engine as _};
-    let data_url = args["dataUrl"]
-        .as_str()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "dataUrl required".to_string()))?;
-    let b64 = data_url
-        .split_once(',')
-        .map(|(_, tail)| tail)
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "invalid data URL".to_string()))?;
-    let bytes = general_purpose::STANDARD
-        .decode(b64)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("invalid base64: {e}")))?;
-    let path = std::env::temp_dir().join("the-controller-screenshot.png");
-    std::fs::write(&path, bytes).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("write failed: {e}"),
-        )
-    })?;
-    Ok(Json(Value::String(path.to_string_lossy().to_string())))
 }
 
 // --- WebSocket ---

@@ -8,7 +8,7 @@
   import { refreshProjectsFromBackend } from "./project-listing";
   import { makeCustomKeyHandler } from "./terminal-keys";
   import { clipboardHasImage } from "./clipboard";
-  import { activeSessionId, projects, type Project } from "./stores";
+  import { projects, type Project } from "./stores";
   import "@xterm/xterm/css/xterm.css";
 
   interface Props {
@@ -242,8 +242,6 @@
       };
       const handleDrop = async (e: DragEvent) => {
         e.preventDefault();
-        if (get(activeSessionId) !== sessionId) return;
-
         const file = Array.from(e.dataTransfer?.files ?? []).find((f) =>
           f.type.startsWith("image/"),
         );

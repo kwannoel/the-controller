@@ -131,19 +131,13 @@ export interface Config {
 }
 
 export type WorkspaceMode =
-  | "development"
   | "agents"
   | "kanban"
   | "chat";
-export const workspaceMode = writable<WorkspaceMode>("development");
+export const workspaceMode = writable<WorkspaceMode>("chat");
 export const workspaceModePickerVisible = writable<boolean>(false);
-export type SessionProvider = "claude" | "codex";
-export const selectedSessionProvider = writable<SessionProvider>("claude");
 
 export const projects = writable<Project[]>([]);
-export const activeSessionId = writable<string | null>(null);
-export type SessionStatus = "working" | "idle" | "exited";
-export const sessionStatuses = writable<Map<string, SessionStatus>>(new Map());
 export const appConfig = writable<Config | null>(null);
 export const onboardingComplete = writable<boolean>(false);
 export const maintainerStatuses = writable<Map<string, MaintainerStatus>>(
@@ -179,23 +173,7 @@ export interface AutoWorkerQueueIssue {
 // Hotkey state
 export type HotkeyAction =
   | { type: "open-fuzzy-finder" }
-  | { type: "open-new-project" }
-  | { type: "create-session"; projectId?: string; kind?: string }
-  | { type: "delete-session"; sessionId?: string; projectId?: string }
-  | { type: "focus-terminal" }
   | { type: "toggle-help" }
-  | { type: "delete-project"; projectId?: string }
-  | { type: "open-issues-modal"; projectId: string; repoPath: string }
-  | {
-      type: "assign-issue-to-session";
-      projectId: string;
-      repoPath: string;
-      issue: GithubIssue;
-    }
-  | { type: "merge-session"; sessionId: string; projectId: string }
-  | { type: "finish-branch"; sessionId: string; kind?: "claude" | "codex" }
-  | { type: "e2e-eval"; sessionId: string; kind?: "claude" | "codex" }
-  | { type: "screenshot-to-session"; direct?: boolean; cropped?: boolean }
   | { type: "toggle-maintainer-enabled" }
   | { type: "toggle-auto-worker-enabled" }
   | { type: "trigger-maintainer-check" }
@@ -203,10 +181,6 @@ export type HotkeyAction =
   | { type: "agent-panel-navigate"; direction: 1 | -1 }
   | { type: "agent-panel-select" }
   | { type: "agent-panel-escape" }
-  | { type: "save-session-prompt"; sessionId: string; projectId: string }
-  | { type: "pick-prompt-for-session"; projectId: string }
-  | { type: "stage-session"; sessionId: string; projectId: string }
-  | { type: "unstage-session"; projectId: string; sessionId: string }
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
   | null;
@@ -222,15 +196,10 @@ export function dispatchHotkeyAction(action: NonNullable<HotkeyAction>) {
   setTimeout(() => hotkeyAction.set(null), 0);
 }
 
-export function focusTerminalSoon(delayMs = 50) {
-  setTimeout(() => dispatchHotkeyAction({ type: "focus-terminal" }), delayMs);
-}
-
 // Focus tracking — granular: which element is focused
 export type AgentKind = "auto-worker" | "maintainer";
 
 export type FocusTarget =
-  | { type: "terminal"; projectId: string }
   | { type: "session"; sessionId: string; projectId: string }
   | { type: "project"; projectId: string }
   | { type: "agent"; agentKind: AgentKind; projectId: string }

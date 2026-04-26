@@ -36,7 +36,7 @@ test("kanban mode renders all five columns", async ({ page }) => {
     ).toBeVisible();
   }
 
-  // Switch back to development mode so we don't leave state for other specs.
+  // Switch back to chat mode so we don't leave state for other specs.
   await page.keyboard.press("Space");
-  await page.keyboard.press("d");
+  await page.keyboard.press("c");
 });

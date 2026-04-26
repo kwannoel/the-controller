@@ -1,40 +1,24 @@
 import type { WorkspaceMode } from "./stores";
 
-export type CommandSection = "Essentials" | "Navigation" | "Sessions" | "Projects" | "Panels" | "Agents" | "Debug";
+export type CommandSection = "Navigation" | "Panels" | "Agents";
 
 // IDs for commands handled in handleHotkey's switch
 export type CommandId =
   | "navigate-next"
   | "navigate-prev"
   | "fuzzy-finder"
-  | "new-project"
-  | "delete"
-  | "create-session"
-  | "finish-branch"
-  | "open-issues-modal"
   | "expand-collapse"
   | "toggle-agent"
   | "trigger-agent-check"
   | "toggle-help"
   | "clear-agent-reports"
-  | "save-prompt"
-  | "load-prompt"
-  | "stage"
-  | "toggle-maintainer-view"
-  | "e2e-eval"
-  | "say-yes";
+  | "toggle-maintainer-view";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
-  | "screenshot"
-  | "screenshot-cropped"
-  | "screenshot-picker"
-  | "screenshot-preview"
-  | "toggle-session-provider"
   | "keystroke-visualizer"
   | "switch-workspace"
-  | "escape-focus"
-  | "escape-forward";
+  | "escape-focus";
 
 export interface CommandDef {
   id: CommandId | ExternalCommandId;
@@ -49,31 +33,13 @@ export interface CommandDef {
 
 export const commands: CommandDef[] = [
   // ── Navigation ──
-  { id: "navigate-next", key: "j", section: "Navigation", description: "Next / previous item (project or session)", helpKey: "j / k" },
-  { id: "navigate-prev", key: "k", section: "Navigation", description: "Next / previous item (project or session)", hidden: true },
-  { id: "expand-collapse", key: "l", section: "Navigation", description: "Expand/collapse project or focus terminal", helpKey: "l / Enter" },
-  { id: "expand-collapse", key: "Enter", section: "Navigation", description: "Expand/collapse project or focus terminal", hidden: true },
+  { id: "navigate-next", key: "j", section: "Navigation", description: "Next / previous item", helpKey: "j / k" },
+  { id: "navigate-prev", key: "k", section: "Navigation", description: "Next / previous item", hidden: true },
+  { id: "expand-collapse", key: "l", section: "Navigation", description: "Expand/collapse project or open focused item", helpKey: "l / Enter" },
+  { id: "expand-collapse", key: "Enter", section: "Navigation", description: "Expand/collapse project or open focused item", hidden: true },
   { id: "fuzzy-finder", key: "f", section: "Navigation", description: "Find project (fuzzy finder)" },
-  { id: "escape-focus", key: "Esc", section: "Navigation", description: "Move focus up (terminal → session → project)", handledExternally: true },
-  { id: "escape-forward", key: "Esc Esc", section: "Navigation", description: "Forward escape to terminal", handledExternally: true },
+  { id: "escape-focus", key: "Esc", section: "Navigation", description: "Move focus up", handledExternally: true },
 
-  // ── Sessions ──
-  { id: "create-session", key: "c", section: "Sessions", description: "Create session", mode: "development" },
-  { id: "finish-branch", key: "m", section: "Sessions", description: "Merge session branch (create PR)", mode: "development" },
-  { id: "save-prompt", key: "P", section: "Sessions", description: "Save focused session's prompt", mode: "development" },
-  { id: "load-prompt", key: "p", section: "Sessions", description: "Load saved prompt into new session", mode: "development" },
-  { id: "e2e-eval", key: "e", section: "Sessions", description: "Run e2e eval on focused session", mode: "development" },
-  { id: "say-yes", key: "y", section: "Sessions", description: "Send \"yes\" to active session", mode: "development" },
-  { id: "stage", key: "v", section: "Sessions", description: "Stage/unstage session as separate instance", mode: "development" },
-  { id: "screenshot", key: "⌘s", section: "Sessions", description: "Screenshot (full) → new session", handledExternally: true },
-  { id: "screenshot-cropped", key: "⌘d", section: "Sessions", description: "Screenshot (cropped) → new session", handledExternally: true },
-  { id: "screenshot-picker", key: "⌘S / ⌘D", section: "Sessions", description: "Screenshot → pick session", handledExternally: true },
-  { id: "toggle-session-provider", key: "⌘t", section: "Sessions", description: "Toggle session provider", handledExternally: true, mode: "development" },
-
-  // ── Projects ──
-  { id: "new-project", key: "n", section: "Projects", description: "New project", mode: "development" },
-  { id: "delete", key: "d", section: "Projects", description: "Delete focused item (session or project)", mode: "development" },
-  { id: "open-issues-modal", key: "i", section: "Projects", description: "Issues (create, find, assign)", mode: "development" },
   // ── Panels ──
   { id: "toggle-help", key: "?", section: "Panels", description: "Toggle this help" },
   { id: "switch-workspace", key: "␣", section: "Panels", description: "Switch workspace mode", handledExternally: true, hidden: true },
@@ -88,8 +54,7 @@ export const commands: CommandDef[] = [
 ];
 
 // Section order for help display
-const SECTION_ORDER: CommandSection[] = ["Navigation", "Sessions", "Projects", "Panels", "Agents"];
-const DEV_SECTION_ORDER: CommandSection[] = ["Essentials", "Debug", "Sessions", "Projects", "Panels"];
+const SECTION_ORDER: CommandSection[] = ["Navigation", "Panels", "Agents"];
 
 export interface HelpEntry {
   key: string;
@@ -102,49 +67,6 @@ export interface HelpSection {
 }
 
 export function getHelpSections(mode?: WorkspaceMode): HelpSection[] {
-  if (mode === "development") {
-    const essentialIds = new Set(["create-session", "navigate-next", "navigate-prev", "finish-branch", "new-project", "delete", "fuzzy-finder", "expand-collapse", "escape-focus", "escape-forward"]);
-    const debugIds = new Set(["screenshot", "screenshot-cropped", "screenshot-picker"]);
-
-    const essentials: HelpSection = {
-      label: "Essentials",
-      entries: [
-        { key: "c", description: "Create session" },
-        { key: "j / k", description: "Next / previous item" },
-        { key: "n", description: "New project" },
-        { key: "d", description: "Delete focused item" },
-        { key: "m", description: "Merge session branch" },
-        { key: "f", description: "Find project (fuzzy finder)" },
-        { key: "l / Enter", description: "Expand/collapse or focus terminal" },
-        { key: "Esc", description: "Move focus up" },
-        { key: "Esc Esc", description: "Forward escape to terminal" },
-      ],
-    };
-
-    const debug: HelpSection = {
-      label: "Debug",
-      entries: commands
-        .filter(c => debugIds.has(c.id) && !c.hidden)
-        .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
-    };
-
-    const builtSections: Record<string, HelpSection> = { Essentials: essentials, Debug: debug };
-
-    const result = DEV_SECTION_ORDER.map(sectionName => {
-      if (builtSections[sectionName]) return builtSections[sectionName];
-      return {
-        label: sectionName,
-        entries: commands
-          .filter(c => c.section === sectionName && !c.hidden)
-          .filter(c => !c.mode || c.mode === mode)
-          .filter(c => !essentialIds.has(c.id) && !debugIds.has(c.id))
-          .map(c => ({ key: c.helpKey ?? c.key, description: c.description })),
-      };
-    }).filter(s => s.entries.length > 0);
-
-    return result;
-  }
-
   return SECTION_ORDER.map(section => ({
     label: section,
     entries: commands
