@@ -7,6 +7,7 @@ Related docs:
 
 - `docs/plans/2026-04-29-chat-routing-prd.md`
 - `docs/plans/2026-04-29-agent-creation-prd.md`
+- `docs/plans/2026-04-29-agent-observability-prd.md`
 - `docs/plans/2026-04-27-controller-chat-modes-daemon-rfc.md`
 - `docs/plans/2026-04-22-chat-mode-design.md`
 - `docs/keyboard-modes.md`
