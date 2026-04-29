@@ -47,6 +47,13 @@ The product goal is to let a developer create agents, inspect their behavior,
 compose workflows, and direct work from chat without losing keyboard flow or
 local process control.
 
+## Design Assets
+
+- [Chat Routing Mode mockup](../assets/design/controller-chat-routing-ui.png)
+- [Agent Observability Mode mockup](../assets/design/controller-agent-status-ui.png)
+- [Agent Creation Mode mockup](../assets/design/controller-agent-creation-ui.png)
+- [Workflow Creation Mode mockup](../assets/design/controller-workflow-creation-ui.png)
+
 ## Problem
 
 The Controller is moving from terminal-session orchestration toward agent

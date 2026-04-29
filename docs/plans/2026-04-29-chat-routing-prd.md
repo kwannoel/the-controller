@@ -12,6 +12,7 @@ Related docs:
 ## Table of Contents
 
 - [Summary](#summary)
+- [Design Assets](#design-assets)
 - [Problem](#problem)
 - [Goals](#goals)
 - [Non-goals](#non-goals)
@@ -52,6 +53,10 @@ The daemon remains responsible for durable agent sessions, process supervision,
 event streaming, and ownership cleanup. The frontend is responsible for the
 keyboard-first composition flow, token suggestions, summary pane, and clear
 agent/workspace association.
+
+## Design Assets
+
+- [Chat Routing Mode mockup](../assets/design/controller-chat-routing-ui.png)
 
 ## Problem
 

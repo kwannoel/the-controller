@@ -51,8 +51,7 @@ and makes the profile available to chat routing and workflow creation.
 
 ## Design Assets
 
-- Agent Creation Mode mockup:
-  `docs/assets/design/controller-agent-creation-ui.png`
+- [Agent Creation Mode mockup](../assets/design/controller-agent-creation-ui.png)
 
 ## Problem
 

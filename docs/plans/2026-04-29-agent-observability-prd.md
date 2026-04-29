@@ -13,6 +13,7 @@ Related docs:
 ## Table of Contents
 
 - [Summary](#summary)
+- [Design Assets](#design-assets)
 - [Problem](#problem)
 - [Goals](#goals)
 - [Non-goals](#non-goals)
@@ -48,6 +49,10 @@ surfaces:
 The chat transcript remains intentional. It shows user messages and agent
 outbox replies. It does not show runtime stdout as product output, and it does
 not get a Thinking tab.
+
+## Design Assets
+
+- [Agent Observability Mode mockup](../assets/design/controller-agent-status-ui.png)
 
 ## Problem
 
