@@ -6,6 +6,7 @@ Status: Draft
 Related docs:
 
 - `docs/plans/2026-04-29-chat-routing-prd.md`
+- `docs/plans/2026-04-29-agent-creation-prd.md`
 - `docs/plans/2026-04-27-controller-chat-modes-daemon-rfc.md`
 - `docs/plans/2026-04-22-chat-mode-design.md`
 - `docs/keyboard-modes.md`
@@ -125,6 +126,8 @@ Primary user outcome: a developer can explain an agent's current state without
 digging through terminal logs.
 
 ### 3. Agent Creation Mode
+
+Source PRD: `docs/plans/2026-04-29-agent-creation-prd.md`
 
 Agent Creation Mode lets users define agent profiles that can later be used in
 chat, workflows, or observability.
