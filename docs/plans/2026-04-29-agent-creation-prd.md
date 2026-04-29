@@ -51,8 +51,8 @@ and makes the profile available to chat routing and workflow creation.
 
 ## Design Assets
 
-- Simplified Agent Creation Mode mockup:
-  `docs/assets/design/agent-creation-mode-simplified.png`
+- Agent Creation Mode mockup:
+  `docs/assets/design/controller-agent-creation-ui.png`
 
 ## Problem
 
@@ -347,8 +347,8 @@ Skills and workspace behavior should remain compact.
 ### Visual Treatment
 
 - Use the existing Catppuccin Mocha visual language.
-- Use the same profile card and prompt preview vocabulary as the component
-  board in `docs/assets/design/controller-agent-ui-component-board.png`.
+- Keep profile cards and prompt previews consistent with the current design
+  assets in `docs/assets/design/`.
 - Keep cards to repeated list rows or framed previews.
 - Avoid nested cards.
 - Use compact controls and icon buttons where the action is familiar.

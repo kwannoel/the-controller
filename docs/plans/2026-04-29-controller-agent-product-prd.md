@@ -47,15 +47,6 @@ The product goal is to let a developer create agents, inspect their behavior,
 compose workflows, and direct work from chat without losing keyboard flow or
 local process control.
 
-## Design Assets
-
-- Component board:
-  `docs/assets/design/controller-agent-ui-component-board.png`
-
-The component board captures reusable visual references for buttons, keycaps,
-sidebar rows, chat bubbles, agent tokens, workspace tokens, composer states,
-fuzzy find, observability rows, agent profile cards, and workflow cards.
-
 ## Problem
 
 The Controller is moving from terminal-session orchestration toward agent
