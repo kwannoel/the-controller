@@ -2,6 +2,7 @@ pub mod auto_worker;
 pub mod cli_install;
 pub mod commands;
 pub mod config;
+pub mod daemon_gateway;
 pub mod emitter;
 pub mod labels;
 pub mod maintainer;

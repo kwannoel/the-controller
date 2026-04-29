@@ -1,7 +1,7 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        State as AxumState, WebSocketUpgrade,
+        OriginalUri, State as AxumState, WebSocketUpgrade,
     },
     http::StatusCode,
     response::IntoResponse,
@@ -11,8 +11,14 @@ use axum::{
 use serde_json::Value;
 use std::sync::Arc;
 use the_controller_lib::{
-    auto_worker::AutoWorkerScheduler, cli_install, commands, config, emitter::WsBroadcastEmitter,
-    maintainer::MaintainerScheduler, shell_env, skills, state::AppState, status_socket,
+    auto_worker::AutoWorkerScheduler,
+    cli_install, commands, config,
+    daemon_gateway::{daemon_socket_path, normalize_daemon_path, DaemonGatewayConfig},
+    emitter::WsBroadcastEmitter,
+    maintainer::MaintainerScheduler,
+    shell_env, skills,
+    state::AppState,
+    status_socket,
 };
 
 use tokio::sync::broadcast;
@@ -58,6 +64,7 @@ async fn main() {
         .route("/api/create_session", post(create_session))
         .route("/api/list_archived_projects", post(list_archived_projects))
         .route("/api/merge_session_branch", post(merge_session_branch))
+        .route("/api/daemon/{*path}", get(daemon_gateway))
         .route("/api/read_daemon_token", post(read_daemon_token))
         .route("/api/log_frontend_error", post(log_frontend_error))
         .route("/api/get_agents_md", post(get_agents_md))
@@ -480,6 +487,26 @@ async fn read_daemon_token() -> Result<Json<Value>, (StatusCode, String)> {
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
     Ok(Json(Value::String(token)))
+}
+
+async fn daemon_gateway(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    OriginalUri(uri): OriginalUri,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let daemon_path =
+        normalize_daemon_path(uri.path()).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    let state_dir = state
+        .app
+        .storage
+        .lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let _socket_path = daemon_socket_path(&DaemonGatewayConfig { state_dir });
+
+    Ok(Json(serde_json::json!({
+        "path": daemon_path,
+        "status": "gateway-ready"
+    })))
 }
 
 async fn log_frontend_error(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
