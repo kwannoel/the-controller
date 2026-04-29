@@ -74,6 +74,11 @@ Kanban sidebar navigation walks project rows only.
 | Space then c | Open daemon-backed chat mode |
 | j / k | Move through visible project and chat session rows |
 | l / Enter | Select a chat session or expand/collapse a project |
+| n | New chat for the focused project |
+| i | Focus the active chat input |
+| ⌘Enter / Ctrl+Enter | Send from the chat input |
+| Esc in input | Leave the chat input |
+| Shift+Esc in input | Interrupt while working |
 
 ## Agent Panel Keys
 
