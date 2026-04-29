@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, fireEvent } from "@testing-library/svelte";
+import { render, fireEvent, waitFor } from "@testing-library/svelte";
+import { hotkeyAction } from "$lib/stores";
 
 const sendMessage = vi.hoisted(() => vi.fn(async () => ({ seq: 1 })));
 vi.mock("../daemon/store.svelte", () => ({
@@ -9,7 +10,10 @@ vi.mock("../daemon/store.svelte", () => ({
 import ChatInput from "./ChatInput.svelte";
 
 describe("ChatInput", () => {
-  beforeEach(() => sendMessage.mockClear());
+  beforeEach(() => {
+    sendMessage.mockClear();
+    hotkeyAction.set(null);
+  });
 
   it("Cmd+Enter sends user_text and clears textarea", async () => {
     const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
@@ -37,10 +41,21 @@ describe("ChatInput", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("Esc triggers interrupt when statusState is 'working'", async () => {
+  it("Esc blurs the composer without interrupting when statusState is 'working'", async () => {
     const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "working" });
     const ta = getByRole("textbox") as HTMLTextAreaElement;
+    ta.focus();
+
     await fireEvent.keyDown(ta, { key: "Escape" });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(ta);
+  });
+
+  it("Shift+Esc triggers interrupt when statusState is 'working'", async () => {
+    const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "working" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+    await fireEvent.keyDown(ta, { key: "Escape", shiftKey: true });
     expect(sendMessage).toHaveBeenCalledWith("s1", { kind: "interrupt" });
   });
 
@@ -49,6 +64,33 @@ describe("ChatInput", () => {
     const ta = getByRole("textbox") as HTMLTextAreaElement;
     await fireEvent.keyDown(ta, { key: "Escape" });
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("Shift+Esc does NOT trigger interrupt when idle", async () => {
+    const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+    await fireEvent.keyDown(ta, { key: "Escape", shiftKey: true });
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("Esc blurs the composer when idle", async () => {
+    const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+    ta.focus();
+    expect(document.activeElement).toBe(ta);
+
+    await fireEvent.keyDown(ta, { key: "Escape" });
+
+    expect(document.activeElement).not.toBe(ta);
+  });
+
+  it("focus-chat-input hotkey action focuses the composer", async () => {
+    const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+
+    hotkeyAction.set({ type: "focus-chat-input" });
+
+    await waitFor(() => expect(document.activeElement).toBe(ta));
   });
 
   it("Textarea is disabled when session status is 'ended'", () => {

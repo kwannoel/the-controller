@@ -2,6 +2,7 @@
   import { daemonStore } from "../daemon/store.svelte";
   import { classifyError } from "../daemon/errors";
   import { showToast } from "$lib/toast";
+  import { hotkeyAction } from "$lib/stores";
   import type { SessionStatus, StatusState } from "../daemon/types";
 
   let { sessionId, status, statusState }: {
@@ -13,6 +14,7 @@
   let value = $state("");
   let busy = $state(false);
   let sessionEndedBanner = $state(false);
+  let textareaEl: HTMLTextAreaElement | undefined = $state();
 
   const disabled = $derived(status === "ended" || status === "failed" || sessionEndedBanner);
   const canInterrupt = $derived(
@@ -53,6 +55,15 @@
     await daemonStore.client.sendMessage(sessionId, { kind: "interrupt" });
   }
 
+  $effect(() => {
+    const unsub = hotkeyAction.subscribe((action) => {
+      if (action?.type === "focus-chat-input" && textareaEl && !disabled) {
+        textareaEl.focus();
+      }
+    });
+    return unsub;
+  });
+
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
@@ -60,9 +71,13 @@
       return;
     }
     if (e.key === "Escape") {
-      if (canInterrupt) {
+      if (e.shiftKey) {
+        if (!canInterrupt) return;
         e.preventDefault();
         void interrupt();
+      } else {
+        e.preventDefault();
+        (e.currentTarget as HTMLTextAreaElement).blur();
       }
     }
   }
@@ -74,10 +89,11 @@
   {/if}
   <textarea
     aria-label="Chat input"
+    bind:this={textareaEl}
     bind:value
     onkeydown={handleKeyDown}
     {disabled}
-    placeholder={disabled ? "Session ended." : "Type a message… (⌘⏎ to send, Esc to interrupt)"}
+    placeholder={disabled ? "Session ended." : "Type a message… (⌘⏎ to send, ⇧Esc to interrupt)"}
     rows="3"
   ></textarea>
 </div>

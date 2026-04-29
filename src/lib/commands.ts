@@ -1,6 +1,6 @@
 import type { WorkspaceMode } from "./stores";
 
-export type CommandSection = "Navigation" | "Panels" | "Agents";
+export type CommandSection = "Navigation" | "Panels" | "Agents" | "Chat";
 
 // IDs for commands handled in handleHotkey's switch
 export type CommandId =
@@ -12,7 +12,9 @@ export type CommandId =
   | "trigger-agent-check"
   | "toggle-help"
   | "clear-agent-reports"
-  | "toggle-maintainer-view";
+  | "toggle-maintainer-view"
+  | "new-chat"
+  | "focus-chat-input";
 
 // IDs for commands handled outside handleHotkey (Cmd+key, Escape)
 export type ExternalCommandId =
@@ -51,10 +53,13 @@ export const commands: CommandDef[] = [
   { id: "clear-agent-reports", key: "c", section: "Agents", description: "Clear maintainer reports for focused project", mode: "agents" },
   { id: "toggle-maintainer-view", key: "t", section: "Agents", description: "Toggle between Runs / Issues view", mode: "agents" },
 
+  // ── Chat ──
+  { id: "new-chat", key: "n", section: "Chat", description: "New chat for focused project", mode: "chat" },
+  { id: "focus-chat-input", key: "i", section: "Chat", description: "Focus chat input", mode: "chat" },
 ];
 
 // Section order for help display
-const SECTION_ORDER: CommandSection[] = ["Navigation", "Panels", "Agents"];
+const SECTION_ORDER: CommandSection[] = ["Navigation", "Panels", "Agents", "Chat"];
 
 export interface HelpEntry {
   key: string;

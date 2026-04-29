@@ -183,6 +183,7 @@ export type HotkeyAction =
   | { type: "agent-panel-escape" }
   | { type: "toggle-maintainer-view" }
   | { type: "open-issue-in-browser" }
+  | { type: "focus-chat-input" }
   | null;
 
 export const hotkeyAction = writable<HotkeyAction>(null);

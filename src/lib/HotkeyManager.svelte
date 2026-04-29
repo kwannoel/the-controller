@@ -45,6 +45,24 @@
     dispatchHotkeyAction(action);
   }
 
+  function projectForChatAction(): Project | undefined {
+    let projectId = currentFocus && "projectId" in currentFocus ? currentFocus.projectId : null;
+    if (!projectId && daemonStore.activeSessionId) {
+      const activeSession = daemonStore.sessions.get(daemonStore.activeSessionId);
+      const activeProject = activeSession
+        ? projectList.find((project) => project.repo_path === activeSession.cwd)
+        : undefined;
+      projectId = activeProject?.id ?? null;
+    }
+    return projectList.find((project) => project.id === projectId) ?? projectList[0];
+  }
+
+  function openNewChatForFocusedProject() {
+    const project = projectForChatAction();
+    if (!project) return;
+    daemonStore.newChatTarget = { projectId: project.id, projectCwd: project.repo_path };
+  }
+
   function switchWorkspaceMode(mode: typeof currentMode) {
     workspaceMode.set(mode);
     const newFocus = focusForModeSwitch(currentFocus, mode);
@@ -174,6 +192,12 @@
         return true;
       case "toggle-maintainer-view":
         dispatchAction({ type: "toggle-maintainer-view" });
+        return true;
+      case "new-chat":
+        openNewChatForFocusedProject();
+        return true;
+      case "focus-chat-input":
+        dispatchAction({ type: "focus-chat-input" });
         return true;
       default: {
         const _exhaustive: never = id;

@@ -94,6 +94,7 @@ describe("HotkeyManager", () => {
     workspaceModePickerVisible.set(false);
     daemonStore.sessions.clear();
     daemonStore.activeSessionId = null;
+    daemonStore.newChatTarget = null;
     vi.clearAllMocks();
     render(HotkeyManager);
   });
@@ -102,6 +103,7 @@ describe("HotkeyManager", () => {
     cleanup();
     daemonStore.sessions.clear();
     daemonStore.activeSessionId = null;
+    daemonStore.newChatTarget = null;
   });
 
   it("f dispatches open-fuzzy-finder action", () => {
@@ -236,6 +238,27 @@ describe("HotkeyManager", () => {
 
     pressKey("Enter");
     expect(daemonStore.activeSessionId).toBe("c1");
+  });
+
+  it("n in chat mode opens a new chat for the focused project", () => {
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+
+    pressKey("n");
+
+    expect(daemonStore.newChatTarget).toEqual({
+      projectId: "proj-1",
+      projectCwd: "/tmp/test",
+    });
+  });
+
+  it("i in chat mode dispatches focus-chat-input", () => {
+    let captured: unknown = null;
+    const unsub = hotkeyAction.subscribe((v) => { captured = v; });
+
+    pressKey("i");
+
+    expect(captured).toEqual({ type: "focus-chat-input" });
+    unsub();
   });
 
   it("Escape moves session and agent focus back to project", () => {

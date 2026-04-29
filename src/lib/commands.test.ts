@@ -35,12 +35,12 @@ describe("command registry", () => {
 
   it("getHelpSections returns sections for chat mode", () => {
     const sections = getHelpSections("chat");
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels"]);
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels", "Chat"]);
   });
 
   it("getHelpSections without mode returns all sections", () => {
     const sections = getHelpSections();
-    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels", "Agents"]);
+    expect(sections.map(s => s.label)).toEqual(["Navigation", "Panels", "Agents", "Chat"]);
   });
 
   it("getHelpSections excludes hidden commands", () => {
@@ -84,11 +84,12 @@ describe("command registry", () => {
     expect(map.has("n")).toBe(false);
   });
 
-  it("buildKeyMap for chat excludes removed session-management keys", () => {
+  it("buildKeyMap for chat includes chat commands and excludes removed session-management keys", () => {
     const map = buildKeyMap("chat");
     expect(map.has("j")).toBe(true);
+    expect(map.get("n")).toBe("new-chat");
+    expect(map.get("i")).toBe("focus-chat-input");
     expect(map.has("c")).toBe(false);
-    expect(map.has("n")).toBe(false);
     expect(map.has("m")).toBe(false);
     expect(map.has("v")).toBe(false);
   });
