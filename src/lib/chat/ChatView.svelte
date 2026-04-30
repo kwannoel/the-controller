@@ -31,7 +31,6 @@
         }
         showToast("Session no longer exists.", "error");
       } else {
-        // Follow-up: 401 re-read token + retry once (design doc, not v1).
         showToast(`Failed to load session: ${c.message}`, "error");
       }
     }

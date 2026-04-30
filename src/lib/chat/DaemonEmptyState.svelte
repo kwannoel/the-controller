@@ -6,7 +6,7 @@
   <h2>Daemon not running</h2>
   <p>Start it with:</p>
   <pre><code>./target/release/the-controller-daemon</code></pre>
-  <p class="muted">Expected token: <code>~/.the-controller/daemon.token</code></p>
+  <p class="muted">Daemon should be reachable through <code>/api/daemon</code>.</p>
   <button onclick={onRetry}>Retry</button>
 </div>
 

@@ -3,7 +3,6 @@ import { render, fireEvent } from "@testing-library/svelte";
 
 vi.mock("../daemon/store.svelte", () => {
   const daemonStore = {
-    token: null as string | null,
     reachable: false,
     client: null as any,
     sessions: new Map(),
@@ -25,8 +24,10 @@ describe("ChatWorkspace", () => {
     const { daemonStore } = await import("../daemon/store.svelte");
     (daemonStore as any).reachable = false;
     const ChatWorkspace = (await import("./ChatWorkspace.svelte")).default;
-    const { findByText } = render(ChatWorkspace);
+    const { findByText, queryByText } = render(ChatWorkspace);
     expect(await findByText(/Daemon not running/)).toBeTruthy();
+    expect(await findByText(/\/api\/daemon/)).toBeTruthy();
+    expect(queryByText(/Expected token|daemon\.token/)).toBeNull();
   });
 
   it("clicking Retry calls pingDaemon", async () => {
