@@ -100,7 +100,7 @@
 
   function agentRowsFromLinks() {
     return agentLinks.map((link) => {
-      const trace = traces.get(link.session_id) ?? [];
+      const trace = traceForLink(link);
       const profile = profiles.get(link.profile_id);
       return {
         sessionId: link.session_id,
@@ -161,10 +161,13 @@
   }
 
   function traceLists(): AgentTurnTrace[][] {
-    const chatId = metrics?.chat_id ?? null;
-    return agentLinks
-      .map((link) => traces.get(link.session_id) ?? [])
-      .map((trace) => chatId ? trace.filter((item) => item.turn.chat_id === chatId) : trace);
+    return agentLinks.map((link) => traceForLink(link));
+  }
+
+  function traceForLink(link: ChatAgentLink): AgentTurnTrace[] {
+    const trace = traces.get(link.session_id) ?? [];
+    const chatId = metrics?.chat_id ?? link.chat_id;
+    return trace.filter((item) => item.turn.chat_id === chatId);
   }
 
   function turnAgentName(row: ChatTurnMetrics): string {

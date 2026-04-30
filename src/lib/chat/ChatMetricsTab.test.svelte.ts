@@ -281,4 +281,78 @@ describe("ChatMetricsTab", () => {
     expect(queryByText("turn-1")).toBeNull();
     expect(queryByText("turn-2")).toBeNull();
   });
+
+  it("filters reusable-agent fallback traces by the linked chat while metrics load", () => {
+    const mixedChatTraces = new Map<string, AgentTurnTrace[]>([
+      ["session-1", [
+        {
+          turn: {
+            id: "turn-current",
+            session_id: "session-1",
+            chat_id: "chat-1",
+            chat_message_id: "message-1",
+            inbox_seq: 1,
+            status: "completed",
+            received_at: 1,
+            activity_started_at: 2,
+            ended_at: 3,
+          },
+          metrics: {
+            turn_id: "turn-current",
+            input_tokens: 0,
+            output_tokens: 20,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            tool_call_count: 1,
+            outbox_write_count: 0,
+            error_count: 0,
+            updated_at: 4,
+          },
+          events: [],
+        },
+        {
+          turn: {
+            id: "turn-stale",
+            session_id: "session-1",
+            chat_id: "chat-other",
+            chat_message_id: "message-other",
+            inbox_seq: 2,
+            status: "completed",
+            received_at: 5,
+            activity_started_at: 6,
+            ended_at: 7,
+          },
+          metrics: {
+            turn_id: "turn-stale",
+            input_tokens: 0,
+            output_tokens: 999,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            tool_call_count: 9,
+            outbox_write_count: 0,
+            error_count: 0,
+            updated_at: 8,
+          },
+          events: [],
+        },
+      ]],
+    ]);
+
+    const { getAllByText, getByText, queryByText } = render(ChatMetricsTab, {
+      metrics: null,
+      agentLinks: [agentLinks[0]],
+      sessions,
+      profiles: new Map([["profile-1", { id: "profile-1", handle: "reviewer", name: "Reviewer" }]]),
+      traces: mixedChatTraces,
+      loading: true,
+      onOpenAgent: vi.fn(),
+    });
+
+    expect(getByText("turn-current")).toBeTruthy();
+    expect(getAllByText("1 turn").length).toBeGreaterThan(0);
+    expect(getAllByText("20 tokens").length).toBeGreaterThan(0);
+    expect(queryByText("turn-stale")).toBeNull();
+    expect(queryByText("999 tokens")).toBeNull();
+    expect(queryByText("1019 tokens")).toBeNull();
+  });
 });
