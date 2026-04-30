@@ -11,6 +11,7 @@ import type {
   ChatWorkspaceLink,
   DaemonSession,
   EventRecord,
+  SavedAgentProfile,
   SendChatMessageRequest,
 } from "./types";
 
@@ -124,7 +125,7 @@ export class DaemonClient {
   listProfiles(): Promise<AgentProfile[]> {
     return this.call("/profiles");
   }
-  saveProfile(req: SaveProfileRequest): Promise<AgentProfile> {
+  saveProfile(req: SaveProfileRequest): Promise<SavedAgentProfile> {
     if (req.id) {
       return this.call(`/profiles/${req.id}`, { method: "PATCH", body: JSON.stringify(req) });
     }

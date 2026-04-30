@@ -35,13 +35,13 @@ export interface AgentProfile {
   id: string;
   handle: string;
   name: string;
-  description: string | null;
+  description: string;
   runtime: Agent;
   skills: string[];
   prompt: string;
   archived_at: number | null;
   avatar_asset_path: string | null;
-  avatar_status: string | null;
+  avatar_status: string;
   avatar_error: string | null;
   active_version_id: string | null;
   created_at: number;
@@ -55,10 +55,15 @@ export interface AgentProfileVersion {
   model: string | null;
   prompt: string;
   skills: string[];
-  default_workspace_behavior: string | null;
-  outbox_instructions: string | null;
+  default_workspace_behavior: string;
+  outbox_instructions: string;
   validation_result: unknown;
   created_at: number;
+}
+
+export interface SavedAgentProfile {
+  profile: AgentProfile;
+  version: AgentProfileVersion;
 }
 
 export interface Chat {
@@ -131,10 +136,10 @@ export interface AgentTurn {
 
 export interface TurnMetrics {
   turn_id: string;
-  input_tokens: number;
-  output_tokens: number;
-  cache_read_tokens: number;
-  cache_write_tokens: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
   tool_call_count: number;
   outbox_write_count: number;
   error_count: number;
@@ -143,7 +148,7 @@ export interface TurnMetrics {
 
 export interface AgentTurnTrace {
   turn: AgentTurn;
-  metrics: TurnMetrics;
+  metrics: TurnMetrics | null;
   events: EventRecord[];
 }
 

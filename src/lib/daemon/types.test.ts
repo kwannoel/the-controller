@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, expectTypeOf } from "vitest";
 import fixture from "./__fixtures__/events.json";
 import type {
   AgentProfile,
+  AgentProfileVersion,
   AgentTurnTrace,
   Chat,
   ChatMetrics,
@@ -9,6 +10,7 @@ import type {
   EventRecord,
   OutboxEvent,
   RouteToken,
+  TurnMetrics,
 } from "./types";
 
 describe("daemon event types", () => {
@@ -122,5 +124,44 @@ describe("daemon event types", () => {
     expect(profile.handle).toBe("planner");
     expect(metrics.chat_id).toBe("chat-1");
     expect(trace.events[0].turn_id).toBe("turn-1");
+  });
+
+  it("models daemon profile strings as non-null and saved versions as non-null instructions", () => {
+    expectTypeOf<AgentProfile["description"]>().toEqualTypeOf<string>();
+    expectTypeOf<AgentProfile["avatar_status"]>().toEqualTypeOf<string>();
+    expectTypeOf<AgentProfileVersion["default_workspace_behavior"]>().toEqualTypeOf<string>();
+    expectTypeOf<AgentProfileVersion["outbox_instructions"]>().toEqualTypeOf<string>();
+  });
+
+  it("models nullable turn token metrics and traces without metrics", () => {
+    const metrics: TurnMetrics = {
+      turn_id: "turn-1",
+      input_tokens: null,
+      output_tokens: null,
+      cache_read_tokens: null,
+      cache_write_tokens: null,
+      tool_call_count: 0,
+      outbox_write_count: 0,
+      error_count: 0,
+      updated_at: 11,
+    };
+    const trace: AgentTurnTrace = {
+      turn: {
+        id: "turn-1",
+        session_id: "session-1",
+        chat_id: "chat-1",
+        chat_message_id: "message-1",
+        inbox_seq: 7,
+        status: "completed",
+        received_at: 8,
+        activity_started_at: 9,
+        ended_at: 10,
+      },
+      metrics: null,
+      events: [],
+    };
+
+    expect(metrics.input_tokens).toBeNull();
+    expect(trace.metrics).toBeNull();
   });
 });

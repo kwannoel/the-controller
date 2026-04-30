@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DaemonClient, DaemonHttpError } from "./client";
+import type { SavedAgentProfile } from "./types";
 
 function mockFetch(responses: Array<{ status: number; body: unknown }>) {
   const queue = [...responses];
@@ -86,6 +87,65 @@ describe("DaemonClient", () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/daemon/profiles");
     expect(init.headers).not.toMatchObject({ Authorization: expect.any(String) });
+  });
+
+  it("saves profiles as profile-version wrappers over create and update routes", async () => {
+    const saved = {
+      profile: {
+        id: "profile-1",
+        handle: "planner",
+        name: "Planner",
+        description: "Plans work",
+        runtime: "claude",
+        skills: ["planning"],
+        prompt: "Plan carefully",
+        archived_at: null,
+        avatar_asset_path: null,
+        avatar_status: "none",
+        avatar_error: null,
+        active_version_id: "version-1",
+        created_at: 1,
+        updated_at: 2,
+      },
+      version: {
+        id: "version-1",
+        profile_id: "profile-1",
+        runtime: "claude",
+        model: "sonnet",
+        prompt: "Plan carefully",
+        skills: ["planning"],
+        default_workspace_behavior: "focused",
+        outbox_instructions: "summarize",
+        validation_result: null,
+        created_at: 3,
+      },
+    } satisfies SavedAgentProfile;
+    const fetchMock = mockFetch([
+      { status: 200, body: saved },
+      { status: 200, body: saved },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const c = new DaemonClient("/api/daemon");
+    const created: SavedAgentProfile = await c.saveProfile({
+      handle: "planner",
+      name: "Planner",
+      runtime: "claude",
+      prompt: "Plan carefully",
+    });
+    const updated: SavedAgentProfile = await c.saveProfile({
+      id: "profile-1",
+      name: "Planner 2",
+    });
+
+    expect(created).toEqual(saved);
+    expect(updated).toEqual(saved);
+    const [createUrl, createInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const [updateUrl, updateInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect(createUrl).toBe("/api/daemon/profiles");
+    expect(createInit.method).toBe("POST");
+    expect(updateUrl).toBe("/api/daemon/profiles/profile-1");
+    expect(updateInit.method).toBe("PATCH");
   });
 
   it("sends chat messages with route tokens", async () => {
