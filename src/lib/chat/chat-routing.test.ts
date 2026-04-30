@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractRouteTokenQuery,
   insertRouteToken,
+  reconcileRouteTokens,
   routeTokenForProfile,
 } from "./chat-routing";
 
@@ -44,5 +45,18 @@ describe("routeTokenForProfile", () => {
         10,
       ),
     ).toEqual({ kind: "shadow", handle: "debug", start: 4, end: 10 });
+  });
+});
+
+describe("reconcileRouteTokens", () => {
+  it("updates shifted token spans and drops tokens no longer present", () => {
+    expect(
+      reconcileRouteTokens("please ask @reviewer", [
+        { kind: "reusable", handle: "reviewer", start: 4, end: 13 },
+        { kind: "shadow", handle: "debugger", start: 14, end: 23 },
+      ]),
+    ).toEqual([
+      { kind: "reusable", handle: "reviewer", start: 11, end: 20 },
+    ]);
   });
 });

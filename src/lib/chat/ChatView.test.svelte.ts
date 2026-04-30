@@ -185,4 +185,53 @@ describe("ChatView", () => {
     expect(await findByText("controller-routing")).toBeTruthy();
     expect(await findByText("focused controller-routing")).toBeTruthy();
   });
+
+  it("renders linked agents from known chat agent links", async () => {
+    daemonStore.chats.set("chat-1", makeChat("chat-1", "Chat 1"));
+    daemonStore.chatAgentLinks.set("chat-1", [
+      {
+        id: "agent-link-1",
+        chat_id: "chat-1",
+        session_id: "session-1",
+        profile_id: "profile-1",
+        profile_version_id: "version-1",
+        route_type: "reusable",
+        focused: true,
+        token_source: "@reviewer",
+        created_at: 1,
+      },
+    ]);
+
+    const { findByText } = render(ChatView, { chatId: "chat-1" });
+
+    expect(await findByText("@reviewer")).toBeTruthy();
+    expect(await findByText("focused @reviewer")).toBeTruthy();
+  });
+
+  it("marks the latest reusable token as the focused summary agent", async () => {
+    daemonStore.chats.set("chat-1", makeChat("chat-1", "Chat 1"));
+    daemonStore.profiles.set("profile-2", {
+      ...makeProfile(),
+      id: "profile-2",
+      handle: "planner",
+      name: "Planner",
+    });
+    daemonStore.chatTranscripts.set("chat-1", [
+      {
+        type: "user_message",
+        message: {
+          ...makeChatMessage("msg-1", "chat-1", "ask @planner @reviewer"),
+          token_spans: [
+            { kind: "reusable", handle: "planner", start: 4, end: 12 },
+            { kind: "reusable", handle: "reviewer", start: 13, end: 22 },
+          ],
+        },
+      },
+    ]);
+
+    const { findByText, queryByText } = render(ChatView, { chatId: "chat-1" });
+
+    expect(await findByText("focused @reviewer")).toBeTruthy();
+    expect(queryByText("focused @planner")).toBeNull();
+  });
 });

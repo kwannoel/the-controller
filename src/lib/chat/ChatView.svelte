@@ -5,7 +5,7 @@
   import { openStream } from "../daemon/stream";
   import { classifyError } from "../daemon/errors";
   import { showToast } from "$lib/toast";
-  import type { ChatTranscriptEntry, EventRecord, RouteToken, RouteTokenKind } from "../daemon/types";
+  import type { ChatAgentLink, ChatTranscriptEntry, EventRecord, RouteToken, RouteTokenKind } from "../daemon/types";
   import Transcript from "./Transcript.svelte";
   import ChatInput from "./ChatInput.svelte";
   import ChatSummaryPane, { type SummaryAgent, type SummaryWorkspace } from "./ChatSummaryPane.svelte";
@@ -16,7 +16,7 @@
   const sessionTranscript = $derived(sessionId ? daemonStore.transcripts.get(sessionId) ?? emptyTranscript() : emptyTranscript());
   const chatEntries = $derived(chatId ? daemonStore.chatTranscripts.get(chatId) ?? [] : []);
   const chatTranscript = $derived(chatId ? transcriptFromChatEntries(chatEntries) : emptyTranscript());
-  const summaryAgents = $derived(chatId ? summaryAgentsFromChat(chatEntries) : []);
+  const summaryAgents = $derived(chatId ? summaryAgentsFromChat(chatId, chatEntries) : []);
   const summaryWorkspaces = $derived(chatId ? summaryWorkspacesFromChat(chatId) : []);
   const hasAssociatedAgent = $derived(summaryAgents.length > 0 || (chatId ? (daemonStore.chatAgentLinks.get(chatId)?.length ?? 0) > 0 : false));
 
@@ -65,25 +65,54 @@
     return entry.message.token_spans.filter(isRouteTokenSpan);
   }
 
-  function summaryAgentsFromChat(entries: ChatTranscriptEntry[]): SummaryAgent[] {
-    const seen = new Set<string>();
-    const agents: SummaryAgent[] = [];
+  function profileForHandle(handle: string) {
+    return [...daemonStore.profiles.values()].find((candidate) => candidate.handle === handle) ?? null;
+  }
+
+  function summaryAgentForToken(span: Pick<RouteToken, "kind" | "handle">): SummaryAgent {
+    const profile = profileForHandle(span.handle);
+    return {
+      id: profile ? `${profile.id}:${span.kind}` : `${span.kind}:${span.handle}`,
+      handle: span.handle,
+      name: profile?.name ?? span.handle,
+      kind: span.kind as RouteTokenKind,
+    };
+  }
+
+  function summaryAgentForLink(link: ChatAgentLink): SummaryAgent | null {
+    const kind: RouteTokenKind = link.route_type === "shadow" ? "shadow" : "reusable";
+    const profile = daemonStore.profiles.get(link.profile_id);
+    const tokenHandle = link.token_source?.match(/^[@%]([A-Za-z0-9_-]+)$/)?.[1] ?? null;
+    const handle = profile?.handle ?? tokenHandle;
+    if (!handle) return null;
+    return {
+      id: profile ? `${profile.id}:${kind}` : `${kind}:${handle}`,
+      handle,
+      name: profile?.name ?? handle,
+      kind,
+    };
+  }
+
+  function summaryAgentsFromChat(id: string, entries: ChatTranscriptEntry[]): SummaryAgent[] {
+    const agentsById = new Map<string, SummaryAgent>();
+    let focusedAgentId: string | null = null;
     for (const entry of entries) {
       for (const span of tokenSpansFromEntry(entry)) {
-        const key = `${span.kind}:${span.handle}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const profile = [...daemonStore.profiles.values()].find((candidate) => candidate.handle === span.handle);
-        agents.push({
-          id: profile ? `${profile.id}:${span.kind}` : key,
-          handle: span.handle,
-          name: profile?.name ?? span.handle,
-          kind: span.kind as RouteTokenKind,
-          focused: span.kind === "reusable" && !agents.some((agent) => agent.focused),
-        });
+        const agent = summaryAgentForToken(span);
+        if (!agentsById.has(agent.id)) agentsById.set(agent.id, agent);
+        if (span.kind === "reusable") focusedAgentId = agent.id;
       }
     }
-    return agents;
+    for (const link of daemonStore.chatAgentLinks.get(id) ?? []) {
+      const agent = summaryAgentForLink(link);
+      if (!agent) continue;
+      if (!agentsById.has(agent.id)) agentsById.set(agent.id, agent);
+      if (link.focused) focusedAgentId = agent.id;
+    }
+    return [...agentsById.values()].map((agent) => ({
+      ...agent,
+      focused: agent.id === focusedAgentId,
+    }));
   }
 
   function summaryWorkspacesFromChat(id: string): SummaryWorkspace[] {

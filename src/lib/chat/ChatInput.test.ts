@@ -137,6 +137,20 @@ describe("ChatInput", () => {
     });
   });
 
+  it("does not send a stale selected token after the token text is removed", async () => {
+    const { getByRole, findByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+
+    await fireEvent.input(ta, { target: { value: "ask %rev" } });
+    await fireEvent.click(await findByRole("option", { name: /%reviewer/i }));
+    await waitFor(() => expect(ta.value).toBe("ask %reviewer"));
+    await fireEvent.input(ta, { target: { value: "ask without a token" } });
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+
+    expect(sendChatMessage).not.toHaveBeenCalled();
+    expect(getByRole("alert").textContent).toContain("agent");
+  });
+
   it("Ctrl+Enter also sends user_text", async () => {
     const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
     const ta = getByRole("textbox") as HTMLTextAreaElement;

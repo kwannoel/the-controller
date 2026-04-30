@@ -55,3 +55,24 @@ export function insertRouteToken(
     token: { kind: query.kind, handle, start: query.start, end },
   };
 }
+
+export function reconcileRouteTokens(text: string, tokens: RouteToken[]): RouteToken[] {
+  const usedStarts = new Set<number>();
+  return tokens.flatMap((token) => {
+    const marker = token.kind === "reusable" ? "@" : "%";
+    const tokenText = `${marker}${token.handle}`;
+    let start = text.slice(token.start, token.end) === tokenText ? token.start : -1;
+    if (start === -1) {
+      start = text.indexOf(tokenText, Math.max(0, Math.min(token.start, text.length)));
+    }
+    if (start === -1) {
+      start = text.indexOf(tokenText);
+    }
+    while (start !== -1 && usedStarts.has(start)) {
+      start = text.indexOf(tokenText, start + tokenText.length);
+    }
+    if (start === -1) return [];
+    usedStarts.add(start);
+    return [{ ...token, start, end: start + tokenText.length }];
+  });
+}

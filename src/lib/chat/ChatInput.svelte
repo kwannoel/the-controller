@@ -8,6 +8,7 @@
   import {
     extractRouteTokenQuery,
     insertRouteToken,
+    reconcileRouteTokens,
     routeTokenForProfile,
     type RouteTokenQuery,
   } from "./chat-routing";
@@ -54,7 +55,8 @@
   async function sendText() {
     const text = value.trim();
     if (!text || busy || disabled || !daemonStore.client) return;
-    if (chatId && routeTokens.length === 0 && !hasAssociatedAgent) {
+    const tokensToSend = chatId ? reconcileRouteTokens(value, routeTokens) : [];
+    if (chatId && tokensToSend.length === 0 && !hasAssociatedAgent) {
       localError = "Select an agent with @ or % before sending.";
       return;
     }
@@ -63,7 +65,7 @@
       if (chatId) {
         const res = await daemonStore.client.sendChatMessage(chatId, {
           body: text,
-          tokens: routeTokens,
+          tokens: tokensToSend,
           idempotency_id: crypto.randomUUID(),
         });
         const prev = daemonStore.chatTranscripts.get(chatId) ?? [];
@@ -119,6 +121,7 @@
   function handleInput(e: Event) {
     const target = e.currentTarget as HTMLTextAreaElement;
     value = target.value;
+    routeTokens = reconcileRouteTokens(target.value, routeTokens);
     localError = null;
     updateTokenQuery(target.value, target.selectionStart);
   }
@@ -163,7 +166,7 @@
   });
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (tokenQuery && !e.metaKey && !e.ctrlKey) {
+    if (tokenQuery && suggestedProfiles.length > 0 && !e.metaKey && !e.ctrlKey) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         moveActiveSuggestion(1);
