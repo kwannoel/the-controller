@@ -28,6 +28,8 @@ export const daemonStore = $state<any>({
   profiles: new SvelteMap(),
   chats: new SvelteMap(),
   chatTranscripts: new SvelteMap(),
+  chatAgentLinks: new SvelteMap(),
+  chatWorkspaceLinks: new SvelteMap(),
   activeChatId: null,
   reachable: true,
   newChatTarget: null,

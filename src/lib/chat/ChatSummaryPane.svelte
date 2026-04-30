@@ -3,6 +3,7 @@
     id: string;
     handle: string;
     name: string;
+    kind?: "reusable" | "shadow";
     focused?: boolean;
   }
 
@@ -24,6 +25,10 @@
   const focusedAgent = $derived(agents.find((agent) => agent.focused) ?? null);
   const focusedWorkspace = $derived(workspaces.find((workspace) => workspace.focused) ?? null);
   const isEmpty = $derived(agents.length === 0 && workspaces.length === 0);
+
+  function agentLabel(agent: SummaryAgent) {
+    return `${agent.kind === "shadow" ? "%" : "@"}${agent.handle}`;
+  }
 </script>
 
 <section class="summary" aria-label="Chat summary">
@@ -33,10 +38,10 @@
     <div class="group">
       <span class="label">agents</span>
       {#each agents as agent (agent.id)}
-        <span class:focused={agent.focused} class="chip" title={agent.name}>@{agent.handle}</span>
+        <span class:focused={agent.focused} class="chip" title={agent.name}>{agentLabel(agent)}</span>
       {/each}
       {#if focusedAgent}
-        <span class="focus">focused @{focusedAgent.handle}</span>
+        <span class="focus">focused {agentLabel(focusedAgent)}</span>
       {/if}
     </div>
 

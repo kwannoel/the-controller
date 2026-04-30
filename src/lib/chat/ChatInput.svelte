@@ -13,11 +13,12 @@
   } from "./chat-routing";
   import AgentTokenMenu, { type AgentTokenSelection } from "./AgentTokenMenu.svelte";
 
-  let { sessionId = null, chatId = null, status, statusState }: {
+  let { sessionId = null, chatId = null, status, statusState, hasAssociatedAgent = false }: {
     sessionId?: string | null;
     chatId?: string | null;
     status: SessionStatus;
     statusState: StatusState | null;
+    hasAssociatedAgent?: boolean;
   } = $props();
 
   let value = $state("");
@@ -26,12 +27,24 @@
   let textareaEl: HTMLTextAreaElement | undefined = $state();
   let routeTokens = $state<RouteToken[]>([]);
   let tokenQuery = $state<RouteTokenQuery | null>(null);
+  let menuActiveIndex = $state(0);
   let localError = $state<string | null>(null);
 
   const disabled = $derived(status === "ended" || status === "failed" || sessionEndedBanner);
   const activeProfiles = $derived(
     [...(daemonStore.profiles?.values() ?? [])].filter((profile: AgentProfile) => profile.archived_at === null)
   );
+  const suggestedProfiles = $derived.by(() => {
+    if (!tokenQuery) return [];
+    const needle = tokenQuery.query.trim().toLowerCase();
+    return activeProfiles
+      .filter((profile) => (
+        !needle ||
+        profile.handle.toLowerCase().includes(needle) ||
+        profile.name.toLowerCase().includes(needle)
+      ))
+      .sort((a, b) => a.handle.localeCompare(b.handle));
+  });
   const canInterrupt = $derived(
     statusState === "working" ||
     statusState === "starting" ||
@@ -41,7 +54,7 @@
   async function sendText() {
     const text = value.trim();
     if (!text || busy || disabled || !daemonStore.client) return;
-    if (chatId && routeTokens.length === 0) {
+    if (chatId && routeTokens.length === 0 && !hasAssociatedAgent) {
       localError = "Select an agent with @ or % before sending.";
       return;
     }
@@ -96,7 +109,11 @@
   }
 
   function updateTokenQuery(text: string, cursor: number) {
-    tokenQuery = chatId ? extractRouteTokenQuery(text, cursor) : null;
+    const nextQuery = chatId ? extractRouteTokenQuery(text, cursor) : null;
+    if (nextQuery?.kind !== tokenQuery?.kind || nextQuery?.query !== tokenQuery?.query) {
+      menuActiveIndex = 0;
+    }
+    tokenQuery = nextQuery;
   }
 
   function handleInput(e: Event) {
@@ -125,6 +142,17 @@
     });
   }
 
+  function selectActiveSuggestion() {
+    const profile = suggestedProfiles[menuActiveIndex];
+    if (!profile || !tokenQuery) return;
+    handleSelectToken({ kind: tokenQuery.kind, profileId: profile.id, handle: profile.handle });
+  }
+
+  function moveActiveSuggestion(delta: number) {
+    if (suggestedProfiles.length === 0) return;
+    menuActiveIndex = (menuActiveIndex + delta + suggestedProfiles.length) % suggestedProfiles.length;
+  }
+
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
       if (action?.type === "focus-chat-input" && textareaEl && !disabled) {
@@ -135,6 +163,23 @@
   });
 
   function handleKeyDown(e: KeyboardEvent) {
+    if (tokenQuery && !e.metaKey && !e.ctrlKey) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        moveActiveSuggestion(1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        moveActiveSuggestion(-1);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        selectActiveSuggestion();
+        return;
+      }
+    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       void sendText();
@@ -172,7 +217,9 @@
       kind={tokenQuery.kind}
       query={tokenQuery.query}
       profiles={activeProfiles}
+      activeIndex={menuActiveIndex}
       onSelect={handleSelectToken}
+      onActiveIndexChange={(index) => menuActiveIndex = index}
       onClose={() => tokenQuery = null}
     />
   {/if}

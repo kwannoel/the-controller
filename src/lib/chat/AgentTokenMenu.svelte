@@ -11,19 +11,24 @@
     kind,
     query = "",
     profiles,
+    activeIndex,
     onSelect,
+    onActiveIndexChange,
     onClose,
   }: {
     kind: RouteTokenKind;
     query?: string;
     profiles: AgentProfile[];
+    activeIndex?: number;
     onSelect: (selection: AgentTokenSelection) => void;
+    onActiveIndexChange?: (index: number) => void;
     onClose?: () => void;
   } = $props();
 
-  let activeIndex = $state(0);
+  let internalActiveIndex = $state(0);
 
   const marker = $derived(kind === "reusable" ? "@" : "%");
+  const selectedIndex = $derived(activeIndex ?? internalActiveIndex);
   const filteredProfiles = $derived.by(() => {
     const needle = query.trim().toLowerCase();
     return profiles
@@ -39,8 +44,13 @@
   });
 
   $effect(() => {
-    if (activeIndex >= filteredProfiles.length) activeIndex = 0;
+    if (selectedIndex >= filteredProfiles.length) setActiveIndex(0);
   });
+
+  function setActiveIndex(index: number) {
+    internalActiveIndex = index;
+    onActiveIndexChange?.(index);
+  }
 
   function selectProfile(profile: AgentProfile) {
     onSelect({ kind, profileId: profile.id, handle: profile.handle });
@@ -50,13 +60,13 @@
     if (filteredProfiles.length === 0 && e.key !== "Escape") return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      activeIndex = (activeIndex + 1) % filteredProfiles.length;
+      setActiveIndex((selectedIndex + 1) % filteredProfiles.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      activeIndex = (activeIndex - 1 + filteredProfiles.length) % filteredProfiles.length;
+      setActiveIndex((selectedIndex - 1 + filteredProfiles.length) % filteredProfiles.length);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const profile = filteredProfiles[activeIndex];
+      const profile = filteredProfiles[selectedIndex];
       if (profile) selectProfile(profile);
     } else if (e.key === "Escape") {
       e.preventDefault();
@@ -75,11 +85,11 @@
   {#if filteredProfiles.length > 0}
     {#each filteredProfiles as profile, index (profile.id)}
       <button
-        class:active={index === activeIndex}
+        class:active={index === selectedIndex}
         role="option"
-        aria-selected={index === activeIndex}
+        aria-selected={index === selectedIndex}
         type="button"
-        onmouseenter={() => activeIndex = index}
+        onmouseenter={() => setActiveIndex(index)}
         onclick={() => selectProfile(profile)}
       >
         <span class="handle">{marker}{profile.handle}</span>

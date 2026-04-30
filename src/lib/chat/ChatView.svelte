@@ -5,16 +5,20 @@
   import { openStream } from "../daemon/stream";
   import { classifyError } from "../daemon/errors";
   import { showToast } from "$lib/toast";
-  import type { ChatTranscriptEntry, EventRecord } from "../daemon/types";
+  import type { ChatTranscriptEntry, EventRecord, RouteToken, RouteTokenKind } from "../daemon/types";
   import Transcript from "./Transcript.svelte";
   import ChatInput from "./ChatInput.svelte";
-  import ChatSummaryPane from "./ChatSummaryPane.svelte";
+  import ChatSummaryPane, { type SummaryAgent, type SummaryWorkspace } from "./ChatSummaryPane.svelte";
 
   let { sessionId = null, chatId = null }: { sessionId?: string | null; chatId?: string | null } = $props();
   const session = $derived(sessionId ? daemonStore.sessions.get(sessionId) : null);
   const chat = $derived(chatId ? daemonStore.chats.get(chatId) : null);
   const sessionTranscript = $derived(sessionId ? daemonStore.transcripts.get(sessionId) ?? emptyTranscript() : emptyTranscript());
-  const chatTranscript = $derived(chatId ? transcriptFromChatEntries(daemonStore.chatTranscripts.get(chatId) ?? []) : emptyTranscript());
+  const chatEntries = $derived(chatId ? daemonStore.chatTranscripts.get(chatId) ?? [] : []);
+  const chatTranscript = $derived(chatId ? transcriptFromChatEntries(chatEntries) : emptyTranscript());
+  const summaryAgents = $derived(chatId ? summaryAgentsFromChat(chatEntries) : []);
+  const summaryWorkspaces = $derived(chatId ? summaryWorkspacesFromChat(chatId) : []);
+  const hasAssociatedAgent = $derived(summaryAgents.length > 0 || (chatId ? (daemonStore.chatAgentLinks.get(chatId)?.length ?? 0) > 0 : false));
 
   let handle: { close(): void } | null = null;
   let chatLoadGeneration = 0;
@@ -44,6 +48,51 @@
       chat_seq: seq,
       turn_id: null,
     };
+  }
+
+  function isRouteTokenSpan(span: unknown): span is Pick<RouteToken, "kind" | "handle"> {
+    if (!span || typeof span !== "object") return false;
+    const candidate = span as { kind?: unknown; handle?: unknown };
+    return (
+      (candidate.kind === "reusable" || candidate.kind === "shadow") &&
+      typeof candidate.handle === "string"
+    );
+  }
+
+  function tokenSpansFromEntry(entry: ChatTranscriptEntry): Pick<RouteToken, "kind" | "handle">[] {
+    if (entry.type !== "user_message") return [];
+    if (!Array.isArray(entry.message.token_spans)) return [];
+    return entry.message.token_spans.filter(isRouteTokenSpan);
+  }
+
+  function summaryAgentsFromChat(entries: ChatTranscriptEntry[]): SummaryAgent[] {
+    const seen = new Set<string>();
+    const agents: SummaryAgent[] = [];
+    for (const entry of entries) {
+      for (const span of tokenSpansFromEntry(entry)) {
+        const key = `${span.kind}:${span.handle}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const profile = [...daemonStore.profiles.values()].find((candidate) => candidate.handle === span.handle);
+        agents.push({
+          id: profile ? `${profile.id}:${span.kind}` : key,
+          handle: span.handle,
+          name: profile?.name ?? span.handle,
+          kind: span.kind as RouteTokenKind,
+          focused: span.kind === "reusable" && !agents.some((agent) => agent.focused),
+        });
+      }
+    }
+    return agents;
+  }
+
+  function summaryWorkspacesFromChat(id: string): SummaryWorkspace[] {
+    return (daemonStore.chatWorkspaceLinks.get(id) ?? []).map((link) => ({
+      id: link.id,
+      label: link.label,
+      path: link.path,
+      focused: link.focused,
+    }));
   }
 
   function chatTranscriptEntryKey(entry: ChatTranscriptEntry): string {
@@ -127,9 +176,9 @@
       <span class="label">{chat.title}</span>
       <span class="agent">chat</span>
     </header>
-    <ChatSummaryPane agents={[]} workspaces={[]} />
+    <ChatSummaryPane agents={summaryAgents} workspaces={summaryWorkspaces} />
     <Transcript transcript={chatTranscript} sessionId={chatId} />
-    <ChatInput {chatId} status="running" statusState={chatTranscript.statusState} />
+    <ChatInput {chatId} status="running" statusState={chatTranscript.statusState} {hasAssociatedAgent} />
   </div>
 {:else if session && sessionId}
   <div class="view">

@@ -1,6 +1,15 @@
 import { SvelteMap } from "svelte/reactivity";
 import { DaemonClient } from "./client";
-import type { AgentProfile, AgentTurnTrace, Chat, ChatMetrics, ChatTranscriptEntry, DaemonSession } from "./types";
+import type {
+  AgentProfile,
+  AgentTurnTrace,
+  Chat,
+  ChatAgentLink,
+  ChatMetrics,
+  ChatTranscriptEntry,
+  ChatWorkspaceLink,
+  DaemonSession,
+} from "./types";
 import { emptyTranscript, type TranscriptState } from "./reducer";
 
 const BASE_URL = "/api/daemon";
@@ -15,6 +24,8 @@ interface StoreState {
   chats: SvelteMap<string, Chat>;
   activeChatId: string | null;
   chatTranscripts: SvelteMap<string, ChatTranscriptEntry[]>;
+  chatAgentLinks: SvelteMap<string, ChatAgentLink[]>;
+  chatWorkspaceLinks: SvelteMap<string, ChatWorkspaceLink[]>;
   chatSummaries: SvelteMap<string, ChatMetrics>;
   agentTraces: SvelteMap<string, AgentTurnTrace[]>;
   newChatTarget: { projectId: string; projectCwd: string } | null;
@@ -30,6 +41,8 @@ export const daemonStore = $state<StoreState>({
   chats: new SvelteMap<string, Chat>(),
   activeChatId: null,
   chatTranscripts: new SvelteMap<string, ChatTranscriptEntry[]>(),
+  chatAgentLinks: new SvelteMap<string, ChatAgentLink[]>(),
+  chatWorkspaceLinks: new SvelteMap<string, ChatWorkspaceLink[]>(),
   chatSummaries: new SvelteMap<string, ChatMetrics>(),
   agentTraces: new SvelteMap<string, AgentTurnTrace[]>(),
   newChatTarget: null,

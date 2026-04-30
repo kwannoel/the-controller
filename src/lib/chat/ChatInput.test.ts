@@ -94,6 +94,49 @@ describe("ChatInput", () => {
     expect(ta.value).toBe("");
   });
 
+  it("selects a route token suggestion with keyboard navigation from the textarea", async () => {
+    profiles.set("profile-2", makeProfile({
+      id: "profile-2",
+      handle: "zdebugger",
+      name: "Debugger",
+    }));
+    const { getByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+
+    ta.value = "ask @";
+    ta.setSelectionRange(5, 5);
+    await fireEvent.input(ta);
+    await fireEvent.keyDown(ta, { key: "ArrowDown" });
+    await fireEvent.keyDown(ta, { key: "Enter" });
+    await waitFor(() => expect(ta.value).toBe("ask @zdebugger"));
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+
+    expect(sendChatMessage).toHaveBeenCalledWith("chat-1", {
+      body: "ask @zdebugger",
+      tokens: [{ kind: "reusable", handle: "zdebugger", start: 4, end: 14 }],
+      idempotency_id: expect.any(String),
+    });
+  });
+
+  it("sends chat follow-ups when the chat already has an associated agent", async () => {
+    const { getByRole } = render(ChatInput, {
+      chatId: "chat-1",
+      status: "running",
+      statusState: "idle",
+      hasAssociatedAgent: true,
+    });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+
+    await fireEvent.input(ta, { target: { value: "follow up" } });
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+
+    expect(sendChatMessage).toHaveBeenCalledWith("chat-1", {
+      body: "follow up",
+      tokens: [],
+      idempotency_id: expect.any(String),
+    });
+  });
+
   it("Ctrl+Enter also sends user_text", async () => {
     const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
     const ta = getByRole("textbox") as HTMLTextAreaElement;

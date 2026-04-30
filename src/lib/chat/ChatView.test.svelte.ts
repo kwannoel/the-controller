@@ -50,6 +50,21 @@ function makeProfile() {
   };
 }
 
+function makeWorkspaceLink() {
+  return {
+    id: "workspace-link-1",
+    chat_id: "chat-1",
+    project_id: "proj-1",
+    workspace_id: "workspace-1",
+    path: "/repo/controller",
+    label: "controller-routing",
+    branch: "codex/routing",
+    focused: true,
+    created_at: 1,
+    updated_at: 1,
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -76,6 +91,8 @@ describe("ChatView", () => {
     daemonStore.activeSessionId = "s1";
     daemonStore.chats.clear();
     daemonStore.chatTranscripts.clear();
+    daemonStore.chatAgentLinks.clear();
+    daemonStore.chatWorkspaceLinks.clear();
     daemonStore.profiles.clear();
     daemonStore.profiles.set("profile-1", makeProfile());
     daemonStore.activeChatId = null;
@@ -136,5 +153,36 @@ describe("ChatView", () => {
 
     await waitFor(() => expect(readChatTranscript).toHaveBeenCalledWith("chat-1"));
     expect(await findByText("ask %reviewer optimistic hello")).toBeTruthy();
+  });
+
+  it("renders the chat summary from known agent and workspace links", async () => {
+    daemonStore.chats.set("chat-1", makeChat("chat-1", "Chat 1"));
+    daemonStore.profiles.set("profile-2", {
+      ...makeProfile(),
+      id: "profile-2",
+      handle: "debugger",
+      name: "Debugger",
+    });
+    daemonStore.chatTranscripts.set("chat-1", [
+      {
+        type: "user_message",
+        message: {
+          ...makeChatMessage("msg-1", "chat-1", "ask @reviewer %debugger"),
+          token_spans: [
+            { kind: "reusable", handle: "reviewer", start: 4, end: 13 },
+            { kind: "shadow", handle: "debugger", start: 14, end: 23 },
+          ],
+        },
+      },
+    ]);
+    daemonStore.chatWorkspaceLinks.set("chat-1", [makeWorkspaceLink()]);
+
+    const { findByText } = render(ChatView, { chatId: "chat-1" });
+
+    expect(await findByText("@reviewer")).toBeTruthy();
+    expect(await findByText("%debugger")).toBeTruthy();
+    expect(await findByText("focused @reviewer")).toBeTruthy();
+    expect(await findByText("controller-routing")).toBeTruthy();
+    expect(await findByText("focused controller-routing")).toBeTruthy();
   });
 });
