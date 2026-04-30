@@ -63,7 +63,7 @@ the new workflow version for future runs.
 - [Workflow Creation Mode mockup](../assets/design/controller-workflow-creation-ui.png)
 
 ```mermaid
-flowchart LR
+flowchart TD
   WorkflowRepo["Central workflow repo"] --> Version["Validated workflow version"]
   Trigger["Issue trigger or schedule"] --> Fanout["One run per GitHub issue"]
   Version --> Fanout
