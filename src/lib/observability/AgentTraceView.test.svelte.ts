@@ -7,6 +7,11 @@ const session: DaemonSession = {
   id: "session-1",
   label: "Reviewer",
   agent: "codex",
+  agent_profile_id: "profile-1",
+  session_kind: "reusable",
+  owner_chat_id: "chat-1",
+  profile_version_id: "version-1",
+  launch_context_snapshot: null,
   cwd: "/repo/controller",
   args: [],
   status: "running",
@@ -149,6 +154,10 @@ describe("AgentTraceView", () => {
     expect(getByText("Reviewer")).toBeTruthy();
     expect(getByText("codex")).toBeTruthy();
     expect(getByText("running")).toBeTruthy();
+    expect(getByText("reusable")).toBeTruthy();
+    expect(getByText("profile-1")).toBeTruthy();
+    expect(getByText("version-1")).toBeTruthy();
+    expect(getByText("Owner Routing review")).toBeTruthy();
     expect(getAllByText("Routing review").length).toBeGreaterThan(0);
     expect(getByText("controller")).toBeTruthy();
 
@@ -157,8 +166,15 @@ describe("AgentTraceView", () => {
     expect(rows[1].textContent).toContain("turn-old");
     expect(rows[0].textContent).toContain("14 tokens");
     expect(rows[0].textContent).toContain("1 tool");
+    expect(rows[0].textContent).toContain("1 outbox write");
+    expect(rows[0].textContent).toContain("0 errors");
     expect(rows[1].textContent).toContain("unavailable");
 
+    expect(getAllByText("Timing").length).toBeGreaterThan(0);
+    expect(getAllByText(/Received/).length).toBeGreaterThan(0);
+    expect(getAllByText(/Activity/).length).toBeGreaterThan(0);
+    expect(getAllByText(/Ended/).length).toBeGreaterThan(0);
+    expect(getAllByText("unavailable").length).toBeGreaterThan(0);
     expect(getByText("checking the changed files")).toBeTruthy();
     expect(getAllByText(/shell/).length).toBeGreaterThan(0);
     expect(getByText("No findings.")).toBeTruthy();

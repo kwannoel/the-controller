@@ -13,7 +13,103 @@ const metrics: ChatMetrics = {
   tool_call_count: 1,
   outbox_write_count: 1,
   error_count: 0,
+  total_elapsed_ms: 800,
+  average_turn_ms: 800,
+  slowest_turn_ms: 800,
   updated_at: 10,
+  agents: [
+    {
+      session_id: "session-1",
+      profile_id: "profile-1",
+      profile_version_id: "version-1",
+      route_type: "reusable",
+      focused: true,
+      token_source: "@reviewer",
+      status: "running",
+      turn_count: 1,
+      input_tokens: 0,
+      output_tokens: 20,
+      cache_read_tokens: 0,
+      cache_write_tokens: 0,
+      total_tokens: 20,
+      tool_call_count: 1,
+      outbox_write_count: 1,
+      error_count: 0,
+      total_elapsed_ms: 800,
+      average_turn_ms: 800,
+      slowest_turn_ms: 800,
+      current_turn_id: "turn-1",
+      updated_at: 4,
+    },
+    {
+      session_id: "session-2",
+      profile_id: "profile-2",
+      profile_version_id: "version-2",
+      route_type: "shadow",
+      focused: false,
+      token_source: "%debugger",
+      status: "running",
+      turn_count: 1,
+      input_tokens: null,
+      output_tokens: null,
+      cache_read_tokens: null,
+      cache_write_tokens: null,
+      total_tokens: null,
+      tool_call_count: null,
+      outbox_write_count: null,
+      error_count: null,
+      total_elapsed_ms: null,
+      average_turn_ms: null,
+      slowest_turn_ms: null,
+      current_turn_id: "turn-2",
+      updated_at: 5,
+    },
+  ],
+  turns: [
+    {
+      turn_id: "turn-2",
+      session_id: "session-2",
+      chat_id: "chat-1",
+      chat_message_id: "message-1",
+      status: "active",
+      received_at: 5,
+      activity_started_at: null,
+      ended_at: null,
+      activity_latency_ms: null,
+      duration_ms: null,
+      input_tokens: null,
+      output_tokens: null,
+      cache_read_tokens: null,
+      cache_write_tokens: null,
+      total_tokens: null,
+      tool_call_count: null,
+      outbox_write_count: null,
+      error_count: null,
+      updated_at: 5,
+    },
+    {
+      turn_id: "turn-1",
+      session_id: "session-1",
+      chat_id: "chat-1",
+      chat_message_id: "message-1",
+      status: "completed",
+      received_at: 1,
+      activity_started_at: 2,
+      ended_at: 802,
+      activity_latency_ms: 1,
+      duration_ms: 801,
+      input_tokens: 0,
+      output_tokens: 20,
+      cache_read_tokens: 0,
+      cache_write_tokens: 0,
+      total_tokens: 20,
+      tool_call_count: 1,
+      outbox_write_count: 1,
+      error_count: 0,
+      updated_at: 4,
+    },
+  ],
+  workspace_links: [],
 };
 
 const agentLinks: ChatAgentLink[] = [
@@ -122,12 +218,17 @@ describe("ChatMetricsTab", () => {
     expect(getAllByText("20 tokens").length).toBeGreaterThan(0);
     expect(getByText("2 turns")).toBeTruthy();
     expect(getAllByText("1 tool").length).toBeGreaterThan(0);
-    expect(getByText("Reviewer")).toBeTruthy();
+    expect(getAllByText("Reviewer").length).toBeGreaterThan(0);
     expect(getByText("@reviewer")).toBeTruthy();
-    expect(getByText("running")).toBeTruthy();
-    expect(getByText("Debugger")).toBeTruthy();
+    expect(getAllByText("running").length).toBeGreaterThan(0);
+    expect(getAllByText("Debugger").length).toBeGreaterThan(0);
     expect(getByText("%debugger")).toBeTruthy();
     expect(getAllByText("unavailable").length).toBeGreaterThan(0);
+    expect(getByText("Turn Metrics")).toBeTruthy();
+    expect(getByText("turn-2")).toBeTruthy();
+    expect(getByText("active")).toBeTruthy();
+    expect(getByText("completed")).toBeTruthy();
+    expect(getAllByText("1 outbox write").length).toBeGreaterThan(0);
   });
 
   it("opens the agent observability workspace from an agent row", async () => {

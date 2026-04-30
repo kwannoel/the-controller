@@ -18,7 +18,11 @@ export function formatMetricValue(value: number | null | undefined, kind: Metric
 
 export function formatDuration(start: number | null | undefined, end: number | null | undefined): string {
   if (start == null || end == null) return "unavailable";
-  const ms = Math.max(0, end - start);
+  return formatDurationMs(Math.max(0, end - start));
+}
+
+export function formatDurationMs(ms: number | null | undefined): string {
+  if (ms == null) return "unavailable";
   if (ms < 1_000) return `${ms}ms`;
   if (ms < 60_000) {
     const seconds = ms / 1_000;
@@ -27,6 +31,15 @@ export function formatDuration(start: number | null | undefined, end: number | n
   const minutes = Math.floor(ms / 60_000);
   const seconds = Math.floor((ms % 60_000) / 1_000);
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
+}
+
+export function formatTimestamp(value: number | null | undefined): string {
+  if (value == null) return "unavailable";
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export function tokenTotal(metrics: TurnMetrics | null | undefined): number | null {

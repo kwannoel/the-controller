@@ -3,6 +3,7 @@
   import {
     eventSummary,
     formatDuration,
+    formatTimestamp,
     formatMetricValue,
     tokenTotal,
   } from "./turn-format";
@@ -32,6 +33,11 @@
     return chats.get(chatId)?.title ?? chatId;
   }
 
+  function ownerChatLabel(): string {
+    if (!session?.owner_chat_id) return "unassigned";
+    return chatTitle(session.owner_chat_id);
+  }
+
   function eventPayload(event: EventRecord): string {
     if (typeof event.payload === "string") return event.payload;
     try {
@@ -52,6 +58,7 @@
       <div class="header-meta">
         <span>{session.agent}</span>
         <span>{session.status}</span>
+        <span>{session.session_kind ?? "unowned"}</span>
       </div>
     </header>
 
@@ -71,6 +78,18 @@
       <div>
         <span>Runtime</span>
         <strong>{session.native_session_id ?? "unavailable"}</strong>
+      </div>
+      <div>
+        <span>Ownership</span>
+        <strong>Owner {ownerChatLabel()}</strong>
+      </div>
+      <div>
+        <span>Profile</span>
+        <strong>{session.agent_profile_id ?? "unavailable"}</strong>
+      </div>
+      <div>
+        <span>Version</span>
+        <strong>{session.profile_version_id ?? "unavailable"}</strong>
       </div>
       {#if loading}
         <div>
@@ -110,16 +129,27 @@
             <span class="turn-id">{trace.turn.id}</span>
             <span>{trace.turn.status}</span>
             <span>{chatTitle(trace.turn.chat_id)}</span>
-            <span>{trace.turn.ended_at == null ? "active" : formatDuration(trace.turn.received_at, trace.turn.ended_at)}</span>
-            <span>{formatMetricValue(tokenTotal(trace.metrics), "tokens")}</span>
-            <span>{formatMetricValue(trace.metrics?.tool_call_count, "tools")}</span>
-          </summary>
+              <span>{trace.turn.ended_at == null ? "active" : formatDuration(trace.turn.received_at, trace.turn.ended_at)}</span>
+              <span>{formatMetricValue(tokenTotal(trace.metrics), "tokens")}</span>
+              <span>{formatMetricValue(trace.metrics?.tool_call_count, "tools")}</span>
+              <span>{formatMetricValue(trace.metrics?.outbox_write_count, "outbox")}</span>
+              <span>{formatMetricValue(trace.metrics?.error_count, "errors")}</span>
+            </summary>
           <div class="turn-detail">
             <div class="metric-grid">
               <span>Input {formatMetricValue(trace.metrics?.input_tokens, "tokens")}</span>
               <span>Output {formatMetricValue(trace.metrics?.output_tokens, "tokens")}</span>
               <span>Outbox {formatMetricValue(trace.metrics?.outbox_write_count, "outbox")}</span>
               <span>Errors {formatMetricValue(trace.metrics?.error_count, "errors")}</span>
+            </div>
+            <h3>Timing</h3>
+            <div class="metric-grid timing-grid">
+              <span>Received {formatTimestamp(trace.turn.received_at)}</span>
+              <span>Activity {formatTimestamp(trace.turn.activity_started_at)}</span>
+              <span>Ended {formatTimestamp(trace.turn.ended_at)}</span>
+              <span>Latency {formatDuration(trace.turn.received_at, trace.turn.activity_started_at)}</span>
+              <span>Duration {formatDuration(trace.turn.received_at, trace.turn.ended_at)}</span>
+              <span>Updated {formatTimestamp(trace.metrics?.updated_at ?? trace.turn.ended_at ?? trace.turn.activity_started_at)}</span>
             </div>
             <div class="event-list">
               {#each trace.events as event (`${event.session_id}:${event.seq}`)}
@@ -178,6 +208,7 @@
   .header-meta,
   .context-strip span,
   h2,
+  h3,
   .event-heading span {
     color: var(--text-secondary);
     font: 11px var(--font-mono);
@@ -186,6 +217,7 @@
 
   h1,
   h2,
+  h3,
   p {
     margin: 0;
   }
@@ -193,6 +225,11 @@
   h1 {
     color: var(--text-primary);
     font: 600 20px var(--font-mono);
+  }
+
+  h3 {
+    color: var(--text-primary);
+    font: 600 12px var(--font-mono);
   }
 
   .header-meta {
@@ -217,7 +254,7 @@
 
   .context-strip {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     overflow: hidden;
   }
 
@@ -291,7 +328,7 @@
 
   summary {
     display: grid;
-    grid-template-columns: minmax(110px, 1.2fr) repeat(5, minmax(72px, 0.8fr));
+    grid-template-columns: minmax(110px, 1.2fr) minmax(74px, 0.7fr) minmax(110px, 1fr) repeat(5, minmax(72px, 0.75fr));
     gap: 10px;
     align-items: center;
     min-width: 0;
@@ -325,6 +362,10 @@
     gap: 8px;
     color: var(--text-secondary);
     font: 12px var(--font-mono);
+  }
+
+  .timing-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .event-list {
@@ -379,7 +420,8 @@
   @media (max-width: 900px) {
     .context-strip,
     .links,
-    .metric-grid {
+    .metric-grid,
+    .timing-grid {
       grid-template-columns: 1fr;
     }
 

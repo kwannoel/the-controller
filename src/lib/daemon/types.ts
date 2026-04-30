@@ -7,6 +7,11 @@ export interface DaemonSession {
   id: string;
   label: string;
   agent: Agent;
+  agent_profile_id?: string | null;
+  session_kind?: "raw" | "reusable" | "shadow";
+  owner_chat_id?: string | null;
+  profile_version_id?: string | null;
+  launch_context_snapshot?: string | null;
   cwd: string;
   args: string[];
   status: SessionStatus;
@@ -162,6 +167,58 @@ export interface ChatMetrics {
   tool_call_count: number;
   outbox_write_count: number;
   error_count: number;
+  total_elapsed_ms?: number | null;
+  average_turn_ms?: number | null;
+  slowest_turn_ms?: number | null;
+  updated_at: number;
+  agents?: ChatAgentMetrics[];
+  turns?: ChatTurnMetrics[];
+  workspace_links?: ChatWorkspaceLink[];
+}
+
+export interface ChatAgentMetrics {
+  session_id: string;
+  profile_id: string;
+  profile_version_id: string;
+  route_type: string;
+  focused: boolean;
+  token_source: string;
+  status: SessionStatus | null;
+  turn_count: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+  total_tokens: number | null;
+  tool_call_count: number | null;
+  outbox_write_count: number | null;
+  error_count: number | null;
+  total_elapsed_ms: number | null;
+  average_turn_ms: number | null;
+  slowest_turn_ms: number | null;
+  current_turn_id: string | null;
+  updated_at: number;
+}
+
+export interface ChatTurnMetrics {
+  turn_id: string;
+  session_id: string;
+  chat_id: string;
+  chat_message_id: string;
+  status: string;
+  received_at: number;
+  activity_started_at: number | null;
+  ended_at: number | null;
+  activity_latency_ms: number | null;
+  duration_ms: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+  total_tokens: number | null;
+  tool_call_count: number | null;
+  outbox_write_count: number | null;
+  error_count: number | null;
   updated_at: number;
 }
 

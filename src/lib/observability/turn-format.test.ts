@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatMetricValue, tokenTotal } from "./turn-format";
+import { formatDuration, formatDurationMs, formatMetricValue, tokenTotal } from "./turn-format";
 
 describe("formatMetricValue", () => {
   it("distinguishes missing metrics from zero", () => {
@@ -19,6 +19,12 @@ describe("formatDuration", () => {
     expect(formatDuration(null, 10)).toBe("unavailable");
     expect(formatDuration(10, 10)).toBe("0ms");
     expect(formatDuration(10, 1_510)).toBe("1.5s");
+  });
+
+  it("formats duration fields that already arrive as elapsed milliseconds", () => {
+    expect(formatDurationMs(null)).toBe("unavailable");
+    expect(formatDurationMs(0)).toBe("0ms");
+    expect(formatDurationMs(61_000)).toBe("1m 01s");
   });
 });
 
