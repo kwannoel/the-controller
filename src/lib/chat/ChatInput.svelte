@@ -30,6 +30,7 @@
   let tokenQuery = $state<RouteTokenQuery | null>(null);
   let menuActiveIndex = $state(0);
   let localError = $state<string | null>(null);
+  let draftIdempotency = $state<{ signature: string; id: string } | null>(null);
 
   const disabled = $derived(status === "ended" || status === "failed" || sessionEndedBanner);
   const activeProfiles = $derived(
@@ -67,19 +68,21 @@
       localError = "Select an agent with @ or % before sending.";
       return;
     }
+    const idempotency = chatId ? idempotencyForDraft(text, tokensToSend) : null;
     busy = true;
     try {
       if (chatId) {
         const res = await daemonStore.client.sendChatMessage(chatId, {
           body: text,
           tokens: tokensToSend,
-          idempotency_id: crypto.randomUUID(),
+          idempotency_id: idempotency!,
         });
         const prev = daemonStore.chatTranscripts.get(chatId) ?? [];
         daemonStore.chatTranscripts.set(chatId, [...prev, { type: "user_message", message: res.message }]);
         routeTokens = [];
         tokenQuery = null;
         localError = null;
+        draftIdempotency = null;
       } else if (sessionId) {
         await daemonStore.client.sendMessage(sessionId, { kind: "user_text", text });
       }
@@ -102,6 +105,14 @@
     } finally {
       busy = false;
     }
+  }
+
+  function idempotencyForDraft(body: string, tokens: RouteToken[]) {
+    const signature = JSON.stringify({ chatId, body, tokens });
+    if (draftIdempotency?.signature === signature) return draftIdempotency.id;
+    const next = { signature, id: crypto.randomUUID() };
+    draftIdempotency = next;
+    return next.id;
   }
 
   async function interrupt() {

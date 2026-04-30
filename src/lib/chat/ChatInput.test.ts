@@ -168,6 +168,25 @@ describe("ChatInput", () => {
     });
   });
 
+  it("reuses the same idempotency id when retrying an unchanged failed draft", async () => {
+    sendChatMessage.mockRejectedValueOnce(new Error("lost response"));
+    const { getByRole, findByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+
+    await fireEvent.input(ta, { target: { value: "ask %rev" } });
+    await fireEvent.click(await findByRole("option", { name: /%reviewer/i }));
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+    await waitFor(() => expect(sendChatMessage).toHaveBeenCalledTimes(1));
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+
+    expect(sendChatMessage).toHaveBeenCalledTimes(2);
+    const firstPayload = (sendChatMessage.mock.calls[0] as any[])[1];
+    const secondPayload = (sendChatMessage.mock.calls[1] as any[])[1];
+    const firstId = firstPayload.idempotency_id;
+    const secondId = secondPayload.idempotency_id;
+    expect(secondId).toBe(firstId);
+  });
+
   it("Ctrl+Enter also sends user_text", async () => {
     const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
     const ta = getByRole("textbox") as HTMLTextAreaElement;

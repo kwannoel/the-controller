@@ -109,12 +109,24 @@ export async function loadChatTranscript(chatId: string): Promise<void> {
 
 export async function loadChatLinks(chatId: string): Promise<void> {
   if (!daemonStore.client) return;
-  const [agentLinks, workspaceLinks] = await Promise.all([
+  const [agentLinks, workspaceLinks] = await Promise.allSettled([
     daemonStore.client.listChatAgentLinks(chatId),
     daemonStore.client.listChatWorkspaceLinks(chatId),
   ]);
-  daemonStore.chatAgentLinks.set(chatId, agentLinks);
-  daemonStore.chatWorkspaceLinks.set(chatId, workspaceLinks);
+  if (agentLinks.status === "fulfilled") {
+    daemonStore.chatAgentLinks.set(chatId, agentLinks.value);
+  } else {
+    daemonStore.chatAgentLinks.set(chatId, []);
+  }
+  if (workspaceLinks.status === "fulfilled") {
+    daemonStore.chatWorkspaceLinks.set(chatId, workspaceLinks.value);
+  } else {
+    daemonStore.chatWorkspaceLinks.set(chatId, []);
+  }
+  const errors = [agentLinks, workspaceLinks].flatMap((result) => (
+    result.status === "rejected" ? [result.reason] : []
+  ));
+  if (errors.length > 0) throw errors[0];
 }
 
 export async function loadAgentTrace(sessionId: string): Promise<void> {

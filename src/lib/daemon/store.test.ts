@@ -164,4 +164,45 @@ describe("daemon store bootstrap", () => {
     expect(daemonStore.chatSummaries.get("chat-1")).toEqual(metrics);
     expect("token" in daemonStore).toBe(false);
   });
+
+  it("keeps successful chat link hydration when the other link request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const { daemonStore, loadChatLinks } = await import("./store.svelte");
+    const agentLinks = [
+      {
+        id: "agent-link-1",
+        chat_id: "chat-1",
+        session_id: "session-1",
+        profile_id: "profile-1",
+        profile_version_id: "version-1",
+        route_type: "reusable",
+        focused: true,
+        token_source: "@reviewer",
+        created_at: 1,
+      },
+    ];
+    daemonStore.chatWorkspaceLinks.set("chat-1", [
+      {
+        id: "stale",
+        chat_id: "chat-1",
+        project_id: "project-1",
+        workspace_id: "workspace-1",
+        path: "/stale",
+        label: "stale",
+        branch: null,
+        focused: true,
+        created_at: 1,
+        updated_at: 1,
+      },
+    ]);
+    daemonStore.client = {
+      listChatAgentLinks: vi.fn(async () => agentLinks),
+      listChatWorkspaceLinks: vi.fn(async () => { throw new Error("workspace links unavailable"); }),
+    } as any;
+
+    await expect(loadChatLinks("chat-1")).rejects.toThrow("workspace links unavailable");
+
+    expect(daemonStore.chatAgentLinks.get("chat-1")).toEqual(agentLinks);
+    expect(daemonStore.chatWorkspaceLinks.get("chat-1")).toEqual([]);
+  });
 });
