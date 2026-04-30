@@ -77,7 +77,9 @@ describe("web backend migration audit", () => {
     const source = read("e2e/specs/chat-mode.spec.ts");
 
     expect(source).toContain("TCD_E2E_DAEMON_REACHABLE");
+    expect(source).toContain("THE_CONTROLLER_STATE_DIR");
     expect(source).toContain("TCD_STATE_DIR");
+    expect(source).toMatch(/controllerStateDir\s*===\s*daemonStateDir/);
     expect(source).not.toMatch(
       /test\.skip\(\s*!\s*daemonBinariesPresent[\s,]/,
     );

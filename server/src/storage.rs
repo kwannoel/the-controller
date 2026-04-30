@@ -111,6 +111,12 @@ impl Storage {
 
     /// Create a Storage using the default `~/.the-controller/` directory.
     pub fn with_default_path() -> io::Result<Self> {
+        if let Ok(base_dir) = std::env::var("THE_CONTROLLER_STATE_DIR") {
+            return Ok(Self {
+                base_dir: PathBuf::from(base_dir),
+            });
+        }
+
         Ok(Self {
             base_dir: Self::default_base_dir(dirs::home_dir())?,
         })
@@ -521,6 +527,39 @@ mod tests {
             .expect_err("expected missing home directory to return an error");
 
         assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn test_with_default_path_uses_controller_state_dir_override() {
+        let tmp = TempDir::new().unwrap();
+        let _guard = EnvVarGuard::set("THE_CONTROLLER_STATE_DIR", tmp.path());
+
+        let storage = Storage::with_default_path().unwrap();
+
+        assert_eq!(storage.base_dir(), tmp.path().to_path_buf());
+    }
+
+    struct EnvVarGuard {
+        name: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(name: &'static str, value: &std::path::Path) -> Self {
+            let previous = std::env::var(name).ok();
+            std::env::set_var(name, value);
+            Self { name, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = &self.previous {
+                std::env::set_var(self.name, previous);
+            } else {
+                std::env::remove_var(self.name);
+            }
+        }
     }
 
     #[test]
