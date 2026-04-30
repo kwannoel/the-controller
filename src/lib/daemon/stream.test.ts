@@ -19,30 +19,34 @@ describe("stream", () => {
     MockWebSocket.clear();
     vi.resetModules();
     vi.stubGlobal("WebSocket", MockWebSocket as any);
-    vi.doMock("$lib/backend", () => ({ command: vi.fn(async () => "TOK"), listen: () => () => {} }));
+    vi.doMock("$lib/backend", () => ({
+      command: vi.fn(async (cmd: string) => {
+        throw new Error("unexpected command " + cmd);
+      }),
+      listen: () => () => {},
+    }));
   });
 
   it("reconnects with since=<lastSeq>", async () => {
     const { daemonStore } = await import("./store.svelte");
-    daemonStore.token = "TOK";
-    daemonStore.client = { wsUrl: (id: string, since: number) => `ws://x/sessions/${id}/stream?since=${since}&token=TOK` } as any;
+    const { DaemonClient } = await import("./client");
+    daemonStore.client = new DaemonClient("/api/daemon");
     daemonStore.transcripts.set("s1", { events: [], lastSeq: 5, inProgressBlocks: new Map(), statusState: null, tokenUsage: null, seenSeq: new Set() });
     const { openStream } = await import("./stream");
     const handle = openStream("s1");
     expect(MockWebSocket.instances.length).toBe(1);
-    // first URL should have since=5
-    expect(MockWebSocket.instances[0].url).toContain("since=5");
+    expect(MockWebSocket.instances[0].url).toBe("/api/daemon/sessions/s1/stream?since=5");
     MockWebSocket.instances[0].close();
     await vi.advanceTimersByTimeAsync(1100);
     expect(MockWebSocket.instances.length).toBe(2);
-    expect(MockWebSocket.instances[1].url).toContain("since=5");
+    expect(MockWebSocket.instances[1].url).toBe("/api/daemon/sessions/s1/stream?since=5");
     handle.close();
   });
 
   it("close() prevents further reconnects", async () => {
     const { daemonStore } = await import("./store.svelte");
-    daemonStore.token = "TOK";
-    daemonStore.client = { wsUrl: (id: string, since: number) => `ws://x/sessions/${id}/stream?since=${since}&token=TOK` } as any;
+    const { DaemonClient } = await import("./client");
+    daemonStore.client = new DaemonClient("/api/daemon");
     daemonStore.transcripts.set("s2", { events: [], lastSeq: 0, inProgressBlocks: new Map(), statusState: null, tokenUsage: null, seenSeq: new Set() });
     const { openStream } = await import("./stream");
     const handle = openStream("s2");
@@ -53,8 +57,8 @@ describe("stream", () => {
 
   it("incoming event is reduced into the transcript", async () => {
     const { daemonStore } = await import("./store.svelte");
-    daemonStore.token = "TOK";
-    daemonStore.client = { wsUrl: (id: string, since: number) => `ws://x/sessions/${id}/stream?since=${since}&token=TOK` } as any;
+    const { DaemonClient } = await import("./client");
+    daemonStore.client = new DaemonClient("/api/daemon");
     daemonStore.transcripts.set("s3", { events: [], lastSeq: 0, inProgressBlocks: new Map(), statusState: null, tokenUsage: null, seenSeq: new Set() });
     const { openStream } = await import("./stream");
     const handle = openStream("s3");

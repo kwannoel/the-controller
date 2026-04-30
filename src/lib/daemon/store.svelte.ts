@@ -1,13 +1,11 @@
-import { command } from "$lib/backend";
 import { SvelteMap } from "svelte/reactivity";
 import { DaemonClient } from "./client";
 import type { DaemonSession } from "./types";
 import { emptyTranscript, type TranscriptState } from "./reducer";
 
-const BASE_URL = "http://127.0.0.1:4867";
+const BASE_URL = "/api/daemon";
 
 interface StoreState {
-  token: string | null;
   reachable: boolean;
   client: DaemonClient | null;
   sessions: SvelteMap<string, DaemonSession>;
@@ -17,7 +15,6 @@ interface StoreState {
 }
 
 export const daemonStore = $state<StoreState>({
-  token: null,
   reachable: false,
   client: null,
   sessions: new SvelteMap<string, DaemonSession>(),
@@ -27,16 +24,7 @@ export const daemonStore = $state<StoreState>({
 });
 
 export async function bootstrap(): Promise<void> {
-  try {
-    const token = await command<string>("read_daemon_token");
-    daemonStore.token = token;
-    daemonStore.client = new DaemonClient(BASE_URL, token);
-  } catch (e) {
-    daemonStore.reachable = false;
-    daemonStore.token = null;
-    daemonStore.client = null;
-    return;
-  }
+  daemonStore.client = new DaemonClient(BASE_URL);
   await pingDaemon();
 }
 

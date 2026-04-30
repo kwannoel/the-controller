@@ -23,13 +23,12 @@ export interface SendMessageRequest {
 }
 
 export class DaemonClient {
-  constructor(private baseUrl: string, private token: string) {}
+  constructor(private baseUrl = "/api/daemon") {}
 
   private async call<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       ...init,
       headers: {
-        "Authorization": `Bearer ${this.token}`,
         "Content-Type": "application/json",
         ...(init?.headers ?? {}),
       },
@@ -73,9 +72,6 @@ export class DaemonClient {
     const q = new URLSearchParams();
     q.set("since", String(since));
     if (channels && channels.length) q.set("channels", channels.join(","));
-    q.set("token", this.token);
     return `${base}/sessions/${id}/stream?${q.toString()}`;
   }
-
-  get bearer(): string { return this.token; }
 }
