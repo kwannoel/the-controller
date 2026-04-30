@@ -27,6 +27,7 @@ const componentMocks = vi.hoisted(() => ({
   workspaceModePicker: vi.fn(),
   agentDashboard: vi.fn(),
   agentCreationWorkspace: vi.fn(),
+  agentObservabilityWorkspace: vi.fn(),
   kanbanBoard: vi.fn(),
   chatWorkspace: vi.fn(),
 }));
@@ -40,6 +41,7 @@ vi.mock("./lib/KeystrokeVisualizer.svelte", () => ({ default: componentMocks.key
 vi.mock("./lib/WorkspaceModePicker.svelte", () => ({ default: componentMocks.workspaceModePicker }));
 vi.mock("./lib/AgentDashboard.svelte", () => ({ default: componentMocks.agentDashboard }));
 vi.mock("./lib/agents/AgentCreationWorkspace.svelte", () => ({ default: componentMocks.agentCreationWorkspace }));
+vi.mock("./lib/observability/AgentObservabilityWorkspace.svelte", () => ({ default: componentMocks.agentObservabilityWorkspace }));
 vi.mock("./lib/KanbanBoard.svelte", () => ({ default: componentMocks.kanbanBoard }));
 vi.mock("./lib/chat/ChatWorkspace.svelte", () => ({ default: componentMocks.chatWorkspace }));
 vi.mock("./lib/toast", () => ({
@@ -108,7 +110,7 @@ describe("App shell", () => {
     expect(document.title).toBe("The Controller (test-commit, test-branch, localhost:1420)");
   });
 
-  it("renders the agents, agent creation, observe placeholder, and kanban workspaces", async () => {
+  it("renders the agents, agent creation, observability, and kanban workspaces", async () => {
     workspaceMode.set("agents");
     render(App);
     await waitFor(() => {
@@ -126,7 +128,7 @@ describe("App shell", () => {
     workspaceMode.set("agent-observe");
     render(App);
     await waitFor(() => {
-      expect(screen.getAllByText("Agent Observe").length).toBeGreaterThan(0);
+      expect(componentMocks.agentObservabilityWorkspace).toHaveBeenCalled();
     });
     expect(componentMocks.chatWorkspace).not.toHaveBeenCalled();
 

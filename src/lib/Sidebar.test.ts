@@ -51,7 +51,7 @@ describe("Sidebar", () => {
     });
   });
 
-  it("updates the sidebar header for agents and kanban", async () => {
+  it("updates the sidebar header for workspace modes", async () => {
     render(Sidebar);
 
     workspaceMode.set("agents");
@@ -62,6 +62,16 @@ describe("Sidebar", () => {
     workspaceMode.set("kanban");
     await waitFor(() => {
       expect(screen.getByText("Kanban")).toBeInTheDocument();
+    });
+
+    workspaceMode.set("agent-create");
+    await waitFor(() => {
+      expect(screen.getByText("Create")).toBeInTheDocument();
+    });
+
+    workspaceMode.set("agent-observe");
+    await waitFor(() => {
+      expect(screen.getByText("Observe")).toBeInTheDocument();
     });
   });
 

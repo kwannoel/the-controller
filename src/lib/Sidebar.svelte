@@ -37,7 +37,9 @@
 
   let modeTitle = $derived(
     currentMode === "agents" ? "Agents" :
-    currentMode === "kanban" ? "Kanban" : "Chat",
+    currentMode === "kanban" ? "Kanban" :
+    currentMode === "agent-create" ? "Create" :
+    currentMode === "agent-observe" ? "Observe" : "Chat",
   );
 
   $effect(() => {

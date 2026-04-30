@@ -12,6 +12,8 @@ export const loadSessions = vi.fn(async () => {});
 export const loadProfiles = vi.fn(async () => {});
 export const loadChats = vi.fn(async () => {});
 export const loadChatLinks = vi.fn(async () => {});
+export const loadChatMetrics = vi.fn(async () => {});
+export const loadAgentTrace = vi.fn(async () => {});
 
 export const daemonStore = $state<any>({
   client: {
@@ -31,6 +33,8 @@ export const daemonStore = $state<any>({
   chatTranscripts: new SvelteMap(),
   chatAgentLinks: new SvelteMap(),
   chatWorkspaceLinks: new SvelteMap(),
+  chatSummaries: new SvelteMap(),
+  agentTraces: new SvelteMap(),
   activeChatId: null,
   reachable: true,
   newChatTarget: null,

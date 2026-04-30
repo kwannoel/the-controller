@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/svelte";
+import { get } from "svelte/store";
+import { workspaceMode } from "../stores";
 
 const openStreamMock = vi.hoisted(() => vi.fn(() => ({ close: vi.fn() })));
 
@@ -7,7 +9,14 @@ vi.mock("../daemon/store.svelte", () => import("./__mocks__/daemonStore.svelte")
 vi.mock("../daemon/stream", () => ({ openStream: openStreamMock }));
 
 import ChatView from "./ChatView.svelte";
-import { daemonStore, readChatTranscript, readEvents, sendChatMessage } from "./__mocks__/daemonStore.svelte";
+import {
+  daemonStore,
+  loadAgentTrace,
+  loadChatMetrics,
+  readChatTranscript,
+  readEvents,
+  sendChatMessage,
+} from "./__mocks__/daemonStore.svelte";
 
 function makeChat(id: string, title: string) {
   return {
@@ -93,9 +102,13 @@ describe("ChatView", () => {
     daemonStore.chatTranscripts.clear();
     daemonStore.chatAgentLinks.clear();
     daemonStore.chatWorkspaceLinks.clear();
+    daemonStore.chatSummaries.clear();
+    daemonStore.agentTraces.clear();
     daemonStore.profiles.clear();
     daemonStore.profiles.set("profile-1", makeProfile());
     daemonStore.activeChatId = null;
+    daemonStore.activeSessionId = null;
+    workspaceMode.set("chat");
     readChatTranscript.mockResolvedValue([]);
     sendChatMessage.mockResolvedValue({
       message: makeChatMessage("msg-1", "chat-1", "hello"),
@@ -233,5 +246,87 @@ describe("ChatView", () => {
 
     expect(await findByText("focused @reviewer")).toBeTruthy();
     expect(queryByText("focused @planner")).toBeNull();
+  });
+
+  it("loads chat metrics and opens an agent trace from the metrics tab", async () => {
+    daemonStore.chats.set("chat-1", makeChat("chat-1", "Chat 1"));
+    daemonStore.chatAgentLinks.set("chat-1", [
+      {
+        id: "agent-link-1",
+        chat_id: "chat-1",
+        session_id: "session-1",
+        profile_id: "profile-1",
+        profile_version_id: "version-1",
+        route_type: "reusable",
+        focused: true,
+        token_source: "@reviewer",
+        created_at: 1,
+      },
+    ]);
+    daemonStore.sessions.set("session-1", {
+      id: "session-1",
+      label: "Reviewer",
+      agent: "codex",
+      cwd: "/repo",
+      args: [],
+      status: "running",
+      native_session_id: null,
+      pid: null,
+      created_at: 1,
+      updated_at: 1,
+      ended_at: null,
+      end_reason: null,
+    });
+    daemonStore.chatSummaries.set("chat-1", {
+      chat_id: "chat-1",
+      turn_count: 1,
+      input_tokens: 0,
+      output_tokens: 20,
+      cache_read_tokens: 0,
+      cache_write_tokens: 0,
+      tool_call_count: 1,
+      outbox_write_count: 1,
+      error_count: 0,
+      updated_at: 1,
+    });
+    daemonStore.agentTraces.set("session-1", [
+      {
+        turn: {
+          id: "turn-1",
+          session_id: "session-1",
+          chat_id: "chat-1",
+          chat_message_id: "message-1",
+          inbox_seq: 1,
+          status: "completed",
+          received_at: 1,
+          activity_started_at: 2,
+          ended_at: 3,
+        },
+        metrics: {
+          turn_id: "turn-1",
+          input_tokens: 0,
+          output_tokens: 20,
+          cache_read_tokens: 0,
+          cache_write_tokens: 0,
+          tool_call_count: 1,
+          outbox_write_count: 1,
+          error_count: 0,
+          updated_at: 4,
+        },
+        events: [],
+      },
+    ]);
+
+    const { findByRole, findAllByText, getByRole } = render(ChatView, { chatId: "chat-1" });
+    await fireEvent.click(await findByRole("tab", { name: "Metrics" }));
+
+    await waitFor(() => expect(loadChatMetrics).toHaveBeenCalledWith("chat-1"));
+    await waitFor(() => expect(loadAgentTrace).toHaveBeenCalledWith("session-1"));
+    expect((await findAllByText("20 tokens")).length).toBeGreaterThan(0);
+
+    await fireEvent.click(getByRole("button", { name: /open reviewer trace/i }));
+
+    expect(daemonStore.activeSessionId).toBe("session-1");
+    expect(get(workspaceMode)).toBe("agent-observe");
   });
 });

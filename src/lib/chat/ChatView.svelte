@@ -1,16 +1,19 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { daemonStore, loadChatLinks } from "../daemon/store.svelte";
+  import { daemonStore, loadAgentTrace, loadChatLinks, loadChatMetrics } from "../daemon/store.svelte";
   import { reduceTranscript, emptyTranscript, type TranscriptState } from "../daemon/reducer";
   import { openStream } from "../daemon/stream";
   import { classifyError } from "../daemon/errors";
   import { showToast } from "$lib/toast";
+  import { focusTarget, workspaceMode } from "../stores";
   import type { ChatAgentLink, ChatTranscriptEntry, EventRecord, RouteToken, RouteTokenKind } from "../daemon/types";
   import Transcript from "./Transcript.svelte";
   import ChatInput from "./ChatInput.svelte";
   import ChatSummaryPane, { type SummaryAgent, type SummaryWorkspace } from "./ChatSummaryPane.svelte";
+  import ChatMetricsTab from "./ChatMetricsTab.svelte";
 
   let { sessionId = null, chatId = null }: { sessionId?: string | null; chatId?: string | null } = $props();
+  type ChatTab = "chat" | "metrics";
   const session = $derived(sessionId ? daemonStore.sessions.get(sessionId) : null);
   const chat = $derived(chatId ? daemonStore.chats.get(chatId) : null);
   const sessionTranscript = $derived(sessionId ? daemonStore.transcripts.get(sessionId) ?? emptyTranscript() : emptyTranscript());
@@ -18,10 +21,15 @@
   const chatTranscript = $derived(chatId ? transcriptFromChatEntries(chatEntries) : emptyTranscript());
   const summaryAgents = $derived(chatId ? summaryAgentsFromChat(chatId, chatEntries) : []);
   const summaryWorkspaces = $derived(chatId ? summaryWorkspacesFromChat(chatId) : []);
+  const chatMetrics = $derived(chatId ? daemonStore.chatSummaries.get(chatId) ?? null : null);
   const hasAssociatedAgent = $derived(summaryAgents.length > 0 || (chatId ? (daemonStore.chatAgentLinks.get(chatId)?.length ?? 0) > 0 : false));
 
   let handle: { close(): void } | null = null;
   let chatLoadGeneration = 0;
+  let metricsLoadGeneration = 0;
+  let activeChatTab: ChatTab = $state("chat");
+  let metricsLoading = $state(false);
+  let metricsError: string | null = $state(null);
 
   function transcriptFromChatEntries(entries: ChatTranscriptEntry[]): TranscriptState {
     let transcript = emptyTranscript();
@@ -168,6 +176,32 @@
     }
   }
 
+  async function loadMetricsFor(nextChatId: string) {
+    if (!daemonStore.client) return;
+    const generation = ++metricsLoadGeneration;
+    metricsLoading = true;
+    metricsError = null;
+    try {
+      await loadChatMetrics(nextChatId);
+      await loadChatLinks(nextChatId);
+      if (generation !== metricsLoadGeneration || chatId !== nextChatId) return;
+      const links = daemonStore.chatAgentLinks.get(nextChatId) ?? [];
+      await Promise.all(links.map((link) => loadAgentTrace(link.session_id)));
+    } catch (e) {
+      if (generation !== metricsLoadGeneration || chatId !== nextChatId) return;
+      metricsError = classifyError(e).message;
+    } finally {
+      if (generation === metricsLoadGeneration) metricsLoading = false;
+    }
+  }
+
+  function openAgentTrace(sessionId: string) {
+    if (!chat) return;
+    daemonStore.activeSessionId = sessionId;
+    workspaceMode.set("agent-observe");
+    focusTarget.set({ type: "agent-observe", sessionId, projectId: chat.project_id });
+  }
+
   $effect(() => {
     if (!chatId || !daemonStore.client) return;
     void loadChatTranscriptFor(chatId);
@@ -175,6 +209,11 @@
       const c = classifyError(e);
       showToast(`Failed to load chat links: ${c.message}`, "error");
     });
+  });
+
+  $effect(() => {
+    if (!chatId || !daemonStore.client || activeChatTab !== "metrics") return;
+    void loadMetricsFor(chatId);
   });
 
   onMount(async () => {
@@ -209,9 +248,42 @@
       <span class="label">{chat.title}</span>
       <span class="agent">chat</span>
     </header>
-    <ChatSummaryPane agents={summaryAgents} workspaces={summaryWorkspaces} />
-    <Transcript transcript={chatTranscript} sessionId={chatId} />
-    <ChatInput {chatId} status="running" statusState={chatTranscript.statusState} {hasAssociatedAgent} />
+    <div class="chat-tabs" role="tablist" aria-label="Chat sections">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeChatTab === "chat"}
+        class:active={activeChatTab === "chat"}
+        onclick={() => (activeChatTab = "chat")}
+      >
+        Chat
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeChatTab === "metrics"}
+        class:active={activeChatTab === "metrics"}
+        onclick={() => (activeChatTab = "metrics")}
+      >
+        Metrics
+      </button>
+    </div>
+    {#if activeChatTab === "metrics"}
+      <ChatMetricsTab
+        metrics={chatMetrics}
+        agentLinks={daemonStore.chatAgentLinks.get(chatId) ?? []}
+        sessions={daemonStore.sessions}
+        profiles={daemonStore.profiles}
+        traces={daemonStore.agentTraces}
+        loading={metricsLoading}
+        error={metricsError}
+        onOpenAgent={openAgentTrace}
+      />
+    {:else}
+      <ChatSummaryPane agents={summaryAgents} workspaces={summaryWorkspaces} />
+      <Transcript transcript={chatTranscript} sessionId={chatId} />
+      <ChatInput {chatId} status="running" statusState={chatTranscript.statusState} {hasAssociatedAgent} />
+    {/if}
   </div>
 {:else if session && sessionId}
   <div class="view">
@@ -231,5 +303,30 @@
   .view { display: flex; flex-direction: column; height: 100%; }
   header { display: flex; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--border-default); }
   header .agent, header .status { font-size: 11px; opacity: 0.7; }
+  .chat-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 12px 0;
+    border-bottom: 1px solid var(--border-default);
+    background: var(--bg-void);
+  }
+  .chat-tabs button {
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-radius: 6px 6px 0 0;
+    padding: 6px 10px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: 12px var(--font-mono);
+    cursor: pointer;
+  }
+  .chat-tabs button.active,
+  .chat-tabs button:hover,
+  .chat-tabs button:focus-visible {
+    border-color: var(--border-default);
+    background: var(--bg-base);
+    color: var(--text-primary);
+    outline: none;
+  }
   .missing { padding: 16px; color: var(--text-secondary); }
 </style>
