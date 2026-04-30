@@ -1,5 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
-use the_controller_lib::daemon_gateway::connect_daemon_websocket;
+use the_controller_lib::daemon_gateway::{
+    connect_daemon_websocket, is_allowed_daemon_stream_origin,
+};
 use tokio::{net::UnixListener, sync::oneshot};
 use tokio_tungstenite::{
     accept_hdr_async,
@@ -36,6 +38,38 @@ fn explicit_stream_routes_can_coexist_with_daemon_catch_all() {
         .route("/api/daemon/chats/{id}/stream", axum::routing::get(ok))
         .route("/api/daemon/sessions/{id}/stream", axum::routing::get(ok))
         .route("/api/daemon/{*path}", axum::routing::get(ok));
+}
+
+#[test]
+fn stream_origin_policy_allows_native_same_origin_and_dev_proxy_origins() {
+    assert!(is_allowed_daemon_stream_origin(
+        None,
+        Some("localhost:3001")
+    ));
+    assert!(is_allowed_daemon_stream_origin(
+        Some("http://localhost:3001"),
+        Some("localhost:3001")
+    ));
+    assert!(is_allowed_daemon_stream_origin(
+        Some("http://127.0.0.1:1420"),
+        Some("127.0.0.1:3001")
+    ));
+}
+
+#[test]
+fn stream_origin_policy_rejects_foreign_or_malformed_origins() {
+    assert!(!is_allowed_daemon_stream_origin(
+        Some("https://evil.example"),
+        Some("localhost:3001")
+    ));
+    assert!(!is_allowed_daemon_stream_origin(
+        Some("not a url"),
+        Some("localhost:3001")
+    ));
+    assert!(!is_allowed_daemon_stream_origin(
+        Some("http://localhost:1420"),
+        None
+    ));
 }
 
 #[tokio::test]

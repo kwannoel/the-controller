@@ -87,4 +87,11 @@ describe("web backend migration audit", () => {
     );
     expect(source).not.toContain("mkdtempSync");
   });
+
+  it("keeps the api dev proxy websocket-capable for daemon streams", () => {
+    const source = read("vite.config.ts");
+    const apiProxy = source.match(/"\/api":\s*\{([\s\S]*?)\n\s*\},\n\s*"\/ws"/);
+
+    expect(apiProxy?.[1] ?? "").toContain("ws: true");
+  });
 });

@@ -15,8 +15,8 @@ use the_controller_lib::{
     auto_worker::AutoWorkerScheduler,
     cli_install, commands, config,
     daemon_gateway::{
-        connect_daemon_websocket, daemon_socket_path, is_daemon_stream_path, normalize_daemon_path,
-        proxy_http_gateway, DaemonGatewayConfig,
+        connect_daemon_websocket, daemon_socket_path, is_allowed_daemon_stream_origin,
+        is_daemon_stream_path, normalize_daemon_path, proxy_http_gateway, DaemonGatewayConfig,
     },
     emitter::WsBroadcastEmitter,
     maintainer::MaintainerScheduler,
@@ -545,11 +545,21 @@ async fn daemon_stream_gateway(
     ws: WebSocketUpgrade,
     AxumState(state): AxumState<Arc<ServerState>>,
     OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
 ) -> Result<Response, (StatusCode, String)> {
     if !is_daemon_stream_path(uri.path()) {
         return Err((
             StatusCode::BAD_REQUEST,
             "path must be a daemon stream route".to_string(),
+        ));
+    }
+
+    let origin = header_to_str(&headers, header::ORIGIN)?;
+    let host = header_to_str(&headers, header::HOST)?;
+    if !is_allowed_daemon_stream_origin(origin, host) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "daemon stream origin forbidden".to_string(),
         ));
     }
 
@@ -579,6 +589,23 @@ async fn daemon_stream_gateway(
     Ok(ws
         .on_upgrade(move |socket| proxy_daemon_stream(socket, daemon_ws))
         .into_response())
+}
+
+fn header_to_str(
+    headers: &HeaderMap,
+    name: header::HeaderName,
+) -> Result<Option<&str>, (StatusCode, String)> {
+    headers
+        .get(name)
+        .map(|value| {
+            value.to_str().map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "daemon stream handshake contains invalid header".to_string(),
+                )
+            })
+        })
+        .transpose()
 }
 
 async fn proxy_daemon_stream(

@@ -53,6 +53,72 @@ pub fn is_daemon_stream_path(path: &str) -> bool {
     )
 }
 
+pub fn is_allowed_daemon_stream_origin(origin: Option<&str>, host: Option<&str>) -> bool {
+    let Some(origin) = origin else {
+        return true;
+    };
+    let Some(request_authority) = host.and_then(parse_authority) else {
+        return false;
+    };
+    let Some(origin) = parse_origin(origin) else {
+        return false;
+    };
+
+    origin.authority == request_authority
+        || is_known_dev_frontend_origin(&origin, &request_authority)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OriginParts {
+    scheme: String,
+    authority: AuthorityParts,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AuthorityParts {
+    host: String,
+    port: Option<u16>,
+}
+
+fn parse_origin(origin: &str) -> Option<OriginParts> {
+    let (scheme, authority) = origin.split_once("://")?;
+    if !matches!(scheme, "http" | "https") {
+        return None;
+    }
+    if authority.is_empty()
+        || authority.contains('/')
+        || authority.contains('?')
+        || authority.contains('#')
+    {
+        return None;
+    }
+
+    Some(OriginParts {
+        scheme: scheme.to_string(),
+        authority: parse_authority(authority)?,
+    })
+}
+
+fn parse_authority(authority: &str) -> Option<AuthorityParts> {
+    let authority: axum::http::uri::Authority = authority.parse().ok()?;
+
+    Some(AuthorityParts {
+        host: authority.host().to_ascii_lowercase(),
+        port: authority.port_u16(),
+    })
+}
+
+fn is_known_dev_frontend_origin(origin: &OriginParts, request_authority: &AuthorityParts) -> bool {
+    origin.scheme == "http"
+        && origin.authority.port == Some(1420)
+        && is_loopback_host(&origin.authority.host)
+        && is_loopback_host(&request_authority.host)
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1" | "::1")
+}
+
 pub async fn connect_daemon_websocket(
     socket_path: &Path,
     daemon_path: &str,

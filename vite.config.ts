@@ -53,7 +53,11 @@ export default defineConfig(async () => ({
       ignored: ["**/server/**"],
     },
     proxy: {
-      "/api": `http://localhost:${axumPort}`,
+      "/api": {
+        target: `http://localhost:${axumPort}`,
+        changeOrigin: true,
+        ws: true,
+      },
       "/ws": {
         target: `ws://localhost:${axumPort}`,
         ws: true,
