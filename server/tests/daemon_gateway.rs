@@ -57,6 +57,15 @@ fn gateway_does_not_expose_daemon_token_route() {
     assert!(!commands_source.contains("pub mod daemon"));
 }
 
+#[test]
+fn daemon_gateway_is_not_exposed_to_permissive_cors() {
+    let main_source = include_str!("../src/main.rs");
+
+    assert!(!main_source.contains("tower_http::cors"));
+    assert!(!main_source.contains("CorsLayer"));
+    assert!(!main_source.contains("CorsLayer::permissive()"));
+}
+
 #[tokio::test]
 async fn gateway_health_uses_unix_socket() {
     let tmp = tempfile::tempdir().unwrap();

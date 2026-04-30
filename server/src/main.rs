@@ -23,7 +23,6 @@ use the_controller_lib::{
 };
 
 use tokio::sync::broadcast;
-use tower_http::cors::CorsLayer;
 
 struct ServerState {
     app: Arc<AppState>,
@@ -135,7 +134,6 @@ async fn main() {
         .route("/api/unstage_session", post(unstage_session))
         .route("/ws", get(ws_upgrade))
         .fallback(fallback_handler)
-        .layer(CorsLayer::permissive())
         .with_state(state);
 
     let port: u16 = match std::env::var("PORT") {
