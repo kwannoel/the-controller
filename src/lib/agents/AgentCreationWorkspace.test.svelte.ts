@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/svelte";
 import userEvent from "@testing-library/user-event";
 import AgentCreationWorkspace from "./AgentCreationWorkspace.svelte";
 import { daemonStore } from "../daemon/store.svelte";
@@ -81,6 +81,31 @@ describe("AgentCreationWorkspace", () => {
 
     expect(await screen.findByText("Unsaved draft")).toBeTruthy();
     expect(screen.getByLabelText("Handle")).toHaveValue("");
+  });
+
+  it("filters active and archived profile rows into separate views", async () => {
+    daemonStore.profiles.set("active-profile", makeProfile({
+      id: "active-profile",
+      name: "Active Reviewer",
+      handle: "active-reviewer",
+    }));
+    daemonStore.profiles.set("archived-profile", makeProfile({
+      id: "archived-profile",
+      name: "Archived Reviewer",
+      handle: "archived-reviewer",
+      archived_at: 42,
+    }));
+
+    render(AgentCreationWorkspace);
+
+    const list = screen.getByRole("listbox", { name: "Profiles" });
+    expect(within(list).getByText("Active Reviewer")).toBeTruthy();
+    expect(within(list).queryByText("Archived Reviewer")).toBeNull();
+
+    await fireEvent.click(screen.getByRole("button", { name: "Archived" }));
+
+    expect(within(list).queryByText("Active Reviewer")).toBeNull();
+    expect(within(list).getByText("Archived Reviewer")).toBeTruthy();
   });
 
   it("disables save when the handle is invalid", async () => {

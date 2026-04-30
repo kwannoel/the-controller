@@ -44,7 +44,7 @@
 
   let filteredProfiles = $derived(
     profiles.filter((profile) => {
-      if (!showArchived && profile.archived_at !== null) return false;
+      if (showArchived !== (profile.archived_at !== null)) return false;
       const haystack = [
         profile.name,
         profile.handle,
