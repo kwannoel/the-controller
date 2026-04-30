@@ -27,6 +27,16 @@ function pressKey(key: string) {
   window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("ChatWorkspace", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -102,5 +112,37 @@ describe("ChatWorkspace", () => {
     await waitFor(() => expect((daemonStore as any).activeChatId).toBe("chat-1"));
     await waitFor(() => expect(document.activeElement).toBe(getByRole("textbox")));
     expect(queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not replay a second new chat request after the first create resolves", async () => {
+    const { daemonStore } = await import("../daemon/store.svelte");
+    const firstCreate = deferred<any>();
+    const createChat = vi.fn(() => firstCreate.promise);
+    (daemonStore as any).client.createChat = createChat;
+    projects.set([makeProject("proj-1", "Controller", "/tmp/controller")]);
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+
+    const ChatWorkspace = (await import("./ChatWorkspace.svelte")).default;
+    const HotkeyManager = (await import("../HotkeyManager.svelte")).default;
+    render(ChatWorkspace);
+    render(HotkeyManager);
+
+    pressKey("n");
+    await waitFor(() => expect(createChat).toHaveBeenCalledTimes(1));
+    pressKey("n");
+    expect(createChat).toHaveBeenCalledTimes(1);
+
+    firstCreate.resolve({
+      id: "chat-1",
+      project_id: "proj-1",
+      title: "New chat",
+      created_at: 1,
+      updated_at: 1,
+      deleted_at: null,
+    });
+
+    await waitFor(() => expect((daemonStore as any).activeChatId).toBe("chat-1"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(createChat).toHaveBeenCalledTimes(1);
   });
 });

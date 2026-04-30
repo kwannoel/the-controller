@@ -16,6 +16,7 @@
   const chatTranscript = $derived(chatId ? transcriptFromChatEntries(daemonStore.chatTranscripts.get(chatId) ?? []) : emptyTranscript());
 
   let handle: { close(): void } | null = null;
+  let chatLoadGeneration = 0;
 
   function transcriptFromChatEntries(entries: ChatTranscriptEntry[]): TranscriptState {
     let transcript = emptyTranscript();
@@ -44,26 +45,57 @@
     };
   }
 
+  function chatTranscriptEntryKey(entry: ChatTranscriptEntry): string {
+    if (entry.type === "user_message") return `message:${entry.message.id}`;
+    const event = entry.event;
+    return `event:${event.chat_id ?? ""}:${event.session_id}:${event.seq}:${event.channel}:${event.kind}`;
+  }
+
+  function mergeChatTranscriptEntries(
+    loaded: ChatTranscriptEntry[],
+    current: ChatTranscriptEntry[],
+  ): ChatTranscriptEntry[] {
+    const seen = new Set<string>();
+    const merged: ChatTranscriptEntry[] = [];
+    for (const entry of [...loaded, ...current]) {
+      const key = chatTranscriptEntryKey(entry);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(entry);
+    }
+    return merged;
+  }
+
+  async function loadChatTranscriptFor(nextChatId: string) {
+    if (!daemonStore.client) return;
+    const generation = ++chatLoadGeneration;
+    try {
+      const entries = await daemonStore.client.readChatTranscript(nextChatId);
+      if (generation !== chatLoadGeneration || chatId !== nextChatId) return;
+      const current = daemonStore.chatTranscripts.get(nextChatId) ?? [];
+      daemonStore.chatTranscripts.set(nextChatId, mergeChatTranscriptEntries(entries, current));
+    } catch (e) {
+      if (generation !== chatLoadGeneration || chatId !== nextChatId) return;
+      const c = classifyError(e);
+      if (c.kind === "not_found") {
+        daemonStore.chats.delete(nextChatId);
+        if (daemonStore.activeChatId === nextChatId) {
+          daemonStore.activeChatId = null;
+        }
+        showToast("Chat no longer exists.", "error");
+      } else {
+        showToast(`Failed to load chat: ${c.message}`, "error");
+      }
+    }
+  }
+
+  $effect(() => {
+    if (!chatId || !daemonStore.client) return;
+    void loadChatTranscriptFor(chatId);
+  });
+
   onMount(async () => {
     if (!daemonStore.client) return;
-    if (chatId) {
-      try {
-        const entries = await daemonStore.client.readChatTranscript(chatId);
-        daemonStore.chatTranscripts.set(chatId, entries);
-      } catch (e) {
-        const c = classifyError(e);
-        if (c.kind === "not_found") {
-          daemonStore.chats.delete(chatId);
-          if (daemonStore.activeChatId === chatId) {
-            daemonStore.activeChatId = null;
-          }
-          showToast("Chat no longer exists.", "error");
-        } else {
-          showToast(`Failed to load chat: ${c.message}`, "error");
-        }
-      }
-      return;
-    }
     if (!sessionId) return;
     try {
       const events = await daemonStore.client.readEvents(sessionId, 0);

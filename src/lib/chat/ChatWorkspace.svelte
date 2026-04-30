@@ -26,7 +26,11 @@
   }
 
   async function createComposerChat(target: { projectId: string; projectCwd: string }) {
-    if (!daemonStore.client || creatingProjectId) return;
+    if (creatingProjectId) {
+      daemonStore.newChatTarget = null;
+      return;
+    }
+    if (!daemonStore.client) return;
     creatingProjectId = target.projectId;
     createError = null;
     daemonStore.newChatTarget = null;
