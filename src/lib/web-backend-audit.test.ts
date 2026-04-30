@@ -72,4 +72,15 @@ describe("web backend migration audit", () => {
 
     expect(stale).toEqual([]);
   });
+
+  it("keeps daemon-reachable e2e behind an explicit shared state-dir harness", () => {
+    const source = read("e2e/specs/chat-mode.spec.ts");
+
+    expect(source).toContain("TCD_E2E_DAEMON_REACHABLE");
+    expect(source).toContain("TCD_STATE_DIR");
+    expect(source).not.toMatch(
+      /test\.skip\(\s*!\s*daemonBinariesPresent[\s,]/,
+    );
+    expect(source).not.toContain("mkdtempSync");
+  });
 });

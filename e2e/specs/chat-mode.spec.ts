@@ -1,7 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
 
 // User story:
@@ -13,10 +11,11 @@ import { spawn, type ChildProcess } from "node:child_process";
 // Outcome: Empty state is shown when daemon is unreachable. After the daemon
 //          is started, retrying transitions out of the empty state.
 //
-// NOTE: The daemon-reachable leg of this test is skipped by default because
-// it requires the daemon & fake_agent binaries to be built at the canonical
-// paths below. Browser code reaches the daemon only through same-origin
-// `/api/daemon/...` routes; daemon token and socket details stay server-side.
+// NOTE: The daemon-reachable leg is skipped by default. It may run only when
+// the daemon binaries exist and the caller opts into a shared harness with
+// TCD_E2E_DAEMON_REACHABLE=1 and TCD_STATE_DIR=<shared-dir>. Playwright starts
+// the Controller before this spec runs, so the Controller and daemon must
+// inherit the same state dir for `/api/daemon/...` to target the same UDS.
 
 const DAEMON_REPO = "/Users/noelkwan/projects/the-controller-daemon";
 const DAEMON_BIN = `${DAEMON_REPO}/target/release/the-controller-daemon`;
@@ -57,26 +56,29 @@ test("chat mode shows DaemonEmptyState when daemon is unreachable", async ({ pag
 });
 
 // ---------------------------------------------------------------------------
-// Daemon-reachable leg — SKIPPED unless the daemon binaries are built.
+// Daemon-reachable leg — SKIPPED unless an explicit shared harness is present.
 // ---------------------------------------------------------------------------
 const daemonBinariesPresent = existsSync(DAEMON_BIN) && existsSync(FAKE_AGENT_BIN);
+const daemonReachableHarnessEnabled = process.env.TCD_E2E_DAEMON_REACHABLE === "1";
+const sharedStateDir = process.env.TCD_STATE_DIR;
+const daemonReachableEnabled =
+  daemonBinariesPresent && daemonReachableHarnessEnabled && Boolean(sharedStateDir);
 
 test.describe("chat mode with daemon reachable", () => {
   test.skip(
-    !daemonBinariesPresent,
-    `daemon binaries not built at ${DAEMON_BIN} / ${FAKE_AGENT_BIN}. ` +
-      "Run scripts/chat-integration-daemon.sh build to produce them.",
+    !daemonReachableEnabled,
+    "daemon reachable e2e requires binaries plus " +
+      "TCD_E2E_DAEMON_REACHABLE=1 and TCD_STATE_DIR shared with the Controller. " +
+      "Task 21 owns the full daemon harness.",
   );
 
   let daemon: ChildProcess | null = null;
-  let stateDir: string | null = null;
 
   test.beforeAll(async () => {
-    stateDir = mkdtempSync(join(tmpdir(), "tcd-e2e-"));
     daemon = spawn(DAEMON_BIN, [], {
       env: {
         ...process.env,
-        TCD_STATE_DIR: stateDir,
+        TCD_STATE_DIR: sharedStateDir,
         TCD_AGENT_CLAUDE_BINARY: FAKE_AGENT_BIN,
       },
       stdio: "pipe",
@@ -90,13 +92,6 @@ test.describe("chat mode with daemon reachable", () => {
       daemon.kill("SIGTERM");
       await new Promise((r) => setTimeout(r, 300));
       if (!daemon.killed) daemon.kill("SIGKILL");
-    }
-    if (stateDir) {
-      try {
-        rmSync(stateDir, { recursive: true, force: true });
-      } catch {
-        // best effort
-      }
     }
   });
 
