@@ -13,7 +13,10 @@ use std::sync::Arc;
 use the_controller_lib::{
     auto_worker::AutoWorkerScheduler,
     cli_install, commands, config,
-    daemon_gateway::{daemon_socket_path, normalize_daemon_path, DaemonGatewayConfig},
+    daemon_gateway::{
+        daemon_gateway_placeholder_response, daemon_socket_path, normalize_daemon_path,
+        DaemonGatewayConfig,
+    },
     emitter::WsBroadcastEmitter,
     maintainer::MaintainerScheduler,
     shell_env, skills,
@@ -502,11 +505,10 @@ async fn daemon_gateway(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let _socket_path = daemon_socket_path(&DaemonGatewayConfig { state_dir });
+    let response = daemon_gateway_placeholder_response(&daemon_path)
+        .map_err(|e| (StatusCode::NOT_IMPLEMENTED, e))?;
 
-    Ok(Json(serde_json::json!({
-        "path": daemon_path,
-        "status": "gateway-ready"
-    })))
+    Ok(Json(response))
 }
 
 async fn log_frontend_error(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
