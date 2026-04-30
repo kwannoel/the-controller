@@ -4,6 +4,8 @@ use axum::{
     body::Bytes,
     http::{Method, StatusCode},
 };
+use tokio::net::UnixStream;
+use tokio_tungstenite::{client_async, WebSocketStream};
 
 #[derive(Debug, Clone)]
 pub struct DaemonGatewayConfig {
@@ -37,6 +39,33 @@ pub fn normalize_daemon_path(path: &str) -> Result<String, String> {
     } else {
         rest.to_string()
     })
+}
+
+pub fn is_daemon_stream_path(path: &str) -> bool {
+    let Ok(daemon_path) = normalize_daemon_path(path) else {
+        return false;
+    };
+    let segments: Vec<_> = daemon_path.trim_start_matches('/').split('/').collect();
+
+    matches!(
+        segments.as_slice(),
+        ["chats", id, "stream"] | ["sessions", id, "stream"] if !id.is_empty()
+    )
+}
+
+pub async fn connect_daemon_websocket(
+    socket_path: &Path,
+    daemon_path: &str,
+) -> Result<WebSocketStream<UnixStream>, String> {
+    let stream = UnixStream::connect(socket_path)
+        .await
+        .map_err(|e| format!("connect to daemon websocket: {e}"))?;
+    let url = format!("ws://daemon.local{daemon_path}");
+    let (ws, _response) = client_async(url, stream)
+        .await
+        .map_err(|e| format!("open daemon websocket: {e}"))?;
+
+    Ok(ws)
 }
 
 pub async fn forward_http(

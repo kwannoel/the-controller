@@ -25,6 +25,7 @@ libc = "0.2"
 reqwest = { version = "0.12", features = ["json", "stream"] }
 futures-util = "0.3"
 axum = { version = "0.8", features = ["ws"] }
+tokio-tungstenite = "0.28"
 
 [[bin]]
 name = "the-controller-server"

@@ -14,7 +14,10 @@ use std::sync::Arc;
 use the_controller_lib::{
     auto_worker::AutoWorkerScheduler,
     cli_install, commands, config,
-    daemon_gateway::{daemon_socket_path, proxy_http_gateway, DaemonGatewayConfig},
+    daemon_gateway::{
+        connect_daemon_websocket, daemon_socket_path, is_daemon_stream_path, normalize_daemon_path,
+        proxy_http_gateway, DaemonGatewayConfig,
+    },
     emitter::WsBroadcastEmitter,
     maintainer::MaintainerScheduler,
     shell_env, skills,
@@ -22,7 +25,12 @@ use the_controller_lib::{
     status_socket,
 };
 
+use futures_util::{SinkExt, StreamExt};
 use tokio::sync::broadcast;
+use tokio_tungstenite::tungstenite::{
+    protocol::{frame::coding::CloseCode, CloseFrame as TungsteniteCloseFrame},
+    Message as TungsteniteMessage,
+};
 
 struct ServerState {
     app: Arc<AppState>,
@@ -64,6 +72,11 @@ async fn main() {
         .route("/api/create_session", post(create_session))
         .route("/api/list_archived_projects", post(list_archived_projects))
         .route("/api/merge_session_branch", post(merge_session_branch))
+        .route("/api/daemon/chats/{id}/stream", get(daemon_stream_gateway))
+        .route(
+            "/api/daemon/sessions/{id}/stream",
+            get(daemon_stream_gateway),
+        )
         .route(
             "/api/daemon/{*path}",
             get(daemon_gateway)
@@ -526,6 +539,129 @@ async fn daemon_gateway(
     response
         .body(axum::body::Body::from(daemon_response.body))
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+async fn daemon_stream_gateway(
+    ws: WebSocketUpgrade,
+    AxumState(state): AxumState<Arc<ServerState>>,
+    OriginalUri(uri): OriginalUri,
+) -> Result<Response, (StatusCode, String)> {
+    if !is_daemon_stream_path(uri.path()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "path must be a daemon stream route".to_string(),
+        ));
+    }
+
+    let state_dir = state
+        .app
+        .storage
+        .lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let socket_path = daemon_socket_path(&DaemonGatewayConfig { state_dir });
+    let mut daemon_path =
+        normalize_daemon_path(uri.path()).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    if let Some(query) = uri.query() {
+        daemon_path.push('?');
+        daemon_path.push_str(query);
+    }
+
+    let daemon_ws = connect_daemon_websocket(&socket_path, &daemon_path)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::BAD_GATEWAY,
+                "daemon gateway unavailable".to_string(),
+            )
+        })?;
+
+    Ok(ws
+        .on_upgrade(move |socket| proxy_daemon_stream(socket, daemon_ws))
+        .into_response())
+}
+
+async fn proxy_daemon_stream(
+    browser_ws: WebSocket,
+    daemon_ws: tokio_tungstenite::WebSocketStream<tokio::net::UnixStream>,
+) {
+    let (mut browser_tx, mut browser_rx) = browser_ws.split();
+    let (mut daemon_tx, mut daemon_rx) = daemon_ws.split();
+
+    let browser_to_daemon = async {
+        while let Some(result) = browser_rx.next().await {
+            let Ok(message) = result else {
+                break;
+            };
+            let is_close = matches!(message, Message::Close(_));
+            if daemon_tx
+                .send(axum_to_tungstenite_message(message))
+                .await
+                .is_err()
+            {
+                break;
+            }
+            if is_close {
+                break;
+            }
+        }
+        let _ = daemon_tx.close().await;
+    };
+
+    let daemon_to_browser = async {
+        while let Some(result) = daemon_rx.next().await {
+            let Ok(message) = result else {
+                break;
+            };
+            let is_close = matches!(message, TungsteniteMessage::Close(_));
+            let Some(message) = tungstenite_to_axum_message(message) else {
+                continue;
+            };
+            if browser_tx.send(message).await.is_err() {
+                break;
+            }
+            if is_close {
+                break;
+            }
+        }
+        let _ = browser_tx.close().await;
+    };
+
+    tokio::select! {
+        _ = browser_to_daemon => {}
+        _ = daemon_to_browser => {}
+    }
+}
+
+fn axum_to_tungstenite_message(message: Message) -> TungsteniteMessage {
+    match message {
+        Message::Text(text) => TungsteniteMessage::Text(text.to_string().into()),
+        Message::Binary(bytes) => TungsteniteMessage::Binary(bytes),
+        Message::Ping(bytes) => TungsteniteMessage::Ping(bytes),
+        Message::Pong(bytes) => TungsteniteMessage::Pong(bytes),
+        Message::Close(frame) => {
+            TungsteniteMessage::Close(frame.map(|frame| TungsteniteCloseFrame {
+                code: CloseCode::from(frame.code),
+                reason: frame.reason.to_string().into(),
+            }))
+        }
+    }
+}
+
+fn tungstenite_to_axum_message(message: TungsteniteMessage) -> Option<Message> {
+    match message {
+        TungsteniteMessage::Text(text) => Some(Message::Text(text.to_string().into())),
+        TungsteniteMessage::Binary(bytes) => Some(Message::Binary(bytes)),
+        TungsteniteMessage::Ping(bytes) => Some(Message::Ping(bytes)),
+        TungsteniteMessage::Pong(bytes) => Some(Message::Pong(bytes)),
+        TungsteniteMessage::Close(frame) => Some(Message::Close(frame.map(|frame| {
+            axum::extract::ws::CloseFrame {
+                code: frame.code.into(),
+                reason: frame.reason.to_string().into(),
+            }
+        }))),
+        TungsteniteMessage::Frame(_) => None,
+    }
 }
 
 async fn log_frontend_error(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
