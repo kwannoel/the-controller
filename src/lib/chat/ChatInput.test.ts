@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/svelte";
 import { get } from "svelte/store";
 import { focusTarget, hotkeyAction } from "$lib/stores";
+import type { AgentProfile } from "../daemon/types";
 
 const sendMessage = vi.hoisted(() => vi.fn(async () => ({ seq: 1 })));
 const sendChatMessage = vi.hoisted(() => vi.fn(async () => ({
@@ -13,23 +14,47 @@ const sendChatMessage = vi.hoisted(() => vi.fn(async () => ({
     token_spans: [],
     created_at: 1,
   },
-  turns: [],
+    turns: [],
 })));
+const profiles = vi.hoisted(() => new Map());
 vi.mock("../daemon/store.svelte", () => ({
   daemonStore: {
     client: { sendMessage, sendChatMessage },
     activeChatId: "chat-1",
     chats: new Map([["chat-1", { id: "chat-1", project_id: "proj-1", title: "New chat" }]]),
     chatTranscripts: new Map(),
+    profiles,
   } as any,
 }));
 
 import ChatInput from "./ChatInput.svelte";
 
+function makeProfile(overrides: Partial<AgentProfile> = {}): AgentProfile {
+  return {
+    id: "profile-1",
+    handle: "reviewer",
+    name: "Reviewer",
+    description: "Reviews changes",
+    runtime: "codex",
+    skills: [],
+    prompt: "Review changes.",
+    archived_at: null,
+    avatar_asset_path: null,
+    avatar_status: "pending",
+    avatar_error: null,
+    active_version_id: "version-1",
+    created_at: 1,
+    updated_at: 1,
+    ...overrides,
+  };
+}
+
 describe("ChatInput", () => {
   beforeEach(() => {
     sendMessage.mockClear();
     sendChatMessage.mockClear();
+    profiles.clear();
+    profiles.set("profile-1", makeProfile());
     hotkeyAction.set(null);
     focusTarget.set(null);
   });
@@ -43,12 +68,29 @@ describe("ChatInput", () => {
     expect(ta.value).toBe("");
   });
 
-  it("Cmd+Enter sends chat messages when mounted with a chat id", async () => {
+  it("Cmd+Enter validates chat messages without a selected agent token", async () => {
     const { getByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
     const ta = getByRole("textbox") as HTMLTextAreaElement;
     await fireEvent.input(ta, { target: { value: "hello" } });
     await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
-    expect(sendChatMessage).toHaveBeenCalledWith("chat-1", { body: "hello", tokens: [] });
+    expect(sendChatMessage).not.toHaveBeenCalled();
+    expect(getByRole("alert").textContent).toContain("agent");
+    expect(ta.value).toBe("hello");
+  });
+
+  it("selects a route token suggestion and sends it with an idempotency id", async () => {
+    const { getByRole, findByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+
+    await fireEvent.input(ta, { target: { value: "ask %rev" } });
+    await fireEvent.click(await findByRole("option", { name: /%reviewer/i }));
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+
+    expect(sendChatMessage).toHaveBeenCalledWith("chat-1", {
+      body: "ask %reviewer",
+      tokens: [{ kind: "shadow", handle: "reviewer", start: 4, end: 13 }],
+      idempotency_id: expect.any(String),
+    });
     expect(ta.value).toBe("");
   });
 

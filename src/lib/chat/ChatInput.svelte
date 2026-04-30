@@ -1,9 +1,17 @@
 <script lang="ts">
+  import { tick } from "svelte";
   import { daemonStore } from "../daemon/store.svelte";
   import { classifyError } from "../daemon/errors";
   import { showToast } from "$lib/toast";
   import { focusTarget, hotkeyAction } from "$lib/stores";
-  import type { RouteToken, SessionStatus, StatusState } from "../daemon/types";
+  import type { AgentProfile, RouteToken, SessionStatus, StatusState } from "../daemon/types";
+  import {
+    extractRouteTokenQuery,
+    insertRouteToken,
+    routeTokenForProfile,
+    type RouteTokenQuery,
+  } from "./chat-routing";
+  import AgentTokenMenu, { type AgentTokenSelection } from "./AgentTokenMenu.svelte";
 
   let { sessionId = null, chatId = null, status, statusState }: {
     sessionId?: string | null;
@@ -17,8 +25,13 @@
   let sessionEndedBanner = $state(false);
   let textareaEl: HTMLTextAreaElement | undefined = $state();
   let routeTokens = $state<RouteToken[]>([]);
+  let tokenQuery = $state<RouteTokenQuery | null>(null);
+  let localError = $state<string | null>(null);
 
   const disabled = $derived(status === "ended" || status === "failed" || sessionEndedBanner);
+  const activeProfiles = $derived(
+    [...(daemonStore.profiles?.values() ?? [])].filter((profile: AgentProfile) => profile.archived_at === null)
+  );
   const canInterrupt = $derived(
     statusState === "working" ||
     statusState === "starting" ||
@@ -28,13 +41,23 @@
   async function sendText() {
     const text = value.trim();
     if (!text || busy || disabled || !daemonStore.client) return;
+    if (chatId && routeTokens.length === 0) {
+      localError = "Select an agent with @ or % before sending.";
+      return;
+    }
     busy = true;
     try {
       if (chatId) {
-        const res = await daemonStore.client.sendChatMessage(chatId, { body: text, tokens: routeTokens });
+        const res = await daemonStore.client.sendChatMessage(chatId, {
+          body: text,
+          tokens: routeTokens,
+          idempotency_id: crypto.randomUUID(),
+        });
         const prev = daemonStore.chatTranscripts.get(chatId) ?? [];
         daemonStore.chatTranscripts.set(chatId, [...prev, { type: "user_message", message: res.message }]);
         routeTokens = [];
+        tokenQuery = null;
+        localError = null;
       } else if (sessionId) {
         await daemonStore.client.sendMessage(sessionId, { kind: "user_text", text });
       }
@@ -72,6 +95,36 @@
     return true;
   }
 
+  function updateTokenQuery(text: string, cursor: number) {
+    tokenQuery = chatId ? extractRouteTokenQuery(text, cursor) : null;
+  }
+
+  function handleInput(e: Event) {
+    const target = e.currentTarget as HTMLTextAreaElement;
+    value = target.value;
+    localError = null;
+    updateTokenQuery(target.value, target.selectionStart);
+  }
+
+  function handleSelectToken(selection: AgentTokenSelection) {
+    if (!tokenQuery) return;
+    const inserted = insertRouteToken(value, tokenQuery, selection.handle);
+    const nextToken = routeTokenForProfile(
+      { handle: selection.handle },
+      selection.kind,
+      inserted.token.start,
+      inserted.token.end,
+    );
+    value = inserted.text;
+    routeTokens = [...routeTokens, nextToken];
+    tokenQuery = null;
+    localError = null;
+    void tick().then(() => {
+      textareaEl?.focus();
+      textareaEl?.setSelectionRange(inserted.cursor, inserted.cursor);
+    });
+  }
+
   $effect(() => {
     const unsub = hotkeyAction.subscribe((action) => {
       if (action?.type === "focus-chat-input" && textareaEl && !disabled) {
@@ -93,6 +146,11 @@
         e.preventDefault();
         void interrupt();
       } else {
+        if (tokenQuery) {
+          e.preventDefault();
+          tokenQuery = null;
+          return;
+        }
         e.preventDefault();
         if (!focusActiveChatRow()) {
           (e.currentTarget as HTMLTextAreaElement).blur();
@@ -106,10 +164,25 @@
   {#if sessionEndedBanner}
     <div class="banner" role="alert">Session ended. Start a new one.</div>
   {/if}
+  {#if localError}
+    <div class="banner" role="alert">{localError}</div>
+  {/if}
+  {#if tokenQuery}
+    <AgentTokenMenu
+      kind={tokenQuery.kind}
+      query={tokenQuery.query}
+      profiles={activeProfiles}
+      onSelect={handleSelectToken}
+      onClose={() => tokenQuery = null}
+    />
+  {/if}
   <textarea
     aria-label="Chat input"
     bind:this={textareaEl}
-    bind:value
+    value={value}
+    oninput={handleInput}
+    onkeyup={(e) => updateTokenQuery(value, (e.currentTarget as HTMLTextAreaElement).selectionStart)}
+    onclick={(e) => updateTokenQuery(value, (e.currentTarget as HTMLTextAreaElement).selectionStart)}
     onkeydown={handleKeyDown}
     {disabled}
     placeholder={disabled ? "Session ended." : "Type a message… (⌘⏎ to send, ⇧Esc to interrupt)"}
@@ -118,7 +191,7 @@
 </div>
 
 <style>
-  .input { padding: 8px 12px; border-top: 1px solid var(--border-default); }
+  .input { position: relative; padding: 8px 12px; border-top: 1px solid var(--border-default); }
   .banner {
     margin-bottom: 8px;
     padding: 6px 8px;

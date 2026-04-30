@@ -9,6 +9,7 @@ export const sendChatMessage = vi.fn();
 export const bootstrap = vi.fn(async () => {});
 export const pingDaemon = vi.fn(async () => {});
 export const loadSessions = vi.fn(async () => {});
+export const loadProfiles = vi.fn(async () => {});
 export const loadChats = vi.fn(async () => {});
 
 export const daemonStore = $state<any>({
@@ -24,6 +25,7 @@ export const daemonStore = $state<any>({
   sessions: new SvelteMap([["s1", { id: "s1", label: "Chat 1", agent: "claude", status: "running" }]]),
   transcripts: new SvelteMap(),
   activeSessionId: "s1",
+  profiles: new SvelteMap(),
   chats: new SvelteMap(),
   chatTranscripts: new SvelteMap(),
   activeChatId: null,

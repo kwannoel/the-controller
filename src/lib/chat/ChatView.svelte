@@ -8,6 +8,7 @@
   import type { ChatTranscriptEntry, EventRecord } from "../daemon/types";
   import Transcript from "./Transcript.svelte";
   import ChatInput from "./ChatInput.svelte";
+  import ChatSummaryPane from "./ChatSummaryPane.svelte";
 
   let { sessionId = null, chatId = null }: { sessionId?: string | null; chatId?: string | null } = $props();
   const session = $derived(sessionId ? daemonStore.sessions.get(sessionId) : null);
@@ -126,6 +127,7 @@
       <span class="label">{chat.title}</span>
       <span class="agent">chat</span>
     </header>
+    <ChatSummaryPane agents={[]} workspaces={[]} />
     <Transcript transcript={chatTranscript} sessionId={chatId} />
     <ChatInput {chatId} status="running" statusState={chatTranscript.statusState} />
   </div>

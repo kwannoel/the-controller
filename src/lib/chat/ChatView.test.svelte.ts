@@ -31,6 +31,25 @@ function makeChatMessage(id: string, chatId: string, body: string) {
   };
 }
 
+function makeProfile() {
+  return {
+    id: "profile-1",
+    handle: "reviewer",
+    name: "Reviewer",
+    description: "Reviews changes",
+    runtime: "codex",
+    skills: [],
+    prompt: "Review changes.",
+    archived_at: null,
+    avatar_asset_path: null,
+    avatar_status: "pending",
+    avatar_error: null,
+    active_version_id: "version-1",
+    created_at: 1,
+    updated_at: 1,
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -57,6 +76,8 @@ describe("ChatView", () => {
     daemonStore.activeSessionId = "s1";
     daemonStore.chats.clear();
     daemonStore.chatTranscripts.clear();
+    daemonStore.profiles.clear();
+    daemonStore.profiles.set("profile-1", makeProfile());
     daemonStore.activeChatId = null;
     readChatTranscript.mockResolvedValue([]);
     sendChatMessage.mockResolvedValue({
@@ -96,21 +117,24 @@ describe("ChatView", () => {
     const initialRead = deferred<any[]>();
     readChatTranscript.mockReturnValueOnce(initialRead.promise);
     sendChatMessage.mockResolvedValueOnce({
-      message: makeChatMessage("msg-optimistic", "chat-1", "optimistic hello"),
+      message: makeChatMessage("msg-optimistic", "chat-1", "ask %reviewer optimistic hello"),
       turns: [],
     });
     daemonStore.chats.set("chat-1", makeChat("chat-1", "Chat 1"));
 
-    const { findByText, getByRole } = render(ChatView, { chatId: "chat-1" });
+    const { findByRole, findByText, getByRole } = render(ChatView, { chatId: "chat-1" });
     const ta = getByRole("textbox") as HTMLTextAreaElement;
 
-    await fireEvent.input(ta, { target: { value: "optimistic hello" } });
+    await fireEvent.input(ta, { target: { value: "ask %rev optimistic hello" } });
+    ta.setSelectionRange(8, 8);
+    await fireEvent.keyUp(ta, { key: "v" });
+    await fireEvent.click(await findByRole("option", { name: /%reviewer/i }));
     await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
-    expect(await findByText("optimistic hello")).toBeTruthy();
+    expect(await findByText("ask %reviewer optimistic hello")).toBeTruthy();
 
     initialRead.resolve([]);
 
     await waitFor(() => expect(readChatTranscript).toHaveBeenCalledWith("chat-1"));
-    expect(await findByText("optimistic hello")).toBeTruthy();
+    expect(await findByText("ask %reviewer optimistic hello")).toBeTruthy();
   });
 });

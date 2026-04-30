@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { daemonStore, bootstrap, pingDaemon, loadChats, loadSessions } from "../daemon/store.svelte";
+  import { daemonStore, bootstrap, pingDaemon, loadChats, loadProfiles, loadSessions } from "../daemon/store.svelte";
   import { dispatchHotkeyAction, focusTarget } from "$lib/stores";
   import { showToast } from "$lib/toast";
   import DaemonEmptyState from "./DaemonEmptyState.svelte";
@@ -13,6 +13,7 @@
     await bootstrap();
     if (daemonStore.reachable) {
       await loadSessions();
+      await loadProfiles();
       await loadChats();
     }
   });
@@ -21,6 +22,7 @@
     await pingDaemon();
     if (daemonStore.reachable) {
       await loadSessions();
+      await loadProfiles();
       await loadChats();
     }
   }
