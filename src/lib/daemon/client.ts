@@ -1,4 +1,18 @@
-import type { DaemonSession, EventRecord, Agent, Channel } from "./types";
+import type {
+  Agent,
+  AgentProfile,
+  AgentTurn,
+  AgentTurnTrace,
+  Channel,
+  Chat,
+  ChatMetrics,
+  ChatMessage,
+  ChatTranscriptEntry,
+  ChatWorkspaceLink,
+  DaemonSession,
+  EventRecord,
+  SendChatMessageRequest,
+} from "./types";
 
 export class DaemonHttpError extends Error {
   name = "DaemonHttpError";
@@ -20,6 +34,38 @@ export interface SendMessageRequest {
   call_id?: string;
   approved?: boolean;
   reason?: string;
+}
+
+export interface SaveProfileRequest {
+  id?: string;
+  handle?: string;
+  name?: string;
+  description?: string | null;
+  runtime?: Agent;
+  model?: string | null;
+  skills?: string[];
+  prompt?: string;
+  default_workspace_behavior?: string | null;
+  outbox_instructions?: string | null;
+}
+
+export interface TestProfileInChatRequest {
+  chat_id?: string;
+  body?: string;
+}
+
+export interface CreateChatRequest {
+  project_id: string;
+  title: string;
+}
+
+export interface AddWorkspaceLinkRequest {
+  project_id: string;
+  workspace_id: string;
+  path: string;
+  label: string;
+  branch?: string | null;
+  focused: boolean;
 }
 
 export class DaemonClient {
@@ -73,5 +119,57 @@ export class DaemonClient {
     q.set("since", String(since));
     if (channels && channels.length) q.set("channels", channels.join(","));
     return `${base}/sessions/${id}/stream?${q.toString()}`;
+  }
+
+  listProfiles(): Promise<AgentProfile[]> {
+    return this.call("/profiles");
+  }
+  saveProfile(req: SaveProfileRequest): Promise<AgentProfile> {
+    if (req.id) {
+      return this.call(`/profiles/${req.id}`, { method: "PATCH", body: JSON.stringify(req) });
+    }
+    return this.call("/profiles", { method: "POST", body: JSON.stringify(req) });
+  }
+  archiveProfile(id: string): Promise<AgentProfile> {
+    return this.call(`/profiles/${id}/archive`, { method: "POST" });
+  }
+  restoreProfile(id: string): Promise<AgentProfile> {
+    return this.call(`/profiles/${id}/restore`, { method: "POST" });
+  }
+  testProfileInChat(id: string, req: TestProfileInChatRequest = {}): Promise<unknown> {
+    return this.call(`/profiles/${id}/test-chat`, { method: "POST", body: JSON.stringify(req) });
+  }
+
+  listChats(): Promise<Chat[]> {
+    return this.call("/chats");
+  }
+  createChat(req: CreateChatRequest): Promise<Chat> {
+    return this.call("/chats", { method: "POST", body: JSON.stringify(req) });
+  }
+  deleteChat(id: string): Promise<void> {
+    return this.call(`/chats/${id}`, { method: "DELETE" });
+  }
+  sendChatMessage(id: string, req: SendChatMessageRequest): Promise<{ message: ChatMessage; turns: AgentTurn[] }> {
+    return this.call(`/chats/${id}/messages`, { method: "POST", body: JSON.stringify(req) });
+  }
+  readChatTranscript(id: string): Promise<ChatTranscriptEntry[]> {
+    return this.call(`/chats/${id}/transcript`);
+  }
+  chatStreamUrl(id: string): string {
+    const base = this.baseUrl.replace(/^http/, "ws");
+    return `${base}/chats/${id}/stream`;
+  }
+  addWorkspaceLink(id: string, req: AddWorkspaceLinkRequest): Promise<ChatWorkspaceLink> {
+    return this.call(`/chats/${id}/workspace-links`, { method: "POST", body: JSON.stringify(req) });
+  }
+  focusWorkspaceLink(id: string, linkId: string): Promise<ChatWorkspaceLink> {
+    return this.call(`/chats/${id}/workspace-links/${linkId}/focus`, { method: "PATCH" });
+  }
+
+  getAgentTrace(sessionId: string): Promise<AgentTurnTrace[]> {
+    return this.call(`/observability/agents/${sessionId}`);
+  }
+  getChatMetrics(chatId: string): Promise<ChatMetrics> {
+    return this.call(`/observability/chats/${chatId}/metrics`);
   }
 }
