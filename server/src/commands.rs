@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::config;
-use crate::models::{AutoWorkerQueueIssue, CommitInfo, GithubIssue, Project, SessionConfig};
+use crate::models::{
+    AutoWorkerQueueIssue, ChatWorkspaceSnapshot, CommitInfo, GithubIssue, Project, SessionConfig,
+};
 use crate::state::AppState;
 use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
@@ -49,6 +51,45 @@ pub(crate) fn next_session_label(sessions: &[SessionConfig]) -> String {
         .unwrap_or(0);
     let short_id = &Uuid::new_v4().to_string()[..6];
     format!("session-{}-{}", max_num + 1, short_id)
+}
+
+pub fn chat_workspace_snapshot(
+    project: &Project,
+    session: &SessionConfig,
+    focused: bool,
+) -> ChatWorkspaceSnapshot {
+    ChatWorkspaceSnapshot {
+        project_id: project.id.to_string(),
+        workspace_id: session.id.to_string(),
+        path: session
+            .worktree_path
+            .clone()
+            .unwrap_or_else(|| project.repo_path.clone()),
+        label: session.label.clone(),
+        branch: session.worktree_branch.clone(),
+        focused,
+    }
+}
+
+pub fn load_chat_workspace_snapshot_impl(
+    state: &AppState,
+    project_id: &str,
+    session_id: &str,
+    focused: bool,
+) -> Result<ChatWorkspaceSnapshot, String> {
+    let project_uuid = Uuid::parse_str(project_id).map_err(|e| e.to_string())?;
+    let session_uuid = Uuid::parse_str(session_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    let project = storage
+        .load_project(project_uuid)
+        .map_err(|e| e.to_string())?;
+    let session = project
+        .sessions
+        .iter()
+        .find(|session| session.id == session_uuid)
+        .ok_or_else(|| format!("session not found: {session_id}"))?;
+
+    Ok(chat_workspace_snapshot(&project, session, focused))
 }
 
 fn update_project_with_rollback<T, C, M, R, A>(
@@ -584,6 +625,34 @@ pub fn create_session_impl(
     })?;
 
     Ok(session_id.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_session_workspace_snapshot_impl(
+    state: &AppState,
+    project_id: String,
+    kind: Option<String>,
+    github_issue: Option<crate::models::GithubIssue>,
+    background: Option<bool>,
+    initial_prompt: Option<String>,
+    focused: bool,
+) -> Result<(String, ChatWorkspaceSnapshot), String> {
+    let session_id = create_session_impl(
+        state,
+        project_id.clone(),
+        kind,
+        github_issue,
+        background,
+        initial_prompt,
+    )?;
+
+    match load_chat_workspace_snapshot_impl(state, &project_id, &session_id, focused) {
+        Ok(snapshot) => Ok((session_id, snapshot)),
+        Err(snapshot_err) => match close_session_impl(state, project_id, session_id, true) {
+            Ok(()) => Err(snapshot_err),
+            Err(cleanup_err) => Err(format!("{snapshot_err} (cleanup failed: {cleanup_err})")),
+        },
+    }
 }
 
 pub fn set_initial_prompt_impl(

@@ -77,6 +77,16 @@ pub struct SessionConfig {
     pub auto_worker_session: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatWorkspaceSnapshot {
+    pub project_id: String,
+    pub workspace_id: String,
+    pub path: String,
+    pub label: String,
+    pub branch: Option<String>,
+    pub focused: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CommitInfo {
     pub hash: String,

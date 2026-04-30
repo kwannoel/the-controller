@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::Value;
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 use the_controller_lib::{
     auto_worker::AutoWorkerScheduler,
     cli_install, commands, config,
@@ -20,6 +20,7 @@ use the_controller_lib::{
     },
     emitter::WsBroadcastEmitter,
     maintainer::MaintainerScheduler,
+    models::{ChatWorkspaceSnapshot, GithubIssue},
     shell_env, skills,
     state::AppState,
     status_socket,
@@ -70,6 +71,7 @@ async fn main() {
         .route("/api/resize_pty", post(resize_pty))
         .route("/api/close_session", post(close_session))
         .route("/api/create_session", post(create_session))
+        .route("/api/create_chat_workspace", post(create_chat_workspace))
         .route("/api/list_archived_projects", post(list_archived_projects))
         .route("/api/merge_session_branch", post(merge_session_branch))
         .route("/api/daemon/chats/{id}/stream", get(daemon_stream_gateway))
@@ -497,6 +499,210 @@ async fn create_session(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     Ok(Json(Value::String(session_id)))
+}
+
+async fn create_chat_workspace(
+    AxumState(state): AxumState<Arc<ServerState>>,
+    Json(args): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let project_id = args["projectId"]
+        .as_str()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "projectId required".to_string()))?
+        .to_string();
+    let kind = args["kind"].as_str().map(str::to_string);
+    let background = args["background"].as_bool();
+    let initial_prompt = args["initialPrompt"].as_str().map(str::to_string);
+    let github_issue: Option<GithubIssue> = if args["githubIssue"].is_null() {
+        None
+    } else {
+        Some(
+            serde_json::from_value(args["githubIssue"].clone())
+                .map_err(|e| (StatusCode::BAD_REQUEST, format!("githubIssue: {e}")))?,
+        )
+    };
+
+    let state_dir = state
+        .app
+        .storage
+        .lock()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .base_dir();
+    let socket_path = daemon_socket_path(&DaemonGatewayConfig { state_dir });
+    let chat_id = match args["chatId"].as_str() {
+        Some(chat_id) => {
+            validate_daemon_chat_id(chat_id)?;
+            chat_id.to_string()
+        }
+        None => {
+            let title = args["title"].as_str().unwrap_or("New chat");
+            create_daemon_chat(&socket_path, &project_id, title).await?
+        }
+    };
+
+    let blocking_state = state.clone();
+    let blocking_project_id = project_id.clone();
+    let (session_id, workspace) = tokio::task::spawn_blocking(move || {
+        commands::create_session_workspace_snapshot_impl(
+            &blocking_state.app,
+            blocking_project_id,
+            kind,
+            github_issue,
+            background,
+            initial_prompt,
+            true,
+        )
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Task failed: {e}"),
+        )
+    })?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let link = match post_daemon_workspace_link(&socket_path, &chat_id, &workspace).await {
+        Ok(link) => link,
+        Err((status, message)) => {
+            let cleanup_error =
+                cleanup_chat_workspace_session(state, project_id, session_id.clone()).await;
+            return Err((status, append_cleanup_error(message, cleanup_error)));
+        }
+    };
+
+    Ok(Json(serde_json::json!({
+        "chatId": chat_id,
+        "sessionId": session_id,
+        "workspace": workspace,
+        "link": link
+    })))
+}
+
+async fn create_daemon_chat(
+    socket_path: &Path,
+    project_id: &str,
+    title: &str,
+) -> Result<String, (StatusCode, String)> {
+    let body = json_bytes(&serde_json::json!({
+        "project_id": project_id,
+        "title": title
+    }))?;
+    let response = proxy_http_gateway(
+        socket_path,
+        Method::POST,
+        "/api/daemon/chats",
+        None,
+        body,
+        Some("application/json".to_string()),
+    )
+    .await?;
+    let status = StatusCode::from_u16(response.status)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    if !status.is_success() {
+        return Err((
+            status,
+            daemon_response_error("daemon chat creation failed", &response.body),
+        ));
+    }
+
+    let chat: Value = serde_json::from_slice(&response.body).map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("daemon chat response was not valid JSON: {e}"),
+        )
+    })?;
+    let chat_id = chat["id"].as_str().ok_or_else(|| {
+        (
+            StatusCode::BAD_GATEWAY,
+            "daemon chat response missing id".to_string(),
+        )
+    })?;
+    validate_daemon_chat_id(chat_id)?;
+
+    Ok(chat_id.to_string())
+}
+
+async fn post_daemon_workspace_link(
+    socket_path: &Path,
+    chat_id: &str,
+    workspace: &ChatWorkspaceSnapshot,
+) -> Result<Value, (StatusCode, String)> {
+    validate_daemon_chat_id(chat_id)?;
+    let body = json_bytes(workspace)?;
+    let path = format!("/api/daemon/chats/{chat_id}/workspace-links");
+    let response = proxy_http_gateway(
+        socket_path,
+        Method::POST,
+        &path,
+        None,
+        body,
+        Some("application/json".to_string()),
+    )
+    .await?;
+    let status = StatusCode::from_u16(response.status)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    if !status.is_success() {
+        return Err((
+            status,
+            daemon_response_error("daemon workspace link failed", &response.body),
+        ));
+    }
+
+    serde_json::from_slice(&response.body).map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("daemon workspace link response was not valid JSON: {e}"),
+        )
+    })
+}
+
+fn validate_daemon_chat_id(chat_id: &str) -> Result<(), (StatusCode, String)> {
+    if chat_id.is_empty() || chat_id.contains('/') || chat_id.contains('?') || chat_id.contains('#')
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "chatId must be a daemon chat id".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn json_bytes<T: serde::Serialize>(value: &T) -> Result<Bytes, (StatusCode, String)> {
+    serde_json::to_vec(value)
+        .map(Bytes::from)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+}
+
+fn daemon_response_error(prefix: &str, body: &Bytes) -> String {
+    let body = String::from_utf8_lossy(body).trim().to_string();
+    if body.is_empty() {
+        prefix.to_string()
+    } else {
+        format!("{prefix}: {body}")
+    }
+}
+
+async fn cleanup_chat_workspace_session(
+    state: Arc<ServerState>,
+    project_id: String,
+    session_id: String,
+) -> Option<String> {
+    match tokio::task::spawn_blocking(move || {
+        commands::close_session_impl(&state.app, project_id, session_id, true)
+    })
+    .await
+    {
+        Ok(Ok(())) => None,
+        Ok(Err(e)) => Some(e),
+        Err(e) => Some(format!("cleanup task failed: {e}")),
+    }
+}
+
+fn append_cleanup_error(message: String, cleanup_error: Option<String>) -> String {
+    match cleanup_error {
+        Some(cleanup_error) => format!("{message} (cleanup failed: {cleanup_error})"),
+        None => message,
+    }
 }
 
 async fn daemon_gateway(
