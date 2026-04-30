@@ -1,6 +1,6 @@
 use serde_json::json;
 use the_controller_lib::{
-    commands::chat_workspace_snapshot,
+    commands::{chat_workspace_snapshot, daemon_chat_cleanup_path},
     models::{AutoWorkerConfig, ChatWorkspaceSnapshot, MaintainerConfig, Project, SessionConfig},
 };
 use uuid::Uuid;
@@ -78,6 +78,15 @@ fn workspace_snapshot_helper_falls_back_to_repo_path_for_unborn_repo_sessions() 
 }
 
 #[test]
+fn daemon_chat_cleanup_only_targets_chats_created_by_the_handler() {
+    assert_eq!(
+        daemon_chat_cleanup_path("created-chat", true).as_deref(),
+        Some("/api/daemon/chats/created-chat")
+    );
+    assert_eq!(daemon_chat_cleanup_path("caller-chat", false), None);
+}
+
+#[test]
 fn controller_route_posts_workspace_snapshots_through_daemon_gateway() {
     let main_source = include_str!("../src/main.rs");
 
@@ -89,6 +98,8 @@ fn controller_route_posts_workspace_snapshots_through_daemon_gateway() {
         .contains("cleanup_chat_workspace_session(state, project_id, session_id.clone()).await"));
     assert!(main_source
         .contains("commands::close_session_impl(&state.app, project_id, session_id, true)"));
+    assert!(main_source
+        .contains("cleanup_daemon_chat(&socket_path, created_chat_cleanup.as_deref()).await"));
     assert!(!main_source.contains("127.0.0.1:4867"));
 }
 

@@ -71,6 +71,22 @@ pub fn chat_workspace_snapshot(
     }
 }
 
+pub fn daemon_chat_cleanup_path(chat_id: &str, created_by_handler: bool) -> Option<String> {
+    created_by_handler.then(|| format!("/api/daemon/chats/{chat_id}"))
+}
+
+pub fn validate_chat_workspace_project_impl(
+    state: &AppState,
+    project_id: &str,
+) -> Result<(), String> {
+    let project_uuid = Uuid::parse_str(project_id).map_err(|e| e.to_string())?;
+    let storage = state.storage.lock().map_err(|e| e.to_string())?;
+    storage
+        .load_project(project_uuid)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 pub fn load_chat_workspace_snapshot_impl(
     state: &AppState,
     project_id: &str,

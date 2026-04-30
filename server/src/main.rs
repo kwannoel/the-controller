@@ -528,20 +528,40 @@ async fn create_chat_workspace(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
     let socket_path = daemon_socket_path(&DaemonGatewayConfig { state_dir });
-    let chat_id = match args["chatId"].as_str() {
+
+    let validation_state = state.clone();
+    let validation_project_id = project_id.clone();
+    tokio::task::spawn_blocking(move || {
+        commands::validate_chat_workspace_project_impl(
+            &validation_state.app,
+            &validation_project_id,
+        )
+    })
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Task failed: {e}"),
+        )
+    })?
+    .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    let (chat_id, created_chat_cleanup) = match args["chatId"].as_str() {
         Some(chat_id) => {
             validate_daemon_chat_id(chat_id)?;
-            chat_id.to_string()
+            (chat_id.to_string(), None)
         }
         None => {
             let title = args["title"].as_str().unwrap_or("New chat");
-            create_daemon_chat(&socket_path, &project_id, title).await?
+            let chat_id = create_daemon_chat(&socket_path, &project_id, title).await?;
+            let cleanup = commands::daemon_chat_cleanup_path(&chat_id, true);
+            (chat_id, cleanup)
         }
     };
 
     let blocking_state = state.clone();
     let blocking_project_id = project_id.clone();
-    let (session_id, workspace) = tokio::task::spawn_blocking(move || {
+    let session_result = tokio::task::spawn_blocking(move || {
         commands::create_session_workspace_snapshot_impl(
             &blocking_state.app,
             blocking_project_id,
@@ -558,15 +578,26 @@ async fn create_chat_workspace(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Task failed: {e}"),
         )
-    })?
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    })
+    .and_then(|result| result.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e)));
+    let (session_id, workspace) = match session_result {
+        Ok(result) => result,
+        Err((status, message)) => {
+            let daemon_cleanup_error =
+                cleanup_daemon_chat(&socket_path, created_chat_cleanup.as_deref()).await;
+            return Err((status, append_cleanup_error(message, daemon_cleanup_error)));
+        }
+    };
 
     let link = match post_daemon_workspace_link(&socket_path, &chat_id, &workspace).await {
         Ok(link) => link,
         Err((status, message)) => {
             let cleanup_error =
                 cleanup_chat_workspace_session(state, project_id, session_id.clone()).await;
-            return Err((status, append_cleanup_error(message, cleanup_error)));
+            let message = append_cleanup_error(message, cleanup_error);
+            let daemon_cleanup_error =
+                cleanup_daemon_chat(&socket_path, created_chat_cleanup.as_deref()).await;
+            return Err((status, append_cleanup_error(message, daemon_cleanup_error)));
         }
     };
 
@@ -695,6 +726,35 @@ async fn cleanup_chat_workspace_session(
         Ok(Ok(())) => None,
         Ok(Err(e)) => Some(e),
         Err(e) => Some(format!("cleanup task failed: {e}")),
+    }
+}
+
+async fn cleanup_daemon_chat(socket_path: &Path, cleanup_path: Option<&str>) -> Option<String> {
+    let cleanup_path = cleanup_path?;
+    match proxy_http_gateway(
+        socket_path,
+        Method::DELETE,
+        cleanup_path,
+        None,
+        Bytes::new(),
+        None,
+    )
+    .await
+    {
+        Ok(response) => {
+            let Ok(status) = StatusCode::from_u16(response.status) else {
+                return Some(format!("daemon chat cleanup returned {}", response.status));
+            };
+            if status.is_success() {
+                None
+            } else {
+                Some(daemon_response_error(
+                    "daemon chat cleanup failed",
+                    &response.body,
+                ))
+            }
+        }
+        Err((status, message)) => Some(format!("daemon chat cleanup failed ({status}): {message}")),
     }
 }
 
