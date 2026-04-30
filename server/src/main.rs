@@ -14,10 +14,7 @@ use std::sync::Arc;
 use the_controller_lib::{
     auto_worker::AutoWorkerScheduler,
     cli_install, commands, config,
-    daemon_gateway::{
-        daemon_socket_path, forward_http_with_content_type, normalize_daemon_path,
-        DaemonGatewayConfig,
-    },
+    daemon_gateway::{daemon_socket_path, proxy_http_gateway, DaemonGatewayConfig},
     emitter::WsBroadcastEmitter,
     maintainer::MaintainerScheduler,
     shell_env, skills,
@@ -498,12 +495,6 @@ async fn daemon_gateway(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, (StatusCode, String)> {
-    let mut daemon_path =
-        normalize_daemon_path(uri.path()).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
-    if let Some(query) = uri.query() {
-        daemon_path.push('?');
-        daemon_path.push_str(query);
-    }
     let state_dir = state
         .app
         .storage
@@ -515,15 +506,15 @@ async fn daemon_gateway(
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(ToOwned::to_owned);
-    let daemon_response =
-        forward_http_with_content_type(&socket_path, method, daemon_path, body, content_type)
-            .await
-            .map_err(|_| {
-                (
-                    StatusCode::BAD_GATEWAY,
-                    "daemon gateway unavailable".to_string(),
-                )
-            })?;
+    let daemon_response = proxy_http_gateway(
+        &socket_path,
+        method,
+        uri.path(),
+        uri.query(),
+        body,
+        content_type,
+    )
+    .await?;
 
     let status = StatusCode::from_u16(daemon_response.status)
         .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;

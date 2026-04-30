@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use axum::{body::Bytes, http::Method};
+use axum::{
+    body::Bytes,
+    http::{Method, StatusCode},
+};
 
 #[derive(Debug, Clone)]
 pub struct DaemonGatewayConfig {
@@ -83,6 +86,31 @@ pub async fn forward_http_with_content_type(
         content_type,
         body,
     })
+}
+
+pub async fn proxy_http_gateway(
+    socket_path: &Path,
+    method: Method,
+    original_path: &str,
+    query: Option<&str>,
+    body: Bytes,
+    content_type: Option<String>,
+) -> Result<DaemonResponse, (StatusCode, String)> {
+    let mut daemon_path =
+        normalize_daemon_path(original_path).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    if let Some(query) = query {
+        daemon_path.push('?');
+        daemon_path.push_str(query);
+    }
+
+    forward_http_with_content_type(socket_path, method, daemon_path, body, content_type)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::BAD_GATEWAY,
+                "daemon gateway unavailable".to_string(),
+            )
+        })
 }
 
 pub async fn forward_http_for_test(
