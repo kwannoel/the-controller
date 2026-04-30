@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
+import { isAbsolute } from "node:path";
 
 // User story:
 // Actor:   A user wanting to use the new "chat" workspace mode backed by the
@@ -13,10 +14,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 //
 // NOTE: The daemon-reachable leg is skipped by default. It may run only when
 // the daemon binaries exist and the caller opts into a shared harness with
-// TCD_E2E_DAEMON_REACHABLE=1, THE_CONTROLLER_STATE_DIR=<shared-dir>, and
-// TCD_STATE_DIR=<same-shared-dir>. Playwright starts the Controller before
-// this spec runs, so the Controller and daemon must inherit the same state dir
-// for `/api/daemon/...` to target the same UDS.
+// TCD_E2E_DAEMON_REACHABLE=1, THE_CONTROLLER_STATE_DIR=<absolute-shared-dir>,
+// and TCD_STATE_DIR=<same-absolute-shared-dir>. Playwright starts the
+// Controller before this spec runs, so the Controller and daemon must inherit
+// the same absolute state dir for `/api/daemon/...` to target the same UDS.
 
 const DAEMON_REPO = "/Users/noelkwan/projects/the-controller-daemon";
 const DAEMON_BIN = `${DAEMON_REPO}/target/release/the-controller-daemon`;
@@ -63,7 +64,14 @@ const daemonBinariesPresent = existsSync(DAEMON_BIN) && existsSync(FAKE_AGENT_BI
 const daemonReachableHarnessEnabled = process.env.TCD_E2E_DAEMON_REACHABLE === "1";
 const controllerStateDir = process.env.THE_CONTROLLER_STATE_DIR;
 const daemonStateDir = process.env.TCD_STATE_DIR;
-const sharedStateDir = controllerStateDir === daemonStateDir ? daemonStateDir : undefined;
+const sharedStateDir =
+  controllerStateDir &&
+  daemonStateDir &&
+  isAbsolute(controllerStateDir) &&
+  isAbsolute(daemonStateDir) &&
+  controllerStateDir === daemonStateDir
+    ? daemonStateDir
+    : undefined;
 const daemonReachableEnabled =
   daemonBinariesPresent && daemonReachableHarnessEnabled && Boolean(sharedStateDir);
 
@@ -71,7 +79,7 @@ test.describe("chat mode with daemon reachable", () => {
   test.skip(
     !daemonReachableEnabled,
     "daemon reachable e2e requires binaries plus " +
-      "TCD_E2E_DAEMON_REACHABLE=1 with matching THE_CONTROLLER_STATE_DIR and TCD_STATE_DIR. " +
+      "TCD_E2E_DAEMON_REACHABLE=1 with matching absolute THE_CONTROLLER_STATE_DIR and TCD_STATE_DIR. " +
       "Task 21 owns the full daemon harness.",
   );
 

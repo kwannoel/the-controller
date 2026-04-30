@@ -80,6 +80,8 @@ describe("web backend migration audit", () => {
     expect(source).toContain("THE_CONTROLLER_STATE_DIR");
     expect(source).toContain("TCD_STATE_DIR");
     expect(source).toMatch(/controllerStateDir\s*===\s*daemonStateDir/);
+    expect(source).toMatch(/isAbsolute\(controllerStateDir\)/);
+    expect(source).toMatch(/isAbsolute\(daemonStateDir\)/);
     expect(source).not.toMatch(
       /test\.skip\(\s*!\s*daemonBinariesPresent[\s,]/,
     );
