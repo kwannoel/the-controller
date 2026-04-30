@@ -1,10 +1,11 @@
 use axum::{
+    body::Bytes,
     extract::{
         ws::{Message, WebSocket},
         OriginalUri, State as AxumState, WebSocketUpgrade,
     },
-    http::StatusCode,
-    response::IntoResponse,
+    http::{header, HeaderMap, HeaderValue, Method, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -14,7 +15,7 @@ use the_controller_lib::{
     auto_worker::AutoWorkerScheduler,
     cli_install, commands, config,
     daemon_gateway::{
-        daemon_gateway_placeholder_response, daemon_socket_path, normalize_daemon_path,
+        daemon_socket_path, forward_http_with_content_type, normalize_daemon_path,
         DaemonGatewayConfig,
     },
     emitter::WsBroadcastEmitter,
@@ -67,7 +68,13 @@ async fn main() {
         .route("/api/create_session", post(create_session))
         .route("/api/list_archived_projects", post(list_archived_projects))
         .route("/api/merge_session_branch", post(merge_session_branch))
-        .route("/api/daemon/{*path}", get(daemon_gateway))
+        .route(
+            "/api/daemon/{*path}",
+            get(daemon_gateway)
+                .post(daemon_gateway)
+                .patch(daemon_gateway)
+                .delete(daemon_gateway),
+        )
         .route("/api/read_daemon_token", post(read_daemon_token))
         .route("/api/log_frontend_error", post(log_frontend_error))
         .route("/api/get_agents_md", post(get_agents_md))
@@ -495,20 +502,49 @@ async fn read_daemon_token() -> Result<Json<Value>, (StatusCode, String)> {
 async fn daemon_gateway(
     AxumState(state): AxumState<Arc<ServerState>>,
     OriginalUri(uri): OriginalUri,
-) -> Result<Json<Value>, (StatusCode, String)> {
-    let daemon_path =
+    method: Method,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let mut daemon_path =
         normalize_daemon_path(uri.path()).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    if let Some(query) = uri.query() {
+        daemon_path.push('?');
+        daemon_path.push_str(query);
+    }
     let state_dir = state
         .app
         .storage
         .lock()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .base_dir();
-    let _socket_path = daemon_socket_path(&DaemonGatewayConfig { state_dir });
-    let response = daemon_gateway_placeholder_response(&daemon_path)
-        .map_err(|e| (StatusCode::NOT_IMPLEMENTED, e))?;
+    let socket_path = daemon_socket_path(&DaemonGatewayConfig { state_dir });
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+    let daemon_response =
+        forward_http_with_content_type(&socket_path, method, daemon_path, body, content_type)
+            .await
+            .map_err(|_| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    "daemon gateway unavailable".to_string(),
+                )
+            })?;
 
-    Ok(Json(response))
+    let status = StatusCode::from_u16(daemon_response.status)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+    let mut response = Response::builder().status(status);
+    if let Some(content_type) = daemon_response.content_type {
+        let value = HeaderValue::from_str(&content_type)
+            .map_err(|e| (StatusCode::BAD_GATEWAY, e.to_string()))?;
+        response = response.header(header::CONTENT_TYPE, value);
+    }
+
+    response
+        .body(axum::body::Body::from(daemon_response.body))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
 async fn log_frontend_error(Json(args): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {

@@ -1,10 +1,17 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use axum::{body::Bytes, http::Method};
 
 #[derive(Debug, Clone)]
 pub struct DaemonGatewayConfig {
     pub state_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DaemonResponse {
+    pub status: u16,
+    pub content_type: Option<String>,
+    pub body: Bytes,
 }
 
 pub fn daemon_socket_path(cfg: &DaemonGatewayConfig) -> PathBuf {
@@ -29,15 +36,66 @@ pub fn normalize_daemon_path(path: &str) -> Result<String, String> {
     })
 }
 
-pub fn daemon_gateway_placeholder_response(daemon_path: &str) -> Result<Value, String> {
-    if daemon_path != "/health" {
-        return Err("daemon gateway proxy is not implemented yet".to_string());
-    }
+pub async fn forward_http(
+    socket_path: &Path,
+    method: Method,
+    daemon_path: String,
+    body: Bytes,
+) -> Result<DaemonResponse, String> {
+    forward_http_with_content_type(socket_path, method, daemon_path, body, None).await
+}
 
-    Ok(serde_json::json!({
-        "path": daemon_path,
-        "status": "gateway-ready"
-    }))
+pub async fn forward_http_with_content_type(
+    socket_path: &Path,
+    method: Method,
+    daemon_path: String,
+    body: Bytes,
+    content_type: Option<String>,
+) -> Result<DaemonResponse, String> {
+    let method = reqwest::Method::from_bytes(method.as_str().as_bytes())
+        .map_err(|e| format!("invalid daemon gateway method: {e}"))?;
+    let url = format!("http://daemon.local{daemon_path}");
+    let client = reqwest::Client::builder()
+        .unix_socket(socket_path)
+        .build()
+        .map_err(|e| format!("build daemon gateway client: {e}"))?;
+    let mut request = client.request(method, url).body(body);
+    if let Some(content_type) = content_type {
+        request = request.header(reqwest::header::CONTENT_TYPE, content_type);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("connect to daemon gateway: {e}"))?;
+    let status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+    let body = response
+        .bytes()
+        .await
+        .map_err(|e| format!("read daemon gateway response: {e}"))?;
+
+    Ok(DaemonResponse {
+        status,
+        content_type,
+        body,
+    })
+}
+
+pub async fn forward_http_for_test(
+    socket_path: &Path,
+    daemon_path: &str,
+) -> Result<DaemonResponse, String> {
+    forward_http(
+        socket_path,
+        Method::GET,
+        daemon_path.to_string(),
+        Bytes::new(),
+    )
+    .await
 }
 
 fn percent_decode(input: &str) -> Result<String, String> {
