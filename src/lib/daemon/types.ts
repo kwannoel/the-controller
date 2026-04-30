@@ -87,7 +87,7 @@ export interface ChatMessage {
   chat_id: string;
   idempotency_id: string | null;
   body: string;
-  token_spans: RouteToken[];
+  token_spans: unknown;
   created_at: number;
 }
 

@@ -42,7 +42,24 @@ describe("daemon event types", () => {
       created_at: 10,
     };
 
-    expect(message.token_spans[0]).toEqual({ kind: "shadow", handle: "critic", start: 0, end: 7 });
+    expect(message.token_spans).toEqual([{ kind: "shadow", handle: "critic", start: 0, end: 7 }]);
+  });
+
+  it("allows inbound chat messages to preserve non-route persisted token spans", () => {
+    const persistedSpans = {
+      source: "legacy-parser",
+      spans: [{ byte_range: [0, 5], label: "mention", metadata: { agent_id: "profile-1" } }],
+    };
+    const message: ChatMessage = {
+      id: "message-1",
+      chat_id: "chat-1",
+      idempotency_id: null,
+      body: "hello",
+      token_spans: persistedSpans,
+      created_at: 10,
+    };
+
+    expect(message.token_spans).toEqual(persistedSpans);
   });
 
   it("models profile chat metrics and trace payloads additively", () => {
