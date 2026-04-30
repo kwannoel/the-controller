@@ -53,6 +53,22 @@ and makes the profile available to chat routing and workflow creation.
 
 - [Agent Creation Mode mockup](../assets/design/controller-agent-creation-ui.png)
 
+```mermaid
+stateDiagram-v2
+  [*] --> Draft: "new profile"
+  Draft --> Invalid: "validation fails"
+  Invalid --> Draft: "user edits fields"
+  Draft --> SavedVersion: "save valid profile"
+  SavedVersion --> Available: "publish handle"
+  Available --> ChatSuggestion: "@agent and %agent suggestions"
+  Available --> WorkflowPicker: "workflow role picker"
+  Available --> TestChat: "Test in Chat"
+  Available --> EditedDraft: "edit profile"
+  EditedDraft --> SavedVersion: "save new version"
+  Available --> Archived: "archive"
+  Archived --> Available: "restore"
+```
+
 ## Problem
 
 The Controller is moving from terminal-session orchestration to agent

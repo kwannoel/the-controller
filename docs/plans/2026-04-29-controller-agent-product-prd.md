@@ -169,21 +169,22 @@ a named workflow and run it without rebuilding the setup each time.
 
 ## Mode Relationships
 
-```text
-Agent Creation Mode
-  -> creates AgentProfiles
-
-Workflow Creation Mode
-  -> references AgentProfiles and workspace requirements
-  -> can launch chats or workflow runs
-
-Chat Routing Mode
-  -> associates AgentSessions and Workspaces with chats
-  -> sends messages to agent inboxes
-  -> renders published outbox replies
-
-Agent Observability Mode
-  -> reads AgentSessions, inboxes, outboxes, tools, errors, reloads, and links
+```mermaid
+flowchart LR
+  Creation["Agent Creation Mode"] --> Profiles["Agent profiles and versions"]
+  Profiles --> Chat["Chat Routing Mode"]
+  Profiles --> Workflow["Workflow Creation Mode"]
+  Workflow --> Runs["Workflow runs"]
+  Workflow --> Chat
+  Chat --> Sessions["Agent sessions"]
+  Chat --> Workspaces["Workspaces"]
+  Chat --> Inbox["Agent inbox items"]
+  Sessions --> Observability["Agent Observability Mode"]
+  Inbox --> Observability
+  Workspaces --> Observability
+  Runs --> Observability
+  Sessions --> Outbox["Outbox replies"]
+  Outbox --> Chat
 ```
 
 Chat is the action surface. Observability is the inspection surface. Agent

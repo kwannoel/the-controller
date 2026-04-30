@@ -62,6 +62,23 @@ the new workflow version for future runs.
 
 - [Workflow Creation Mode mockup](../assets/design/controller-workflow-creation-ui.png)
 
+```mermaid
+flowchart LR
+  WorkflowRepo["Central workflow repo"] --> Version["Validated workflow version"]
+  Trigger["Issue trigger or schedule"] --> Fanout["One run per GitHub issue"]
+  Version --> Fanout
+  Fanout --> Run["Workflow run pinned to commit"]
+  Run --> Planner["%planner shadow agent"]
+  Planner --> Implementer["%implementer shadow agent"]
+  Implementer --> Validation["Declared validation commands"]
+  Validation --> Reviewer["%reviewer shadow agent"]
+  Reviewer -->|changes requested| Implementer
+  Reviewer -->|approved| PullRequest["Create GitHub PR"]
+  Maintainer["%workflow-maintainer"] --> ChangePR["Workflow change PR"]
+  ChangePR --> Checks["Schema, graph, permission, and dry-run checks"]
+  Checks --> WorkflowRepo
+```
+
 ## Problem
 
 The Controller can already orchestrate terminal sessions and is gaining chat,

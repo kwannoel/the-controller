@@ -54,6 +54,23 @@ not get a Thinking tab.
 
 - [Agent Observability Mode mockup](../assets/design/controller-agent-status-ui.png)
 
+```mermaid
+flowchart LR
+  Inbox["Agent inbox item"] --> Turn["Agent turn"]
+  Turn --> Thinking["Runtime-exposed thinking event"]
+  Turn --> Tool["Tool call event"]
+  Turn --> Output["Output write event"]
+  Turn --> Error["Error or lifecycle event"]
+  Output --> Outbox["Outbox reply"]
+  Outbox --> Chat["Chat transcript"]
+  Thinking --> Store["Observability store"]
+  Tool --> Store
+  Output --> Store
+  Error --> Store
+  Store --> Metrics["Chat metrics tab"]
+  Store --> Trace["Agent trace page"]
+```
+
 ## Problem
 
 The Controller is moving from terminal orchestration toward agent orchestration.

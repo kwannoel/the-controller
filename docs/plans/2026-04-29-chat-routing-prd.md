@@ -58,6 +58,24 @@ agent/workspace association.
 
 - [Chat Routing Mode mockup](../assets/design/controller-chat-routing-ui.png)
 
+```mermaid
+flowchart LR
+  Composer["Chat composer"] --> Parser["Route parser"]
+  Parser --> Reusable["@agent reusable session"]
+  Parser --> Shadow["%agent shadow session"]
+  Parser --> Workspace["w workspace scope"]
+  Reusable --> Daemon["Daemon-owned agent session"]
+  Shadow --> Daemon
+  Workspace --> Context["Workspace context and worktree"]
+  Context --> Daemon
+  Daemon --> Inbox["Durable inbox item"]
+  Inbox --> Turn["Agent turn"]
+  Turn --> Outbox["Explicit outbox reply"]
+  Turn --> Events["Tool, error, and lifecycle events"]
+  Outbox --> Transcript["Chat transcript"]
+  Events --> Observability["Agent observability"]
+```
+
 ## Problem
 
 The current chat creation flow asks the user to choose an agent before they have
