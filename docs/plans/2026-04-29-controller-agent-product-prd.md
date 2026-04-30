@@ -8,6 +8,7 @@ Related docs:
 - `docs/plans/2026-04-29-chat-routing-prd.md`
 - `docs/plans/2026-04-29-agent-creation-prd.md`
 - `docs/plans/2026-04-29-agent-observability-prd.md`
+- `docs/plans/2026-04-30-agent-workflow-prd.md`
 - `docs/plans/2026-04-27-controller-chat-modes-daemon-rfc.md`
 - `docs/plans/2026-04-22-chat-mode-design.md`
 - `docs/keyboard-modes.md`
@@ -145,6 +146,8 @@ Primary user outcome: a developer can create a reusable specialist without
 hand-editing daemon folders or prompt files.
 
 ### 4. Workflow Creation Mode
+
+Source PRD: `docs/plans/2026-04-30-agent-workflow-prd.md`
 
 Workflow Creation Mode lets users compose repeatable multi-agent procedures.
 A workflow can define agent roles, workspace requirements, routing rules,
