@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { daemonStore } from "../daemon/store.svelte";
+  import { daemonStore, loadChatLinks } from "../daemon/store.svelte";
   import { reduceTranscript, emptyTranscript, type TranscriptState } from "../daemon/reducer";
   import { openStream } from "../daemon/stream";
   import { classifyError } from "../daemon/errors";
@@ -171,6 +171,10 @@
   $effect(() => {
     if (!chatId || !daemonStore.client) return;
     void loadChatTranscriptFor(chatId);
+    void loadChatLinks(chatId).catch((e) => {
+      const c = classifyError(e);
+      showToast(`Failed to load chat links: ${c.message}`, "error");
+    });
   });
 
   onMount(async () => {

@@ -129,11 +129,21 @@ describe("daemon store bootstrap", () => {
       updated_at: 12,
     };
     vi.stubGlobal("fetch", vi.fn());
-    const { daemonStore, loadProfiles, loadChats, loadChatTranscript, loadAgentTrace, loadChatMetrics } = await import("./store.svelte");
+    const {
+      daemonStore,
+      loadProfiles,
+      loadChats,
+      loadChatTranscript,
+      loadChatLinks,
+      loadAgentTrace,
+      loadChatMetrics,
+    } = await import("./store.svelte");
     daemonStore.client = {
       listProfiles: vi.fn(async () => [profile]),
       listChats: vi.fn(async () => [chat]),
       readChatTranscript: vi.fn(async () => transcript),
+      listChatAgentLinks: vi.fn(async () => []),
+      listChatWorkspaceLinks: vi.fn(async () => []),
       getAgentTrace: vi.fn(async () => trace),
       getChatMetrics: vi.fn(async () => metrics),
     } as any;
@@ -141,12 +151,15 @@ describe("daemon store bootstrap", () => {
     await loadProfiles();
     await loadChats();
     await loadChatTranscript("chat-1");
+    await loadChatLinks("chat-1");
     await loadAgentTrace("session-1");
     await loadChatMetrics("chat-1");
 
     expect(daemonStore.profiles.get("profile-1")).toEqual(profile);
     expect(daemonStore.chats.get("chat-1")).toEqual(chat);
     expect(daemonStore.chatTranscripts.get("chat-1")).toEqual(transcript);
+    expect(daemonStore.chatAgentLinks.get("chat-1")).toEqual([]);
+    expect(daemonStore.chatWorkspaceLinks.get("chat-1")).toEqual([]);
     expect(daemonStore.agentTraces.get("session-1")).toEqual(trace);
     expect(daemonStore.chatSummaries.get("chat-1")).toEqual(metrics);
     expect("token" in daemonStore).toBe(false);

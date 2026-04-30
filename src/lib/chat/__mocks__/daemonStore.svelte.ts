@@ -11,6 +11,7 @@ export const pingDaemon = vi.fn(async () => {});
 export const loadSessions = vi.fn(async () => {});
 export const loadProfiles = vi.fn(async () => {});
 export const loadChats = vi.fn(async () => {});
+export const loadChatLinks = vi.fn(async () => {});
 
 export const daemonStore = $state<any>({
   client: {

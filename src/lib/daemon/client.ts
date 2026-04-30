@@ -5,6 +5,7 @@ import type {
   AgentTurnTrace,
   Channel,
   Chat,
+  ChatAgentLink,
   ChatMetrics,
   ChatMessage,
   ChatTranscriptEntry,
@@ -155,6 +156,12 @@ export class DaemonClient {
   }
   readChatTranscript(id: string): Promise<ChatTranscriptEntry[]> {
     return this.call(`/chats/${id}/transcript`);
+  }
+  listChatAgentLinks(id: string): Promise<ChatAgentLink[]> {
+    return this.call(`/chats/${id}/agent-links`);
+  }
+  listChatWorkspaceLinks(id: string): Promise<ChatWorkspaceLink[]> {
+    return this.call(`/chats/${id}/workspace-links`);
   }
   chatStreamUrl(id: string): string {
     const base = this.baseUrl.replace(/^http/, "ws");

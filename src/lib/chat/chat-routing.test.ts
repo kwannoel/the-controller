@@ -59,4 +59,12 @@ describe("reconcileRouteTokens", () => {
       { kind: "reusable", handle: "reviewer", start: 11, end: 20 },
     ]);
   });
+
+  it("drops selected tokens that were edited into longer handles", () => {
+    expect(
+      reconcileRouteTokens("ask %reviewerx", [
+        { kind: "shadow", handle: "reviewer", start: 4, end: 13 },
+      ]),
+    ).toEqual([]);
+  });
 });

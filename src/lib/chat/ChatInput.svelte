@@ -55,7 +55,14 @@
   async function sendText() {
     const text = value.trim();
     if (!text || busy || disabled || !daemonStore.client) return;
-    const tokensToSend = chatId ? reconcileRouteTokens(value, routeTokens) : [];
+    const trimStartOffset = value.length - value.trimStart().length;
+    const trimEnd = trimStartOffset + text.length;
+    const tokensToSend = chatId
+      ? reconcileRouteTokens(value, routeTokens).flatMap((token) => {
+          if (token.start < trimStartOffset || token.end > trimEnd) return [];
+          return [{ ...token, start: token.start - trimStartOffset, end: token.end - trimStartOffset }];
+        })
+      : [];
     if (chatId && tokensToSend.length === 0 && !hasAssociatedAgent) {
       localError = "Select an agent with @ or % before sending.";
       return;

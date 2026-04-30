@@ -194,6 +194,50 @@ describe("DaemonClient", () => {
     });
   });
 
+  it("reads chat agent and workspace links", async () => {
+    const agentLinks = [
+      {
+        id: "agent-link-1",
+        chat_id: "chat-1",
+        session_id: "session-1",
+        profile_id: "profile-1",
+        profile_version_id: "version-1",
+        route_type: "reusable",
+        focused: true,
+        token_source: "@reviewer",
+        created_at: 3,
+      },
+    ];
+    const workspaceLinks = [
+      {
+        id: "workspace-link-1",
+        chat_id: "chat-1",
+        project_id: "project-1",
+        workspace_id: "workspace-1",
+        path: "/repo/controller",
+        label: "controller",
+        branch: "main",
+        focused: true,
+        created_at: 4,
+        updated_at: 5,
+      },
+    ];
+    const fetchMock = mockFetch([
+      { status: 200, body: agentLinks },
+      { status: 200, body: workspaceLinks },
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const c = new DaemonClient("/api/daemon");
+    await expect(c.listChatAgentLinks("chat-1")).resolves.toEqual(agentLinks);
+    await expect(c.listChatWorkspaceLinks("chat-1")).resolves.toEqual(workspaceLinks);
+
+    expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[0])
+      .toBe("/api/daemon/chats/chat-1/agent-links");
+    expect((fetchMock.mock.calls[1] as unknown as [string, RequestInit])[0])
+      .toBe("/api/daemon/chats/chat-1/workspace-links");
+  });
+
   it("reads planned agent turn traces", async () => {
     const trace = [
       {

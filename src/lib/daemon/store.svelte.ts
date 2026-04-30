@@ -107,6 +107,16 @@ export async function loadChatTranscript(chatId: string): Promise<void> {
   daemonStore.chatTranscripts.set(chatId, transcript);
 }
 
+export async function loadChatLinks(chatId: string): Promise<void> {
+  if (!daemonStore.client) return;
+  const [agentLinks, workspaceLinks] = await Promise.all([
+    daemonStore.client.listChatAgentLinks(chatId),
+    daemonStore.client.listChatWorkspaceLinks(chatId),
+  ]);
+  daemonStore.chatAgentLinks.set(chatId, agentLinks);
+  daemonStore.chatWorkspaceLinks.set(chatId, workspaceLinks);
+}
+
 export async function loadAgentTrace(sessionId: string): Promise<void> {
   if (!daemonStore.client) return;
   const trace = await daemonStore.client.getAgentTrace(sessionId);

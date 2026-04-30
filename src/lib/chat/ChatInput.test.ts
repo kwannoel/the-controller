@@ -151,6 +151,23 @@ describe("ChatInput", () => {
     expect(getByRole("alert").textContent).toContain("agent");
   });
 
+  it("aligns token offsets with the trimmed chat body", async () => {
+    const { getByRole, findByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+
+    ta.value = "  ask @rev";
+    ta.setSelectionRange(10, 10);
+    await fireEvent.input(ta);
+    await fireEvent.click(await findByRole("option", { name: /@reviewer/i }));
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+
+    expect(sendChatMessage).toHaveBeenCalledWith("chat-1", {
+      body: "ask @reviewer",
+      tokens: [{ kind: "reusable", handle: "reviewer", start: 4, end: 13 }],
+      idempotency_id: expect.any(String),
+    });
+  });
+
   it("Ctrl+Enter also sends user_text", async () => {
     const { getByRole } = render(ChatInput, { sessionId: "s1", status: "running", statusState: "idle" });
     const ta = getByRole("textbox") as HTMLTextAreaElement;
