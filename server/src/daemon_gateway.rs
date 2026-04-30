@@ -64,7 +64,7 @@ pub fn is_allowed_daemon_stream_origin(origin: Option<&str>, host: Option<&str>)
         return false;
     };
 
-    origin.authority == request_authority
+    origin.authority == request_authority && is_trusted_daemon_stream_host(&request_authority.host)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +103,10 @@ fn parse_authority(authority: &str) -> Option<AuthorityParts> {
         host: authority.host().to_ascii_lowercase(),
         port: authority.port_u16(),
     })
+}
+
+fn is_trusted_daemon_stream_host(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1" | "::1" | "[::1]")
 }
 
 pub async fn connect_daemon_websocket(

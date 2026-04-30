@@ -74,6 +74,10 @@ fn stream_origin_policy_rejects_foreign_or_malformed_origins() {
         Some("http://localhost:1420"),
         Some("localhost:3001")
     ));
+    assert!(!is_allowed_daemon_stream_origin(
+        Some("http://evil.example:3001"),
+        Some("evil.example:3001")
+    ));
 }
 
 #[tokio::test]
