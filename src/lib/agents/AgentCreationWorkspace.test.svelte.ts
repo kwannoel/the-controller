@@ -1,0 +1,120 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
+import userEvent from "@testing-library/user-event";
+import AgentCreationWorkspace from "./AgentCreationWorkspace.svelte";
+import { daemonStore } from "../daemon/store.svelte";
+import type { AgentProfile, SavedAgentProfile } from "../daemon/types";
+
+function makeProfile(overrides: Partial<AgentProfile> = {}): AgentProfile {
+  return {
+    id: "profile-1",
+    handle: "reviewer",
+    name: "Reviewer",
+    description: "Reviews changes",
+    runtime: "codex",
+    skills: ["code-review"],
+    prompt: "Review the active diff and return concise findings.",
+    archived_at: null,
+    avatar_asset_path: null,
+    avatar_status: "pending",
+    avatar_error: null,
+    active_version_id: "version-1",
+    created_at: 1,
+    updated_at: 1,
+    ...overrides,
+  };
+}
+
+function makeSaved(profile: AgentProfile): SavedAgentProfile {
+  return {
+    profile,
+    version: {
+      id: "version-2",
+      profile_id: profile.id,
+      runtime: profile.runtime,
+      model: "gpt-5",
+      prompt: profile.prompt,
+      skills: profile.skills,
+      default_workspace_behavior: "focused",
+      outbox_instructions: "Reply with a concise summary.",
+      validation_result: null,
+      created_at: 2,
+    },
+  };
+}
+
+describe("AgentCreationWorkspace", () => {
+  beforeEach(() => {
+    daemonStore.reachable = true;
+    daemonStore.profiles.clear();
+    daemonStore.client = {
+      saveProfile: vi.fn(),
+      archiveProfile: vi.fn(),
+      restoreProfile: vi.fn(),
+      testProfileInChat: vi.fn(),
+    } as any;
+  });
+
+  it("shows the profile empty state", () => {
+    render(AgentCreationWorkspace);
+
+    expect(screen.getByText("No agent profiles")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New Profile" })).toBeTruthy();
+    expect(screen.getByText(/profiles become available as @agent and %agent in chat/i)).toBeTruthy();
+  });
+
+  it("opens a new draft from the empty state", async () => {
+    render(AgentCreationWorkspace);
+
+    await fireEvent.click(screen.getByRole("button", { name: "New Profile" }));
+
+    expect(screen.getByLabelText("Name")).toBeTruthy();
+    expect(screen.getByLabelText("Handle")).toBeTruthy();
+    expect(screen.getByText("Unsaved draft")).toBeTruthy();
+  });
+
+  it("opens a new draft with n when text input is not focused", async () => {
+    daemonStore.profiles.set("profile-1", makeProfile());
+    render(AgentCreationWorkspace);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "n", bubbles: true }));
+
+    expect(await screen.findByText("Unsaved draft")).toBeTruthy();
+    expect(screen.getByLabelText("Handle")).toHaveValue("");
+  });
+
+  it("disables save when the handle is invalid", async () => {
+    render(AgentCreationWorkspace);
+    await fireEvent.click(screen.getByRole("button", { name: "New Profile" }));
+
+    await userEvent.type(screen.getByLabelText("Name"), "Reviewer");
+    await userEvent.type(screen.getByLabelText("Handle"), "Reviewer!");
+    await userEvent.type(screen.getByLabelText("System Prompt"), "Review the active diff.");
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByText("Handle can use lowercase letters, numbers, and hyphens only.")).toBeTruthy();
+  });
+
+  it("saves a valid draft through the daemon client and updates the profile store", async () => {
+    const savedProfile = makeProfile();
+    vi.mocked(daemonStore.client!.saveProfile).mockResolvedValueOnce(makeSaved(savedProfile));
+    render(AgentCreationWorkspace);
+    await fireEvent.click(screen.getByRole("button", { name: "New Profile" }));
+
+    await userEvent.type(screen.getByLabelText("Name"), "Reviewer");
+    await userEvent.type(screen.getByLabelText("Handle"), "reviewer");
+    await userEvent.type(screen.getByLabelText("System Prompt"), "Review the active diff.");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(daemonStore.client!.saveProfile).toHaveBeenCalledWith(expect.objectContaining({
+        name: "Reviewer",
+        handle: "reviewer",
+        runtime: "codex",
+        prompt: "Review the active diff.",
+      }));
+      expect(daemonStore.profiles.get("profile-1")).toEqual(savedProfile);
+    });
+  });
+});

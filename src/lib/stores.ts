@@ -133,7 +133,9 @@ export interface Config {
 export type WorkspaceMode =
   | "agents"
   | "kanban"
-  | "chat";
+  | "chat"
+  | "agent-create"
+  | "agent-observe";
 export const workspaceMode = writable<WorkspaceMode>("chat");
 export const workspaceModePickerVisible = writable<boolean>(false);
 

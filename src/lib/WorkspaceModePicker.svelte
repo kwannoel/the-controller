@@ -9,6 +9,8 @@
     { key: "a", id: "agents", label: "Agents" },
     { key: "k", id: "kanban", label: "Kanban" },
     { key: "c", id: "chat", label: "Chat" },
+    { key: "p", id: "agent-create", label: "Create" },
+    { key: "o", id: "agent-observe", label: "Observe" },
   ];
 </script>
 

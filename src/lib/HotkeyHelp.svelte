@@ -14,7 +14,9 @@
   const sections = $derived(getHelpSections(workspaceModeState.current));
   const modeLabel = $derived(
     workspaceModeState.current === "agents" ? "Agents" :
-    workspaceModeState.current === "kanban" ? "Kanban" : "Chat"
+    workspaceModeState.current === "kanban" ? "Kanban" :
+    workspaceModeState.current === "agent-create" ? "Agent Creation" :
+    workspaceModeState.current === "agent-observe" ? "Agent Observe" : "Chat"
   );
 
   function handleKeydown(e: KeyboardEvent) {

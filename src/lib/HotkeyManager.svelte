@@ -82,6 +82,14 @@
     }
     if (key === "c") {
       switchWorkspaceMode("chat");
+      return;
+    }
+    if (key === "p") {
+      switchWorkspaceMode("agent-create");
+      return;
+    }
+    if (key === "o") {
+      switchWorkspaceMode("agent-observe");
     }
   }
 

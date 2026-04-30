@@ -138,7 +138,7 @@ describe("HotkeyManager", () => {
     expect(get(workspaceModePickerVisible)).toBe(true);
   });
 
-  it("Space switches only among agents, kanban, and chat", () => {
+  it("Space switches among workspace modes", () => {
     pressKey(" ");
     pressKey("a");
     expect(get(workspaceMode)).toBe("agents");
@@ -150,6 +150,14 @@ describe("HotkeyManager", () => {
     pressKey(" ");
     pressKey("c");
     expect(get(workspaceMode)).toBe("chat");
+
+    pressKey(" ");
+    pressKey("p");
+    expect(get(workspaceMode)).toBe("agent-create");
+
+    pressKey(" ");
+    pressKey("o");
+    expect(get(workspaceMode)).toBe("agent-observe");
   });
 
   it("Space then d closes the picker without leaving the current mode", () => {

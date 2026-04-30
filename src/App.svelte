@@ -12,6 +12,7 @@
   import KeystrokeVisualizer from "./lib/KeystrokeVisualizer.svelte";
   import WorkspaceModePicker from "./lib/WorkspaceModePicker.svelte";
   import AgentDashboard from "./lib/AgentDashboard.svelte";
+  import AgentCreationWorkspace from "./lib/agents/AgentCreationWorkspace.svelte";
   import KanbanBoard from "./lib/KanbanBoard.svelte";
   import ChatWorkspace from "./lib/chat/ChatWorkspace.svelte";
   import { refreshProjectsFromBackend } from "./lib/project-listing";
@@ -175,6 +176,15 @@
       <main class="terminal-area">
         {#if workspaceModeState.current === "agents"}
           <AgentDashboard />
+        {:else if workspaceModeState.current === "agent-create"}
+          <AgentCreationWorkspace />
+        {:else if workspaceModeState.current === "agent-observe"}
+          <section class="workspace-placeholder" aria-label="Agent Observe">
+            <div>
+              <p>Agent Observe</p>
+              <span>Observability workspace is queued for the next agent architecture task.</span>
+            </div>
+          </section>
         {:else if workspaceModeState.current === "kanban"}
           <KanbanBoard />
         {:else}
@@ -229,5 +239,27 @@
   .terminal-area {
     flex: 1;
     overflow: hidden;
+  }
+  .workspace-placeholder {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    background: var(--bg-void);
+    color: var(--text-primary);
+  }
+  .workspace-placeholder div {
+    display: grid;
+    gap: 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: var(--bg-base);
+    padding: 24px;
+  }
+  .workspace-placeholder p {
+    font: 600 16px var(--font-mono);
+  }
+  .workspace-placeholder span {
+    color: var(--text-secondary);
+    font-size: 13px;
   }
 </style>
