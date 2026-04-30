@@ -142,4 +142,45 @@ describe("AgentCreationWorkspace", () => {
       expect(daemonStore.profiles.get("profile-1")).toEqual(savedProfile);
     });
   });
+
+  it("saves a new draft with blank optional strings without sending null values", async () => {
+    const savedProfile = makeProfile();
+    vi.mocked(daemonStore.client!.saveProfile).mockResolvedValueOnce(makeSaved(savedProfile));
+    render(AgentCreationWorkspace);
+    await fireEvent.click(screen.getByRole("button", { name: "New Profile" }));
+
+    await userEvent.type(screen.getByLabelText("Name"), "Reviewer");
+    await userEvent.type(screen.getByLabelText("Handle"), "reviewer");
+    await userEvent.type(screen.getByLabelText("System Prompt"), "Review the active diff.");
+
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(daemonStore.client!.saveProfile).toHaveBeenCalled());
+    const request = vi.mocked(daemonStore.client!.saveProfile).mock.calls[0][0];
+    expect(Object.values(request)).not.toContain(null);
+    expect(request.description).toBeUndefined();
+    expect(request.outbox_instructions).toBeUndefined();
+  });
+
+  it("does not send unknown active-version fields when saving an existing profile name edit", async () => {
+    const profile = makeProfile();
+    const savedProfile = makeProfile({ name: "Reviewer Updated" });
+    daemonStore.profiles.set(profile.id, profile);
+    vi.mocked(daemonStore.client!.saveProfile).mockResolvedValueOnce(makeSaved(savedProfile));
+    render(AgentCreationWorkspace);
+
+    await userEvent.clear(await screen.findByLabelText("Name"));
+    await userEvent.type(screen.getByLabelText("Name"), "Reviewer Updated");
+    await fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(daemonStore.client!.saveProfile).toHaveBeenCalled());
+    const request = vi.mocked(daemonStore.client!.saveProfile).mock.calls[0][0];
+    expect(request).toMatchObject({
+      id: profile.id,
+      name: "Reviewer Updated",
+    });
+    expect(request).not.toHaveProperty("model");
+    expect(request).not.toHaveProperty("default_workspace_behavior");
+    expect(request).not.toHaveProperty("outbox_instructions");
+  });
 });

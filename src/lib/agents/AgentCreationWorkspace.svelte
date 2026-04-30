@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { daemonStore, loadProfiles } from "../daemon/store.svelte";
+  import type { SaveProfileRequest } from "../daemon/client";
   import type { AgentProfile } from "../daemon/types";
   import { workspaceMode } from "../stores";
   import ProfileEditor from "./ProfileEditor.svelte";
@@ -102,8 +103,33 @@
       prompt: profile.prompt,
       skills: [...profile.skills],
       outbox_instructions: "",
-      default_workspace_behavior: "focused",
+      default_workspace_behavior: "",
     };
+  }
+
+  function buildSaveProfileRequest(value: ProfileDraft): SaveProfileRequest {
+    const request: SaveProfileRequest = {
+      id: value.id,
+      name: value.name.trim(),
+      handle: value.handle.trim(),
+      runtime: value.runtime || undefined,
+      prompt: value.prompt.trim(),
+      skills: value.skills,
+    };
+
+    const description = value.description.trim();
+    if (description) request.description = description;
+
+    const model = value.model.trim();
+    if (model) request.model = model;
+
+    const defaultWorkspaceBehavior = value.default_workspace_behavior.trim();
+    if (defaultWorkspaceBehavior) request.default_workspace_behavior = defaultWorkspaceBehavior;
+
+    const outboxInstructions = value.outbox_instructions.trim();
+    if (outboxInstructions) request.outbox_instructions = outboxInstructions;
+
+    return request;
   }
 
   function startNewProfile() {
@@ -147,18 +173,7 @@
     saving = true;
     actionError = null;
     try {
-      const saved = await daemonStore.client.saveProfile({
-        id: draft.id,
-        name: draft.name.trim(),
-        handle: draft.handle.trim(),
-        runtime: draft.runtime || undefined,
-        model: draft.model.trim() || null,
-        description: draft.description.trim() || null,
-        prompt: draft.prompt.trim(),
-        skills: draft.skills,
-        default_workspace_behavior: draft.default_workspace_behavior || null,
-        outbox_instructions: draft.outbox_instructions.trim() || null,
-      });
+      const saved = await daemonStore.client.saveProfile(buildSaveProfileRequest(draft));
       daemonStore.profiles.set(saved.profile.id, saved.profile);
       selectedProfileId = saved.profile.id;
       draft = {
