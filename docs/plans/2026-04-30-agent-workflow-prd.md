@@ -62,23 +62,6 @@ the new workflow version for future runs.
 
 - [Workflow Creation Mode mockup](../assets/design/controller-workflow-creation-ui.png)
 
-```mermaid
-flowchart TD
-  WorkflowRepo["Central workflow repo"] --> Version["Validated workflow version"]
-  Trigger["Issue trigger or schedule"] --> Fanout["One run per GitHub issue"]
-  Version --> Fanout
-  Fanout --> Run["Workflow run pinned to commit"]
-  Run --> Planner["%planner shadow agent"]
-  Planner --> Implementer["%implementer shadow agent"]
-  Implementer --> Validation["Declared validation commands"]
-  Validation --> Reviewer["%reviewer shadow agent"]
-  Reviewer -->|changes requested| Implementer
-  Reviewer -->|approved| PullRequest["Create GitHub PR"]
-  Maintainer["%workflow-maintainer"] --> ChangePR["Workflow change PR"]
-  ChangePR --> Checks["Schema, graph, permission, and dry-run checks"]
-  Checks --> WorkflowRepo
-```
-
 ## Problem
 
 The Controller can already orchestrate terminal sessions and is gaining chat,
@@ -157,14 +140,16 @@ inspects why a run is blocked, retried, or complete.
 2. Workflow definitions live in a central workflow Git repository.
 3. The graphical editor is a projection over the workflow text definition.
 4. Trigger execution creates one workflow run per GitHub item.
-5. V1 runs operate on GitHub issues that need agents to create PRs.
-6. Shadow agents are the agent execution primitive for workflow nodes. They use
+5. A saved workflow definition is inert by default. The Controller creates no
+   runs until a user enables a trigger or starts a manual run.
+6. V1 runs operate on GitHub issues that need agents to create PRs.
+7. Shadow agents are the agent execution primitive for workflow nodes. They use
    the shadow-agent semantics from the Chat Routing PRD.
-7. Shadow agents persist for the lifetime of a workflow run, scoped by role.
-8. The graph supports agent nodes and system nodes.
-9. Agent nodes receive node instructions through prompt/context injection.
-10. V1 validation uses declared commands and platform checks.
-11. Agent-authored workflow edits are applied automatically through validated
+8. Shadow agents persist for the lifetime of a workflow run, scoped by role.
+9. The graph supports agent nodes and system nodes.
+10. Agent nodes receive node instructions through prompt/context injection.
+11. V1 validation uses declared commands and platform checks.
+12. Agent-authored workflow edits are applied automatically through validated
     PRs against the central workflow repo.
 
 ## Core Concepts
