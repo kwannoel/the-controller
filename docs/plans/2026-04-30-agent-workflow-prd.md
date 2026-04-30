@@ -85,8 +85,9 @@ The Controller can already orchestrate terminal sessions and is gaining chat,
 agent creation, and observability surfaces. It does not yet have a product model
 for repeatable, multi-agent work over many GitHub items.
 
-Users want to describe a process once, then let The Controller run it across
-incoming issues:
+Users want to define a GitHub issue workflow once, then let The Controller run
+it across matching issues. For example, a user might define this workflow for
+turning eligible issues into pull requests:
 
 ```text
 plan agent -> UI agent if needed -> implementation agent -> test agent
