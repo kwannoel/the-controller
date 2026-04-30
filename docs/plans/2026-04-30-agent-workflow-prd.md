@@ -13,6 +13,7 @@ Related docs:
 ## Table of Contents
 
 - [Summary](#summary)
+- [Design Assets](#design-assets)
 - [Problem](#problem)
 - [Goals](#goals)
 - [Non-goals](#non-goals)
@@ -56,6 +57,10 @@ workflow definitions. Agent-authored changes are applied automatically through a
 validated branch-and-PR flow: The Controller opens a PR in the central workflow
 repo, validates the definition, auto-merges it when checks pass, and activates
 the new workflow version for future runs.
+
+## Design Assets
+
+- [Workflow Creation Mode mockup](../assets/design/controller-workflow-creation-ui.png)
 
 ## Problem
 
