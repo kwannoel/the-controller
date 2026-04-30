@@ -20,6 +20,7 @@ Related docs:
 - [Users](#users)
 - [Core Decisions](#core-decisions)
 - [Core Concepts](#core-concepts)
+  - [Workflow Status](#workflow-status)
 - [Use Cases](#use-cases)
 - [Workflow Definition](#workflow-definition)
 - [Triggers](#triggers)
@@ -42,21 +43,21 @@ Related docs:
 ## Summary
 
 The Controller should let users define reusable agent workflows that operate on
-GitHub issues. A workflow combines triggers, filters, a graph of agent and
-system nodes, prompt instructions, validation commands, and run policy.
+GitHub issues. A workflow combines status, triggers, filters, a graph of agent
+and system nodes, prompt instructions, validation commands, and run policy.
 
-For v1, workflows focus on issues that need agents to create pull requests. A
-trigger creates one workflow run per GitHub issue. Each run pins a workflow
-version, creates persistent shadow agents for the roles it needs, executes graph
-nodes in order, validates progress with declared checks, and creates a pull
-request when the work is ready.
+For v1, workflows focus on issues that need agents to create pull requests. An
+active workflow creates one workflow run per matching GitHub issue when one of
+its triggers fires. Each run pins a workflow version, creates persistent shadow
+agents for the roles it needs, executes graph nodes in order, validates progress
+with declared checks, and creates a pull request when the work is ready.
 
 Workflows are source-controlled text files in a central workflow repository.
 The graphical editor reads and writes those files. Agents may also modify
 workflow definitions. Agent-authored changes are applied automatically through a
 validated branch-and-PR flow: The Controller opens a PR in the central workflow
-repo, validates the definition, auto-merges it when checks pass, and activates
-the new workflow version for future runs.
+repo, validates the definition, and auto-merges it when checks pass. If the
+merged definition is active, future trigger events can create runs from it.
 
 ## Design Assets
 
@@ -97,6 +98,8 @@ inspect and edit.
 10. Provide a graphical editor for adding, removing, connecting, and inspecting
     graph nodes.
 11. Keep workflow runs observable through the existing agent observability model.
+12. Let users activate and deactivate workflows without deleting their
+    definitions.
 
 ## Non-goals
 
@@ -125,8 +128,8 @@ agent pipeline only when workflow triggers and filters match.
 ### Workflow Maintainer Agent
 
 A shadow agent or reusable agent that improves workflow definitions. It needs a
-text format it can edit, automatic activation after validation, and an audit
-trail for every workflow change.
+text format it can edit, validated automatic application, and an audit trail for
+every workflow change.
 
 ### Interactive Developer
 
@@ -140,24 +143,32 @@ inspects why a run is blocked, retried, or complete.
 2. Workflow definitions live in a central workflow Git repository.
 3. The graphical editor is a projection over the workflow text definition.
 4. Trigger execution creates one workflow run per GitHub item.
-5. A saved workflow definition is inert by default. The Controller creates no
-   runs until a user enables a trigger or starts a manual run.
-6. V1 runs operate on GitHub issues that need agents to create PRs.
-7. Shadow agents are the agent execution primitive for workflow nodes. They use
+5. Each workflow has one status: `active` or `inactive`.
+6. Inactive workflows do not evaluate triggers, start scheduled runs, or allow
+   manual runs.
+7. Users can activate or deactivate a workflow without changing its graph.
+8. V1 runs operate on GitHub issues that need agents to create PRs.
+9. Shadow agents are the agent execution primitive for workflow nodes. They use
    the shadow-agent semantics from the Chat Routing PRD.
-8. Shadow agents persist for the lifetime of a workflow run, scoped by role.
-9. The graph supports agent nodes and system nodes.
-10. Agent nodes receive node instructions through prompt/context injection.
-11. V1 validation uses declared commands and platform checks.
-12. Agent-authored workflow edits are applied automatically through validated
+10. Shadow agents persist for the lifetime of a workflow run, scoped by role.
+11. The graph supports agent nodes and system nodes.
+12. Agent nodes receive node instructions through prompt/context injection.
+13. V1 validation uses declared commands and platform checks.
+14. Agent-authored workflow edits are applied automatically through validated
     PRs against the central workflow repo.
 
 ## Core Concepts
 
 ### Workflow
 
-A named, versioned definition that declares triggers, filters, graph nodes,
-edges, run policy, permissions, and validation requirements.
+A named, versioned definition that declares status, triggers, filters, graph
+nodes, edges, run policy, permissions, and validation requirements.
+
+### Workflow Status
+
+The lifecycle state for a workflow. A workflow is either `active` or `inactive`.
+Inactive workflows remain editable and validatable, but the engine does not run
+their triggers or let users start manual runs from them.
 
 ### Workflow Definition File
 
@@ -212,16 +223,17 @@ GitHub state checks.
 
 ### Run a Workflow When a New Issue Is Filed
 
-The user defines a workflow with a `github.issue.opened` trigger and filters for
-repo, labels, and issue state. When a matching issue appears, The Controller
-creates one workflow run for that issue, pins the active workflow version, and
-starts the graph.
+The user defines an active workflow with a `github.issue.opened` trigger and
+filters for repo, labels, and issue state. When a matching issue appears, The
+Controller creates one workflow run for that issue, pins the workflow version,
+and starts the graph.
 
 ### Scheduled Issue Sweep
 
-The user defines a schedule that scans eligible repositories every hour. The
-trigger discovers issues matching the workflow filters and creates one run per
-issue that is not already running or complete for the active workflow version.
+The user defines an active workflow with a schedule that scans eligible
+repositories every hour. The trigger discovers issues matching the workflow
+filters and creates one run per issue that is not already running or complete
+for that workflow version.
 
 ### Plan, Implement, Validate, and Create a PR
 
@@ -241,15 +253,16 @@ the workflow run, it keeps context from earlier implementation work.
 
 A workflow-maintainer agent edits the central workflow repo to refine a prompt,
 add a validation command, or change graph edges. The Controller opens a branch
-and PR, validates the workflow definition, auto-merges the PR if checks pass,
-and activates the new version for future runs.
+and PR, validates the workflow definition, and auto-merges the PR if checks
+pass. If the workflow was active before the change, future runs use the merged
+version.
 
 ### User Edits Workflow Graphically
 
 The user opens Workflow Creation Mode, drags a new system node between
 implementation and PR creation, configures its command, and saves. The text
-definition updates with stable formatting. The Controller validates the graph
-before activation.
+definition updates with stable formatting. The Controller validates the graph.
+The user can activate the workflow once validation passes.
 
 ## Workflow Definition
 
@@ -262,6 +275,7 @@ Illustrative shape:
 id: issue-to-pr
 name: Issue to PR
 version: 1
+status: inactive
 
 triggers:
   - type: github.issue.opened
@@ -350,13 +364,14 @@ Later trigger types:
 
 Trigger requirements:
 
-1. Triggers must apply filters before creating runs.
-2. A trigger must not create duplicate active runs for the same workflow version
+1. Triggers only run for active workflows.
+2. Triggers must apply filters before creating runs.
+3. A trigger must not create duplicate active runs for the same workflow version
    and GitHub item.
-3. Scheduled triggers must produce one run per item, not one batch run.
-4. Trigger decisions must be observable: matched, filtered out, duplicate, or
+4. Scheduled triggers must produce one run per item, not one batch run.
+5. Trigger decisions must be observable: matched, filtered out, duplicate, or
    run created.
-5. Trigger permissions must be explicit in the workflow definition.
+6. Trigger permissions must be explicit in the workflow definition.
 
 ## Workflow Graph
 
@@ -367,13 +382,13 @@ The graph describes the allowed execution path. The engine should support:
 - loopbacks with max iteration limits;
 - parallel branches when dependencies allow;
 - join nodes after parallel branches;
-- disabled nodes for draft workflow editing;
+- draft-only nodes while editing;
 - graph validation before activation.
 
 Graph validation should reject:
 
 - missing start node;
-- unreachable nodes unless marked disabled;
+- unreachable nodes unless marked draft-only;
 - cycles without a loop limit;
 - edges that reference unknown nodes;
 - conditions that reference unavailable outputs;
@@ -508,24 +523,26 @@ that report, but v1 graph advancement should depend on declared checks.
 
 The central workflow repo is the durable source of truth for workflow
 definitions. The Controller may cache parsed definitions and run state in its
-own database, but activation comes from validated Git commits.
+own database. Workflow status comes from the latest validated Git commit for
+that workflow.
 
 Requirements:
 
 1. The Controller is configured with one central workflow repository.
 2. Workflow files live under a conventional path such as `workflows/`.
 3. The Controller watches or polls the repo for changes.
-4. Every active workflow version maps to a Git commit SHA and file path.
+4. Every workflow version maps to a Git commit SHA and file path.
 5. Existing runs remain pinned to the version that launched them.
-6. New runs use the latest active validated version.
-7. Workflow validation failures prevent activation and create visible errors.
+6. New runs use the latest validated active version.
+7. Workflow validation failures prevent status changes and create visible
+   errors.
 8. The UI can show definition diffs between versions.
-9. The Controller can roll back the active version to an older validated commit.
+9. The Controller can roll back a workflow to an older validated commit.
 
 ## Agent-Authored Workflow Changes
 
 Agents can modify workflow definitions because the source of truth is text in
-Git. Automatic application should still use a controlled activation path.
+Git. Automatic application should still use a controlled validation path.
 
 Flow:
 
@@ -534,12 +551,12 @@ Flow:
 3. The Controller runs schema validation, graph validation, permission checks,
    trigger dry-run, and formatting checks.
 4. If validation passes, The Controller auto-merges the PR.
-5. The merged commit becomes the active workflow version for future runs.
+5. If the merged workflow is active, future runs use the merged version.
 6. The Controller records an audit event naming the agent session, run, branch,
    PR, commit, and validation result.
 
 Rejected changes should leave the PR open with validation comments and should
-not activate the workflow version.
+not change workflow status or the runnable version.
 
 ## Frontend UX Requirements
 
@@ -549,6 +566,7 @@ other.
 Primary layout:
 
 - workflow list;
+- active/inactive status control;
 - graph canvas;
 - selected node inspector;
 - text definition editor;
@@ -565,7 +583,8 @@ Graph canvas requirements:
 6. Users can switch between graph editing and text editing without losing
    changes.
 7. Invalid graph regions are highlighted with actionable messages.
-8. The graph should support dense workflows without becoming a decorative
+8. Users can see whether the workflow is active or inactive while editing.
+9. The graph should support dense workflows without becoming a decorative
    landing page.
 
 Text editor requirements:
@@ -573,7 +592,7 @@ Text editor requirements:
 1. The text definition remains directly editable.
 2. The editor validates against the schema as the user types.
 3. Formatting should be stable after graph edits.
-4. Users can view diffs before activation.
+4. Users can view diffs before activating a workflow or applying changes.
 5. Users can copy a workflow id or node id for agent prompts and issue comments.
 
 Run UI requirements:
@@ -591,7 +610,7 @@ Run UI requirements:
 The backend and daemon need durable records for:
 
 - workflow repository config;
-- workflow definitions and active versions;
+- workflow definitions, status, and versions;
 - workflow validation results;
 - triggers and trigger events;
 - workflow runs;
@@ -670,7 +689,7 @@ Run errors:
 - validation command failed;
 - loop limit exceeded;
 - system node action failed;
-- workflow repo activation failed.
+- workflow repo validation failed.
 
 Each error should have a user-facing message, raw diagnostic details for
 maintainers, and a retry or resolution path where possible.
@@ -680,15 +699,19 @@ maintainers, and a retry or resolution path where possible.
 ### Workflow Definitions
 
 - Users can define workflows as text files in a central workflow repo.
-- The Controller validates workflow files before activation.
+- The Controller validates workflow files before activation or status changes.
 - The UI can render a valid workflow file as a graph.
 - Graph edits update the text definition with stable formatting.
 - Invalid workflows cannot become active.
+- Users can activate and deactivate a validated workflow.
 
 ### Triggers
 
-- A new matching GitHub issue creates one workflow run for that issue.
-- A scheduled trigger discovers matching issues and creates separate runs.
+- A new matching GitHub issue creates one workflow run for that issue when the
+  workflow is active.
+- A scheduled trigger discovers matching issues and creates separate runs when
+  the workflow is active.
+- Inactive workflows do not create runs.
 - Duplicate active runs for the same workflow version and item are blocked.
 - Trigger evaluations produce visible events.
 
@@ -716,12 +739,13 @@ maintainers, and a retry or resolution path where possible.
 
 ### Workflow Repository
 
-- Active workflow versions map to Git commit SHAs.
+- Workflow versions map to Git commit SHAs.
 - Existing runs stay pinned to their launch version.
-- New runs use the latest active validated version.
+- New runs use the latest validated active version.
 - Agent-authored workflow changes create PRs in the central workflow repo.
-- Passing workflow-change PRs auto-merge and activate a new version.
-- Failing workflow-change PRs stay inactive and show validation comments.
+- Passing workflow-change PRs auto-merge and update the workflow version.
+- Failing workflow-change PRs do not change workflow status and show validation
+  comments.
 
 ### UI
 
