@@ -54,6 +54,9 @@
         : undefined;
       projectId = activeProject?.id ?? null;
     }
+    if (!projectId && daemonStore.activeChatId) {
+      projectId = daemonStore.chats.get(daemonStore.activeChatId)?.project_id ?? null;
+    }
     return projectList.find((project) => project.id === projectId) ?? projectList[0];
   }
 
@@ -96,6 +99,7 @@
   type SidebarItem =
     | { type: "project"; projectId: string }
     | { type: "session"; sessionId: string; projectId: string }
+    | { type: "chat"; chatId: string; projectId: string }
     | { type: "agent"; agentKind: "auto-worker" | "maintainer"; projectId: string };
 
   function getVisibleItems(): SidebarItem[] {
@@ -113,12 +117,18 @@
     if (currentMode === "chat") {
       const result: SidebarItem[] = [];
       const daemonSessions = [...daemonStore.sessions.values()];
+      const daemonChats = [...daemonStore.chats.values()];
       for (const p of projectList) {
         result.push({ type: "project", projectId: p.id });
         if (!expandedSet.has(p.id)) continue;
         for (const s of daemonSessions) {
           if (s.cwd === p.repo_path) {
             result.push({ type: "session", sessionId: s.id, projectId: p.id });
+          }
+        }
+        for (const chat of daemonChats) {
+          if (chat.project_id === p.id) {
+            result.push({ type: "chat", chatId: chat.id, projectId: p.id });
           }
         }
       }
@@ -134,6 +144,8 @@
     let idx = -1;
     if (currentFocus?.type === "session") {
       idx = items.findIndex(it => it.type === "session" && it.sessionId === currentFocus.sessionId);
+    } else if (currentFocus?.type === "chat") {
+      idx = items.findIndex(it => it.type === "chat" && it.chatId === currentFocus.chatId);
     } else if (currentFocus?.type === "agent") {
       idx = items.findIndex(it => it.type === "agent" && it.projectId === currentFocus.projectId && it.agentKind === currentFocus.agentKind);
     } else if (currentFocus?.type === "project") {
@@ -143,7 +155,12 @@
     const next = items[((idx + direction) % len + len) % len];
     if (next.type === "session") {
       daemonStore.activeSessionId = next.sessionId;
+      daemonStore.activeChatId = null;
       focusTarget.set({ type: "session", sessionId: next.sessionId, projectId: next.projectId });
+    } else if (next.type === "chat") {
+      daemonStore.activeChatId = next.chatId;
+      daemonStore.activeSessionId = null;
+      focusTarget.set({ type: "chat", chatId: next.chatId, projectId: next.projectId });
     } else if (next.type === "agent") {
       focusTarget.set({ type: "agent", agentKind: next.agentKind, projectId: next.projectId });
     } else {
@@ -176,6 +193,10 @@
           expandedProjects.set(next);
         } else if (currentFocus?.type === "session") {
           daemonStore.activeSessionId = currentFocus.sessionId;
+          daemonStore.activeChatId = null;
+        } else if (currentFocus?.type === "chat") {
+          daemonStore.activeChatId = currentFocus.chatId;
+          daemonStore.activeSessionId = null;
         } else if (currentFocus?.type === "agent") {
           focusTarget.set({ type: "agent-panel", agentKind: currentFocus.agentKind, projectId: currentFocus.projectId });
         }
@@ -237,7 +258,7 @@
     if (isEditableElementFocused()) return;
 
     if (e.key === "Escape") {
-      if (currentFocus?.type === "session") {
+      if (currentFocus?.type === "session" || currentFocus?.type === "chat") {
         focusTarget.set({ type: "project", projectId: currentFocus.projectId });
         e.stopPropagation();
         e.preventDefault();

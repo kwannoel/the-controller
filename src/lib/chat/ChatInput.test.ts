@@ -1,10 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/svelte";
-import { hotkeyAction } from "$lib/stores";
+import { get } from "svelte/store";
+import { focusTarget, hotkeyAction } from "$lib/stores";
 
 const sendMessage = vi.hoisted(() => vi.fn(async () => ({ seq: 1 })));
+const sendChatMessage = vi.hoisted(() => vi.fn(async () => ({
+  message: {
+    id: "msg-1",
+    chat_id: "chat-1",
+    idempotency_id: null,
+    body: "hello",
+    token_spans: [],
+    created_at: 1,
+  },
+  turns: [],
+})));
 vi.mock("../daemon/store.svelte", () => ({
-  daemonStore: { client: { sendMessage } } as any,
+  daemonStore: {
+    client: { sendMessage, sendChatMessage },
+    activeChatId: "chat-1",
+    chats: new Map([["chat-1", { id: "chat-1", project_id: "proj-1", title: "New chat" }]]),
+    chatTranscripts: new Map(),
+  } as any,
 }));
 
 import ChatInput from "./ChatInput.svelte";
@@ -12,7 +29,9 @@ import ChatInput from "./ChatInput.svelte";
 describe("ChatInput", () => {
   beforeEach(() => {
     sendMessage.mockClear();
+    sendChatMessage.mockClear();
     hotkeyAction.set(null);
+    focusTarget.set(null);
   });
 
   it("Cmd+Enter sends user_text and clears textarea", async () => {
@@ -21,6 +40,15 @@ describe("ChatInput", () => {
     await fireEvent.input(ta, { target: { value: "hello" } });
     await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
     expect(sendMessage).toHaveBeenCalledWith("s1", { kind: "user_text", text: "hello" });
+    expect(ta.value).toBe("");
+  });
+
+  it("Cmd+Enter sends chat messages when mounted with a chat id", async () => {
+    const { getByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+    await fireEvent.input(ta, { target: { value: "hello" } });
+    await fireEvent.keyDown(ta, { key: "Enter", metaKey: true });
+    expect(sendChatMessage).toHaveBeenCalledWith("chat-1", { body: "hello", tokens: [] });
     expect(ta.value).toBe("");
   });
 
@@ -50,6 +78,16 @@ describe("ChatInput", () => {
 
     expect(sendMessage).not.toHaveBeenCalled();
     expect(document.activeElement).not.toBe(ta);
+  });
+
+  it("Esc focuses the active chat row when a chat is active", async () => {
+    const { getByRole } = render(ChatInput, { chatId: "chat-1", status: "running", statusState: "idle" });
+    const ta = getByRole("textbox") as HTMLTextAreaElement;
+    ta.focus();
+
+    await fireEvent.keyDown(ta, { key: "Escape" });
+
+    expect(get(focusTarget)).toEqual({ type: "chat", chatId: "chat-1", projectId: "proj-1" });
   });
 
   it("Shift+Esc triggers interrupt when statusState is 'working'", async () => {

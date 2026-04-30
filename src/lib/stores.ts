@@ -204,6 +204,7 @@ export type AgentKind = "auto-worker" | "maintainer";
 
 export type FocusTarget =
   | { type: "session"; sessionId: string; projectId: string }
+  | { type: "chat"; chatId: string; projectId: string }
   | { type: "project"; projectId: string }
   | { type: "agent"; agentKind: AgentKind; projectId: string }
   | { type: "agent-panel"; agentKind: AgentKind; projectId: string }

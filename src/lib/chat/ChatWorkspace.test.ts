@@ -1,24 +1,59 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, fireEvent } from "@testing-library/svelte";
+import { render, fireEvent, waitFor } from "@testing-library/svelte";
+import { projects, focusTarget, workspaceMode, hotkeyAction, type Project } from "$lib/stores";
 
-vi.mock("../daemon/store.svelte", () => {
-  const daemonStore = {
-    reachable: false,
-    client: null as any,
-    sessions: new Map(),
-    transcripts: new Map(),
-    activeSessionId: null as string | null,
-  };
+vi.mock("../daemon/store.svelte", () => import("./__mocks__/daemonStore.svelte"));
+
+vi.mock("../daemon/stream", () => ({
+  openStream: vi.fn(() => ({ close: vi.fn() })),
+}));
+
+function makeProject(id: string, name: string, repoPath: string): Project {
   return {
-    daemonStore,
-    bootstrap: vi.fn(async () => {}),
-    pingDaemon: vi.fn(async () => {}),
-    loadSessions: vi.fn(async () => {}),
+    id,
+    name,
+    repo_path: repoPath,
+    created_at: "2026-01-01",
+    archived: false,
+    maintainer: { enabled: false, interval_minutes: 60 },
+    auto_worker: { enabled: false },
+    sessions: [],
+    prompts: [],
+    staged_sessions: [],
   };
-});
+}
+
+function pressKey(key: string) {
+  window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+}
 
 describe("ChatWorkspace", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { daemonStore, readChatTranscript } = await import("./__mocks__/daemonStore.svelte");
+    daemonStore.reachable = true;
+    daemonStore.client = {
+      readEvents: vi.fn(async () => []),
+      readChatTranscript,
+      createChat: vi.fn(),
+      sendMessage: vi.fn(),
+      sendChatMessage: vi.fn(),
+      wsUrl: () => "ws://x",
+      chatStreamUrl: () => "ws://chat",
+    };
+    daemonStore.sessions.clear();
+    daemonStore.transcripts.clear();
+    daemonStore.activeSessionId = null;
+    daemonStore.chats.clear();
+    daemonStore.chatTranscripts.clear();
+    daemonStore.activeChatId = null;
+    daemonStore.newChatTarget = null;
+    readChatTranscript.mockResolvedValue([]);
+    projects.set([]);
+    focusTarget.set(null);
+    workspaceMode.set("chat");
+    hotkeyAction.set(null);
+  });
 
   it("renders empty state when daemon unreachable", async () => {
     const { daemonStore } = await import("../daemon/store.svelte");
@@ -37,5 +72,35 @@ describe("ChatWorkspace", () => {
     const { getByText } = render(ChatWorkspace);
     await fireEvent.click(getByText("Retry"));
     expect(pingDaemon).toHaveBeenCalled();
+  });
+
+  it("pressing n creates a chat for the focused project and focuses the composer", async () => {
+    const { daemonStore } = await import("../daemon/store.svelte");
+    const createChat = vi.fn(async () => ({
+      id: "chat-1",
+      project_id: "proj-1",
+      title: "New chat",
+      created_at: 1,
+      updated_at: 1,
+      deleted_at: null,
+    }));
+    (daemonStore as any).client.createChat = createChat;
+    projects.set([makeProject("proj-1", "Controller", "/tmp/controller")]);
+    focusTarget.set({ type: "project", projectId: "proj-1" });
+
+    const ChatWorkspace = (await import("./ChatWorkspace.svelte")).default;
+    const HotkeyManager = (await import("../HotkeyManager.svelte")).default;
+    const { queryByRole, getByRole } = render(ChatWorkspace);
+    render(HotkeyManager);
+
+    pressKey("n");
+
+    await waitFor(() => expect(createChat).toHaveBeenCalledWith({
+      project_id: "proj-1",
+      title: "New chat",
+    }));
+    await waitFor(() => expect((daemonStore as any).activeChatId).toBe("chat-1"));
+    await waitFor(() => expect(document.activeElement).toBe(getByRole("textbox")));
+    expect(queryByRole("dialog")).toBeNull();
   });
 });

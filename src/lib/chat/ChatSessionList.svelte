@@ -9,16 +9,19 @@
     onProjectFocus,
     onNewChat,
     onSelect,
+    onSelectChat,
   }: {
     currentFocus: FocusTarget;
     onProjectFocus: (projectId: string) => void;
     onNewChat: (projectId: string) => void;
     onSelect: (sessionId: string) => void;
+    onSelectChat?: (chatId: string) => void;
   } = $props();
 
   const projectsState = fromStore(projectsStore);
   const projectList = $derived(projectsState.current);
   const sessionsList = $derived([...daemonStore.sessions.values()]);
+  const chatsList = $derived([...daemonStore.chats.values()]);
   const groups = $derived(groupSessionsByProject(projectList, sessionsList));
 </script>
 
@@ -44,6 +47,18 @@
         <span class="status status-{s.status}"></span>
         <span class="label">{s.label}</span>
         <span class="agent">{s.agent}</span>
+      </button>
+    {/each}
+    {#each chatsList.filter((chat) => chat.project_id === p.id) as chat (chat.id)}
+      <button
+        class="session-row"
+        class:focus-target={currentFocus?.type === "chat" && currentFocus.chatId === chat.id}
+        data-chat-id={chat.id}
+        onclick={() => onSelectChat?.(chat.id)}
+      >
+        <span class="status status-running"></span>
+        <span class="label">{chat.title}</span>
+        <span class="agent">chat</span>
       </button>
     {/each}
     <button class="new" onclick={() => onNewChat(p.id)}>+ New chat</button>

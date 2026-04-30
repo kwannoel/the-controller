@@ -2,11 +2,12 @@
   import { daemonStore } from "../daemon/store.svelte";
   import { classifyError } from "../daemon/errors";
   import { showToast } from "$lib/toast";
-  import { hotkeyAction } from "$lib/stores";
-  import type { SessionStatus, StatusState } from "../daemon/types";
+  import { focusTarget, hotkeyAction } from "$lib/stores";
+  import type { RouteToken, SessionStatus, StatusState } from "../daemon/types";
 
-  let { sessionId, status, statusState }: {
-    sessionId: string;
+  let { sessionId = null, chatId = null, status, statusState }: {
+    sessionId?: string | null;
+    chatId?: string | null;
     status: SessionStatus;
     statusState: StatusState | null;
   } = $props();
@@ -15,6 +16,7 @@
   let busy = $state(false);
   let sessionEndedBanner = $state(false);
   let textareaEl: HTMLTextAreaElement | undefined = $state();
+  let routeTokens = $state<RouteToken[]>([]);
 
   const disabled = $derived(status === "ended" || status === "failed" || sessionEndedBanner);
   const canInterrupt = $derived(
@@ -28,7 +30,14 @@
     if (!text || busy || disabled || !daemonStore.client) return;
     busy = true;
     try {
-      await daemonStore.client.sendMessage(sessionId, { kind: "user_text", text });
+      if (chatId) {
+        const res = await daemonStore.client.sendChatMessage(chatId, { body: text, tokens: routeTokens });
+        const prev = daemonStore.chatTranscripts.get(chatId) ?? [];
+        daemonStore.chatTranscripts.set(chatId, [...prev, { type: "user_message", message: res.message }]);
+        routeTokens = [];
+      } else if (sessionId) {
+        await daemonStore.client.sendMessage(sessionId, { kind: "user_text", text });
+      }
       value = "";
     } catch (e) {
       const c = classifyError(e);
@@ -51,8 +60,16 @@
   }
 
   async function interrupt() {
-    if (!canInterrupt || !daemonStore.client) return;
+    if (!canInterrupt || !daemonStore.client || !sessionId) return;
     await daemonStore.client.sendMessage(sessionId, { kind: "interrupt" });
+  }
+
+  function focusActiveChatRow() {
+    if (!chatId) return false;
+    const chat = daemonStore.chats.get(chatId);
+    if (!chat) return false;
+    focusTarget.set({ type: "chat", chatId: chat.id, projectId: chat.project_id });
+    return true;
   }
 
   $effect(() => {
@@ -77,7 +94,9 @@
         void interrupt();
       } else {
         e.preventDefault();
-        (e.currentTarget as HTMLTextAreaElement).blur();
+        if (!focusActiveChatRow()) {
+          (e.currentTarget as HTMLTextAreaElement).blur();
+        }
       }
     }
   }

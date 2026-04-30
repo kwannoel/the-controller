@@ -11,7 +11,7 @@ export function focusForModeSwitch(
 ): FocusTarget {
   if (!current) return null;
 
-  if (current.type === "session" && newMode !== "chat") {
+  if ((current.type === "session" || current.type === "chat") && newMode !== "chat") {
     return { type: "project", projectId: current.projectId };
   }
 

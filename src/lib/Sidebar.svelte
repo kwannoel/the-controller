@@ -56,6 +56,15 @@
       requestAnimationFrame(() => {
         sidebarEl?.querySelector<HTMLElement>(`[data-session-id="${currentFocus.sessionId}"]`)?.focus();
       });
+    } else if (currentFocus?.type === "chat") {
+      if (!expandedProjectSet.has(currentFocus.projectId)) {
+        const next = new Set(expandedProjectSet);
+        next.add(currentFocus.projectId);
+        expandedProjects.set(next);
+      }
+      requestAnimationFrame(() => {
+        sidebarEl?.querySelector<HTMLElement>(`[data-chat-id="${currentFocus.chatId}"]`)?.focus();
+      });
     } else if (currentFocus?.type === "agent") {
       if (!expandedProjectSet.has(currentFocus.projectId)) {
         const next = new Set(expandedProjectSet);
@@ -206,6 +215,11 @@
         }}
         onSelect={(sessionId) => {
           daemonStore.activeSessionId = sessionId;
+          daemonStore.activeChatId = null;
+        }}
+        onSelectChat={(chatId) => {
+          daemonStore.activeChatId = chatId;
+          daemonStore.activeSessionId = null;
         }}
       />
     {/if}
