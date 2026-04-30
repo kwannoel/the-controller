@@ -55,7 +55,6 @@ export default defineConfig(async () => ({
     proxy: {
       "/api": {
         target: `http://localhost:${axumPort}`,
-        changeOrigin: true,
         ws: true,
       },
       "/ws": {

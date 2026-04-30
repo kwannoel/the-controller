@@ -65,12 +65,10 @@ pub fn is_allowed_daemon_stream_origin(origin: Option<&str>, host: Option<&str>)
     };
 
     origin.authority == request_authority
-        || is_known_dev_frontend_origin(&origin, &request_authority)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OriginParts {
-    scheme: String,
     authority: AuthorityParts,
 }
 
@@ -94,7 +92,6 @@ fn parse_origin(origin: &str) -> Option<OriginParts> {
     }
 
     Some(OriginParts {
-        scheme: scheme.to_string(),
         authority: parse_authority(authority)?,
     })
 }
@@ -106,17 +103,6 @@ fn parse_authority(authority: &str) -> Option<AuthorityParts> {
         host: authority.host().to_ascii_lowercase(),
         port: authority.port_u16(),
     })
-}
-
-fn is_known_dev_frontend_origin(origin: &OriginParts, request_authority: &AuthorityParts) -> bool {
-    origin.scheme == "http"
-        && origin.authority.port == Some(1420)
-        && is_loopback_host(&origin.authority.host)
-        && is_loopback_host(&request_authority.host)
-}
-
-fn is_loopback_host(host: &str) -> bool {
-    matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
 pub async fn connect_daemon_websocket(

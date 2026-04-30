@@ -41,7 +41,7 @@ fn explicit_stream_routes_can_coexist_with_daemon_catch_all() {
 }
 
 #[test]
-fn stream_origin_policy_allows_native_same_origin_and_dev_proxy_origins() {
+fn stream_origin_policy_allows_native_and_same_origin_requests() {
     assert!(is_allowed_daemon_stream_origin(
         None,
         Some("localhost:3001")
@@ -51,8 +51,8 @@ fn stream_origin_policy_allows_native_same_origin_and_dev_proxy_origins() {
         Some("localhost:3001")
     ));
     assert!(is_allowed_daemon_stream_origin(
-        Some("http://127.0.0.1:1420"),
-        Some("127.0.0.1:3001")
+        Some("http://127.0.0.1:1934"),
+        Some("127.0.0.1:1934")
     ));
 }
 
@@ -69,6 +69,10 @@ fn stream_origin_policy_rejects_foreign_or_malformed_origins() {
     assert!(!is_allowed_daemon_stream_origin(
         Some("http://localhost:1420"),
         None
+    ));
+    assert!(!is_allowed_daemon_stream_origin(
+        Some("http://localhost:1420"),
+        Some("localhost:3001")
     ));
 }
 

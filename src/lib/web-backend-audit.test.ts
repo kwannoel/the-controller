@@ -93,5 +93,6 @@ describe("web backend migration audit", () => {
     const apiProxy = source.match(/"\/api":\s*\{([\s\S]*?)\n\s*\},\n\s*"\/ws"/);
 
     expect(apiProxy?.[1] ?? "").toContain("ws: true");
+    expect(apiProxy?.[1] ?? "").not.toContain("changeOrigin");
   });
 });
