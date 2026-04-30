@@ -75,7 +75,6 @@ async fn main() {
                 .patch(daemon_gateway)
                 .delete(daemon_gateway),
         )
-        .route("/api/read_daemon_token", post(read_daemon_token))
         .route("/api/log_frontend_error", post(log_frontend_error))
         .route("/api/get_agents_md", post(get_agents_md))
         .route("/api/update_agents_md", post(update_agents_md))
@@ -490,13 +489,6 @@ async fn create_session(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     Ok(Json(Value::String(session_id)))
-}
-
-async fn read_daemon_token() -> Result<Json<Value>, (StatusCode, String)> {
-    let token = commands::daemon::read_daemon_token()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
-    Ok(Json(Value::String(token)))
 }
 
 async fn daemon_gateway(

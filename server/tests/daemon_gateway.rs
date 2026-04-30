@@ -42,6 +42,16 @@ fn gateway_paths_must_stay_under_api_daemon() {
     .is_err());
 }
 
+#[test]
+fn gateway_does_not_expose_daemon_token_route() {
+    let main_source = include_str!("../src/main.rs");
+    let commands_source = include_str!("../src/commands.rs");
+
+    assert!(!main_source.contains("/api/read_daemon_token"));
+    assert!(!main_source.contains("fn read_daemon_token"));
+    assert!(!commands_source.contains("pub mod daemon"));
+}
+
 #[tokio::test]
 async fn gateway_health_uses_unix_socket() {
     let tmp = tempfile::tempdir().unwrap();

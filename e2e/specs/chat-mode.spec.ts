@@ -15,9 +15,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 //
 // NOTE: The daemon-reachable leg of this test is skipped by default because
 // it requires the daemon & fake_agent binaries to be built at the canonical
-// paths below. The axum server (server/src/main.rs) exposes
-// `/api/read_daemon_token` so the browser harness can load the daemon token
-// when the daemon is running.
+// paths below. Browser code reaches the daemon only through same-origin
+// `/api/daemon/...` routes; daemon token and socket details stay server-side.
 
 const DAEMON_REPO = "/Users/noelkwan/projects/the-controller-daemon";
 const DAEMON_BIN = `${DAEMON_REPO}/target/release/the-controller-daemon`;
@@ -39,8 +38,8 @@ test("chat mode shows DaemonEmptyState when daemon is unreachable", async ({ pag
   await switchToChatMode(page);
 
   // Core assertion: the DaemonEmptyState component renders its heading when
-  // the daemon cannot be reached. The Axum server exposes `read_daemon_token`,
-  // but this test does not start the daemon, so bootstrap fails deterministically.
+  // the daemon cannot be reached. This test does not start the daemon, so
+  // bootstrap fails deterministically through the same-origin gateway.
   await expect(page.getByRole("heading", { name: "Daemon not running" })).toBeVisible({
     timeout: 5_000,
   });

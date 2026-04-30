@@ -8,7 +8,6 @@ use crate::state::AppState;
 use crate::token_usage::{self, TokenDataPoint};
 use crate::worktree::WorktreeManager;
 
-pub mod daemon;
 pub mod github;
 pub mod kanban;
 
