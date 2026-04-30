@@ -218,6 +218,9 @@ describe("ChatMetricsTab", () => {
     expect(getAllByText("20 tokens").length).toBeGreaterThan(0);
     expect(getByText("2 turns")).toBeTruthy();
     expect(getAllByText("1 tool").length).toBeGreaterThan(0);
+    expect(getByText("Elapsed")).toBeTruthy();
+    expect(getAllByText("800ms").length).toBeGreaterThan(0);
+    expect(getByText("Slowest")).toBeTruthy();
     expect(getAllByText("Reviewer").length).toBeGreaterThan(0);
     expect(getByText("@reviewer")).toBeTruthy();
     expect(getAllByText("running").length).toBeGreaterThan(0);
@@ -245,5 +248,37 @@ describe("ChatMetricsTab", () => {
     await fireEvent.click(getByRole("button", { name: /open reviewer trace/i }));
 
     expect(onOpenAgent).toHaveBeenCalledWith("session-1");
+  });
+
+  it("does not show stale fallback trace rows from another chat", () => {
+    const emptyMetrics: ChatMetrics = {
+      ...metrics,
+      chat_id: "chat-empty",
+      turn_count: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read_tokens: 0,
+      cache_write_tokens: 0,
+      tool_call_count: 0,
+      outbox_write_count: 0,
+      error_count: 0,
+      total_elapsed_ms: null,
+      average_turn_ms: null,
+      slowest_turn_ms: null,
+      agents: [],
+      turns: [],
+    };
+    const { getByText, queryByText } = render(ChatMetricsTab, {
+      metrics: emptyMetrics,
+      agentLinks: [],
+      sessions,
+      profiles: new Map(),
+      traces,
+      onOpenAgent: vi.fn(),
+    });
+
+    expect(getByText("No turns recorded for this chat.")).toBeTruthy();
+    expect(queryByText("turn-1")).toBeNull();
+    expect(queryByText("turn-2")).toBeNull();
   });
 });

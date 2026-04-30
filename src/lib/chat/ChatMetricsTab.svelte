@@ -134,7 +134,7 @@
   }
 
   function turnRows(): ChatTurnMetrics[] {
-    if (metrics?.turns?.length) return metrics.turns;
+    if (metrics?.turns) return metrics.turns;
     return traceLists().flatMap((trace) => trace.map((item) => ({
       turn_id: item.turn.id,
       session_id: item.turn.session_id,
@@ -161,10 +161,10 @@
   }
 
   function traceLists(): AgentTurnTrace[][] {
-    if ("values" in traces && typeof traces.values === "function") {
-      return [...traces.values()];
-    }
-    return agentLinks.map((link) => traces.get(link.session_id) ?? []);
+    const chatId = metrics?.chat_id ?? null;
+    return agentLinks
+      .map((link) => traces.get(link.session_id) ?? [])
+      .map((trace) => chatId ? trace.filter((item) => item.turn.chat_id === chatId) : trace);
   }
 
   function turnAgentName(row: ChatTurnMetrics): string {
@@ -204,6 +204,14 @@
     <div class="total-cell">
       <span>Errors</span>
       <strong>{formatMetricValue(metrics?.error_count, "errors")}</strong>
+    </div>
+    <div class="total-cell">
+      <span>Elapsed</span>
+      <strong>{formatDurationMs(metrics?.total_elapsed_ms)}</strong>
+    </div>
+    <div class="total-cell">
+      <span>Slowest</span>
+      <strong>{formatDurationMs(metrics?.slowest_turn_ms)}</strong>
     </div>
   </div>
 
@@ -328,7 +336,7 @@
 
   .totals {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     border: 1px solid var(--border-default);
     border-radius: 8px;
     overflow: hidden;
@@ -467,14 +475,6 @@
   @media (max-width: 860px) {
     .totals {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .total-cell:nth-child(2) {
-      border-right: 0;
-    }
-
-    .total-cell:nth-child(-n + 2) {
-      border-bottom: 1px solid var(--border-default);
     }
 
     .table-head {
